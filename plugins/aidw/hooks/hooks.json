@@ -1,0 +1,16 @@
+{
+  "description": "aidw governance: approval gate, permission tiers and the stop backstop. No-op outside projects that contain .aidw/.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash|Read",
+        "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/aidw\" gate", "timeout": 15 }]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/aidw\" backstop", "timeout": 15 }]
+      }
+    ]
+  }
+}

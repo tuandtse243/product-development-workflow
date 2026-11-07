@@ -1,0 +1,8 @@
+{
+  "name": "aidw",
+  "displayName": "AI Fullstack Autonomous Development Workflow",
+  "version": "0.1.0",
+  "description": "Analysis-gated autonomous development: intake, analysis and one approval gate, then autonomous build, layered quality gates, living specs and a complete delivery package.",
+  "author": { "name": "Tony" },
+  "keywords": ["workflow", "spec-driven", "orchestration", "quality-gates"]
+}

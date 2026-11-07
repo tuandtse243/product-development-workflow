@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "aidw",
+  "description": "AI Fullstack Autonomous Development Workflow",
+  "owner": { "name": "Tony" },
+  "plugins": [
+    {
+      "name": "aidw",
+      "source": "./plugins/aidw",
+      "description": "Analysis-gated autonomous development workflow for Claude Code.",
+      "version": "0.1.0"
+    }
+  ]
+}

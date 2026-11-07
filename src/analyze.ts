@@ -1,0 +1,158 @@
+/**
+ * `aidw analyze`: consistency checks that run before the approval gate (blueprint step 9,
+ * Spec Kit "analyze"). The user should never be asked to approve a package whose parts
+ * contradict each other.
+ */
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { loadChange } from "./change.js";
+import { deltaFiles } from "./check.js";
+import { Diags } from "./diag.js";
+import { capabilityOf, readText, rel, walkFiles, type Paths } from "./project.js";
+import { applyDelta } from "./spec/merge.js";
+import { parseDelta, parseSpec, sections, slugify } from "./spec/parse.js";
+import { parseTasks } from "./tasks.js";
+
+/** Sections every Analysis package must contain (headings are matched case-insensitively). */
+export const ANALYSIS_SECTIONS = [
+  "Summary",
+  "Requirements and scope",
+  "Domain",
+  "Stack",
+  "Design",
+  "Architecture",
+  "Specs",
+  "Plan",
+  "Quality profile",
+  "Deploy strategy",
+  "Permissions",
+  "Risks and assumptions",
+] as const;
+
+export const PLACEHOLDER = "TODO(aidw)";
+export const STACK_SOURCES = ["client", "ai", "fallback"] as const;
+export const DESIGN_MODES = ["existing", "claude_design", "ai_design", "hybrid"] as const;
+
+export const reqId = (capability: string, name: string) => `${capability}/${slugify(name)}`;
+export const scenarioId = (capability: string, req: string, scenario: string) => `${reqId(capability, req)}/${slugify(scenario)}`;
+
+export interface IdIndex {
+  requirements: Set<string>;
+  scenarios: Set<string>;
+}
+
+function indexSpec(capability: string, text: string, into: IdIndex): void {
+  for (const r of parseSpec(text).requirements) {
+    into.requirements.add(reqId(capability, r.name));
+    for (const s of r.scenarios) into.scenarios.add(scenarioId(capability, r.name, s.name));
+  }
+}
+
+/** Requirement and scenario ids of the current main specs. */
+export function mainSpecIds(p: Paths): IdIndex {
+  const ids: IdIndex = { requirements: new Set(), scenarios: new Set() };
+  for (const f of walkFiles(p.specs)) {
+    const cap = capabilityOf(p.specs, f);
+    if (cap) indexSpec(cap, readFileSync(f, "utf8"), ids);
+  }
+  return ids;
+}
+
+/**
+ * Requirement and scenario ids of the system as it will be after this change:
+ * main specs with every delta applied in memory.
+ */
+export function idsAfterChange(p: Paths, id: string): { ids: IdIndex; changed: IdIndex } {
+  const change = loadChange(p, id);
+  const ids: IdIndex = { requirements: new Set(), scenarios: new Set() };
+  const changed: IdIndex = { requirements: new Set(), scenarios: new Set() };
+  const deltas = deltaFiles(p, change, new Diags());
+  const touched = new Set(deltas.map((d) => d.capability));
+
+  for (const f of walkFiles(p.specs)) {
+    const cap = capabilityOf(p.specs, f);
+    if (cap && !touched.has(cap)) indexSpec(cap, readFileSync(f, "utf8"), ids);
+  }
+  for (const df of deltas) {
+    const deltaText = readFileSync(df.file, "utf8");
+    const merged = applyDelta(readText(df.mainFile), deltaText, df.capability);
+    indexSpec(df.capability, merged.ok && merged.text ? merged.text : (readText(df.mainFile) ?? ""), ids);
+    const delta = parseDelta(deltaText);
+    for (const r of [...delta.added, ...delta.modified]) {
+      changed.requirements.add(reqId(df.capability, r.name));
+      for (const s of r.scenarios) changed.scenarios.add(scenarioId(df.capability, r.name, s.name));
+    }
+  }
+  return { ids, changed };
+}
+
+function checkAnalysisDoc(text: string, file: string, d: Diags): void {
+  const secs = sections(text);
+  const byName = new Map(secs.map((s) => [s.name.toLowerCase(), s]));
+  for (const name of ANALYSIS_SECTIONS) {
+    const s = byName.get(name.toLowerCase());
+    if (!s) d.error(file, `missing section "## ${name}"`);
+    else if (!s.body) d.error(file, `section "## ${name}" is empty`, s.line);
+  }
+  text.split(/\r?\n/).forEach((l, i) => {
+    if (l.includes(PLACEHOLDER)) d.error(file, `unresolved ${PLACEHOLDER} placeholder`, i + 1);
+  });
+
+  const stack = byName.get("stack");
+  if (stack && !new RegExp(`^Source:\\s*(${STACK_SOURCES.join("|")})\\b`, "im").test(stack.body)) {
+    d.error(file, `"## Stack" must declare "Source: ${STACK_SOURCES.join(" | ")}"`, stack.line);
+  }
+  const design = byName.get("design");
+  if (design && !new RegExp(`^Mode:\\s*(${DESIGN_MODES.join("|")})\\b`, "im").test(design.body)) {
+    d.error(file, `"## Design" must declare "Mode: ${DESIGN_MODES.join(" | ")}"`, design.line);
+  }
+  const perms = byName.get("permissions");
+  if (perms && !/^\s*[-*]\s+\S/m.test(perms.body) && !/^\s*none\b/im.test(perms.body)) {
+    d.error(file, '"## Permissions" must list each tier-2 resource as a bullet, or say "None"', perms.line);
+  }
+}
+
+/** Runs every pre-gate consistency check for one change. */
+export function analyzeChange(p: Paths, id: string): Diags {
+  const d = new Diags();
+  const change = loadChange(p, id);
+
+  const analysisFile = join(change.dir, "analysis.md");
+  const analysis = readText(analysisFile);
+  if (analysis === null) d.error(rel(p, analysisFile), "analysis.md is missing");
+  else checkAnalysisDoc(analysis, rel(p, analysisFile), d);
+
+  const tasksFile = join(change.dir, "tasks.yaml");
+  const tasksText = readText(tasksFile);
+  if (tasksText === null) {
+    d.error(rel(p, tasksFile), "tasks.yaml is missing");
+    return d;
+  }
+  const { tasks, error } = parseTasks(tasksText);
+  if (error) return d; // structural errors are reported by validate
+
+  const { ids, changed } = idsAfterChange(p, id);
+  const coveredReqs = new Set<string>();
+  const coveredScenarios = new Set<string>();
+  const tf = rel(p, tasksFile);
+  for (const t of tasks) {
+    const specs = Array.isArray(t.specs) ? (t.specs as unknown[]).map(String) : [];
+    const scenarios = Array.isArray(t.scenarios) ? (t.scenarios as unknown[]).map(String) : [];
+    for (const s of specs) {
+      if (!ids.requirements.has(s)) d.error(tf, `task ${t.id} references unknown requirement "${s}" (see \`aidw ids ${id}\`)`);
+      coveredReqs.add(s);
+    }
+    for (const s of scenarios) {
+      if (!ids.scenarios.has(s)) d.error(tf, `task ${t.id} references unknown scenario "${s}" (see \`aidw ids ${id}\`)`);
+      coveredScenarios.add(s);
+      coveredReqs.add(s.split("/").slice(0, -1).join("/"));
+    }
+  }
+  for (const r of changed.requirements) {
+    if (!coveredReqs.has(r)) d.error(tf, `requirement "${r}" changed by this change is not covered by any task`);
+  }
+  for (const s of changed.scenarios) {
+    if (!coveredScenarios.has(s)) d.error(tf, `scenario "${s}" has no task that implements and verifies it`);
+  }
+  return d;
+}

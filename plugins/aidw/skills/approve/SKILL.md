@@ -1,0 +1,23 @@
+---
+name: approve
+description: Approve the Analysis package of an aidw change so autonomous execution can start. Only when the user runs /aidw:approve.
+disable-model-invocation: true
+argument-hint: "[change id]"
+---
+
+# aidw: approve the Analysis
+
+The user has asked to approve. This is the single human gate of the workflow (Q2).
+
+1. Run `aidw status`. Pick the change in `awaiting_approval` (or `$ARGUMENTS` if given). If none is waiting,
+   say so and stop.
+2. Run `aidw validate <id>` and `aidw analyze <id>`. If either fails, show the errors and stop: the package
+   goes back to analysis (`aidw transition <id> analyzing`).
+3. Show the user a short recap so they know exactly what they approve: the `## Summary`, `## Stack`
+   (with its source), `## Design` mode, `## Deploy strategy`, `## Permissions`, and the number of tasks.
+4. Run `aidw approve <id>`. The aidw gate turns this into a permission prompt: the user confirms it there.
+   If the user declines the prompt, do not retry.
+5. Report the approval hash. Explain that from now on:
+   - the approved package (intake, analysis, specs, design, constitution) is frozen; changing it needs
+     `aidw transition <id> escalated`, then `analyzing`, then a new approval;
+   - autonomous execution starts with the orchestrator (`/aidw:run`, workflow slice S3).

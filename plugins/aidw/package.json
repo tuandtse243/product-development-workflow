@@ -1,0 +1,6 @@
+{
+  "name": "aidw-plugin",
+  "private": true,
+  "type": "commonjs",
+  "description": "Marks the bundled bin/aidw as CommonJS. Built from the repo root with `npm run build`."
+}

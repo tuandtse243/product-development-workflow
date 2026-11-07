@@ -1,0 +1,38 @@
+{
+  "pocock": {
+    "repo": "mattpocock/skills",
+    "ref": "main",
+    "license": "LICENSE",
+    "role": "Product engineering: grilling, domain modeling, spec and tickets, orchestration pattern (blueprint 7.1)",
+    "skills": {
+      "grill-me": "skills/productivity/grill-me",
+      "grilling": "skills/productivity/grilling",
+      "grill-with-docs": "skills/engineering/grill-with-docs",
+      "domain-modeling": "skills/engineering/domain-modeling",
+      "to-spec": "skills/engineering/to-spec",
+      "to-tickets": "skills/engineering/to-tickets",
+      "implement-spec": "skills/engineering/implement-spec"
+    }
+  },
+  "addy": {
+    "repo": "addyosmani/agent-skills",
+    "ref": "main",
+    "license": "LICENSE",
+    "role": "Engineering execution and quality (blueprint 7.2)",
+    "skills": {
+      "incremental-implementation": "skills/incremental-implementation",
+      "test-driven-development": "skills/test-driven-development",
+      "frontend-ui-engineering": "skills/frontend-ui-engineering",
+      "api-and-interface-design": "skills/api-and-interface-design",
+      "browser-testing-with-devtools": "skills/browser-testing-with-devtools",
+      "security-and-hardening": "skills/security-and-hardening",
+      "performance-optimization": "skills/performance-optimization",
+      "code-review-and-quality": "skills/code-review-and-quality",
+      "debugging-and-error-recovery": "skills/debugging-and-error-recovery",
+      "git-workflow-and-versioning": "skills/git-workflow-and-versioning",
+      "ci-cd-and-automation": "skills/ci-cd-and-automation",
+      "shipping-and-launch": "skills/shipping-and-launch",
+      "documentation-and-adrs": "skills/documentation-and-adrs"
+    }
+  }
+}

@@ -1,0 +1,67 @@
+# aidw — AI Fullstack Autonomous Development Workflow
+
+Analysis-gated autonomous development for Claude Code: intake → analysis → **one approval gate** →
+autonomous build → layered quality gates → living specs → complete delivery package.
+
+- Design and decisions: [`docs/blueprint-v1.md`](docs/blueprint-v1.md), [`docs/decisions-log.md`](docs/decisions-log.md)
+- Status: **S1 done** (deterministic core CLI), **S2 code done** (analysis skills, analyze, approval gate hook,
+  stop backstop, vendored Pocock and Addy skills). Execution (`/aidw:run`) starts in S3.
+
+## Use it in a project (local, no install)
+
+```bash
+cd my-new-project && git init
+claude --plugin-dir /path/to/product-development-workflow/plugins/aidw
+# then in Claude Code:
+/aidw:init
+/aidw:start <idea, or a path to a PRD / Upwork JD>
+/aidw:approve
+```
+
+## Vendored skills
+
+Selected skills from `mattpocock/skills` and `addyosmani/agent-skills` (both MIT) live verbatim in
+`plugins/aidw/vendor/`; see each `UPSTREAM.md`. Update with `node scripts/vendor.mjs <pocock|addy>` and review
+the diff. They sit outside `skills/`, so Claude Code never auto-loads them; aidw skills load them by path.
+
+## Layout
+
+```
+.claude-plugin/marketplace.json   this repo is a Claude Code marketplace
+plugins/aidw/                     the plugin (bin/aidw is the bundled CLI)
+src/                              TypeScript source of the aidw CLI
+tests/                            vitest suites
+docs/                             blueprint and decisions log
+```
+
+## Develop
+
+```bash
+npm install
+npm test            # builds plugins/aidw/bin/aidw, then runs vitest
+npm run typecheck
+```
+
+`plugins/aidw/bin/aidw` is a single bundled file with no runtime dependencies; rebuild it with
+`npm run build` and commit it together with the source change.
+
+Try the plugin locally without installing: `claude --plugin-dir ./plugins/aidw`.
+
+## CLI (S1)
+
+```
+aidw init                                    create .aidw/ in a project
+aidw change new <id> [--title T] [--input-type idea|prd|upwork_jd|client_request|codebase]
+aidw status [<id>] [--json]
+aidw validate [<id>] [--strict] [--json]     specs + changes, with merge preflight
+aidw approve <id>                            hash the Analysis package (awaiting_approval -> approved)
+aidw approval check <id>                     exit 1 on drift
+aidw transition <id> <state|resume> [--reason R]
+aidw merge <id> [--write]                    delta specs -> .aidw/specs (dry run by default)
+aidw archive <id>                            delivered -> merged specs + .aidw/archive/
+aidw analyze [<id>]                          pre-gate consistency (analysis.md, task coverage of specs)
+aidw ids [<id>]                              requirement / scenario ids after the change
+aidw vendor-path <upstream>/<skill>          path of a vendored SKILL.md
+aidw plugin-path <path>                      path of a plugin file
+aidw gate | backstop                         hook entry points (JSON on stdin)
+```

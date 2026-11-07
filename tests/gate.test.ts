@@ -1,0 +1,158 @@
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { beforeEach, describe, expect, it } from "vitest";
+import { unexpectedChanges, runBackstop } from "../src/backstop.js";
+import { run } from "../src/cli.js";
+import { decide, runGate, type HookInput } from "../src/gate.js";
+import { ANALYSIS_MD, MAIN_SPEC, REQ, TASKS_YAML, tempProject, write } from "./fixtures.js";
+
+const ID = "app";
+let root: string;
+
+function cli(...argv: string[]) {
+  return run([...argv, "--root", root], {}, root, { out: () => {}, err: () => {} });
+}
+
+const env = {} as NodeJS.ProcessEnv;
+const hook = (tool_name: string, tool_input: Record<string, unknown>, cwd = root): HookInput => ({
+  hook_event_name: "PreToolUse",
+  tool_name,
+  tool_input,
+  cwd,
+});
+const decision = (h: HookInput) => decide(h, env)?.decision ?? "none";
+
+function readyForApproval() {
+  write(root, ".aidw/specs/booking/spec.md", MAIN_SPEC);
+  write(root, `.aidw/changes/${ID}/analysis.md`, ANALYSIS_MD);
+  write(root, `.aidw/changes/${ID}/tasks.yaml`, TASKS_YAML);
+  write(root, `.aidw/changes/${ID}/specs/booking/spec.md`, `## ADDED Requirements\n\n${REQ("Reschedule appointment")}`);
+  for (const s of ["intake", "analyzing", "awaiting_approval"]) expect(cli("transition", ID, s)).toBe(0);
+}
+
+beforeEach(() => {
+  root = tempProject();
+  cli("init");
+  cli("change", "new", ID);
+});
+
+describe("gate before approval (exit criterion [2])", () => {
+  it("denies project writes and allows .aidw/ writes", () => {
+    expect(decision(hook("Write", { file_path: join(root, "src/a.ts") }))).toBe("deny");
+    expect(decision(hook("Edit", { file_path: "package.json" }))).toBe("deny");
+    expect(decision(hook("Write", { file_path: join(root, ".aidw/changes/app/analysis.md") }))).toBe("allow");
+    expect(decide(hook("Write", { file_path: "src/a.ts" }), env)?.reason).toMatch(/not approved yet \(app=draft\)/);
+  });
+
+  it("denies writing shell commands but lets read-only ones and aidw through", () => {
+    for (const c of ["echo x > src/a.ts", "mkdir -p src", "npm install", "pnpm add zod", "npx create-next-app .", "cat a | tee b", "sed -i s/a/b/ f"]) {
+      expect([c, decision(hook("Bash", { command: c }))]).toEqual([c, "deny"]);
+    }
+    for (const c of ["ls -la", "grep -rn install README.md", "cat package.json 2>/dev/null", "git status", "node -e 'x => 1'", "aidw status", "aidw change new other"]) {
+      expect([c, decision(hook("Bash", { command: c }))]).toEqual([c, "none"]);
+    }
+  });
+
+  it("ignores writes outside the project and projects without .aidw/", () => {
+    expect(decision(hook("Write", { file_path: "/tmp/notes.md" }))).toBe("none");
+    const plain = tempProject();
+    expect(decide(hook("Write", { file_path: join(plain, "x.ts") }, plain), env)).toBeNull();
+    expect(runGate(JSON.stringify(hook("Bash", { command: "rm -rf build" }, plain)), env)).toBe("");
+  });
+});
+
+describe("gate after approval", () => {
+  beforeEach(() => {
+    readyForApproval();
+    expect(cli("approve", ID)).toBe(0);
+    expect(cli("transition", ID, "executing")).toBe(0);
+  });
+
+  it("allows project writes and shell writes", () => {
+    expect(decision(hook("Write", { file_path: "src/a.ts" }))).toBe("allow");
+    expect(decision(hook("Bash", { command: "pnpm add zod" }))).toBe("none");
+  });
+
+  it("freezes the approved package but lets tasks.yaml and run state change", () => {
+    expect(decision(hook("Edit", { file_path: `.aidw/changes/${ID}/analysis.md` }))).toBe("deny");
+    expect(decision(hook("Write", { file_path: `.aidw/changes/${ID}/specs/booking/spec.md` }))).toBe("deny");
+    expect(decision(hook("Edit", { file_path: ".aidw/constitution.md" }))).toBe("deny");
+    expect(decision(hook("Edit", { file_path: `.aidw/changes/${ID}/tasks.yaml` }))).toBe("allow");
+    expect(decision(hook("Write", { file_path: ".aidw/run/progress.json" }))).toBe("allow");
+  });
+
+  it("closes again on drift (exit criterion [3])", () => {
+    write(root, `.aidw/changes/${ID}/analysis.md`, `${ANALYSIS_MD}\nScope quietly widened.\n`);
+    const d = decide(hook("Write", { file_path: "src/a.ts" }), env);
+    expect(d?.decision).toBe("deny");
+    expect(d?.reason).toMatch(/approval drift in app/);
+  });
+
+  it("unfreezes the package while escalated", () => {
+    expect(cli("transition", ID, "escalated")).toBe(0);
+    expect(decision(hook("Edit", { file_path: `.aidw/changes/${ID}/analysis.md` }))).toBe("allow");
+    expect(decision(hook("Write", { file_path: "src/a.ts" }))).toBe("deny");
+  });
+});
+
+describe("tiers", () => {
+  it("asks before outward-facing or costly commands and before approving", () => {
+    for (const c of [
+      "git push origin main",
+      "vercel --prod",
+      "npx vercel deploy",
+      "vercel",
+      "supabase db push",
+      "npm publish",
+      "gh pr merge 3",
+      "aidw approve app",
+      "/x/plugins/aidw/bin/aidw approve app",
+    ]) {
+      expect([c, decision(hook("Bash", { command: c }))]).toEqual([c, "ask"]);
+    }
+    for (const c of ["vercel env ls", "pnpm add vercel", "git status && git log"]) {
+      expect([c, decision(hook("Bash", { command: c }))]).not.toEqual([c, "ask"]);
+    }
+  });
+
+  it("denies personal credentials and destructive commands (tier x)", () => {
+    expect(decision(hook("Read", { file_path: "/Users/me/.ssh/id_ed25519" }))).toBe("deny");
+    expect(decision(hook("Read", { file_path: "/Users/me/.aws/credentials" }))).toBe("deny");
+    expect(decision(hook("Read", { file_path: join(root, "README.md") }))).toBe("none");
+    expect(decision(hook("Bash", { command: "cat ~/.ssh/id_rsa" }))).toBe("deny");
+    expect(decision(hook("Bash", { command: "security find-generic-password -s x" }))).toBe("deny");
+    expect(decision(hook("Bash", { command: "rm -rf ~" }))).toBe("deny");
+  });
+
+  it("emits the PreToolUse wire format", () => {
+    const out = JSON.parse(runGate(JSON.stringify(hook("Write", { file_path: "src/a.ts" })), env));
+    expect(out.hookSpecificOutput).toMatchObject({ hookEventName: "PreToolUse", permissionDecision: "deny" });
+  });
+});
+
+describe("backstop", () => {
+  it("only reports changes outside .aidw/ that are not in the baseline", () => {
+    expect(unexpectedChanges(["src/a.ts", ".aidw/run/x", "notes.md"], ["notes.md"])).toEqual(["src/a.ts"]);
+  });
+
+  it("blocks the stop once, then only warns", () => {
+    const dirty = () => ["src/d.txt"];
+    const first = JSON.parse(runBackstop(JSON.stringify({ cwd: root }), env, dirty));
+    expect(first.decision).toBe("block");
+    expect(first.reason).toMatch(/src\/d\.txt/);
+    expect(first.reason).toMatch(/Do not delete or revert/);
+    const again = JSON.parse(runBackstop(JSON.stringify({ cwd: root, stop_hook_active: true }), env, dirty));
+    expect(again.decision).toBeUndefined();
+    expect(again.systemMessage).toMatch(/src\/d\.txt/);
+  });
+
+  it("stays silent when the gate is open, nothing changed, or there is no project", () => {
+    expect(runBackstop(JSON.stringify({ cwd: root }), env, () => [".aidw/changes/app/analysis.md"])).toBe("");
+    const plain = tempProject();
+    mkdirSync(join(plain, "src"));
+    expect(runBackstop(JSON.stringify({ cwd: plain }), env, () => ["src/x"])).toBe("");
+    readyForApproval();
+    cli("approve", ID);
+    expect(runBackstop(JSON.stringify({ cwd: root }), env, () => ["src/x"])).toBe("");
+  });
+});
