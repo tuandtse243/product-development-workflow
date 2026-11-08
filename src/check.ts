@@ -5,6 +5,7 @@ import { CHANGE_ID, isState, loadChange, NEEDS_ANALYSIS, POST_APPROVAL, type Cha
 import { Diags } from "./diag.js";
 import { capabilityOf, KEBAB_SEGMENT, readText, rel, walkFiles, type Paths } from "./project.js";
 import { validateDeltaText, validateSpecText } from "./spec/validate.js";
+import { parseQuality } from "./quality.js";
 import { validateTasksText } from "./tasks.js";
 
 export interface DeltaFile {
@@ -72,9 +73,11 @@ export function checkChange(p: Paths, id: string, opts: { asState?: string } = {
 
   const tasksFile = join(change.dir, "tasks.yaml");
   if (existsSync(tasksFile)) d.add(validateTasksText(readFileSync(tasksFile, "utf8"), rel(p, tasksFile)));
+  const qFile = join(change.dir, "quality.yaml");
+  if (existsSync(qFile)) d.add(parseQuality(readFileSync(qFile, "utf8"), rel(p, qFile)).diags);
 
   if (NEEDS_ANALYSIS.has(state)) {
-    for (const name of ["intake.md", "analysis.md", "tasks.yaml"]) {
+    for (const name of ["intake.md", "analysis.md", "tasks.yaml", "quality.yaml"]) {
       if (!existsSync(join(change.dir, name))) d.error(meta, `state "${state}" requires ${name}`);
     }
     if (deltas.length === 0 && change.data.skip_specs !== true) {

@@ -11,6 +11,7 @@ import { Diags } from "./diag.js";
 import { capabilityOf, readText, rel, walkFiles, type Paths } from "./project.js";
 import { applyDelta } from "./spec/merge.js";
 import { parseDelta, parseSpec, sections, slugify } from "./spec/parse.js";
+import { parseQuality } from "./quality.js";
 import { parseTasks } from "./tasks.js";
 
 /** Sections every Analysis package must contain (headings are matched case-insensitively). */
@@ -143,6 +144,21 @@ export function analyzeChange(p: Paths, id: string): Diags {
   const analysis = readText(analysisFile);
   if (analysis === null) d.error(rel(p, analysisFile), "analysis.md is missing");
   else checkAnalysisDoc(analysis, rel(p, analysisFile), d);
+
+  // Every tier-2 resource in quality.yaml must be named in the human-readable "## Permissions".
+  const qText = readText(join(change.dir, "quality.yaml"));
+  const quality = qText === null ? null : parseQuality(qText, "quality.yaml").config;
+  if (quality && analysis !== null) {
+    const perms = sections(analysis).find((s) => s.name.toLowerCase() === "permissions");
+    for (const key of quality.permissions) {
+      if (perms && !perms.body.includes(key)) {
+        d.error(rel(p, analysisFile), `"## Permissions" must name the tier-2 resource "${key}" that quality.yaml requests`, perms.line);
+      }
+    }
+    if (perms && quality.permissions.length === 0 && /^\s*[-*]\s+\S/m.test(perms.body) && !/^\s*none\b/im.test(perms.body)) {
+      d.warn(rel(p, analysisFile), '"## Permissions" lists resources but quality.yaml requests none; add their keys to quality.yaml permissions or write "None"', perms.line);
+    }
+  }
 
   const tasksFile = join(change.dir, "tasks.yaml");
   const tasksText = readText(tasksFile);

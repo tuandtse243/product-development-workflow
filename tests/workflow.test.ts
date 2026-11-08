@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import YAML from "yaml";
 import { beforeEach, describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
-import { ANALYSIS_MD, MAIN_SPEC, REQ, TASKS_YAML, tempProject, write } from "./fixtures.js";
+import { ANALYSIS_MD, MAIN_SPEC, QUALITY_YAML, REQ, TASKS_YAML, tempProject, write } from "./fixtures.js";
 
 const ID = "2026-11-08-booking";
 
@@ -28,6 +28,7 @@ function readyProject(): string {
   const c = `.aidw/changes/${ID}`;
   write(root, `${c}/analysis.md`, ANALYSIS_MD);
   write(root, `${c}/tasks.yaml`, TASKS_YAML);
+  write(root, `${c}/quality.yaml`, QUALITY_YAML);
   write(root, `${c}/specs/booking/spec.md`, `## ADDED Requirements\n\n${REQ("Reschedule appointment")}`);
   for (const s of ["intake", "analyzing", "awaiting_approval"]) expect(cli(root, "transition", ID, s).code).toBe(0);
   return root;
@@ -66,6 +67,7 @@ describe("aidw workflow", () => {
     expect(a.json().files).toEqual([
       ".aidw/changes/2026-11-08-booking/analysis.md",
       ".aidw/changes/2026-11-08-booking/intake.md",
+      ".aidw/changes/2026-11-08-booking/quality.yaml",
       ".aidw/changes/2026-11-08-booking/specs/booking/spec.md",
       ".aidw/changes/2026-11-08-booking/tasks.yaml",
       ".aidw/constitution.md",
@@ -151,8 +153,16 @@ describe("aidw workflow", () => {
 
   it("archives a delivered change: merges specs and moves the folder", () => {
     cli(root, "approve", ID);
-    for (const s of ["executing", "verifying", "converging", "deploying", "delivered"]) {
-      expect(cli(root, "transition", ID, s).code).toBe(0);
+    expect(cli(root, "transition", ID, "executing").code).toBe(0);
+    // evidence normally written by the run loop, aidw verify and aidw deploy (covered in quality.test.ts)
+    const c = join(root, ".aidw/changes", ID);
+    const tasks = join(c, "tasks.yaml");
+    writeFileSync(tasks, readFileSync(tasks, "utf8").replaceAll("status: pending", "status: done\n    finished_at: 2026-01-01T00:00:00.000Z"));
+    const pass = { status: "pass", at: new Date().toISOString(), head: null, runs: [] };
+    write(root, `.aidw/changes/${ID}/evidence/quality/summary.json`, JSON.stringify({ layers: { code: pass, unit: pass, e2e: pass } }));
+    write(root, `.aidw/changes/${ID}/evidence/deploy.json`, JSON.stringify({ runs: [{ ok: true, target: "preview", url: "https://x.vercel.app" }] }));
+    for (const s of ["verifying", "converging", "deploying", "delivered"]) {
+      expect([s, cli(root, "transition", ID, s).err]).toEqual([s, ""]);
     }
     const r = cli(root, "archive", ID, "--json");
     expect(r.code).toBe(0);

@@ -76,10 +76,35 @@ aidw next --change <id> --json
    - change scope: `aidw transition <id> analyzing`, revise the Analysis, approve again.
 3. Stop.
 
-## 3. Finish
+## 3. Verify (quality layers)
 
-1. `aidw transition <id> verifying`.
-2. Summarize for the user: tasks done, commits (`git log --oneline` since the first task's base), retries and
-   reviewer findings worth knowing, files changed outside touches.
-3. The quality layers (build, unit, integration, E2E, preview deploy) run in the `verifying` state; they arrive
-   with workflow slice S4. Until then, stop here.
+1. `aidw transition <id> verifying` (refused while any task is not done).
+2. `aidw verify --change <id>`. It runs the layers of the approved `quality.yaml` in order (code, unit,
+   integration, e2e, ...), skipping layers that already passed on the current code.
+   - `PASS`: go to step 4.
+   - A layer failed and a **fix task** `Qnn` was added: the change is back in `executing`. Return to the loop
+     (section 1): the fix task runs through implement, checkpoint and review like any other, then come back here.
+   - Fix rounds exhausted: the change is already `escalated`. Tell the user (section 2, step 2) and stop.
+3. Do not edit quality.yaml, skip a layer or weaken a test to get green: the package is frozen and the gate
+   denies it. If a layer cannot pass for a reason outside the code (missing Docker, missing login), escalate.
+
+## 4. Converge, deploy, deliver
+
+1. `aidw transition <id> converging` (refused unless every layer passed on the current code). Converge (every
+   scenario has a passing test, gaps become tasks) arrives with workflow slice S5; for now continue.
+2. `aidw transition <id> deploying`, then `aidw deploy --change <id>`.
+   - target `preview`: runs the approved deploy command and the smoke checks; prints the URL.
+   - target `none` / `local`: records that nothing was deployed.
+   - `DEPLOY FAILED`: escalate with the output (usually a missing provider login or env var). Do not retry with
+     different commands: anything beyond the approved command needs the user.
+3. `aidw transition <id> delivered` (refused without a successful deploy record).
+4. Report to the user: tasks and commits (`git log --oneline` since the first task's base), quality layers and
+   fix rounds, the preview URL, reviewer findings worth knowing, files changed outside touches. The delivery
+   package and archive come with slice S5.
+
+## Long-running commands
+
+`aidw checkpoint`, `aidw verify` and `aidw deploy` run builds and test suites. Call them with the Bash tool's
+maximum timeout (600000 ms). If one may take longer, run it in the background and wait for its completion
+notification instead of polling. A verify killed half-way loses nothing: the next call skips layers that
+already passed.

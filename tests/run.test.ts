@@ -9,7 +9,7 @@ import { decide, type HookInput } from "../src/gate.js";
 import { globToRegExp, matchesAny } from "../src/glob.js";
 import { findScenarioTests } from "../src/run.js";
 import { selectSkills } from "../src/skills.js";
-import { ANALYSIS_MD, MAIN_SPEC, REQ, tempProject, write } from "./fixtures.js";
+import { ANALYSIS_MD, MAIN_SPEC, QUALITY_YAML, REQ, tempProject, write } from "./fixtures.js";
 
 const ID = "2026-11-08-booking";
 const SCENARIO = "booking/reschedule-appointment/reschedule-appointment-works";
@@ -57,7 +57,7 @@ function gitInit(root: string) {
 }
 
 /** Approved change in state executing. */
-function executingProject(opts: { git?: boolean; t2Verify?: string } = {}): string {
+export function executingProject(opts: { git?: boolean; t2Verify?: string; quality?: string } = {}): string {
   const root = tempProject();
   expect(cli(root, "init").code).toBe(0);
   write(root, ".aidw/specs/booking/spec.md", MAIN_SPEC);
@@ -65,6 +65,7 @@ function executingProject(opts: { git?: boolean; t2Verify?: string } = {}): stri
   const c = `.aidw/changes/${ID}`;
   write(root, `${c}/analysis.md`, ANALYSIS_MD);
   write(root, `${c}/tasks.yaml`, RUN_TASKS(opts.t2Verify));
+  write(root, `${c}/quality.yaml`, opts.quality ?? QUALITY_YAML);
   write(root, `${c}/specs/booking/spec.md`, `## ADDED Requirements\n\n${REQ("Reschedule appointment")}`);
   write(root, ".aidw/domain/model.md", "# Domain\n");
   write(root, ".aidw/decisions/0001-supabase.md", "# Use Supabase for auth and data\n");

@@ -156,11 +156,18 @@ tasks:
 
 ## 8. Quality, deploy and permissions
 
-- `## Quality profile`: which layers run (code, unit, integration, e2e, ui-ux, a11y, security, performance,
-  review) and the thresholds, scaled to the project's risk (Q5: comprehensive by default).
-- `## Deploy strategy`: local | preview | staging | production. Production always asks first.
-- `## Permissions`: read `$(aidw plugin-path policies/permissions.md)`; list every tier-2 resource as a
-  bullet, or write `None`.
+Read `$(aidw plugin-path profiles/quality-layers.md)` and `$(aidw plugin-path policies/permissions.md)`.
+
+- Write `.aidw/changes/<id>/quality.yaml`: the layers with the exact commands for the chosen stack, the deploy
+  target and command, the smoke checks, and the tier-2 resource keys. These commands run unattended after
+  approval, so make them non-interactive.
+- `## Quality profile`: which layers run and why (code, unit, integration, e2e now; ui-ux, a11y, security,
+  performance later), scaled to the project's risk (Q5: comprehensive by default). Justify any dropped layer.
+- `## Deploy strategy`: none | local | preview, the provider, the preview environment variables and where their
+  values come from. Production is never automatic: it is tier 3 and asks.
+- `## Permissions`: one bullet per tier-2 resource, starting with its key, e.g.
+  ``- `vercel-preview`: preview deploy of the demo, deleted after handoff``, or `None`. `aidw analyze` checks
+  that every key in quality.yaml is named here.
 
 ## 9. Analyze and present
 

@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { unexpectedChanges, runBackstop } from "../src/backstop.js";
 import { run } from "../src/cli.js";
 import { decide, runGate, type HookInput } from "../src/gate.js";
-import { ANALYSIS_MD, MAIN_SPEC, REQ, TASKS_YAML, tempProject, write } from "./fixtures.js";
+import { ANALYSIS_MD, MAIN_SPEC, QUALITY_YAML, REQ, TASKS_YAML, tempProject, write } from "./fixtures.js";
 
 const ID = "app";
 let root: string;
@@ -26,6 +26,7 @@ function readyForApproval() {
   write(root, ".aidw/specs/booking/spec.md", MAIN_SPEC);
   write(root, `.aidw/changes/${ID}/analysis.md`, ANALYSIS_MD);
   write(root, `.aidw/changes/${ID}/tasks.yaml`, TASKS_YAML);
+  write(root, `.aidw/changes/${ID}/quality.yaml`, QUALITY_YAML);
   write(root, `.aidw/changes/${ID}/specs/booking/spec.md`, `## ADDED Requirements\n\n${REQ("Reschedule appointment")}`);
   for (const s of ["intake", "analyzing", "awaiting_approval"]) expect(cli("transition", ID, s)).toBe(0);
 }

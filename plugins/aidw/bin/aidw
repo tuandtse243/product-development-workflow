@@ -7328,12 +7328,12 @@ __export(cli_exports, {
   run: () => run
 });
 module.exports = __toCommonJS(cli_exports);
-var import_node_fs9 = require("node:fs");
-var import_node_path10 = require("node:path");
+var import_node_fs10 = require("node:fs");
+var import_node_path11 = require("node:path");
 
 // src/analyze.ts
-var import_node_fs5 = require("node:fs");
-var import_node_path5 = require("node:path");
+var import_node_fs9 = require("node:fs");
+var import_node_path10 = require("node:path");
 
 // src/change.ts
 var import_node_fs2 = require("node:fs");
@@ -7481,8 +7481,8 @@ function resolveChangeId(p, id) {
 }
 
 // src/check.ts
-var import_node_fs4 = require("node:fs");
-var import_node_path4 = require("node:path");
+var import_node_fs8 = require("node:fs");
+var import_node_path9 = require("node:path");
 
 // src/approval.ts
 var import_node_crypto = require("node:crypto");
@@ -7519,6 +7519,7 @@ var Diags = class {
 var TASK_STATUSES = ["pending", "running", "review", "done", "failed", "blocked", "escalated"];
 var RUNTIME_FIELDS = ["status", "attempts", "evidence", "started_at", "finished_at", "notes", "base"];
 var DEFAULT_MAX_ATTEMPTS = 3;
+var ADDED_ORIGINS = ["converge", "quality"];
 function parseTasks(text) {
   let data;
   try {
@@ -7600,7 +7601,7 @@ function findCycle(tasks) {
 function canonicalTasks(text) {
   const { tasks, error } = parseTasks(text);
   if (error) return text.replace(/\r\n?/g, "\n");
-  const planned = tasks.filter((t) => t?.origin !== "converge").map((t) => {
+  const planned = tasks.filter((t) => !ADDED_ORIGINS.includes(String(t?.origin))).map((t) => {
     const copy = { ...t };
     for (const f of RUNTIME_FIELDS) delete copy[f];
     return copy;
@@ -7617,6 +7618,7 @@ function stableStringify(v) {
 }
 
 // src/approval.ts
+var CHANGE_PACKAGE_FILES = ["intake.md", "analysis.md", "design.md", "quality.yaml"];
 var FROZEN_PROJECT_DIRS = (p) => [p.design, p.domain, p.architecture, p.requirements];
 var sha256 = (s) => (0, import_node_crypto.createHash)("sha256").update(s).digest("hex");
 var normalize = (s) => s.replace(/\r\n?/g, "\n");
@@ -7627,7 +7629,7 @@ function computeApprovalHash(p, change) {
     const text = content ?? normalize((0, import_node_fs3.readFileSync)(file, "utf8"));
     entries.push({ path: rel(p, file), digest: sha256(text) });
   };
-  for (const name of ["intake.md", "analysis.md", "design.md"]) add((0, import_node_path3.join)(change.dir, name));
+  for (const name of CHANGE_PACKAGE_FILES) add((0, import_node_path3.join)(change.dir, name));
   for (const f of walkFiles((0, import_node_path3.join)(change.dir, "specs"))) add(f);
   const tasksFile = (0, import_node_path3.join)(change.dir, "tasks.yaml");
   if ((0, import_node_fs3.existsSync)(tasksFile)) add(tasksFile, canonicalTasks((0, import_node_fs3.readFileSync)(tasksFile, "utf8")));
@@ -8070,224 +8072,48 @@ function validateDeltaText(text, file, mainText, capability) {
   return d;
 }
 
-// src/check.ts
-function deltaFiles(p, change, d) {
-  const specsDir = (0, import_node_path4.join)(change.dir, "specs");
-  const out = [];
-  for (const f of walkFiles(specsDir)) {
-    const cap = capabilityOf(specsDir, f);
-    if (!cap) {
-      if (f.endsWith(".md")) {
-        d.error(rel(p, f), "delta specs must live at specs/<capability>/spec.md; this file is never merged");
-      }
-      continue;
-    }
-    const bad = cap.split("/").find((s) => !KEBAB_SEGMENT.test(s));
-    if (bad) d.error(rel(p, f), `capability path segment "${bad}" must be kebab-case`);
-    out.push({ capability: cap, file: f, mainFile: (0, import_node_path4.join)(p.specs, ...cap.split("/"), "spec.md") });
-  }
-  return out;
+// src/quality.ts
+var import_node_fs7 = require("node:fs");
+var import_node_path8 = require("node:path");
+var import_yaml4 = __toESM(require_dist(), 1);
+
+// src/git.ts
+var import_node_child_process = require("node:child_process");
+function git(cwd, args) {
+  const r = (0, import_node_child_process.spawnSync)("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024 });
+  return { ok: r.status === 0, out: (r.stdout ?? "").trim(), err: (r.stderr ?? "").trim() || (r.error?.message ?? "") };
 }
-function checkSpecs(p) {
-  const d = new Diags();
-  for (const f of walkFiles(p.specs)) {
-    const cap = capabilityOf(p.specs, f);
-    if (!cap) {
-      if (f.endsWith(".md")) d.warn(rel(p, f), "not a spec: specs must be named specs/<capability>/spec.md");
-      continue;
-    }
-    d.add(validateSpecText((0, import_node_fs4.readFileSync)(f, "utf8"), rel(p, f)));
-  }
-  return d;
+function isGitRepo(cwd) {
+  return git(cwd, ["rev-parse", "--is-inside-work-tree"]).out === "true";
 }
-function checkChange(p, id, opts = {}) {
-  const d = new Diags();
-  let change;
-  try {
-    change = loadChange(p, id);
-  } catch (e) {
-    d.error(rel(p, (0, import_node_path4.join)(p.changes, id)), e.message);
-    return d;
+function headCommit(cwd) {
+  const r = git(cwd, ["rev-parse", "--verify", "-q", "HEAD"]);
+  return r.ok && r.out ? r.out : null;
+}
+function changedSince(cwd, base) {
+  if (!isGitRepo(cwd)) return null;
+  const files = /* @__PURE__ */ new Set();
+  const diff = base ? git(cwd, ["diff", "--name-only", base]) : git(cwd, ["diff", "--name-only", "--cached"]);
+  if (!diff.ok) return null;
+  for (const f of diff.out.split("\n")) if (f) files.add(f);
+  if (!base) {
+    for (const f of git(cwd, ["diff", "--name-only"]).out.split("\n")) if (f) files.add(f);
   }
-  const meta = rel(p, change.file);
-  if (!CHANGE_ID.test(id)) d.error(meta, `change id "${id}" must be kebab-case`);
-  if (change.data.id !== id) d.error(meta, `id "${String(change.data.id)}" does not match folder name "${id}"`);
-  const state = opts.asState ?? change.data.state;
-  if (!isState(state)) {
-    d.error(meta, `unknown state "${String(state)}"`);
-    return d;
-  }
-  const deltas = deltaFiles(p, change, d);
-  for (const df of deltas) {
-    d.add(validateDeltaText((0, import_node_fs4.readFileSync)(df.file, "utf8"), rel(p, df.file), readText(df.mainFile), df.capability));
-  }
-  const tasksFile = (0, import_node_path4.join)(change.dir, "tasks.yaml");
-  if ((0, import_node_fs4.existsSync)(tasksFile)) d.add(validateTasksText((0, import_node_fs4.readFileSync)(tasksFile, "utf8"), rel(p, tasksFile)));
-  if (NEEDS_ANALYSIS.has(state)) {
-    for (const name of ["intake.md", "analysis.md", "tasks.yaml"]) {
-      if (!(0, import_node_fs4.existsSync)((0, import_node_path4.join)(change.dir, name))) d.error(meta, `state "${state}" requires ${name}`);
-    }
-    if (deltas.length === 0 && change.data.skip_specs !== true) {
-      d.error(meta, `state "${state}" requires at least one delta spec, or skip_specs: true when no behavior changes`);
-    }
-  }
-  if (POST_APPROVAL.has(state)) {
-    const a = approvalStatus(p, change);
-    if (a.status === "none") d.error(meta, `state "${state}" requires an approval; run \`aidw approve ${id}\``);
-    if (a.status === "drift") {
-      d.error(meta, "approval drift: the approved Analysis package changed after approval; re-run analysis and approve again");
-    }
-  }
-  return d;
+  for (const f of git(cwd, ["ls-files", "--others", "--exclude-standard"]).out.split("\n")) if (f) files.add(f);
+  return [...files].sort();
 }
 
-// src/analyze.ts
-var ANALYSIS_SECTIONS = [
-  "Summary",
-  "Requirements and scope",
-  "Domain",
-  "Stack",
-  "Design",
-  "Architecture",
-  "Specs",
-  "Plan",
-  "Quality profile",
-  "Deploy strategy",
-  "Permissions",
-  "Risks and assumptions"
-];
-var PLACEHOLDER = "TODO(aidw)";
-var STACK_SOURCES = ["client", "ai", "fallback"];
-var DESIGN_MODES = ["existing", "claude_design", "ai_design", "hybrid"];
-var reqId = (capability, name) => `${capability}/${slugify(name)}`;
-var scenarioId = (capability, req, scenario) => `${reqId(capability, req)}/${slugify(scenario)}`;
-function indexSpec(capability, text, into) {
-  for (const r of parseSpec(text).requirements) {
-    into.requirements.add(reqId(capability, r.name));
-    for (const s of r.scenarios) into.scenarios.add(scenarioId(capability, r.name, s.name));
-  }
-}
-function mainSpecIds(p) {
-  const ids = { requirements: /* @__PURE__ */ new Set(), scenarios: /* @__PURE__ */ new Set() };
-  for (const f of walkFiles(p.specs)) {
-    const cap = capabilityOf(p.specs, f);
-    if (cap) indexSpec(cap, (0, import_node_fs5.readFileSync)(f, "utf8"), ids);
-  }
-  return ids;
-}
-function idsAfterChange(p, id) {
-  const ids = { requirements: /* @__PURE__ */ new Set(), scenarios: /* @__PURE__ */ new Set() };
-  const changed = { requirements: /* @__PURE__ */ new Set(), scenarios: /* @__PURE__ */ new Set() };
-  const { specs, deltas } = specsAfterChange(p, id);
-  for (const [cap, text] of specs) indexSpec(cap, text, ids);
-  for (const [cap, deltaText] of deltas) {
-    const delta = parseDelta(deltaText);
-    for (const r of [...delta.added, ...delta.modified]) {
-      changed.requirements.add(reqId(cap, r.name));
-      for (const s of r.scenarios) changed.scenarios.add(scenarioId(cap, r.name, s.name));
-    }
-  }
-  return { ids, changed };
-}
-function specsAfterChange(p, id) {
-  const change = loadChange(p, id);
-  const specs = /* @__PURE__ */ new Map();
-  const deltas = /* @__PURE__ */ new Map();
-  const files = deltaFiles(p, change, new Diags());
-  const touched = new Set(files.map((d) => d.capability));
-  for (const f of walkFiles(p.specs)) {
-    const cap = capabilityOf(p.specs, f);
-    if (cap && !touched.has(cap)) specs.set(cap, (0, import_node_fs5.readFileSync)(f, "utf8"));
-  }
-  for (const df of files) {
-    const deltaText = (0, import_node_fs5.readFileSync)(df.file, "utf8");
-    deltas.set(df.capability, deltaText);
-    const merged = applyDelta(readText(df.mainFile), deltaText, df.capability);
-    specs.set(df.capability, merged.ok && merged.text ? merged.text : readText(df.mainFile) ?? "");
-  }
-  return { specs, deltas };
-}
-function requirementsAfterChange(p, id) {
-  const out = /* @__PURE__ */ new Map();
-  for (const [cap, text] of specsAfterChange(p, id).specs) {
-    for (const r of parseSpec(text).requirements) {
-      out.set(reqId(cap, r.name), { capability: cap, raw: r.raw, scenarios: r.scenarios.map((s) => scenarioId(cap, r.name, s.name)) });
-    }
-  }
-  return out;
-}
-function checkAnalysisDoc(text, file, d) {
-  const secs = sections(text);
-  const byName = new Map(secs.map((s) => [s.name.toLowerCase(), s]));
-  for (const name of ANALYSIS_SECTIONS) {
-    const s = byName.get(name.toLowerCase());
-    if (!s) d.error(file, `missing section "## ${name}"`);
-    else if (!s.body) d.error(file, `section "## ${name}" is empty`, s.line);
-  }
-  text.split(/\r?\n/).forEach((l, i) => {
-    if (l.includes(PLACEHOLDER)) d.error(file, `unresolved ${PLACEHOLDER} placeholder`, i + 1);
-  });
-  const stack = byName.get("stack");
-  if (stack && !new RegExp(`^Source:\\s*(${STACK_SOURCES.join("|")})\\b`, "im").test(stack.body)) {
-    d.error(file, `"## Stack" must declare "Source: ${STACK_SOURCES.join(" | ")}"`, stack.line);
-  }
-  const design = byName.get("design");
-  if (design && !new RegExp(`^Mode:\\s*(${DESIGN_MODES.join("|")})\\b`, "im").test(design.body)) {
-    d.error(file, `"## Design" must declare "Mode: ${DESIGN_MODES.join(" | ")}"`, design.line);
-  }
-  const perms = byName.get("permissions");
-  if (perms && !/^\s*[-*]\s+\S/m.test(perms.body) && !/^\s*none\b/im.test(perms.body)) {
-    d.error(file, '"## Permissions" must list each tier-2 resource as a bullet, or say "None"', perms.line);
-  }
-}
-function analyzeChange(p, id) {
-  const d = new Diags();
-  const change = loadChange(p, id);
-  const analysisFile = (0, import_node_path5.join)(change.dir, "analysis.md");
-  const analysis = readText(analysisFile);
-  if (analysis === null) d.error(rel(p, analysisFile), "analysis.md is missing");
-  else checkAnalysisDoc(analysis, rel(p, analysisFile), d);
-  const tasksFile = (0, import_node_path5.join)(change.dir, "tasks.yaml");
-  const tasksText = readText(tasksFile);
-  if (tasksText === null) {
-    d.error(rel(p, tasksFile), "tasks.yaml is missing");
-    return d;
-  }
-  const { tasks, error } = parseTasks(tasksText);
-  if (error) return d;
-  const { ids, changed } = idsAfterChange(p, id);
-  const coveredReqs = /* @__PURE__ */ new Set();
-  const coveredScenarios = /* @__PURE__ */ new Set();
-  const tf = rel(p, tasksFile);
-  for (const t of tasks) {
-    const specs = Array.isArray(t.specs) ? t.specs.map(String) : [];
-    const scenarios = Array.isArray(t.scenarios) ? t.scenarios.map(String) : [];
-    for (const s of specs) {
-      if (!ids.requirements.has(s)) d.error(tf, `task ${t.id} references unknown requirement "${s}" (see \`aidw ids ${id}\`)`);
-      coveredReqs.add(s);
-    }
-    for (const s of scenarios) {
-      if (!ids.scenarios.has(s)) d.error(tf, `task ${t.id} references unknown scenario "${s}" (see \`aidw ids ${id}\`)`);
-      coveredScenarios.add(s);
-      coveredReqs.add(s.split("/").slice(0, -1).join("/"));
-    }
-  }
-  for (const r of changed.requirements) {
-    if (!coveredReqs.has(r)) d.error(tf, `requirement "${r}" changed by this change is not covered by any task`);
-  }
-  for (const s of changed.scenarios) {
-    if (!coveredScenarios.has(s)) d.error(tf, `scenario "${s}" has no task that implements and verifies it`);
-  }
-  return d;
-}
+// src/ops.ts
+var import_node_fs5 = require("node:fs");
+var import_node_path6 = require("node:path");
 
 // src/backstop.ts
-var import_node_child_process = require("node:child_process");
-var import_node_fs6 = require("node:fs");
-var import_node_path7 = require("node:path");
+var import_node_child_process2 = require("node:child_process");
+var import_node_fs4 = require("node:fs");
+var import_node_path5 = require("node:path");
 
 // src/gate.ts
-var import_node_path6 = require("node:path");
+var import_node_path4 = require("node:path");
 
 // src/policy.ts
 var CMD = String.raw`(?:^|[;&|(]\s*|\b(?:sudo|xargs|exec|env)\s+)`;
@@ -8305,22 +8131,38 @@ var FORBIDDEN_COMMANDS = [
   { re: /\bsecurity\s+(find|dump)-(generic|internet)-password\b|\bsecurity\s+dump-keychain\b/, why: "reads the macOS keychain" },
   { re: /\brm\s+-[a-z]*r[a-z]*f?[a-z]*\s+(\/|~|\$HOME)(\s|$)/i, why: "deletes the home or root directory" }
 ];
+var RUNNER = String.raw`(?:(?:npx|bunx|pnpm\s+(?:dlx|exec)|yarn\s+(?:dlx|exec)|npm\s+exec(?:\s+--)?)\s+(?:--?[\w-]+\s+)*)?`;
 var ASK_COMMANDS = [
   { re: /\bgit\s+push\b/, why: "pushes to a remote repository" },
-  { re: cmd(String.raw`(?:npx\s+)?vercel\b[^|;&]*(?:--prod\b|\bpromote\b|\bdomains?\b|\balias\b)`), why: "changes Vercel production or domains" },
-  {
-    re: cmd(String.raw`(?:npx\s+)?vercel(?:\s+deploy)?(?:\s+--?[\w-]+(?:=\S+)?)*\s*(?:$|[;&|])`),
-    why: "creates a Vercel deployment (tier 2: needs the approved allowlist)"
-  },
-  { re: /\bnetlify\s+deploy\b[^|;&]*--prod\b/, why: "deploys Netlify production" },
+  { re: cmd(String.raw`${RUNNER}vercel\b[^|;&]*(?:--prod\b|\bpromote\b|\bdomains?\b|\balias\b|\bremove\b|\brm\b)`), why: "changes Vercel production, domains or deletes deployments" },
+  { re: cmd(String.raw`${RUNNER}netlify\s+deploy\b[^|;&]*--prod\b`), why: "deploys Netlify production" },
   { re: /\b(railway\s+up|fly\s+deploy|flyctl\s+deploy)\b/, why: "deploys to a hosting provider" },
-  { re: /\bsupabase\s+(db\s+push|db\s+reset\s+[^|;&]*--linked|projects\s+(create|delete)|link)\b/, why: "changes a remote Supabase project" },
+  { re: /\bsupabase\s+(db\s+reset\s+[^|;&]*--linked|projects\s+(create|delete)|orgs\s+create)\b/, why: "creates, deletes or resets a remote Supabase project" },
   { re: /\b(npm|pnpm|yarn)\s+publish\b/, why: "publishes a package" },
   { re: /\b(terraform\s+(apply|destroy)|pulumi\s+(up|destroy)|kubectl\s+(apply|delete)|docker\s+push)\b/, why: "changes infrastructure" },
   { re: /\bgh\s+(repo\s+(create|delete)|pr\s+merge|release\s+create)\b/, why: "changes GitHub state" },
   { re: /\bstripe\b[^|;&]*--live\b|\bsk_live_/, why: "uses live payment credentials" },
   { re: /\bdrop\s+(database|schema)\b/i, why: "drops a database" }
 ];
+var TIER2_RESOURCES = {
+  "vercel-preview": "Vercel preview deployments (creates/links a Vercel project on the free plan)",
+  "netlify-preview": "Netlify draft (non-production) deploys",
+  "supabase-dev": "a linked Supabase dev project: link, push migrations, deploy functions, set secrets"
+};
+var TIER2_COMMANDS = [
+  {
+    re: cmd(String.raw`${RUNNER}vercel(?:\s+deploy)?(?:\s+--?[\w-]+(?:=\S+)?)*\s*(?:$|[;&|)])`),
+    why: "creates a Vercel preview deployment",
+    resource: "vercel-preview"
+  },
+  { re: cmd(String.raw`${RUNNER}netlify\s+deploy\b`), why: "creates a Netlify draft deploy", resource: "netlify-preview" },
+  {
+    re: cmd(String.raw`${RUNNER}supabase\s+(?:link|db\s+push|functions\s+deploy|secrets\s+set|migration\s+repair)\b`),
+    why: "changes the linked Supabase dev project",
+    resource: "supabase-dev"
+  }
+];
+var isTier2Resource = (s) => Object.prototype.hasOwnProperty.call(TIER2_RESOURCES, s);
 var WRITE_COMMANDS = [
   { re: /(^|[^0-9&<>=-])>{1,2}\s*(?!&|\/dev\/null\b)[^\s&|;]/, why: "redirects output into a file" },
   { re: cmd(String.raw`tee\b`), why: "writes files with tee" },
@@ -8363,16 +8205,16 @@ function gateState(p) {
   return st;
 }
 function inside(parent, child) {
-  const r = (0, import_node_path6.relative)(parent, child);
-  return r === "" || r !== ".." && !r.startsWith(`..${import_node_path6.sep}`) && !(0, import_node_path6.isAbsolute)(r);
+  const r = (0, import_node_path4.relative)(parent, child);
+  return r === "" || r !== ".." && !r.startsWith(`..${import_node_path4.sep}`) && !(0, import_node_path4.isAbsolute)(r);
 }
 function isFrozenPackageFile(p, file, frozen) {
   if (file === p.constitution || FROZEN_PROJECT_DIRS(p).some((d) => inside(d, file))) return frozen.length > 0;
   for (const id of frozen) {
-    const dir = (0, import_node_path6.join)(p.changes, id);
+    const dir = (0, import_node_path4.join)(p.changes, id);
     if (!inside(dir, file)) continue;
-    const r = (0, import_node_path6.relative)(dir, file).split(import_node_path6.sep).join("/");
-    if (r === "intake.md" || r === "analysis.md" || r === "design.md" || r.startsWith("specs/")) return true;
+    const r = (0, import_node_path4.relative)(dir, file).split(import_node_path4.sep).join("/");
+    if (CHANGE_PACKAGE_FILES.includes(r) || r.startsWith("specs/")) return true;
   }
   return false;
 }
@@ -8399,13 +8241,13 @@ function decide(input, env) {
   if (tool === "Read") {
     const file = String(ti.file_path ?? "");
     const secret = firstMatch(SECRET_PATHS, file);
-    return secret && !inside(project, (0, import_node_path6.resolve)(cwd, file)) ? deny(`reading ${secret.why} is forbidden (tier x)`) : null;
+    return secret && !inside(project, (0, import_node_path4.resolve)(cwd, file)) ? deny(`reading ${secret.why} is forbidden (tier x)`) : null;
   }
   const role = agentRole(input.agent_type);
   if (tool === "Write" || tool === "Edit" || tool === "MultiEdit" || tool === "NotebookEdit") {
     const raw = String(ti.file_path ?? ti.notebook_path ?? "");
     if (!raw) return null;
-    const file = (0, import_node_path6.resolve)(cwd, raw);
+    const file = (0, import_node_path4.resolve)(cwd, raw);
     const secret = firstMatch(SECRET_PATHS, file);
     if (secret && !inside(project, file)) return deny(`writing ${secret.why} is forbidden (tier x)`);
     if (!inside(project, file)) return null;
@@ -8435,7 +8277,18 @@ function decide(input, env) {
       return ask("approving the Analysis package is the user's decision. Approve only if you (the user) reviewed analysis.md.");
     }
     const risky = firstMatch(ASK_COMMANDS, cmd2);
-    if (risky) return ask(`this command ${risky.why}; it needs your confirmation (tier 2/3)`);
+    if (risky) return ask(`this command ${risky.why}; it needs your confirmation (tier 3)`);
+    const tier2 = firstMatch(TIER2_COMMANDS, cmd2);
+    if (tier2) {
+      if (role) return deny(`the ${role} does not touch cloud resources; deploys are the orchestrator's step`);
+      const granted = grantedResources(p, listChangeIds(p), OPEN_STATES);
+      if (granted.has(tier2.resource) && !SHELL_CHAINING.test(cmd2)) {
+        return allow(`tier 2 "${tier2.resource}" is in the approved allowlist`);
+      }
+      return ask(
+        `this command ${tier2.why} (tier 2 "${tier2.resource}"), which is not in an approved, active allowlist${SHELL_CHAINING.test(cmd2) ? " or is chained with other commands" : ""}; it needs your confirmation`
+      );
+    }
     if (role && /\bgit\s+(?:commit|merge|rebase|reset|tag|cherry-pick|revert)\b/.test(cmd2)) {
       return deny(`the ${role} does not commit; the orchestrator commits each task after review`);
     }
@@ -8474,7 +8327,7 @@ function runGate(stdin, env) {
 // src/backstop.ts
 function gitDirtyPaths(project) {
   try {
-    const out = (0, import_node_child_process.execFileSync)("git", ["status", "--porcelain=v1", "-z", "--untracked-files=all"], {
+    const out = (0, import_node_child_process2.execFileSync)("git", ["status", "--porcelain=v1", "-z", "--untracked-files=all"], {
       cwd: project,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"]
@@ -8492,20 +8345,20 @@ function gitDirtyPaths(project) {
     return null;
   }
 }
-var baselineFile = (p) => (0, import_node_path7.join)(p.run, "baseline.json");
+var baselineFile = (p) => (0, import_node_path5.join)(p.run, "baseline.json");
 function recordBaseline(p, dirty = gitDirtyPaths(p.project)) {
   if (dirty === null) return;
-  (0, import_node_fs6.mkdirSync)(p.run, { recursive: true });
+  (0, import_node_fs4.mkdirSync)(p.run, { recursive: true });
   const previous = readBaseline(p);
   const merged = [.../* @__PURE__ */ new Set([...previous, ...dirty.filter((f) => !isAidw(f))])].sort();
-  (0, import_node_fs6.writeFileSync)(baselineFile(p), `${JSON.stringify({ paths: merged }, null, 2)}
+  (0, import_node_fs4.writeFileSync)(baselineFile(p), `${JSON.stringify({ paths: merged }, null, 2)}
 `);
 }
 function readBaseline(p) {
   const f = baselineFile(p);
-  if (!(0, import_node_fs6.existsSync)(f)) return [];
+  if (!(0, import_node_fs4.existsSync)(f)) return [];
   try {
-    const data = JSON.parse((0, import_node_fs6.readFileSync)(f, "utf8"));
+    const data = JSON.parse((0, import_node_fs4.readFileSync)(f, "utf8"));
     return Array.isArray(data.paths) ? data.paths.map(String) : [];
   } catch {
     return [];
@@ -8542,10 +8395,6 @@ Do not delete or revert anything yourself: some of these may be the user's own e
   }
   return JSON.stringify({ decision: "block", reason });
 }
-
-// src/ops.ts
-var import_node_fs7 = require("node:fs");
-var import_node_path8 = require("node:path");
 
 // src/version.ts
 var VERSION = "0.1.0";
@@ -8588,20 +8437,20 @@ It is part of the approved Analysis package: changing it after approval is drift
 var SKELETON_DIRS = ["requirements", "specs", "domain", "architecture", "decisions", "design", "changes", "archive", "run"];
 function initProject(projectDir) {
   const p = pathsFor(projectDir);
-  if ((0, import_node_fs7.existsSync)(p.aidw)) throw new OpError(`${rel(p, p.aidw)}/ already exists; refusing to overwrite`);
+  if ((0, import_node_fs5.existsSync)(p.aidw)) throw new OpError(`${rel(p, p.aidw)}/ already exists; refusing to overwrite`);
   const created = [];
   const write = (file, content) => {
-    (0, import_node_fs7.mkdirSync)((0, import_node_path8.dirname)(file), { recursive: true });
-    (0, import_node_fs7.writeFileSync)(file, content);
+    (0, import_node_fs5.mkdirSync)((0, import_node_path6.dirname)(file), { recursive: true });
+    (0, import_node_fs5.writeFileSync)(file, content);
     created.push(rel(p, file));
   };
-  write(p.projectYaml, PROJECT_YAML((0, import_node_path8.basename)(projectDir)));
+  write(p.projectYaml, PROJECT_YAML((0, import_node_path6.basename)(projectDir)));
   write(p.constitution, CONSTITUTION);
-  write((0, import_node_path8.join)(p.aidw, ".gitignore"), "run/\n");
+  write((0, import_node_path6.join)(p.aidw, ".gitignore"), "run/\n");
   for (const d of SKELETON_DIRS) {
-    const keep = (0, import_node_path8.join)(p.aidw, d, ".gitkeep");
+    const keep = (0, import_node_path6.join)(p.aidw, d, ".gitkeep");
     if (d !== "run") write(keep, "");
-    else (0, import_node_fs7.mkdirSync)((0, import_node_path8.join)(p.aidw, d), { recursive: true });
+    else (0, import_node_fs5.mkdirSync)((0, import_node_path6.join)(p.aidw, d), { recursive: true });
   }
   return { created, paths: p };
 }
@@ -8627,11 +8476,11 @@ function newChange(p, id, opts) {
     throw new OpError(`unknown input type "${opts.inputType}" (expected ${INPUT_TYPES.join(", ")})`);
   }
   const dir = changeDir(p, id);
-  if ((0, import_node_fs7.existsSync)(dir)) throw new OpError(`change "${id}" already exists`);
+  if ((0, import_node_fs5.existsSync)(dir)) throw new OpError(`change "${id}" already exists`);
   const title = opts.title ?? id;
-  (0, import_node_fs7.mkdirSync)((0, import_node_path8.join)(dir, "specs"), { recursive: true });
-  (0, import_node_fs7.writeFileSync)(
-    (0, import_node_path8.join)(dir, "change.yaml"),
+  (0, import_node_fs5.mkdirSync)((0, import_node_path6.join)(dir, "specs"), { recursive: true });
+  (0, import_node_fs5.writeFileSync)(
+    (0, import_node_path6.join)(dir, "change.yaml"),
     [
       "schema: 1",
       `id: ${id}`,
@@ -8646,8 +8495,8 @@ function newChange(p, id, opts) {
       ""
     ].join("\n")
   );
-  (0, import_node_fs7.writeFileSync)((0, import_node_path8.join)(dir, "intake.md"), INTAKE(title));
-  (0, import_node_fs7.writeFileSync)((0, import_node_path8.join)(dir, "analysis.md"), ANALYSIS(title));
+  (0, import_node_fs5.writeFileSync)((0, import_node_path6.join)(dir, "intake.md"), INTAKE(title));
+  (0, import_node_fs5.writeFileSync)((0, import_node_path6.join)(dir, "analysis.md"), ANALYSIS(title));
   recordBaseline(p);
   return dir;
 }
@@ -8757,6 +8606,10 @@ function transition(p, id, to, opts) {
       );
     }
   }
+  if (from !== "paused") {
+    const refused = transitionGuard(p, id, target);
+    if (refused) throw new OpError(refused);
+  }
   if (target === "awaiting_approval") {
     const d = readinessCheck(p, id, target);
     if (d.errors.length) throw new OpError("Analysis package is not ready for approval", d);
@@ -8771,7 +8624,19 @@ function transition(p, id, to, opts) {
   }
   change.doc.set("state", target);
   saveChange(change);
+  if (target === "delivered") {
+    const commit = commitAidw(p, `aidw: ${id} delivered
+
+Quality layer and deploy evidence: .aidw/changes/${id}/evidence/`);
+    return { from, to: target, ...commit ? { commit } : {} };
+  }
   return { from, to: target };
+}
+function commitAidw(p, message) {
+  if (!isGitRepo(p.project)) return null;
+  if (!git(p.project, ["add", "--", ".aidw"]).ok) return null;
+  if (git(p.project, ["diff", "--cached", "--quiet", "--", ".aidw"]).ok) return null;
+  return git(p.project, ["commit", "-q", "-m", message, "--", ".aidw"]).ok ? headCommit(p.project) : null;
 }
 function planMerge(p, id) {
   const change = loadChange(p, id);
@@ -8779,7 +8644,7 @@ function planMerge(p, id) {
   const files = deltaFiles(p, change, d);
   const results = [];
   for (const df of files) {
-    const r = applyDelta(readText(df.mainFile), (0, import_node_fs7.readFileSync)(df.file, "utf8"), df.capability);
+    const r = applyDelta(readText(df.mainFile), (0, import_node_fs5.readFileSync)(df.file, "utf8"), df.capability);
     if (!r.ok || !r.text) {
       for (const e of r.errors) d.error(rel(p, df.file), e);
       continue;
@@ -8791,8 +8656,8 @@ function planMerge(p, id) {
 }
 function writeMerge(merges) {
   for (const m of merges) {
-    (0, import_node_fs7.mkdirSync)((0, import_node_path8.dirname)(m.file), { recursive: true });
-    (0, import_node_fs7.writeFileSync)(m.file, m.text);
+    (0, import_node_fs5.mkdirSync)((0, import_node_path6.dirname)(m.file), { recursive: true });
+    (0, import_node_fs5.writeFileSync)(m.file, m.text);
   }
 }
 function archiveChange(p, id) {
@@ -8805,14 +8670,14 @@ function archiveChange(p, id) {
   const merges = planMerge(p, id);
   const date = now().slice(0, 10);
   const name = /^\d{4}-\d{2}-\d{2}-/.test(id) ? id : `${date}-${id}`;
-  const target = (0, import_node_path8.join)(p.archive, name);
-  if ((0, import_node_fs7.existsSync)(target)) throw new OpError(`archive target ${rel(p, target)} already exists`);
+  const target = (0, import_node_path6.join)(p.archive, name);
+  if ((0, import_node_fs5.existsSync)(target)) throw new OpError(`archive target ${rel(p, target)} already exists`);
   writeMerge(merges);
   change.doc.set("state", "archived");
   change.doc.set("archived_at", now());
   saveChange(change);
-  (0, import_node_fs7.mkdirSync)(p.archive, { recursive: true });
-  (0, import_node_fs7.renameSync)(change.dir, target);
+  (0, import_node_fs5.mkdirSync)(p.archive, { recursive: true });
+  (0, import_node_fs5.renameSync)(change.dir, target);
   return { target, merges };
 }
 function projectStatus(p, only) {
@@ -8821,13 +8686,13 @@ function projectStatus(p, only) {
   for (const f of walkFiles(p.specs)) {
     if (!capabilityOf(p.specs, f)) continue;
     capabilities++;
-    requirements += parseSpec((0, import_node_fs7.readFileSync)(f, "utf8")).requirements.length;
+    requirements += parseSpec((0, import_node_fs5.readFileSync)(f, "utf8")).requirements.length;
   }
   const ids = only ? [only] : listChangeIds(p);
   const changes = ids.map((id) => {
     try {
       const c = loadChange(p, id);
-      const tasksText = readText((0, import_node_path8.join)(c.dir, "tasks.yaml"));
+      const tasksText = readText((0, import_node_path6.join)(c.dir, "tasks.yaml"));
       let tasks = null;
       if (tasksText !== null) {
         const byStatus = {};
@@ -8861,62 +8726,11 @@ function assertProject(p) {
   if (!isDir(p.aidw)) throw new OpError(`no .aidw/ in ${p.project}; run \`aidw init\``);
 }
 
-// src/pause.ts
-function runStopFailure(stdin, env) {
-  let input = {};
-  try {
-    input = JSON.parse(stdin);
-  } catch {
-  }
-  const project = findProject({ cwd: input.cwd ?? process.cwd(), env });
-  if (!project) return [];
-  const p = pathsFor(project);
-  const reason = String(input.error ?? input.error_type ?? "stop_failure").slice(0, 200);
-  const paused = [];
-  for (const id of listChangeIds(p)) {
-    try {
-      const state = stateOf(loadChange(p, id));
-      if (state && TRANSITIONS[state].includes("paused")) {
-        transition(p, id, "paused", { reason });
-        paused.push(id);
-      }
-    } catch {
-    }
-  }
-  return paused;
-}
-
 // src/run.ts
 var import_node_child_process3 = require("node:child_process");
-var import_node_fs8 = require("node:fs");
-var import_node_path9 = require("node:path");
+var import_node_fs6 = require("node:fs");
+var import_node_path7 = require("node:path");
 var import_yaml3 = __toESM(require_dist(), 1);
-
-// src/git.ts
-var import_node_child_process2 = require("node:child_process");
-function git(cwd, args) {
-  const r = (0, import_node_child_process2.spawnSync)("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024 });
-  return { ok: r.status === 0, out: (r.stdout ?? "").trim(), err: (r.stderr ?? "").trim() || (r.error?.message ?? "") };
-}
-function isGitRepo(cwd) {
-  return git(cwd, ["rev-parse", "--is-inside-work-tree"]).out === "true";
-}
-function headCommit(cwd) {
-  const r = git(cwd, ["rev-parse", "--verify", "-q", "HEAD"]);
-  return r.ok && r.out ? r.out : null;
-}
-function changedSince(cwd, base) {
-  if (!isGitRepo(cwd)) return null;
-  const files = /* @__PURE__ */ new Set();
-  const diff = base ? git(cwd, ["diff", "--name-only", base]) : git(cwd, ["diff", "--name-only", "--cached"]);
-  if (!diff.ok) return null;
-  for (const f of diff.out.split("\n")) if (f) files.add(f);
-  if (!base) {
-    for (const f of git(cwd, ["diff", "--name-only"]).out.split("\n")) if (f) files.add(f);
-  }
-  for (const f of git(cwd, ["ls-files", "--others", "--exclude-standard"]).out.split("\n")) if (f) files.add(f);
-  return [...files].sort();
-}
 
 // src/glob.ts
 function globToRegExp(glob) {
@@ -8987,6 +8801,7 @@ function selectSkills(t, kind, opts = {}) {
   if (isSecuritySensitive(t)) add("security-and-hardening", "security-sensitive task (risk or auth/payment/permissions)");
   if (list(t.verify).some((v) => BROWSER_VERIFY.test(v))) add("browser-testing-with-devtools", "verify runs browser/E2E tests");
   if (opts.retry) add("debugging-and-error-recovery", "previous attempt failed");
+  if (t.origin === "quality") add("debugging-and-error-recovery", "fixing a failing quality layer");
   for (const s of list(t.skills)) add(s, "requested by the task (tasks.yaml skills:)");
   return picks;
 }
@@ -8996,16 +8811,19 @@ var now2 = () => (/* @__PURE__ */ new Date()).toISOString();
 var list2 = (v) => Array.isArray(v) ? v.map(String) : [];
 function loadTasks(p, id) {
   const change = loadChange(p, id);
-  const file = (0, import_node_path9.join)(change.dir, "tasks.yaml");
+  const file = (0, import_node_path7.join)(change.dir, "tasks.yaml");
   const text = readText(file);
   if (text === null) throw new OpError(`change "${id}" has no tasks.yaml`);
   const d = validateTasksText(text, rel(p, file));
   if (d.errors.length) throw new OpError(`tasks.yaml of "${id}" is invalid`, d);
   return { change, file, doc: import_yaml3.default.parseDocument(text), tasks: parseTasks(text).tasks };
 }
+function saveTasksDoc(tf) {
+  saveTasks(tf);
+}
 function saveTasks(tf) {
   const text = String(tf.doc);
-  (0, import_node_fs8.writeFileSync)(tf.file, text);
+  (0, import_node_fs6.writeFileSync)(tf.file, text);
   tf.tasks = parseTasks(text).tasks;
 }
 function indexOf(tf, taskId) {
@@ -9108,21 +8926,21 @@ var MAX_TEST_FILE = 1024 * 1024;
 function walkProject(dir, root, out) {
   let names;
   try {
-    names = (0, import_node_fs8.readdirSync)(dir);
+    names = (0, import_node_fs6.readdirSync)(dir);
   } catch {
     return;
   }
   for (const name of names.sort()) {
     if (SKIP_DIRS.has(name)) continue;
-    const full = (0, import_node_path9.join)(dir, name);
+    const full = (0, import_node_path7.join)(dir, name);
     let st;
     try {
-      st = (0, import_node_fs8.statSync)(full);
+      st = (0, import_node_fs6.statSync)(full);
     } catch {
       continue;
     }
     if (st.isDirectory()) walkProject(full, root, out);
-    else if (st.size <= MAX_TEST_FILE) out.push((0, import_node_path9.relative)(root, full).split(import_node_path9.sep).join("/"));
+    else if (st.size <= MAX_TEST_FILE) out.push((0, import_node_path7.relative)(root, full).split(import_node_path7.sep).join("/"));
   }
 }
 function testFiles(project) {
@@ -9135,7 +8953,7 @@ function findScenarioTests(project, ids) {
   if (!ids.length) return found;
   const patterns = ids.map((s) => [s, new RegExp(`(^|[^a-z0-9/-])${s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![a-z0-9/-])`)]);
   for (const f of testFiles(project)) {
-    const lines = (0, import_node_fs8.readFileSync)((0, import_node_path9.join)(project, f), "utf8").split(/\r?\n/);
+    const lines = (0, import_node_fs6.readFileSync)((0, import_node_path7.join)(project, f), "utf8").split(/\r?\n/);
     lines.forEach((line, n) => {
       for (const [s, re] of patterns) if (re.test(line)) found[s]?.push(`${f}:${n + 1}`);
     });
@@ -9144,24 +8962,31 @@ function findScenarioTests(project, ids) {
 }
 var evidenceRel = (taskId) => `evidence/${taskId}.json`;
 function readEvidence(change, t) {
-  const file = (0, import_node_path9.join)(change.dir, evidenceRel(t.id));
-  if ((0, import_node_fs8.existsSync)(file)) {
+  const file = (0, import_node_path7.join)(change.dir, evidenceRel(t.id));
+  if ((0, import_node_fs6.existsSync)(file)) {
     try {
-      return JSON.parse((0, import_node_fs8.readFileSync)(file, "utf8"));
+      return JSON.parse((0, import_node_fs6.readFileSync)(file, "utf8"));
     } catch {
     }
   }
   return { task: t.id, title: String(t.title ?? ""), checkpoints: [], reviews: [] };
 }
 function writeEvidence(change, ev) {
-  const file = (0, import_node_path9.join)(change.dir, evidenceRel(ev.task));
-  (0, import_node_fs8.mkdirSync)((0, import_node_path9.join)(change.dir, "evidence"), { recursive: true });
-  (0, import_node_fs8.writeFileSync)(file, `${JSON.stringify(ev, null, 2)}
+  const file = (0, import_node_path7.join)(change.dir, evidenceRel(ev.task));
+  (0, import_node_fs6.mkdirSync)((0, import_node_path7.join)(change.dir, "evidence"), { recursive: true });
+  (0, import_node_fs6.writeFileSync)(file, `${JSON.stringify(ev, null, 2)}
 `);
 }
 var tailOf = (s, lines = 60) => s.split(/\r?\n/).slice(-lines).join("\n").trim();
-var shellRunner = (command, cwd, timeoutMs) => {
-  const r = (0, import_node_child_process3.spawnSync)(command, { cwd, shell: true, encoding: "utf8", timeout: timeoutMs, maxBuffer: 64 * 1024 * 1024 });
+var shellRunner = (command, cwd, timeoutMs, env) => {
+  const r = (0, import_node_child_process3.spawnSync)(command, {
+    cwd,
+    shell: true,
+    encoding: "utf8",
+    timeout: timeoutMs,
+    maxBuffer: 64 * 1024 * 1024,
+    env: env ? { ...process.env, ...env } : process.env
+  });
   const timedOut = r.error?.code === "ETIMEDOUT";
   return { exit: r.status, timedOut, tail: tailOf(`${r.stdout ?? ""}
 ${r.stderr ?? ""}`) };
@@ -9180,14 +9005,14 @@ function checkpoint(p, id, taskId, opts = {}) {
   const outside = changed ? changed.filter((f) => !matchesAny(touches, f)) : [];
   const runner = opts.runner ?? shellRunner;
   const timeoutMs = opts.timeoutMs ?? 15 * 60 * 1e3;
-  const verify = [];
+  const verify2 = [];
   for (const command of list2(t.verify)) {
     const started = Date.now();
     const r = runner(command, p.project, timeoutMs);
-    verify.push({ command, ms: Date.now() - started, ...r });
+    verify2.push({ command, ms: Date.now() - started, ...r });
     if (r.exit !== 0) break;
   }
-  const verifyOk = verify.length === list2(t.verify).length && verify.every((v) => v.exit === 0);
+  const verifyOk = verify2.length === list2(t.verify).length && verify2.every((v) => v.exit === 0);
   const ok = verifyOk && missing.length === 0;
   const record = {
     attempt: attemptsOf(t),
@@ -9196,7 +9021,7 @@ function checkpoint(p, id, taskId, opts = {}) {
     base,
     scenarios,
     missing_scenarios: missing,
-    verify,
+    verify: verify2,
     changed_files: changed,
     outside_touches: outside
   };
@@ -9205,13 +9030,13 @@ function checkpoint(p, id, taskId, opts = {}) {
   writeEvidence(tf.change, ev);
   const problems = [];
   if (missing.length) problems.push(`no test names scenario ${missing.join(", ")}`);
-  const failed = verify.find((v) => v.exit !== 0);
+  const failed = verify2.find((v) => v.exit !== 0);
   if (failed) problems.push(`verify failed: \`${failed.command}\`${failed.timedOut ? " (timed out)" : ` (exit ${failed.exit})`}`);
   setField(tf, i, "status", ok ? "review" : "failed");
   setField(tf, i, "evidence", evidenceRel(taskId));
   setField(tf, i, "notes", ok ? null : `checkpoint: ${problems.join("; ")}`);
   saveTasks(tf);
-  return { ...record, task: taskId, status: ok ? "review" : "failed", evidence: rel(p, (0, import_node_path9.join)(tf.change.dir, evidenceRel(taskId))) };
+  return { ...record, task: taskId, status: ok ? "review" : "failed", evidence: rel(p, (0, import_node_path7.join)(tf.change.dir, evidenceRel(taskId))) };
 }
 function recordReview(p, id, taskId, verdict, notes, opts = {}) {
   const tf = loadTasks(p, id);
@@ -9249,11 +9074,11 @@ aidw change ${id}, task ${taskId}. Checkpoint and review evidence: .aidw/changes
   return { task: taskId, verdict, status: "done", commit: headCommit(p.project) };
 }
 function pointer(p, file, what) {
-  return (0, import_node_fs8.existsSync)(file) ? `- \`${rel(p, file)}\`: ${what}` : null;
+  return (0, import_node_fs6.existsSync)(file) ? `- \`${rel(p, file)}\`: ${what}` : null;
 }
 function adrPointers(p) {
   return walkFiles(p.decisions).filter((f) => f.endsWith(".md")).map((f) => {
-    const title = ((0, import_node_fs8.readFileSync)(f, "utf8").match(/^#\s+(.+)$/m)?.[1] ?? "").trim();
+    const title = ((0, import_node_fs6.readFileSync)(f, "utf8").match(/^#\s+(.+)$/m)?.[1] ?? "").trim();
     return `- \`${rel(p, f)}\`${title ? `: ${title}` : ""}`;
   });
 }
@@ -9268,7 +9093,7 @@ function buildBrief(p, id, taskId, kind, vendorDir) {
   const failedCheckpoint = !reviewIsLatest && lastCheckpoint && !lastCheckpoint.ok ? lastCheckpoint : void 0;
   const fixReview = reviewIsLatest && lastReview?.verdict === "fix" ? lastReview : void 0;
   const retry = kind === "implement" && (!!failedCheckpoint || !!fixReview);
-  const skills = selectSkills(t, kind, { retry }).map((s) => ({ ...s, path: (0, import_node_path9.join)(vendorDir, ...s.id.split("/"), "SKILL.md") }));
+  const skills = selectSkills(t, kind, { retry }).map((s) => ({ ...s, path: (0, import_node_path7.join)(vendorDir, ...s.id.split("/"), "SKILL.md") }));
   const reqs = requirementsAfterChange(p, id);
   const scenarioIds = list2(t.scenarios);
   const reqIds = [.../* @__PURE__ */ new Set([...list2(t.specs), ...scenarioIds.map((s) => s.split("/").slice(0, -1).join("/"))])];
@@ -9285,14 +9110,14 @@ ${req.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`;
   const priorWork = kind === "implement" && status === "running" && base !== null && (changedSince(p.project, base) ?? []).some((f) => !f.startsWith(".aidw/"));
   const pointers = [
     pointer(p, p.constitution, "engineering principles every agent follows"),
-    pointer(p, (0, import_node_path9.join)(p.domain, "model.md"), "glossary, entities, business rules"),
-    pointer(p, (0, import_node_path9.join)(p.architecture, "overview.md"), "architecture, folder structure, integrations"),
-    pointer(p, (0, import_node_path9.join)(p.requirements, `${id}.md`), "user stories and implementation/testing decisions"),
+    pointer(p, (0, import_node_path7.join)(p.domain, "model.md"), "glossary, entities, business rules"),
+    pointer(p, (0, import_node_path7.join)(p.architecture, "overview.md"), "architecture, folder structure, integrations"),
+    pointer(p, (0, import_node_path7.join)(p.requirements, `${id}.md`), "user stories and implementation/testing decisions"),
     ...touchesUi(t) ? [pointer(p, p.design, "design direction and assets (UI task)")] : []
   ].filter((x) => x !== null);
   const adrs = adrPointers(p);
   const touches = list2(t.touches);
-  const verify = list2(t.verify);
+  const verify2 = list2(t.verify);
   const h = (title, body2) => body2.length ? [`## ${title}`, "", ...body2, ""] : [];
   const header = [
     `# ${kind === "implement" ? "Task" : "Review"} brief: ${taskId} - ${String(t.title ?? "")}`,
@@ -9305,7 +9130,7 @@ ${req.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`;
     ...h("Requirements (spec text after this change)", reqBlocks.length ? ["```markdown", reqBlocks.join("\n\n"), "```"] : []),
     ...h("Builds on (finished tasks; see `git log`)", done),
     ...h("Touches (files this task may change)", touches.map((g) => `- \`${g}\``)),
-    ...h("Verify", verify.map((v) => `- \`${v}\``)),
+    ...h("Verify", verify2.map((v) => `- \`${v}\``)),
     ...h("Read first (context pointers; read only what you need)", [...pointers, ...adrs]),
     ...h("Skills (read each SKILL.md and apply it)", skills.map((s) => `- \`${s.path}\`: ${s.reason}`))
   ];
@@ -9332,6 +9157,7 @@ ${req.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`;
       ...priorWork ? h("Resuming", [
         `Work from an earlier attempt or an interrupted session may already be in the working tree. Inspect it first (\`git status\`, \`git diff ${base}\`) and continue from it; do not start over.`
       ]) : [],
+      ...h("Problem to fix", typeof t.problem === "string" ? ["```", t.problem.trim(), "```", "", "Find the root cause (debugging skill below), fix it, and make the verify commands pass. Touches is the whole project, but change only what the fix needs."] : []),
       ...h("Previous attempt", previous),
       ...shared
     ];
@@ -9344,7 +9170,7 @@ ${req.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`;
       "## What to review",
       "",
       `- The task's changes: ${diff}.`,
-      `- Checkpoint evidence: \`${rel(p, (0, import_node_path9.join)(tf.change.dir, evidenceRel(taskId)))}\` (verify output, where each scenario test lives).`,
+      `- Checkpoint evidence: \`${rel(p, (0, import_node_path7.join)(tf.change.dir, evidenceRel(taskId)))}\` (verify output, where each scenario test lives).`,
       ...outside.length ? [`- Files changed outside Touches: ${outside.map((f) => `\`${f}\``).join(", ")}. Decide whether each is justified.`] : [],
       "",
       "## Checklist",
@@ -9364,11 +9190,540 @@ ${req.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`;
     ];
   }
   const text = [...header, ...body].join("\n").replace(/\n{3,}/g, "\n\n");
-  const dir = (0, import_node_path9.join)(p.run, "briefs", id);
-  (0, import_node_fs8.mkdirSync)(dir, { recursive: true });
-  const path = (0, import_node_path9.join)(dir, `${taskId}.${kind}.md`);
-  (0, import_node_fs8.writeFileSync)(path, text);
+  const dir = (0, import_node_path7.join)(p.run, "briefs", id);
+  (0, import_node_fs6.mkdirSync)(dir, { recursive: true });
+  const path = (0, import_node_path7.join)(dir, `${taskId}.${kind}.md`);
+  (0, import_node_fs6.writeFileSync)(path, text);
   return { kind, task: taskId, path, text, skills };
+}
+
+// src/quality.ts
+var DEPLOY_TARGETS = ["none", "local", "preview"];
+var DEFAULT_MAX_FIX_ROUNDS = 3;
+var EXPECTED_LAYERS = ["code", "unit", "e2e"];
+var isStrList2 = (v) => Array.isArray(v) && v.every((x) => typeof x === "string" && x.trim() !== "");
+var LAYER_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+var qualityFile = (change) => (0, import_node_path8.join)(change.dir, "quality.yaml");
+function parseQuality(text, file) {
+  const d = new Diags();
+  let data;
+  try {
+    data = import_yaml4.default.parse(text) ?? {};
+  } catch (e) {
+    d.error(file, `not valid YAML: ${e.message}`);
+    return { config: null, diags: d };
+  }
+  const layers = [];
+  if (!Array.isArray(data.layers) || data.layers.length === 0) d.error(file, 'expected a non-empty "layers:" list');
+  else {
+    for (const [i, raw] of data.layers.entries()) {
+      const l = raw ?? {};
+      const where = typeof l.name === "string" ? `layer "${l.name}"` : `layer #${i + 1}`;
+      if (typeof l.name !== "string" || !LAYER_NAME.test(l.name)) d.error(file, `${where} needs a kebab-case "name"`);
+      else if (layers.some((x) => x.name === l.name)) d.error(file, `duplicate layer "${l.name}"`);
+      if (!isStrList2(l.run) || l.run.length === 0) d.error(file, `${where} needs a non-empty "run" list of commands`);
+      if (l.setup !== void 0 && !isStrList2(l.setup)) d.error(file, `${where}: "setup" must be a list of commands`);
+      layers.push({ name: String(l.name), setup: isStrList2(l.setup) ? l.setup : [], run: isStrList2(l.run) ? l.run : [] });
+    }
+    for (const name of EXPECTED_LAYERS) {
+      if (!layers.some((l) => l.name === name)) d.warn(file, `no "${name}" layer; say in analysis.md why this project does not need it`);
+    }
+  }
+  const permissions = [];
+  if (data.permissions !== void 0 && data.permissions !== null) {
+    if (!Array.isArray(data.permissions)) d.error(file, '"permissions" must be a list of tier-2 resource keys');
+    else {
+      for (const k of data.permissions) {
+        if (typeof k === "string" && isTier2Resource(k)) permissions.push(k);
+        else d.error(file, `unknown tier-2 resource "${String(k)}" (known: ${Object.keys(TIER2_RESOURCES).join(", ")})`);
+      }
+    }
+  }
+  const dep = data.deploy ?? {};
+  const target = dep.target ?? "none";
+  if (!DEPLOY_TARGETS.includes(String(target))) {
+    d.error(file, `deploy.target must be one of ${DEPLOY_TARGETS.join(", ")} (production is tier 3 and never automatic)`);
+  }
+  const command = typeof dep.command === "string" && dep.command.trim() ? dep.command.trim() : null;
+  if (dep.smoke !== void 0 && !isStrList2(dep.smoke)) d.error(file, '"deploy.smoke" must be a list of commands');
+  if (target === "preview") {
+    if (!command) d.error(file, 'deploy.target "preview" needs deploy.command');
+    else {
+      const tier3 = firstMatch(ASK_COMMANDS, command);
+      const tier2 = firstMatch(TIER2_COMMANDS, command);
+      if (tier3) d.error(file, `deploy.command ${tier3.why}: tier 3 is never automatic`);
+      else if (!tier2) d.error(file, "deploy.command must be a recognized preview deploy (vercel deploy, netlify deploy) because it runs without asking");
+      else if (!permissions.includes(tier2.resource)) d.error(file, `deploy.command needs "${tier2.resource}" in permissions`);
+    }
+  }
+  const max = data.max_fix_rounds ?? DEFAULT_MAX_FIX_ROUNDS;
+  if (!(Number.isInteger(max) && Number(max) >= 1)) d.error(file, '"max_fix_rounds" must be a positive integer');
+  if (d.errors.length) return { config: null, diags: d };
+  return {
+    config: {
+      layers,
+      deploy: { target, command, smoke: isStrList2(dep.smoke) ? dep.smoke : [] },
+      permissions,
+      maxFixRounds: Number(max)
+    },
+    diags: d
+  };
+}
+function loadQuality(p, change) {
+  const file = qualityFile(change);
+  const text = readText(file);
+  if (text === null) throw new OpError(`change "${change.id}" has no quality.yaml`);
+  const { config, diags } = parseQuality(text, rel(p, file));
+  if (!config) throw new OpError(`quality.yaml of "${change.id}" is invalid`, diags);
+  return config;
+}
+function grantedResources(p, ids, openStates) {
+  const out = /* @__PURE__ */ new Set();
+  for (const id of ids) {
+    try {
+      const c = loadChange(p, id);
+      const state = stateOf(c);
+      if (!state || !openStates.has(state) || approvalStatus(p, c).status !== "valid") continue;
+      const text = readText(qualityFile(c));
+      if (text === null) continue;
+      for (const r of parseQuality(text, "quality.yaml").config?.permissions ?? []) out.add(r);
+    } catch {
+    }
+  }
+  return out;
+}
+var qualityDir = (change) => (0, import_node_path8.join)(change.dir, "evidence", "quality");
+var summaryFile = (change) => (0, import_node_path8.join)(qualityDir(change), "summary.json");
+var deployFile = (change) => (0, import_node_path8.join)(change.dir, "evidence", "deploy.json");
+var now3 = () => (/* @__PURE__ */ new Date()).toISOString();
+function readSummary(change) {
+  const f = summaryFile(change);
+  if (!(0, import_node_fs7.existsSync)(f)) return { layers: {} };
+  try {
+    return JSON.parse((0, import_node_fs7.readFileSync)(f, "utf8"));
+  } catch {
+    return { layers: {} };
+  }
+}
+function writeJson(file, data) {
+  (0, import_node_fs7.mkdirSync)((0, import_node_path8.join)(file, ".."), { recursive: true });
+  (0, import_node_fs7.writeFileSync)(file, `${JSON.stringify(data, null, 2)}
+`);
+}
+function codeChangedAt(tasks) {
+  return tasks.reduce((m, t) => typeof t.finished_at === "string" && t.finished_at > m ? t.finished_at : m, "");
+}
+function isFresh(r, tasks, head) {
+  if (!r) return false;
+  if (r.at < codeChangedAt(tasks)) return false;
+  return head === null || r.head === head;
+}
+function pendingLayers(p, id) {
+  const change = loadChange(p, id);
+  const config = loadQuality(p, change);
+  const tasks = loadTasks(p, id).tasks;
+  const summary = readSummary(change);
+  const head = headCommit(p.project);
+  const pending = config.layers.filter((l) => !(summary.layers[l.name]?.status === "pass" && isFresh(summary.layers[l.name], tasks, head))).map((l) => l.name);
+  return { config, pending, summary };
+}
+function runCommands(commands, cwd, timeoutMs, runner, env) {
+  const runs = [];
+  for (const command of commands) {
+    const started = Date.now();
+    const r = runner(command, cwd, timeoutMs, env);
+    runs.push({ command, ms: Date.now() - started, ...r });
+    if (r.exit !== 0) break;
+  }
+  return runs;
+}
+var failedRun = (runs) => runs.find((r) => r.exit !== 0);
+function verify(p, id, opts = {}) {
+  const change = loadChange(p, id);
+  if (stateOf(change) !== "verifying") throw new OpError(`change "${id}" is "${String(change.data.state)}"; aidw verify runs in state verifying`);
+  if (approvalStatus(p, change).status !== "valid") throw new OpError(`approval drift in "${id}": escalate and re-approve`);
+  const { config, pending, summary } = pendingLayers(p, id);
+  if (opts.layer && !config.layers.some((l) => l.name === opts.layer)) throw new OpError(`no layer "${opts.layer}" in quality.yaml`);
+  const runner = opts.runner ?? shellRunner;
+  const timeoutMs = opts.timeoutMs ?? 30 * 60 * 1e3;
+  const head = headCommit(p.project);
+  const outcomes = [];
+  let failed;
+  for (const layer of config.layers) {
+    const wanted = opts.layer ? layer.name === opts.layer : opts.fresh || pending.includes(layer.name);
+    if (!wanted || failed) {
+      outcomes.push({ name: layer.name, status: "skipped", runs: [] });
+      continue;
+    }
+    const runs = runCommands([...layer.setup, ...layer.run], p.project, timeoutMs, runner);
+    const ok = runs.length === layer.setup.length + layer.run.length && !failedRun(runs);
+    const result = { status: ok ? "pass" : "fail", at: now3(), head, runs };
+    summary.layers[layer.name] = result;
+    writeJson(summaryFile(change), summary);
+    appendHistory((0, import_node_path8.join)(qualityDir(change), `${layer.name}.json`), result);
+    outcomes.push({ name: layer.name, status: result.status, runs });
+    if (!ok) failed = layer;
+  }
+  if (!failed) {
+    const left = pendingLayers(p, id).pending;
+    const ok = left.length === 0;
+    return { ok, layers: outcomes, summary: ok ? "all quality layers pass" : `layers still to run: ${left.join(", ")}` };
+  }
+  const tf = loadTasks(p, id);
+  const rounds = tf.tasks.filter((t) => t.origin === "quality" && t.layer === failed.name).length;
+  const bad = failedRun(summary.layers[failed.name]?.runs ?? []);
+  const problem = bad ? `Quality layer "${failed.name}" failed: \`${bad.command}\`${bad.timedOut ? " timed out" : ` exited ${bad.exit}`}.
+
+${bad.tail}` : `Quality layer "${failed.name}" did not complete.`;
+  if (rounds >= config.maxFixRounds) {
+    transition(p, id, "escalated", { reason: `quality layer "${failed.name}" still failing after ${rounds} fix round(s)` });
+    return { ok: false, layers: outcomes, failed: failed.name, escalated: true, summary: `layer "${failed.name}" failed; fix rounds exhausted (${rounds}/${config.maxFixRounds}): escalated` };
+  }
+  const n = tf.tasks.filter((t) => t.origin === "quality").length + 1;
+  const taskId = `Q${String(n).padStart(2, "0")}`;
+  const task = {
+    id: taskId,
+    title: `Fix the ${failed.name} quality layer`,
+    role: "fullstack-engineer",
+    origin: "quality",
+    layer: failed.name,
+    depends_on: [],
+    touches: ["**"],
+    verify: [...failed.setup, ...failed.run],
+    problem,
+    status: "pending"
+  };
+  tf.doc.get("tasks").add(tf.doc.createNode(task));
+  saveTasksDoc(tf);
+  transition(p, id, "executing", {});
+  return {
+    ok: false,
+    layers: outcomes,
+    failed: failed.name,
+    fixTask: taskId,
+    summary: `layer "${failed.name}" failed: fix task ${taskId} added (round ${rounds + 1}/${config.maxFixRounds}); change is executing again`
+  };
+}
+function appendHistory(file, entry) {
+  let history = [];
+  if ((0, import_node_fs7.existsSync)(file)) {
+    try {
+      const data = JSON.parse((0, import_node_fs7.readFileSync)(file, "utf8"));
+      history = Array.isArray(data.runs) ? data.runs : [];
+    } catch {
+      history = [];
+    }
+  }
+  writeJson(file, { runs: [...history, entry] });
+}
+function qualityPassed(p, id) {
+  const { pending } = pendingLayers(p, id);
+  return { ok: pending.length === 0, pending };
+}
+function transitionGuard(p, id, target) {
+  if (target === "verifying") {
+    const open = loadTasks(p, id).tasks.filter((t) => String(t.status ?? "pending") !== "done");
+    if (open.length) return `"verifying" needs every task done; open: ${open.map((t) => `${t.id} (${String(t.status ?? "pending")})`).join(", ")}`;
+  }
+  if (target === "converging") {
+    const q = qualityPassed(p, id);
+    if (!q.ok) return `"converging" needs every quality layer passing on the current code; run \`aidw verify\` (pending: ${q.pending.join(", ")})`;
+  }
+  if (target === "delivered") {
+    const d = lastDeploy(loadChange(p, id));
+    if (!d?.ok) return `"delivered" needs a successful \`aidw deploy\`${d ? ` (last: ${d.error ?? "failed"})` : ""}`;
+  }
+  return null;
+}
+var URL_RE = /https:\/\/[^\s"'<>`)\]]+/g;
+var DASHBOARD_URL = /^https:\/\/(?:(?:www\.)?vercel\.com|app\.netlify\.com|supabase\.com)\//;
+function deploy(p, id, opts = {}) {
+  const change = loadChange(p, id);
+  if (stateOf(change) !== "deploying") throw new OpError(`change "${id}" is "${String(change.data.state)}"; aidw deploy runs in state deploying`);
+  if (approvalStatus(p, change).status !== "valid") throw new OpError(`approval drift in "${id}": escalate and re-approve`);
+  const config = loadQuality(p, change);
+  const runner = opts.runner ?? shellRunner;
+  const timeoutMs = opts.timeoutMs ?? 20 * 60 * 1e3;
+  const head = headCommit(p.project);
+  const base = { at: now3(), target: config.deploy.target, head, runs: [], smoke: [] };
+  let record;
+  if (config.deploy.target !== "preview" || !config.deploy.command) {
+    record = { ...base, ok: true, skipped: true, url: null };
+  } else {
+    const runs = runCommands([config.deploy.command], p.project, timeoutMs, runner);
+    const failed = failedRun(runs);
+    const url = [...(runs[0]?.tail ?? "").matchAll(URL_RE)].map((m) => m[0]).filter((u) => !DASHBOARD_URL.test(u)).at(-1) ?? null;
+    if (failed || !url) {
+      record = { ...base, runs, ok: false, skipped: false, url, error: failed ? `deploy command exited ${failed.exit}` : "no https URL in the deploy output" };
+    } else {
+      const smoke = runCommands(config.deploy.smoke, p.project, timeoutMs, runner, { AIDW_DEPLOY_URL: url });
+      const smokeFailed = failedRun(smoke);
+      record = { ...base, runs, smoke, url, ok: !smokeFailed, skipped: false, ...smokeFailed ? { error: `smoke check failed: ${smokeFailed.command}` } : {} };
+    }
+  }
+  appendHistory(deployFile(change), record);
+  return record;
+}
+function lastDeploy(change) {
+  const f = deployFile(change);
+  if (!(0, import_node_fs7.existsSync)(f)) return null;
+  try {
+    const runs = JSON.parse((0, import_node_fs7.readFileSync)(f, "utf8")).runs ?? [];
+    return runs.at(-1) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// src/check.ts
+function deltaFiles(p, change, d) {
+  const specsDir = (0, import_node_path9.join)(change.dir, "specs");
+  const out = [];
+  for (const f of walkFiles(specsDir)) {
+    const cap = capabilityOf(specsDir, f);
+    if (!cap) {
+      if (f.endsWith(".md")) {
+        d.error(rel(p, f), "delta specs must live at specs/<capability>/spec.md; this file is never merged");
+      }
+      continue;
+    }
+    const bad = cap.split("/").find((s) => !KEBAB_SEGMENT.test(s));
+    if (bad) d.error(rel(p, f), `capability path segment "${bad}" must be kebab-case`);
+    out.push({ capability: cap, file: f, mainFile: (0, import_node_path9.join)(p.specs, ...cap.split("/"), "spec.md") });
+  }
+  return out;
+}
+function checkSpecs(p) {
+  const d = new Diags();
+  for (const f of walkFiles(p.specs)) {
+    const cap = capabilityOf(p.specs, f);
+    if (!cap) {
+      if (f.endsWith(".md")) d.warn(rel(p, f), "not a spec: specs must be named specs/<capability>/spec.md");
+      continue;
+    }
+    d.add(validateSpecText((0, import_node_fs8.readFileSync)(f, "utf8"), rel(p, f)));
+  }
+  return d;
+}
+function checkChange(p, id, opts = {}) {
+  const d = new Diags();
+  let change;
+  try {
+    change = loadChange(p, id);
+  } catch (e) {
+    d.error(rel(p, (0, import_node_path9.join)(p.changes, id)), e.message);
+    return d;
+  }
+  const meta = rel(p, change.file);
+  if (!CHANGE_ID.test(id)) d.error(meta, `change id "${id}" must be kebab-case`);
+  if (change.data.id !== id) d.error(meta, `id "${String(change.data.id)}" does not match folder name "${id}"`);
+  const state = opts.asState ?? change.data.state;
+  if (!isState(state)) {
+    d.error(meta, `unknown state "${String(state)}"`);
+    return d;
+  }
+  const deltas = deltaFiles(p, change, d);
+  for (const df of deltas) {
+    d.add(validateDeltaText((0, import_node_fs8.readFileSync)(df.file, "utf8"), rel(p, df.file), readText(df.mainFile), df.capability));
+  }
+  const tasksFile = (0, import_node_path9.join)(change.dir, "tasks.yaml");
+  if ((0, import_node_fs8.existsSync)(tasksFile)) d.add(validateTasksText((0, import_node_fs8.readFileSync)(tasksFile, "utf8"), rel(p, tasksFile)));
+  const qFile = (0, import_node_path9.join)(change.dir, "quality.yaml");
+  if ((0, import_node_fs8.existsSync)(qFile)) d.add(parseQuality((0, import_node_fs8.readFileSync)(qFile, "utf8"), rel(p, qFile)).diags);
+  if (NEEDS_ANALYSIS.has(state)) {
+    for (const name of ["intake.md", "analysis.md", "tasks.yaml", "quality.yaml"]) {
+      if (!(0, import_node_fs8.existsSync)((0, import_node_path9.join)(change.dir, name))) d.error(meta, `state "${state}" requires ${name}`);
+    }
+    if (deltas.length === 0 && change.data.skip_specs !== true) {
+      d.error(meta, `state "${state}" requires at least one delta spec, or skip_specs: true when no behavior changes`);
+    }
+  }
+  if (POST_APPROVAL.has(state)) {
+    const a = approvalStatus(p, change);
+    if (a.status === "none") d.error(meta, `state "${state}" requires an approval; run \`aidw approve ${id}\``);
+    if (a.status === "drift") {
+      d.error(meta, "approval drift: the approved Analysis package changed after approval; re-run analysis and approve again");
+    }
+  }
+  return d;
+}
+
+// src/analyze.ts
+var ANALYSIS_SECTIONS = [
+  "Summary",
+  "Requirements and scope",
+  "Domain",
+  "Stack",
+  "Design",
+  "Architecture",
+  "Specs",
+  "Plan",
+  "Quality profile",
+  "Deploy strategy",
+  "Permissions",
+  "Risks and assumptions"
+];
+var PLACEHOLDER = "TODO(aidw)";
+var STACK_SOURCES = ["client", "ai", "fallback"];
+var DESIGN_MODES = ["existing", "claude_design", "ai_design", "hybrid"];
+var reqId = (capability, name) => `${capability}/${slugify(name)}`;
+var scenarioId = (capability, req, scenario) => `${reqId(capability, req)}/${slugify(scenario)}`;
+function indexSpec(capability, text, into) {
+  for (const r of parseSpec(text).requirements) {
+    into.requirements.add(reqId(capability, r.name));
+    for (const s of r.scenarios) into.scenarios.add(scenarioId(capability, r.name, s.name));
+  }
+}
+function mainSpecIds(p) {
+  const ids = { requirements: /* @__PURE__ */ new Set(), scenarios: /* @__PURE__ */ new Set() };
+  for (const f of walkFiles(p.specs)) {
+    const cap = capabilityOf(p.specs, f);
+    if (cap) indexSpec(cap, (0, import_node_fs9.readFileSync)(f, "utf8"), ids);
+  }
+  return ids;
+}
+function idsAfterChange(p, id) {
+  const ids = { requirements: /* @__PURE__ */ new Set(), scenarios: /* @__PURE__ */ new Set() };
+  const changed = { requirements: /* @__PURE__ */ new Set(), scenarios: /* @__PURE__ */ new Set() };
+  const { specs, deltas } = specsAfterChange(p, id);
+  for (const [cap, text] of specs) indexSpec(cap, text, ids);
+  for (const [cap, deltaText] of deltas) {
+    const delta = parseDelta(deltaText);
+    for (const r of [...delta.added, ...delta.modified]) {
+      changed.requirements.add(reqId(cap, r.name));
+      for (const s of r.scenarios) changed.scenarios.add(scenarioId(cap, r.name, s.name));
+    }
+  }
+  return { ids, changed };
+}
+function specsAfterChange(p, id) {
+  const change = loadChange(p, id);
+  const specs = /* @__PURE__ */ new Map();
+  const deltas = /* @__PURE__ */ new Map();
+  const files = deltaFiles(p, change, new Diags());
+  const touched = new Set(files.map((d) => d.capability));
+  for (const f of walkFiles(p.specs)) {
+    const cap = capabilityOf(p.specs, f);
+    if (cap && !touched.has(cap)) specs.set(cap, (0, import_node_fs9.readFileSync)(f, "utf8"));
+  }
+  for (const df of files) {
+    const deltaText = (0, import_node_fs9.readFileSync)(df.file, "utf8");
+    deltas.set(df.capability, deltaText);
+    const merged = applyDelta(readText(df.mainFile), deltaText, df.capability);
+    specs.set(df.capability, merged.ok && merged.text ? merged.text : readText(df.mainFile) ?? "");
+  }
+  return { specs, deltas };
+}
+function requirementsAfterChange(p, id) {
+  const out = /* @__PURE__ */ new Map();
+  for (const [cap, text] of specsAfterChange(p, id).specs) {
+    for (const r of parseSpec(text).requirements) {
+      out.set(reqId(cap, r.name), { capability: cap, raw: r.raw, scenarios: r.scenarios.map((s) => scenarioId(cap, r.name, s.name)) });
+    }
+  }
+  return out;
+}
+function checkAnalysisDoc(text, file, d) {
+  const secs = sections(text);
+  const byName = new Map(secs.map((s) => [s.name.toLowerCase(), s]));
+  for (const name of ANALYSIS_SECTIONS) {
+    const s = byName.get(name.toLowerCase());
+    if (!s) d.error(file, `missing section "## ${name}"`);
+    else if (!s.body) d.error(file, `section "## ${name}" is empty`, s.line);
+  }
+  text.split(/\r?\n/).forEach((l, i) => {
+    if (l.includes(PLACEHOLDER)) d.error(file, `unresolved ${PLACEHOLDER} placeholder`, i + 1);
+  });
+  const stack = byName.get("stack");
+  if (stack && !new RegExp(`^Source:\\s*(${STACK_SOURCES.join("|")})\\b`, "im").test(stack.body)) {
+    d.error(file, `"## Stack" must declare "Source: ${STACK_SOURCES.join(" | ")}"`, stack.line);
+  }
+  const design = byName.get("design");
+  if (design && !new RegExp(`^Mode:\\s*(${DESIGN_MODES.join("|")})\\b`, "im").test(design.body)) {
+    d.error(file, `"## Design" must declare "Mode: ${DESIGN_MODES.join(" | ")}"`, design.line);
+  }
+  const perms = byName.get("permissions");
+  if (perms && !/^\s*[-*]\s+\S/m.test(perms.body) && !/^\s*none\b/im.test(perms.body)) {
+    d.error(file, '"## Permissions" must list each tier-2 resource as a bullet, or say "None"', perms.line);
+  }
+}
+function analyzeChange(p, id) {
+  const d = new Diags();
+  const change = loadChange(p, id);
+  const analysisFile = (0, import_node_path10.join)(change.dir, "analysis.md");
+  const analysis = readText(analysisFile);
+  if (analysis === null) d.error(rel(p, analysisFile), "analysis.md is missing");
+  else checkAnalysisDoc(analysis, rel(p, analysisFile), d);
+  const qText = readText((0, import_node_path10.join)(change.dir, "quality.yaml"));
+  const quality = qText === null ? null : parseQuality(qText, "quality.yaml").config;
+  if (quality && analysis !== null) {
+    const perms = sections(analysis).find((s) => s.name.toLowerCase() === "permissions");
+    for (const key of quality.permissions) {
+      if (perms && !perms.body.includes(key)) {
+        d.error(rel(p, analysisFile), `"## Permissions" must name the tier-2 resource "${key}" that quality.yaml requests`, perms.line);
+      }
+    }
+    if (perms && quality.permissions.length === 0 && /^\s*[-*]\s+\S/m.test(perms.body) && !/^\s*none\b/im.test(perms.body)) {
+      d.warn(rel(p, analysisFile), '"## Permissions" lists resources but quality.yaml requests none; add their keys to quality.yaml permissions or write "None"', perms.line);
+    }
+  }
+  const tasksFile = (0, import_node_path10.join)(change.dir, "tasks.yaml");
+  const tasksText = readText(tasksFile);
+  if (tasksText === null) {
+    d.error(rel(p, tasksFile), "tasks.yaml is missing");
+    return d;
+  }
+  const { tasks, error } = parseTasks(tasksText);
+  if (error) return d;
+  const { ids, changed } = idsAfterChange(p, id);
+  const coveredReqs = /* @__PURE__ */ new Set();
+  const coveredScenarios = /* @__PURE__ */ new Set();
+  const tf = rel(p, tasksFile);
+  for (const t of tasks) {
+    const specs = Array.isArray(t.specs) ? t.specs.map(String) : [];
+    const scenarios = Array.isArray(t.scenarios) ? t.scenarios.map(String) : [];
+    for (const s of specs) {
+      if (!ids.requirements.has(s)) d.error(tf, `task ${t.id} references unknown requirement "${s}" (see \`aidw ids ${id}\`)`);
+      coveredReqs.add(s);
+    }
+    for (const s of scenarios) {
+      if (!ids.scenarios.has(s)) d.error(tf, `task ${t.id} references unknown scenario "${s}" (see \`aidw ids ${id}\`)`);
+      coveredScenarios.add(s);
+      coveredReqs.add(s.split("/").slice(0, -1).join("/"));
+    }
+  }
+  for (const r of changed.requirements) {
+    if (!coveredReqs.has(r)) d.error(tf, `requirement "${r}" changed by this change is not covered by any task`);
+  }
+  for (const s of changed.scenarios) {
+    if (!coveredScenarios.has(s)) d.error(tf, `scenario "${s}" has no task that implements and verifies it`);
+  }
+  return d;
+}
+
+// src/pause.ts
+function runStopFailure(stdin, env) {
+  let input = {};
+  try {
+    input = JSON.parse(stdin);
+  } catch {
+  }
+  const project = findProject({ cwd: input.cwd ?? process.cwd(), env });
+  if (!project) return [];
+  const p = pathsFor(project);
+  const reason = String(input.error ?? input.error_type ?? "stop_failure").slice(0, 200);
+  const paused = [];
+  for (const id of listChangeIds(p)) {
+    try {
+      const state = stateOf(loadChange(p, id));
+      if (state && TRANSITIONS[state].includes("paused")) {
+        transition(p, id, "paused", { reason });
+        paused.push(id);
+      }
+    } catch {
+    }
+  }
+  return paused;
 }
 
 // src/cli.ts
@@ -9399,6 +9754,9 @@ Execution (state executing; add --change <id> when several changes are active):
   checkpoint <task> [--timeout <sec>]    evidence: a test per scenario id + every verify command passes
   review <task> pass|fix [--notes-file F | --notes T] [--no-commit]
                                          record the independent review; pass marks done and commits
+  verify [--layer L] [--fresh]           (verifying) run quality layers not yet passing on the current code;
+                                         a failing layer adds a fix task and returns the change to executing
+  deploy                                 (deploying) approved preview deploy + smoke checks, or record target none/local
 
 Hooks:
   gate                                   PreToolUse hook: reads hook JSON on stdin
@@ -9409,7 +9767,7 @@ Hooks:
 States: ${STATES.join(", ")}
 Exit codes: 0 ok, 1 failed check or refused operation, 2 usage error
 `;
-var VALUE_FLAGS = /* @__PURE__ */ new Set(["root", "title", "input-type", "reason", "change", "for", "notes", "notes-file", "timeout"]);
+var VALUE_FLAGS = /* @__PURE__ */ new Set(["root", "title", "input-type", "reason", "change", "for", "notes", "notes-file", "timeout", "layer"]);
 function parseArgs(argv) {
   const pos = [];
   const flags = {};
@@ -9435,9 +9793,9 @@ var UsageError = class extends Error {
 };
 function pluginRoot(env) {
   if (env.AIDW_PLUGIN_ROOT) return env.AIDW_PLUGIN_ROOT;
-  if (typeof __dirname !== "undefined") return (0, import_node_path10.join)(__dirname, "..");
+  if (typeof __dirname !== "undefined") return (0, import_node_path11.join)(__dirname, "..");
   if (env.CLAUDE_PLUGIN_ROOT) return env.CLAUDE_PLUGIN_ROOT;
-  return (0, import_node_path10.join)(process.cwd(), "plugins", "aidw");
+  return (0, import_node_path11.join)(process.cwd(), "plugins", "aidw");
 }
 function fmtDiag(d) {
   const where = d.line ? `${d.file}:${d.line}` : d.file;
@@ -9535,7 +9893,7 @@ function run(argv, env, cwd, io) {
         const taskId = need(rest[0], "task id");
         const kind = str(args.flags.for) ?? "implement";
         if (kind !== "implement" && kind !== "review") throw new UsageError('--for must be "implement" or "review"');
-        const b = buildBrief(p, id, taskId, kind, (0, import_node_path10.join)(pluginRoot(env), "vendor"));
+        const b = buildBrief(p, id, taskId, kind, (0, import_node_path11.join)(pluginRoot(env), "vendor"));
         if (cmd2 === "skills") {
           emit({ change: id, task: taskId, for: kind, skills: b.skills }, b.skills.map((s) => `${s.path}  # ${s.reason}
 `).join(""));
@@ -9565,6 +9923,48 @@ ${failed.tail}
 ` : ""}`);
         return r.ok ? 0 : 1;
       }
+      case "verify": {
+        const p = project();
+        const id = resolveChangeId(p, str(args.flags.change) ?? rest[0]);
+        const timeout = str(args.flags.timeout);
+        if (timeout !== void 0 && !(Number(timeout) > 0)) throw new UsageError("--timeout must be a number of seconds");
+        const r = verify(p, id, {
+          ...str(args.flags.layer) ? { layer: str(args.flags.layer) } : {},
+          fresh: args.flags.fresh === true,
+          ...timeout ? { timeoutMs: Number(timeout) * 1e3 } : {}
+        });
+        const lines = r.layers.map((l) => {
+          const bad = l.runs.find((x) => x.exit !== 0);
+          const mark = l.status === "pass" ? "ok     " : l.status === "fail" ? "FAILED " : "skipped";
+          return `  ${mark} ${l.name}${bad ? `  (${bad.command}${bad.timedOut ? ", timed out" : `, exit ${bad.exit}`})` : ""}`;
+        });
+        const failed = r.layers.find((l) => l.status === "fail")?.runs.find((x) => x.exit !== 0);
+        emit(
+          { change: id, ...r },
+          `${r.ok ? "PASS" : "FAIL"}: ${r.summary}
+${lines.join("\n")}
+${failed ? `
+--- ${failed.command} (tail)
+${failed.tail}
+` : ""}`
+        );
+        return r.ok ? 0 : 1;
+      }
+      case "deploy": {
+        const p = project();
+        const id = resolveChangeId(p, str(args.flags.change) ?? rest[0]);
+        const r = deploy(p, id);
+        const text = r.skipped ? `deploy skipped: target "${r.target}" (recorded)
+` : r.ok ? `deployed ${r.url}
+${r.smoke.map((s) => `  ok      smoke ${s.command}`).join("\n")}
+` : `DEPLOY FAILED: ${r.error}
+${r.url ? `  url ${r.url}
+` : ""}
+${[...r.runs, ...r.smoke].find((x) => x.exit !== 0)?.tail ?? r.runs[0]?.tail ?? ""}
+`;
+        emit({ change: id, ...r }, text);
+        return r.ok ? 0 : 1;
+      }
       case "review": {
         const p = project();
         const id = resolveChangeId(p, str(args.flags.change));
@@ -9572,7 +9972,7 @@ ${failed.tail}
         const verdict = need(rest[1], "verdict (pass|fix)");
         if (verdict !== "pass" && verdict !== "fix") throw new UsageError('verdict must be "pass" or "fix"');
         const notesFile = str(args.flags["notes-file"]);
-        const notes = notesFile ? (0, import_node_fs9.readFileSync)(notesFile, "utf8") : str(args.flags.notes) ?? "";
+        const notes = notesFile ? (0, import_node_fs10.readFileSync)(notesFile, "utf8") : str(args.flags.notes) ?? "";
         if (verdict === "fix" && !notes.trim()) throw new UsageError("a fix verdict needs --notes or --notes-file");
         const r = recordReview(p, id, taskId, verdict, notes, { commit: args.flags["no-commit"] !== true });
         emit(
@@ -9586,8 +9986,8 @@ ${failed.tail}
       case "vendor-path": {
         const ref = need(rest[0], "<upstream>/<skill>");
         if (!/^[a-z0-9-]+\/[a-z0-9-]+$/.test(ref)) throw new UsageError(`invalid vendored skill "${ref}"`);
-        const file = (0, import_node_path10.join)(pluginRoot(env), "vendor", ...ref.split("/"), "SKILL.md");
-        if (!(0, import_node_fs9.existsSync)(file)) throw new OpError(`vendored skill "${ref}" not found at ${file}`);
+        const file = (0, import_node_path11.join)(pluginRoot(env), "vendor", ...ref.split("/"), "SKILL.md");
+        if (!(0, import_node_fs10.existsSync)(file)) throw new OpError(`vendored skill "${ref}" not found at ${file}`);
         emit({ path: file }, `${file}
 `);
         return 0;
@@ -9597,8 +9997,8 @@ ${failed.tail}
         if (!/^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/.test(ref) || ref.split("/").includes("..")) {
           throw new UsageError(`invalid plugin path "${ref}"`);
         }
-        const file = (0, import_node_path10.join)(pluginRoot(env), ...ref.split("/"));
-        if (!(0, import_node_fs9.existsSync)(file)) throw new OpError(`"${ref}" not found in the plugin (${file})`);
+        const file = (0, import_node_path11.join)(pluginRoot(env), ...ref.split("/"));
+        if (!(0, import_node_fs10.existsSync)(file)) throw new OpError(`"${ref}" not found in the plugin (${file})`);
         emit({ path: file }, `${file}
 `);
         return 0;
@@ -9730,7 +10130,7 @@ ${failed.tail}
         const id = need(rest[0], "change id");
         const to = need(rest[1], "target state");
         const r = transition(p, id, to, { reason: str(args.flags.reason) });
-        emit({ ok: true, id, ...r }, `${id}: ${r.from} -> ${r.to}
+        emit({ ok: true, id, ...r }, `${id}: ${r.from} -> ${r.to}${r.commit ? ` (committed .aidw/ ${r.commit.slice(0, 8)})` : ""}
 `);
         return 0;
       }
@@ -9796,7 +10196,7 @@ if (typeof require !== "undefined" && require.main === module) {
     err: (s) => process.stderr.write(s),
     stdin: () => {
       try {
-        return (0, import_node_fs9.readFileSync)(0, "utf8");
+        return (0, import_node_fs10.readFileSync)(0, "utf8");
       } catch {
         return "";
       }

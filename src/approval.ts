@@ -11,6 +11,9 @@ export interface ApprovalHash {
   files: string[];
 }
 
+/** Change-level files of the approved package (besides specs/** and the planned part of tasks.yaml). */
+export const CHANGE_PACKAGE_FILES = ["intake.md", "analysis.md", "design.md", "quality.yaml"] as const;
+
 /** Project-level directories that belong to the approved package (with constitution.md). */
 export const FROZEN_PROJECT_DIRS = (p: Paths): string[] => [p.design, p.domain, p.architecture, p.requirements];
 
@@ -19,7 +22,7 @@ const normalize = (s: string) => s.replace(/\r\n?/g, "\n");
 
 /**
  * Hash of everything the user approves at the gate:
- *   change: intake.md, analysis.md, design.md, specs/** (deltas), tasks.yaml (planned fields only)
+ *   change: intake.md, analysis.md, design.md, quality.yaml, specs/** (deltas), tasks.yaml (planned fields only)
  *   project: constitution.md, design/**, domain/**, architecture/**, requirements/**
  * Execution progress (task status, evidence, run state) is deliberately excluded.
  * decisions/ (ADRs) is excluded: implementation-level ADRs may be added during execution.
@@ -32,7 +35,7 @@ export function computeApprovalHash(p: Paths, change: Change): ApprovalHash {
     entries.push({ path: rel(p, file), digest: sha256(text) });
   };
 
-  for (const name of ["intake.md", "analysis.md", "design.md"]) add(join(change.dir, name));
+  for (const name of CHANGE_PACKAGE_FILES) add(join(change.dir, name));
   for (const f of walkFiles(join(change.dir, "specs"))) add(f);
   const tasksFile = join(change.dir, "tasks.yaml");
   if (existsSync(tasksFile)) add(tasksFile, canonicalTasks(readFileSync(tasksFile, "utf8")));

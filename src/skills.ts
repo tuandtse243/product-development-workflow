@@ -64,6 +64,7 @@ export function selectSkills(t: Task, kind: BriefKind, opts: { retry?: boolean }
   if (isSecuritySensitive(t)) add("security-and-hardening", "security-sensitive task (risk or auth/payment/permissions)");
   if (list(t.verify).some((v) => BROWSER_VERIFY.test(v))) add("browser-testing-with-devtools", "verify runs browser/E2E tests");
   if (opts.retry) add("debugging-and-error-recovery", "previous attempt failed");
+  if (t.origin === "quality") add("debugging-and-error-recovery", "fixing a failing quality layer");
   for (const s of list(t.skills)) add(s, "requested by the task (tasks.yaml skills:)");
   return picks;
 }

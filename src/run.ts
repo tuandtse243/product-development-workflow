@@ -46,6 +46,10 @@ export function loadTasks(p: Paths, id: string): TaskFile {
   return { change, file, doc: YAML.parseDocument(text), tasks: parseTasks(text).tasks };
 }
 
+export function saveTasksDoc(tf: TaskFile): void {
+  saveTasks(tf);
+}
+
 function saveTasks(tf: TaskFile): void {
   const text = String(tf.doc);
   writeFileSync(tf.file, text);
@@ -287,10 +291,17 @@ function writeEvidence(change: Change, ev: Evidence): void {
 
 const tailOf = (s: string, lines = 60) => s.split(/\r?\n/).slice(-lines).join("\n").trim();
 
-export type CommandRunner = (command: string, cwd: string, timeoutMs: number) => Omit<VerifyRun, "command" | "ms">;
+export type CommandRunner = (command: string, cwd: string, timeoutMs: number, env?: Record<string, string>) => Omit<VerifyRun, "command" | "ms">;
 
-export const shellRunner: CommandRunner = (command, cwd, timeoutMs) => {
-  const r = spawnSync(command, { cwd, shell: true, encoding: "utf8", timeout: timeoutMs, maxBuffer: 64 * 1024 * 1024 });
+export const shellRunner: CommandRunner = (command, cwd, timeoutMs, env) => {
+  const r = spawnSync(command, {
+    cwd,
+    shell: true,
+    encoding: "utf8",
+    timeout: timeoutMs,
+    maxBuffer: 64 * 1024 * 1024,
+    env: env ? { ...process.env, ...env } : process.env,
+  });
   const timedOut = (r.error as NodeJS.ErrnoException | undefined)?.code === "ETIMEDOUT";
   return { exit: r.status, timedOut, tail: tailOf(`${r.stdout ?? ""}\n${r.stderr ?? ""}`) };
 };
@@ -524,6 +535,7 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
             `Work from an earlier attempt or an interrupted session may already be in the working tree. Inspect it first (\`git status\`, \`git diff ${base}\`) and continue from it; do not start over.`,
           ])
         : []),
+      ...h("Problem to fix", typeof t.problem === "string" ? ["```", t.problem.trim(), "```", "", "Find the root cause (debugging skill below), fix it, and make the verify commands pass. Touches is the whole project, but change only what the fix needs."] : []),
       ...h("Previous attempt", previous),
       ...shared,
     ];

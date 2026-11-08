@@ -374,7 +374,7 @@ loop:
 
 ## 11. Quality layers [C Q5 / P cơ chế]
 
-Mỗi layer là một thư mục độc lập: `plugins/aidw/quality/<layer>/layer.yaml` (runner, ngưỡng, điều kiện áp dụng, đường dẫn evidence). Thêm layer mới không cần sửa core.
+~~Mỗi layer là một thư mục `plugins/aidw/quality/<layer>/layer.yaml`.~~ **Đổi ở S4 (D-24):** layer là các mục trong `.aidw/changes/<id>/quality.yaml` của từng project (tên tùy ý, chạy theo thứ tự), nằm trong package được duyệt. Hướng dẫn và lệnh gợi ý theo stack ở `plugins/aidw/profiles/quality-layers.md`. Thêm layer mới không cần sửa core. Xem §25.
 
 | Layer | Công cụ / agent | Evidence |
 |---|---|---|
@@ -505,7 +505,7 @@ Vòng dev: `claude --plugin-dir ./plugins/aidw` trong thư mục fixture. Cài t
 | S1 | `aidw` CLI: format `.aidw/`, validate, merge, hash, status + unit test | Test pass, merge deterministic. **Xong 2026-11-08**: init, change new, status, validate, approve, approval check, transition, merge, archive; 31 test |
 | S2 | `init`, `start` (adapter Pocock), analysis package, `analyze`, `approve`, gate hook | Tiêu chí [1][2][3]. **Code xong 2026-11-08** (xem §23); [2][3] có test, [1] chờ chạy thật |
 | S3 | Orchestrator tuần tự, task contract, checkpoint, `/aidw:resume` | [4][5]. **Code xong 2026-11-08** (xem §24); [4][5] có test và chạy thử bằng bin, chờ chạy với Claude Code thật |
-| S4 | Quality: code/unit/integration/e2e, preview deploy | [6] |
+| S4 | Quality: code/unit/integration/e2e, preview deploy | [6]. **Code xong 2026-11-08** (xem §25); có test và chạy thử bằng bin với deploy giả, chờ project Next.js thật + Vercel thật |
 | S5 | Converge, archive/merge, deliver | [7][8] → **Mốc A** |
 | S6 | 4 design mode | |
 | S7 | Các layer ui-ux, a11y, security, perf và reviewers | |
@@ -665,3 +665,44 @@ src/a.ts` lọt gate trước approve. Giờ lệnh aidw có nối lệnh (`; & 
   code, T02 bị review yêu cầu sửa rồi pass. Kết quả: 2 commit đúng tên task, working tree sạch, approval vẫn hợp lệ.
 - Chưa kiểm chứng: chạy với Claude Code thật (sandbox chặn đăng nhập của Claude lồng bên trong); giá trị
   `agent_type` và input `StopFailure` thật (OPEN-11, OPEN-12).
+
+## 25. Nhật ký triển khai S4 (2026-11-08)
+
+**Quyết định (D-24):**
+1. **`quality.yaml`** (trong change, cạnh `tasks.yaml`): `layers` (tên, `setup`, `run`), `deploy` (`target`
+   none|local|preview, `command`, `smoke`), `permissions` (key tài nguyên bậc 2), `max_fix_rounds`. Đây là phần
+   máy đọc của ba section Quality profile, Deploy strategy, Permissions. File nằm trong **approval hash và bị
+   đóng băng**, vì mọi lệnh trong đó sẽ chạy không hỏi. Validate từ chối: production, lệnh deploy tier 3, lệnh
+   deploy không nhận diện được, lệnh deploy thiếu key trong `permissions`, key lạ. Thiếu layer `code`/`unit`/`e2e`
+   là warning (Q5). `analyze` bắt mọi key phải được nêu trong `## Permissions`.
+2. **`aidw verify`** (state verifying): chạy các layer theo thứ tự, dừng ở layer lỗi đầu tiên, **bỏ qua layer đã
+   pass trên code hiện tại**. Kết quả chỉ còn giá trị nếu mới hơn task xong gần nhất và (khi có git) chạy trên đúng
+   HEAD. Nhờ vậy verify bị kill giữa chừng chạy tiếp được, và code đổi thì mọi layer phải chạy lại.
+3. **Layer lỗi → task sửa** `Qnn` (`origin: quality`, `layer`, `touches: ["**"]`, `verify` = lệnh của layer,
+   `problem` = lệnh lỗi + tail output). Change quay về `executing`, task đi qua đúng vòng S3 (brief có mục
+   `## Problem to fix` và skill debugging, checkpoint, reviewer, commit). Task thêm sau duyệt (`origin` quality
+   hoặc converge) nằm ngoài hash. Quá `max_fix_rounds` (mặc định 3) mỗi layer thì `escalated`.
+4. **`aidw deploy`** (state deploying): chạy đúng lệnh preview đã duyệt, lấy URL deployment từ output (bỏ qua
+   link dashboard như `Inspect: https://vercel.com/...`), chạy `smoke` với `AIDW_DEPLOY_URL`. Target none/local thì
+   ghi nhận là không deploy. Lịch sử ở `evidence/deploy.json`.
+5. **Allowlist bậc 2 trong gate:** tách `ASK_COMMANDS` (bậc 3, luôn hỏi) khỏi `TIER2_COMMANDS` (key
+   `vercel-preview`, `netlify-preview`, `supabase-dev`). Lệnh bậc 2 được `allow` khi một change đang mở (approved
+   → deploying, approval hợp lệ, **không** tính paused/escalated) có key đó, và lệnh không nối với lệnh khác; còn lại
+   thì `ask`. Subagent không bao giờ được chạm tài nguyên cloud. Nhận diện thêm `pnpm dlx`/`npx`/`bunx`... trước CLI.
+6. **Guard cứng khi chuyển state** (không lặng lẽ bỏ qua): `verifying` cần mọi task `done`; `converging` cần mọi
+   layer pass trên code hiện tại; `delivered` cần một `aidw deploy` thành công. Resume từ paused không bị guard.
+7. **Delivered tự commit `.aidw/`** (chỉ pathspec `.aidw`, không đụng file khác của người dùng), để evidence của
+   verify/deploy và state cuối nằm trong lịch sử.
+
+**Kiểm chứng:**
+- 71 test (thêm 8): validate `quality.yaml`, hash và analyze, vòng verify → task sửa → verify lại → deploy (với
+  một `vercel` giả trên PATH, gồm cả trường hợp output không có URL) → delivered, hết fix round → escalate, target
+  none, commit `.aidw/` khi delivered (git thật), allowlist bậc 2 (allow, chuỗi lệnh → ask, prod → ask, chưa có key
+  → ask, subagent → deny, paused → ask).
+- Chạy thử bằng bin trên project Node có git: một bug thật ở server làm e2e fail → `Q01` với stack trace → sửa → 2
+  commit task + 1 commit delivered, verify lần 2 chạy lại mọi layer vì HEAD đổi, deploy lấy đúng URL preview, working
+  tree sạch.
+- **Lần thử bắt được 2 lỗi, đã sửa:** URL deploy bị lấy nhầm là link dashboard Vercel; evidence verify/deploy chưa
+  được commit sau delivered.
+- Chưa kiểm chứng: Next.js + Playwright + Supabase local + Vercel thật (cần đăng nhập và Docker), thời gian chạy
+  thật của các layer so với giới hạn 10 phút của Bash tool (skill hướng dẫn chạy nền khi cần).

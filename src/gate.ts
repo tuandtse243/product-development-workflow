@@ -12,7 +12,7 @@
  * Fails closed inside an aidw project: an internal error denies the call.
  */
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
-import { approvalStatus, FROZEN_PROJECT_DIRS } from "./approval.js";
+import { approvalStatus, CHANGE_PACKAGE_FILES, FROZEN_PROJECT_DIRS } from "./approval.js";
 import { listChangeIds, loadChange, POST_APPROVAL, stateOf, type State } from "./change.js";
 import { AIDW_DIR, findProject, pathsFor, type Paths } from "./project.js";
 import {
@@ -24,8 +24,10 @@ import {
   firstMatch,
   SECRET_PATHS,
   SHELL_CHAINING,
+  TIER2_COMMANDS,
   WRITE_COMMANDS,
 } from "./policy.js";
+import { grantedResources } from "./quality.js";
 
 export interface HookInput {
   hook_event_name?: string;
@@ -85,7 +87,7 @@ function isFrozenPackageFile(p: Paths, file: string, frozen: string[]): boolean 
     const dir = join(p.changes, id);
     if (!inside(dir, file)) continue;
     const r = relative(dir, file).split(sep).join("/");
-    if (r === "intake.md" || r === "analysis.md" || r === "design.md" || r.startsWith("specs/")) return true;
+    if ((CHANGE_PACKAGE_FILES as readonly string[]).includes(r) || r.startsWith("specs/")) return true;
   }
   return false;
 }
@@ -158,7 +160,18 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
       return ask("approving the Analysis package is the user's decision. Approve only if you (the user) reviewed analysis.md.");
     }
     const risky = firstMatch(ASK_COMMANDS, cmd);
-    if (risky) return ask(`this command ${risky.why}; it needs your confirmation (tier 2/3)`);
+    if (risky) return ask(`this command ${risky.why}; it needs your confirmation (tier 3)`);
+    const tier2 = firstMatch(TIER2_COMMANDS, cmd);
+    if (tier2) {
+      if (role) return deny(`the ${role} does not touch cloud resources; deploys are the orchestrator's step`);
+      const granted = grantedResources(p, listChangeIds(p), OPEN_STATES);
+      if (granted.has(tier2.resource) && !SHELL_CHAINING.test(cmd)) {
+        return allow(`tier 2 "${tier2.resource}" is in the approved allowlist`);
+      }
+      return ask(
+        `this command ${tier2.why} (tier 2 "${tier2.resource}"), which is not in an approved, active allowlist${SHELL_CHAINING.test(cmd) ? " or is chained with other commands" : ""}; it needs your confirmation`,
+      );
+    }
     if (role && /\bgit\s+(?:commit|merge|rebase|reset|tag|cherry-pick|revert)\b/.test(cmd)) {
       return deny(`the ${role} does not commit; the orchestrator commits each task after review`);
     }

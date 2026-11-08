@@ -20,6 +20,8 @@ import { Diags } from "./diag.js";
 import { capabilityOf, isDir, pathsFor, readText, rel, walkFiles, type Paths } from "./project.js";
 import { applyDelta, type MergeSummary } from "./spec/merge.js";
 import { parseSpec } from "./spec/parse.js";
+import { git, headCommit, isGitRepo } from "./git.js";
+import { transitionGuard } from "./quality.js";
 import { parseTasks } from "./tasks.js";
 import { VERSION } from "./version.js";
 
@@ -228,7 +230,7 @@ export function approve(p: Paths, id: string): { hash: string; files: string[] }
 
 // ---------------------------------------------------------------- transition
 
-export function transition(p: Paths, id: string, to: string, opts: { reason?: string }): { from: State; to: State } {
+export function transition(p: Paths, id: string, to: string, opts: { reason?: string }): { from: State; to: State; commit?: string } {
   const change = loadChange(p, id);
   const from = stateOf(change);
   if (!from) throw new OpError(`change "${id}" has an unknown state "${String(change.data.state)}"`);
@@ -263,6 +265,11 @@ export function transition(p: Paths, id: string, to: string, opts: { reason?: st
     }
   }
 
+  if (from !== "paused") {
+    const refused = transitionGuard(p, id, target);
+    if (refused) throw new OpError(refused);
+  }
+
   if (target === "awaiting_approval") {
     // Validate as if already in the target state, so the user is never asked to approve an incomplete package.
     const d = readinessCheck(p, id, target);
@@ -280,7 +287,20 @@ export function transition(p: Paths, id: string, to: string, opts: { reason?: st
   }
   change.doc.set("state", target);
   saveChange(change);
+  if (target === "delivered") {
+    // Quality and deploy evidence plus the final state belong in history; only .aidw/ is committed.
+    const commit = commitAidw(p, `aidw: ${id} delivered\n\nQuality layer and deploy evidence: .aidw/changes/${id}/evidence/`);
+    return { from, to: target, ...(commit ? { commit } : {}) };
+  }
   return { from, to: target };
+}
+
+/** Commits pending changes under .aidw/ only. Returns the commit, or null outside git or when nothing changed. */
+export function commitAidw(p: Paths, message: string): string | null {
+  if (!isGitRepo(p.project)) return null;
+  if (!git(p.project, ["add", "--", ".aidw"]).ok) return null;
+  if (git(p.project, ["diff", "--cached", "--quiet", "--", ".aidw"]).ok) return null;
+  return git(p.project, ["commit", "-q", "-m", message, "--", ".aidw"]).ok ? headCommit(p.project) : null;
 }
 
 // ---------------------------------------------------------------- merge / archive

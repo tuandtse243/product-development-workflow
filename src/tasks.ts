@@ -13,6 +13,13 @@ export const RUNTIME_FIELDS = ["status", "attempts", "evidence", "started_at", "
 
 export const DEFAULT_MAX_ATTEMPTS = 3;
 
+/**
+ * Tasks the workflow adds after approval: converge gaps (S5) and quality-layer fixes (S4). They are not
+ * part of the approved plan, so they are excluded from the approval hash; their verify commands come
+ * from approved sources (quality.yaml layers, spec scenarios).
+ */
+export const ADDED_ORIGINS: readonly string[] = ["converge", "quality"];
+
 export interface Task {
   id: string;
   title?: string;
@@ -119,7 +126,7 @@ export function canonicalTasks(text: string): string {
   const { tasks, error } = parseTasks(text);
   if (error) return text.replace(/\r\n?/g, "\n");
   const planned = tasks
-    .filter((t) => t?.origin !== "converge")
+    .filter((t) => !ADDED_ORIGINS.includes(String(t?.origin)))
     .map((t) => {
       const copy: Record<string, unknown> = { ...t };
       for (const f of RUNTIME_FIELDS) delete copy[f];

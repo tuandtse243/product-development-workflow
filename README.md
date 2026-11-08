@@ -6,8 +6,9 @@ autonomous build → layered quality gates → living specs → complete deliver
 - Design and decisions: [`docs/blueprint-v1.md`](docs/blueprint-v1.md), [`docs/decisions-log.md`](docs/decisions-log.md)
 - Status: **S1 done** (deterministic core CLI), **S2 code done** (analysis skills, analyze, approval gate hook,
   stop backstop, vendored Pocock and Addy skills), **S3 code done** (sequential orchestrator: a fresh
-  implementer per task, scenario evidence, independent reviewer, a commit per task, resume). Quality layers
-  and preview deploy come in S4.
+  implementer per task, scenario evidence, independent reviewer, a commit per task, resume), **S4 code done**
+  (quality layers from the approved `quality.yaml`, failing layers become fix tasks, preview deploy with smoke
+  checks, tier-2 allowlist). Converge, delivery package and archive come in S5.
 
 ## Use it in a project (local, no install)
 
@@ -73,5 +74,7 @@ aidw brief <task> [--for implement|review]   context packet for a fresh subagent
 aidw skills <task> [--for implement|review]  vendored skills selected for the task
 aidw checkpoint <task> [--timeout <sec>]     a test per scenario id + every verify command passes
 aidw review <task> pass|fix [--notes-file F] independent verdict; pass marks done and commits
+aidw verify [--layer L] [--fresh]            quality layers not yet passing; a failure adds a fix task
+aidw deploy                                  approved preview deploy + smoke checks (or record none/local)
 aidw gate | backstop | stop-failure          hook entry points (JSON on stdin)
 ```

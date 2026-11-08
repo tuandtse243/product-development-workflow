@@ -96,11 +96,25 @@ Vercel preview.
 
 ## Permissions
 
-- Vercel preview deployment for the client demo.
+- \`vercel-preview\`: Vercel preview deployment for the client demo.
 
 ## Risks and assumptions
 
 Assumes one clinic, one timezone.
+`;
+
+export const QUALITY_YAML = `layers:
+  - name: code
+    run: ["pnpm build"]
+  - name: unit
+    run: ["pnpm vitest run"]
+  - name: e2e
+    run: ["pnpm playwright test"]
+deploy:
+  target: preview
+  command: vercel deploy --yes
+  smoke: ['curl -fsS "$AIDW_DEPLOY_URL"']
+permissions: [vercel-preview]
 `;
 
 export const TASKS_YAML = `tasks:

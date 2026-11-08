@@ -36,23 +36,53 @@ export const FORBIDDEN_COMMANDS: Rule[] = [
   { re: /\brm\s+-[a-z]*r[a-z]*f?[a-z]*\s+(\/|~|\$HOME)(\s|$)/i, why: "deletes the home or root directory" },
 ];
 
-/** Tier 3 (and tier 2 until the Analysis allowlist exists): outward-facing or costly actions. */
+/** Package-runner prefixes in front of a CLI (npx vercel, pnpm dlx vercel, ...). */
+const RUNNER = String.raw`(?:(?:npx|bunx|pnpm\s+(?:dlx|exec)|yarn\s+(?:dlx|exec)|npm\s+exec(?:\s+--)?)\s+(?:--?[\w-]+\s+)*)?`;
+
+/** Tier 3: outward-facing or costly actions. Always ask. Checked before tier 2. */
 export const ASK_COMMANDS: Rule[] = [
   { re: /\bgit\s+push\b/, why: "pushes to a remote repository" },
-  { re: cmd(String.raw`(?:npx\s+)?vercel\b[^|;&]*(?:--prod\b|\bpromote\b|\bdomains?\b|\balias\b)`), why: "changes Vercel production or domains" },
-  {
-    re: cmd(String.raw`(?:npx\s+)?vercel(?:\s+deploy)?(?:\s+--?[\w-]+(?:=\S+)?)*\s*(?:$|[;&|])`),
-    why: "creates a Vercel deployment (tier 2: needs the approved allowlist)",
-  },
-  { re: /\bnetlify\s+deploy\b[^|;&]*--prod\b/, why: "deploys Netlify production" },
+  { re: cmd(String.raw`${RUNNER}vercel\b[^|;&]*(?:--prod\b|\bpromote\b|\bdomains?\b|\balias\b|\bremove\b|\brm\b)`), why: "changes Vercel production, domains or deletes deployments" },
+  { re: cmd(String.raw`${RUNNER}netlify\s+deploy\b[^|;&]*--prod\b`), why: "deploys Netlify production" },
   { re: /\b(railway\s+up|fly\s+deploy|flyctl\s+deploy)\b/, why: "deploys to a hosting provider" },
-  { re: /\bsupabase\s+(db\s+push|db\s+reset\s+[^|;&]*--linked|projects\s+(create|delete)|link)\b/, why: "changes a remote Supabase project" },
+  { re: /\bsupabase\s+(db\s+reset\s+[^|;&]*--linked|projects\s+(create|delete)|orgs\s+create)\b/, why: "creates, deletes or resets a remote Supabase project" },
   { re: /\b(npm|pnpm|yarn)\s+publish\b/, why: "publishes a package" },
   { re: /\b(terraform\s+(apply|destroy)|pulumi\s+(up|destroy)|kubectl\s+(apply|delete)|docker\s+push)\b/, why: "changes infrastructure" },
   { re: /\bgh\s+(repo\s+(create|delete)|pr\s+merge|release\s+create)\b/, why: "changes GitHub state" },
   { re: /\bstripe\b[^|;&]*--live\b|\bsk_live_/, why: "uses live payment credentials" },
   { re: /\bdrop\s+(database|schema)\b/i, why: "drops a database" },
 ];
+
+/**
+ * Tier 2: free cloud resources. Allowed without asking only when an open, approved change lists the
+ * resource key in quality.yaml `permissions` (the Analysis allowlist); otherwise ask.
+ */
+export const TIER2_RESOURCES = {
+  "vercel-preview": "Vercel preview deployments (creates/links a Vercel project on the free plan)",
+  "netlify-preview": "Netlify draft (non-production) deploys",
+  "supabase-dev": "a linked Supabase dev project: link, push migrations, deploy functions, set secrets",
+} as const;
+export type Tier2Resource = keyof typeof TIER2_RESOURCES;
+
+export interface Tier2Rule extends Rule {
+  resource: Tier2Resource;
+}
+
+export const TIER2_COMMANDS: Tier2Rule[] = [
+  {
+    re: cmd(String.raw`${RUNNER}vercel(?:\s+deploy)?(?:\s+--?[\w-]+(?:=\S+)?)*\s*(?:$|[;&|)])`),
+    why: "creates a Vercel preview deployment",
+    resource: "vercel-preview",
+  },
+  { re: cmd(String.raw`${RUNNER}netlify\s+deploy\b`), why: "creates a Netlify draft deploy", resource: "netlify-preview" },
+  {
+    re: cmd(String.raw`${RUNNER}supabase\s+(?:link|db\s+push|functions\s+deploy|secrets\s+set|migration\s+repair)\b`),
+    why: "changes the linked Supabase dev project",
+    resource: "supabase-dev",
+  },
+];
+
+export const isTier2Resource = (s: string): s is Tier2Resource => Object.prototype.hasOwnProperty.call(TIER2_RESOURCES, s);
 
 /** Bash commands that write files or install/scaffold; blocked before approval. */
 export const WRITE_COMMANDS: Rule[] = [
@@ -65,7 +95,7 @@ export const WRITE_COMMANDS: Rule[] = [
   { re: cmd(String.raw`git\s+(?:clone|checkout\s+-b|switch\s+-c|apply|am|stash\s+pop|reset\s+--hard)\b`), why: "changes the working tree" },
 ];
 
-export function firstMatch(rules: Rule[], text: string): Rule | undefined {
+export function firstMatch<R extends Rule>(rules: R[], text: string): R | undefined {
   return rules.find((r) => r.re.test(text));
 }
 

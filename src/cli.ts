@@ -22,6 +22,7 @@ import {
 } from "./ops.js";
 import { runStopFailure } from "./pause.js";
 import { findProject, pathsFor, rel, type Paths } from "./project.js";
+import { deploy, verify } from "./quality.js";
 import { buildBrief, checkpoint, nextAction, recordReview, retryTask, startTask } from "./run.js";
 import { VERSION } from "./version.js";
 
@@ -52,6 +53,9 @@ Execution (state executing; add --change <id> when several changes are active):
   checkpoint <task> [--timeout <sec>]    evidence: a test per scenario id + every verify command passes
   review <task> pass|fix [--notes-file F | --notes T] [--no-commit]
                                          record the independent review; pass marks done and commits
+  verify [--layer L] [--fresh]           (verifying) run quality layers not yet passing on the current code;
+                                         a failing layer adds a fix task and returns the change to executing
+  deploy                                 (deploying) approved preview deploy + smoke checks, or record target none/local
 
 Hooks:
   gate                                   PreToolUse hook: reads hook JSON on stdin
@@ -68,7 +72,7 @@ interface Args {
   flags: Record<string, string | true>;
 }
 
-const VALUE_FLAGS = new Set(["root", "title", "input-type", "reason", "change", "for", "notes", "notes-file", "timeout"]);
+const VALUE_FLAGS = new Set(["root", "title", "input-type", "reason", "change", "for", "notes", "notes-file", "timeout", "layer"]);
 
 export function parseArgs(argv: string[]): Args {
   const pos: string[] = [];
@@ -240,6 +244,42 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         return r.ok ? 0 : 1;
       }
 
+      case "verify": {
+        const p = project();
+        const id = resolveChangeId(p, str(args.flags.change) ?? rest[0]);
+        const timeout = str(args.flags.timeout);
+        if (timeout !== undefined && !(Number(timeout) > 0)) throw new UsageError("--timeout must be a number of seconds");
+        const r = verify(p, id, {
+          ...(str(args.flags.layer) ? { layer: str(args.flags.layer) as string } : {}),
+          fresh: args.flags.fresh === true,
+          ...(timeout ? { timeoutMs: Number(timeout) * 1000 } : {}),
+        });
+        const lines = r.layers.map((l) => {
+          const bad = l.runs.find((x) => x.exit !== 0);
+          const mark = l.status === "pass" ? "ok     " : l.status === "fail" ? "FAILED " : "skipped";
+          return `  ${mark} ${l.name}${bad ? `  (${bad.command}${bad.timedOut ? ", timed out" : `, exit ${bad.exit}`})` : ""}`;
+        });
+        const failed = r.layers.find((l) => l.status === "fail")?.runs.find((x) => x.exit !== 0);
+        emit(
+          { change: id, ...r },
+          `${r.ok ? "PASS" : "FAIL"}: ${r.summary}\n${lines.join("\n")}\n${failed ? `\n--- ${failed.command} (tail)\n${failed.tail}\n` : ""}`,
+        );
+        return r.ok ? 0 : 1;
+      }
+
+      case "deploy": {
+        const p = project();
+        const id = resolveChangeId(p, str(args.flags.change) ?? rest[0]);
+        const r = deploy(p, id);
+        const text = r.skipped
+          ? `deploy skipped: target "${r.target}" (recorded)\n`
+          : r.ok
+            ? `deployed ${r.url}\n${r.smoke.map((s) => `  ok      smoke ${s.command}`).join("\n")}\n`
+            : `DEPLOY FAILED: ${r.error}\n${r.url ? `  url ${r.url}\n` : ""}\n${[...r.runs, ...r.smoke].find((x) => x.exit !== 0)?.tail ?? r.runs[0]?.tail ?? ""}\n`;
+        emit({ change: id, ...r }, text);
+        return r.ok ? 0 : 1;
+      }
+
       case "review": {
         const p = project();
         const id = resolveChangeId(p, str(args.flags.change));
@@ -404,7 +444,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const id = need(rest[0], "change id");
         const to = need(rest[1], "target state");
         const r = transition(p, id, to, { reason: str(args.flags.reason) });
-        emit({ ok: true, id, ...r }, `${id}: ${r.from} -> ${r.to}\n`);
+        emit({ ok: true, id, ...r }, `${id}: ${r.from} -> ${r.to}${r.commit ? ` (committed .aidw/ ${r.commit.slice(0, 8)})` : ""}\n`);
         return 0;
       }
 
