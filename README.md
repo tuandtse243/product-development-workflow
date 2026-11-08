@@ -9,7 +9,8 @@ autonomous build → layered quality gates → living specs → complete deliver
   implementer per task, scenario evidence, independent reviewer, a commit per task, resume), **S4 code done**
   (quality layers from the approved `quality.yaml`, failing layers become fix tasks, preview deploy with smoke
   checks, tier-2 allowlist), **S5 code done** (converge from JUnit reports, delivery package, archive). All
-  milestone-A code is in; it awaits one real end-to-end run in Claude Code.
+  milestone-A code is in; it awaits one real end-to-end run in Claude Code. Test guide: [`docs/milestone-a-test.md`](docs/milestone-a-test.md)
+  (set `AIDW_HOOK_LOG=<file>` to trace every hook call).
 
 ## Use it in a project (local, no install)
 

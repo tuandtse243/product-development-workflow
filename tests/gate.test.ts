@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { unexpectedChanges, runBackstop } from "../src/backstop.js";
@@ -159,5 +159,20 @@ describe("backstop", () => {
     readyForApproval();
     cli("approve", ID);
     expect(runBackstop(JSON.stringify({ cwd: root }), env, () => ["src/x"])).toBe("");
+  });
+});
+
+describe("AIDW_HOOK_LOG", () => {
+  it("appends each hook call with its input and output, and stays silent without the variable", () => {
+    const log = join(root, "hooks.jsonl");
+    const input = JSON.stringify({ ...hook("Write", { file_path: join(root, "src/a.ts"), content: "x" }), agent_type: "aidw:implementer" });
+    const io = { out: () => {}, err: () => {}, stdin: () => input };
+    expect(run(["gate"], { AIDW_HOOK_LOG: log }, root, io)).toBe(0);
+    expect(run(["stop-failure"], { AIDW_HOOK_LOG: log }, root, io)).toBe(0);
+    expect(run(["gate"], {}, root, io)).toBe(0);
+    const lines = readFileSync(log, "utf8").trim().split("\n").map((l) => JSON.parse(l));
+    expect(lines.map((l) => l.hook)).toEqual(["gate", "stop-failure"]);
+    expect(lines[0].input.agent_type).toBe("aidw:implementer");
+    expect(lines[0].output).toContain("deny");
   });
 });

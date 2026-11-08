@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { analyzeChange, idsAfterChange, mainSpecIds } from "./analyze.js";
 import { approvalStatus, computeApprovalHash } from "./approval.js";
@@ -116,6 +116,26 @@ export function pluginRoot(env: NodeJS.ProcessEnv): string {
   return join(process.cwd(), "plugins", "aidw");
 }
 
+/**
+ * Opt-in hook trace for debugging real Claude Code runs: with AIDW_HOOK_LOG=<absolute file>, every hook call
+ * appends one JSON line {at, hook, input, output}. Never throws: a hook must not fail because of its log.
+ */
+function logHook(env: NodeJS.ProcessEnv, hook: string, input: string, output: string): void {
+  const file = env.AIDW_HOOK_LOG;
+  if (!file) return;
+  try {
+    let parsed: unknown = input;
+    try {
+      parsed = JSON.parse(input);
+    } catch {
+      // keep the raw text
+    }
+    appendFileSync(file, `${JSON.stringify({ at: new Date().toISOString(), hook, input: parsed, output: output || null })}\n`);
+  } catch {
+    // ignore
+  }
+}
+
 function fmtDiag(d: Diagnostic): string {
   const where = d.line ? `${d.file}:${d.line}` : d.file;
   return `${d.level === "error" ? "ERROR" : "WARN "}  ${where}  ${d.message}`;
@@ -164,18 +184,26 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         return 0;
 
       case "gate": {
-        io.out(runGate(io.stdin?.() ?? "", env));
+        const input = io.stdin?.() ?? "";
+        const out = runGate(input, env);
+        logHook(env, cmd, input, out);
+        io.out(out);
         return 0;
       }
 
       case "backstop": {
-        io.out(runBackstop(io.stdin?.() ?? "", env));
+        const input = io.stdin?.() ?? "";
+        const out = runBackstop(input, env);
+        logHook(env, cmd, input, out);
+        io.out(out);
         return 0;
       }
 
       case "stop-failure": {
+        const input = io.stdin?.() ?? "";
+        logHook(env, cmd, input, "");
         try {
-          runStopFailure(io.stdin?.() ?? "", env);
+          runStopFailure(input, env);
         } catch {
           // hook output is ignored; never fail the hook
         }

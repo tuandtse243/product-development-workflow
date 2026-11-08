@@ -10226,6 +10226,20 @@ function pluginRoot(env) {
   if (env.CLAUDE_PLUGIN_ROOT) return env.CLAUDE_PLUGIN_ROOT;
   return (0, import_node_path13.join)(process.cwd(), "plugins", "aidw");
 }
+function logHook(env, hook, input, output) {
+  const file = env.AIDW_HOOK_LOG;
+  if (!file) return;
+  try {
+    let parsed = input;
+    try {
+      parsed = JSON.parse(input);
+    } catch {
+    }
+    (0, import_node_fs12.appendFileSync)(file, `${JSON.stringify({ at: (/* @__PURE__ */ new Date()).toISOString(), hook, input: parsed, output: output || null })}
+`);
+  } catch {
+  }
+}
 function fmtDiag(d) {
   const where = d.line ? `${d.file}:${d.line}` : d.file;
   return `${d.level === "error" ? "ERROR" : "WARN "}  ${where}  ${d.message}`;
@@ -10271,16 +10285,24 @@ function run(argv, env, cwd, io) {
 `);
         return 0;
       case "gate": {
-        io.out(runGate(io.stdin?.() ?? "", env));
+        const input = io.stdin?.() ?? "";
+        const out = runGate(input, env);
+        logHook(env, cmd2, input, out);
+        io.out(out);
         return 0;
       }
       case "backstop": {
-        io.out(runBackstop(io.stdin?.() ?? "", env));
+        const input = io.stdin?.() ?? "";
+        const out = runBackstop(input, env);
+        logHook(env, cmd2, input, out);
+        io.out(out);
         return 0;
       }
       case "stop-failure": {
+        const input = io.stdin?.() ?? "";
+        logHook(env, cmd2, input, "");
         try {
-          runStopFailure(io.stdin?.() ?? "", env);
+          runStopFailure(input, env);
         } catch {
         }
         return 0;
