@@ -51,6 +51,7 @@ Một quyết định chỉ chuyển sang CONFIRMED khi người dùng xác nh�
 | D-20 | Spec Kit | Không dùng như một dependency. Hấp thụ 4 cơ chế: constitution, clarify, analyze, converge | CONFIRMED | |
 | D-21 | Nguyên tắc "đơn giản trước" | **Đã gỡ bỏ.** Đó là nguyên tắc AI tự suy ra, người dùng không đặt | CONFIRMED (gỡ) | |
 | D-22 | Tiêu chí mốc A | [1]–[8] trong blueprint §18 | CONFIRMED | |
+| D-23 | Thực thi task (OPEN-10) | **(a+)**: mỗi lát dọc do **một implementer fullstack** làm, trong **context mới** (orchestrator mỏng ở phiên chính, chỉ truyền đường dẫn brief). Skill Addy **chọn theo task** (lõi incremental + TDD; thêm theo touches/risk/verify; debugging khi retry), không nạp sẵn. **Bằng chứng theo scenario do máy kiểm** (test mang đúng scenario id + verify pass). **Reviewer độc lập, chỉ đọc**, context mới; fix tối đa theo `max_attempts` (mặc định 3) rồi escalate. Một commit mỗi task | CONFIRMED | Thay bảng agent theo chuyên môn ở blueprint §8 |
 
 ## C. Đề xuất đang chờ triển khai (PROPOSED)
 

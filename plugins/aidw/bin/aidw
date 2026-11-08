@@ -3735,11 +3735,11 @@ var require_errors = __commonJS({
         if (end && end.line === line && end.col > col) {
           count = Math.max(1, Math.min(end.col - col, 80 - ci));
         }
-        const pointer = " ".repeat(ci) + "^".repeat(count);
+        const pointer2 = " ".repeat(ci) + "^".repeat(count);
         error.message += `:
 
 ${lineStr}
-${pointer}
+${pointer2}
 `;
       }
     };
@@ -3979,10 +3979,10 @@ var require_resolve_block_map = __commonJS({
       let offset = bm.offset;
       let commentEnd = null;
       for (const collItem of bm.items) {
-        const { start, key, sep: sep4, value } = collItem;
+        const { start, key, sep: sep5, value } = collItem;
         const keyProps = resolveProps.resolveProps(start, {
           indicator: "explicit-key-ind",
-          next: key ?? sep4?.[0],
+          next: key ?? sep5?.[0],
           offset,
           onError,
           parentIndent: bm.indent,
@@ -3996,7 +3996,7 @@ var require_resolve_block_map = __commonJS({
             else if ("indent" in key && key.indent !== bm.indent)
               onError(offset, "BAD_INDENT", startColMsg);
           }
-          if (!keyProps.anchor && !keyProps.tag && !sep4) {
+          if (!keyProps.anchor && !keyProps.tag && !sep5) {
             commentEnd = keyProps.end;
             if (keyProps.comment) {
               if (map.comment)
@@ -4020,7 +4020,7 @@ var require_resolve_block_map = __commonJS({
         ctx.atKey = false;
         if (utilMapIncludes.mapIncludes(ctx, map.items, keyNode))
           onError(keyStart, "DUPLICATE_KEY", "Map keys must be unique");
-        const valueProps = resolveProps.resolveProps(sep4 ?? [], {
+        const valueProps = resolveProps.resolveProps(sep5 ?? [], {
           indicator: "map-value-ind",
           next: value,
           offset: keyNode.range[2],
@@ -4036,7 +4036,7 @@ var require_resolve_block_map = __commonJS({
             if (ctx.options.strict && keyProps.start < valueProps.found.offset - 1024)
               onError(keyNode.range, "KEY_OVER_1024_CHARS", "The : indicator must be at most 1024 chars after the start of an implicit block mapping key");
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep4, null, valueProps, onError);
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep5, null, valueProps, onError);
           if (ctx.schema.compat)
             utilFlowIndentCheck.flowIndentCheck(bm.indent, value, onError);
           offset = valueNode.range[2];
@@ -4127,7 +4127,7 @@ var require_resolve_end = __commonJS({
       let comment = "";
       if (end) {
         let hasSpace = false;
-        let sep4 = "";
+        let sep5 = "";
         for (const token of end) {
           const { source, type } = token;
           switch (type) {
@@ -4141,13 +4141,13 @@ var require_resolve_end = __commonJS({
               if (!comment)
                 comment = cb;
               else
-                comment += sep4 + cb;
-              sep4 = "";
+                comment += sep5 + cb;
+              sep5 = "";
               break;
             }
             case "newline":
               if (comment)
-                sep4 += source;
+                sep5 += source;
               hasSpace = true;
               break;
             default:
@@ -4190,18 +4190,18 @@ var require_resolve_flow_collection = __commonJS({
       let offset = fc.offset + fc.start.source.length;
       for (let i = 0; i < fc.items.length; ++i) {
         const collItem = fc.items[i];
-        const { start, key, sep: sep4, value } = collItem;
+        const { start, key, sep: sep5, value } = collItem;
         const props = resolveProps.resolveProps(start, {
           flow: fcName,
           indicator: "explicit-key-ind",
-          next: key ?? sep4?.[0],
+          next: key ?? sep5?.[0],
           offset,
           onError,
           parentIndent: fc.indent,
           startOnNewline: false
         });
         if (!props.found) {
-          if (!props.anchor && !props.tag && !sep4 && !value) {
+          if (!props.anchor && !props.tag && !sep5 && !value) {
             if (i === 0 && props.comma)
               onError(props.comma, "UNEXPECTED_TOKEN", `Unexpected , in ${fcName}`);
             else if (i < fc.items.length - 1)
@@ -4255,8 +4255,8 @@ var require_resolve_flow_collection = __commonJS({
             }
           }
         }
-        if (!isMap && !sep4 && !props.found) {
-          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep4, null, props, onError);
+        if (!isMap && !sep5 && !props.found) {
+          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep5, null, props, onError);
           coll.items.push(valueNode);
           offset = valueNode.range[2];
           if (isBlock(value))
@@ -4268,7 +4268,7 @@ var require_resolve_flow_collection = __commonJS({
           if (isBlock(key))
             onError(keyNode.range, "BLOCK_IN_FLOW", blockMsg);
           ctx.atKey = false;
-          const valueProps = resolveProps.resolveProps(sep4 ?? [], {
+          const valueProps = resolveProps.resolveProps(sep5 ?? [], {
             flow: fcName,
             indicator: "map-value-ind",
             next: value,
@@ -4279,8 +4279,8 @@ var require_resolve_flow_collection = __commonJS({
           });
           if (valueProps.found) {
             if (!isMap && !props.found && ctx.options.strict) {
-              if (sep4)
-                for (const st of sep4) {
+              if (sep5)
+                for (const st of sep5) {
                   if (st === valueProps.found)
                     break;
                   if (st.type === "newline") {
@@ -4297,7 +4297,7 @@ var require_resolve_flow_collection = __commonJS({
             else
               onError(valueProps.start, "MISSING_CHAR", `Missing , or : between ${fcName} items`);
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep4, null, valueProps, onError) : null;
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep5, null, valueProps, onError) : null;
           if (valueNode) {
             if (isBlock(value))
               onError(valueNode.range, "BLOCK_IN_FLOW", blockMsg);
@@ -4477,7 +4477,7 @@ var require_resolve_block_scalar = __commonJS({
           chompStart = i + 1;
       }
       let value = "";
-      let sep4 = "";
+      let sep5 = "";
       let prevMoreIndented = false;
       for (let i = 0; i < contentStart; ++i)
         value += lines[i][0].slice(trimIndent) + "\n";
@@ -4494,24 +4494,24 @@ var require_resolve_block_scalar = __commonJS({
           indent = "";
         }
         if (type === Scalar.Scalar.BLOCK_LITERAL) {
-          value += sep4 + indent.slice(trimIndent) + content;
-          sep4 = "\n";
+          value += sep5 + indent.slice(trimIndent) + content;
+          sep5 = "\n";
         } else if (indent.length > trimIndent || content[0] === "	") {
-          if (sep4 === " ")
-            sep4 = "\n";
-          else if (!prevMoreIndented && sep4 === "\n")
-            sep4 = "\n\n";
-          value += sep4 + indent.slice(trimIndent) + content;
-          sep4 = "\n";
+          if (sep5 === " ")
+            sep5 = "\n";
+          else if (!prevMoreIndented && sep5 === "\n")
+            sep5 = "\n\n";
+          value += sep5 + indent.slice(trimIndent) + content;
+          sep5 = "\n";
           prevMoreIndented = true;
         } else if (content === "") {
-          if (sep4 === "\n")
+          if (sep5 === "\n")
             value += "\n";
           else
-            sep4 = "\n";
+            sep5 = "\n";
         } else {
-          value += sep4 + content;
-          sep4 = " ";
+          value += sep5 + content;
+          sep5 = " ";
           prevMoreIndented = false;
         }
       }
@@ -4693,25 +4693,25 @@ var require_resolve_flow_scalar = __commonJS({
       if (!match)
         return source;
       let res = match[1];
-      let sep4 = " ";
+      let sep5 = " ";
       let pos = first.lastIndex;
       line.lastIndex = pos;
       while (match = line.exec(source)) {
         if (match[1] === "") {
-          if (sep4 === "\n")
-            res += sep4;
+          if (sep5 === "\n")
+            res += sep5;
           else
-            sep4 = "\n";
+            sep5 = "\n";
         } else {
-          res += sep4 + match[1];
-          sep4 = " ";
+          res += sep5 + match[1];
+          sep5 = " ";
         }
         pos = line.lastIndex;
       }
       const last = /[ \t]*(.*)/sy;
       last.lastIndex = pos;
       match = last.exec(source);
-      return res + sep4 + (match?.[1] ?? "");
+      return res + sep5 + (match?.[1] ?? "");
     }
     function doubleQuotedValue(source, onError) {
       let res = "";
@@ -5513,14 +5513,14 @@ var require_cst_stringify = __commonJS({
         }
       }
     }
-    function stringifyItem({ start, key, sep: sep4, value }) {
+    function stringifyItem({ start, key, sep: sep5, value }) {
       let res = "";
       for (const st of start)
         res += st.source;
       if (key)
         res += stringifyToken(key);
-      if (sep4)
-        for (const st of sep4)
+      if (sep5)
+        for (const st of sep5)
           res += st.source;
       if (value)
         res += stringifyToken(value);
@@ -6311,15 +6311,15 @@ var require_parser = __commonJS({
     var node_process = require("process");
     var cst = require_cst();
     var lexer = require_lexer();
-    function includesToken(list, type) {
-      for (let i = 0; i < list.length; ++i)
-        if (list[i].type === type)
+    function includesToken(list3, type) {
+      for (let i = 0; i < list3.length; ++i)
+        if (list3[i].type === type)
           return true;
       return false;
     }
-    function findNonEmptyIndex(list) {
-      for (let i = 0; i < list.length; ++i) {
-        switch (list[i].type) {
+    function findNonEmptyIndex(list3) {
+      for (let i = 0; i < list3.length; ++i) {
+        switch (list3[i].type) {
           case "space":
           case "comment":
           case "newline":
@@ -6670,18 +6670,18 @@ var require_parser = __commonJS({
         if (this.type === "map-value-ind") {
           const prev = getPrevProps(this.peek(2));
           const start = getFirstKeyStartProps(prev);
-          let sep4;
+          let sep5;
           if (scalar.end) {
-            sep4 = scalar.end;
-            sep4.push(this.sourceToken);
+            sep5 = scalar.end;
+            sep5.push(this.sourceToken);
             delete scalar.end;
           } else
-            sep4 = [this.sourceToken];
+            sep5 = [this.sourceToken];
           const map = {
             type: "block-map",
             offset: scalar.offset,
             indent: scalar.indent,
-            items: [{ start, key: scalar, sep: sep4 }]
+            items: [{ start, key: scalar, sep: sep5 }]
           };
           this.onKeyLine = true;
           this.stack[this.stack.length - 1] = map;
@@ -6834,15 +6834,15 @@ var require_parser = __commonJS({
                 } else if (isFlowToken(it.key) && !includesToken(it.sep, "newline")) {
                   const start2 = getFirstKeyStartProps(it.start);
                   const key = it.key;
-                  const sep4 = it.sep;
-                  sep4.push(this.sourceToken);
+                  const sep5 = it.sep;
+                  sep5.push(this.sourceToken);
                   delete it.key;
                   delete it.sep;
                   this.stack.push({
                     type: "block-map",
                     offset: this.offset,
                     indent: this.indent,
-                    items: [{ start: start2, key, sep: sep4 }]
+                    items: [{ start: start2, key, sep: sep5 }]
                   });
                 } else if (start.length > 0) {
                   it.sep = it.sep.concat(start, this.sourceToken);
@@ -7036,13 +7036,13 @@ var require_parser = __commonJS({
             const prev = getPrevProps(parent);
             const start = getFirstKeyStartProps(prev);
             fixFlowSeqItems(fc);
-            const sep4 = fc.end.splice(1, fc.end.length);
-            sep4.push(this.sourceToken);
+            const sep5 = fc.end.splice(1, fc.end.length);
+            sep5.push(this.sourceToken);
             const map = {
               type: "block-map",
               offset: fc.offset,
               indent: fc.indent,
-              items: [{ start, key: fc, sep: sep4 }]
+              items: [{ start, key: fc, sep: sep5 }]
             };
             this.onKeyLine = true;
             this.stack[this.stack.length - 1] = map;
@@ -7328,8 +7328,8 @@ __export(cli_exports, {
   run: () => run
 });
 module.exports = __toCommonJS(cli_exports);
-var import_node_fs8 = require("node:fs");
-var import_node_path9 = require("node:path");
+var import_node_fs9 = require("node:fs");
+var import_node_path10 = require("node:path");
 
 // src/analyze.ts
 var import_node_fs5 = require("node:fs");
@@ -7516,8 +7516,9 @@ var Diags = class {
 };
 
 // src/tasks.ts
-var TASK_STATUSES = ["pending", "running", "done", "failed", "blocked", "escalated"];
-var RUNTIME_FIELDS = ["status", "attempts", "evidence", "started_at", "finished_at", "notes"];
+var TASK_STATUSES = ["pending", "running", "review", "done", "failed", "blocked", "escalated"];
+var RUNTIME_FIELDS = ["status", "attempts", "evidence", "started_at", "finished_at", "notes", "base"];
+var DEFAULT_MAX_ATTEMPTS = 3;
 function parseTasks(text) {
   let data;
   try {
@@ -7525,9 +7526,9 @@ function parseTasks(text) {
   } catch (e) {
     return { tasks: [], error: `not valid YAML: ${e.message}` };
   }
-  const list = data?.tasks;
-  if (!Array.isArray(list)) return { tasks: [], error: 'expected a top-level "tasks:" list' };
-  return { tasks: list };
+  const list3 = data?.tasks;
+  if (!Array.isArray(list3)) return { tasks: [], error: 'expected a top-level "tasks:" list' };
+  return { tasks: list3 };
 }
 var isStrList = (v) => Array.isArray(v) && v.every((x) => typeof x === "string");
 function validateTasksText(text, file) {
@@ -7553,6 +7554,10 @@ function validateTasksText(text, file) {
     if (!isStrList(t.touches) || t.touches.length === 0) d.error(file, `${where} needs a non-empty "touches" list of file globs`);
     if (!isStrList(t.verify) || t.verify.length === 0) d.error(file, `${where} needs a non-empty "verify" list`);
     if (t.depends_on !== void 0 && !isStrList(t.depends_on)) d.error(file, `${where}: "depends_on" must be a list of task ids`);
+    if (t.skills !== void 0 && !isStrList(t.skills)) d.error(file, `${where}: "skills" must be a list of vendored skill names`);
+    if (t.max_attempts !== void 0 && !(Number.isInteger(t.max_attempts) && Number(t.max_attempts) >= 1)) {
+      d.error(file, `${where}: "max_attempts" must be a positive integer`);
+    }
     if (t.status !== void 0 && !TASK_STATUSES.includes(String(t.status))) {
       d.error(file, `${where}: unknown status "${String(t.status)}" (expected ${TASK_STATUSES.join(", ")})`);
     }
@@ -7916,18 +7921,18 @@ function applyDelta(mainText, deltaText, capability) {
     errors.push(`capability "${capability}" has no main spec yet; only ADDED requirements are allowed`);
   }
   const reqs = (main?.requirements ?? []).map((r) => ({ key: r.key, raw: r.raw }));
-  const indexOf = (key) => reqs.findIndex((r) => r.key === key);
+  const indexOf2 = (key) => reqs.findIndex((r) => r.key === key);
   const caseHint = (key) => {
     const near = reqs.find((r) => r.key.toLowerCase() === key.toLowerCase());
     return near ? ` (did you mean "${near.key}"? header matching is exact)` : "";
   };
   for (const r of delta.renamed) {
-    const i = indexOf(r.from);
+    const i = indexOf2(r.from);
     if (i < 0) {
       errors.push(`RENAMED: requirement "${r.from}" not found${caseHint(r.from)}`);
       continue;
     }
-    if (indexOf(r.to) >= 0) {
+    if (indexOf2(r.to) >= 0) {
       errors.push(`RENAMED: target name "${r.to}" already exists`);
       continue;
     }
@@ -7936,7 +7941,7 @@ function applyDelta(mainText, deltaText, capability) {
     summary.renamed.push({ from: r.from, to: r.to });
   }
   for (const b of delta.removed) {
-    const i = indexOf(b.key);
+    const i = indexOf2(b.key);
     if (i < 0) {
       errors.push(`REMOVED: requirement "${b.key}" not found${caseHint(b.key)}`);
       continue;
@@ -7945,7 +7950,7 @@ function applyDelta(mainText, deltaText, capability) {
     summary.removed.push(b.key);
   }
   for (const b of delta.modified) {
-    const i = indexOf(b.key);
+    const i = indexOf2(b.key);
     if (i < 0) {
       errors.push(`MODIFIED: requirement "${b.key}" not found${caseHint(b.key)}`);
       continue;
@@ -7954,7 +7959,7 @@ function applyDelta(mainText, deltaText, capability) {
     summary.modified.push(b.key);
   }
   for (const b of delta.added) {
-    if (indexOf(b.key) >= 0) {
+    if (indexOf2(b.key) >= 0) {
       errors.push(`ADDED: requirement "${b.key}" already exists; use MODIFIED`);
       continue;
     }
@@ -8171,26 +8176,45 @@ function mainSpecIds(p) {
   return ids;
 }
 function idsAfterChange(p, id) {
-  const change = loadChange(p, id);
   const ids = { requirements: /* @__PURE__ */ new Set(), scenarios: /* @__PURE__ */ new Set() };
   const changed = { requirements: /* @__PURE__ */ new Set(), scenarios: /* @__PURE__ */ new Set() };
-  const deltas = deltaFiles(p, change, new Diags());
-  const touched = new Set(deltas.map((d) => d.capability));
-  for (const f of walkFiles(p.specs)) {
-    const cap = capabilityOf(p.specs, f);
-    if (cap && !touched.has(cap)) indexSpec(cap, (0, import_node_fs5.readFileSync)(f, "utf8"), ids);
-  }
-  for (const df of deltas) {
-    const deltaText = (0, import_node_fs5.readFileSync)(df.file, "utf8");
-    const merged = applyDelta(readText(df.mainFile), deltaText, df.capability);
-    indexSpec(df.capability, merged.ok && merged.text ? merged.text : readText(df.mainFile) ?? "", ids);
+  const { specs, deltas } = specsAfterChange(p, id);
+  for (const [cap, text] of specs) indexSpec(cap, text, ids);
+  for (const [cap, deltaText] of deltas) {
     const delta = parseDelta(deltaText);
     for (const r of [...delta.added, ...delta.modified]) {
-      changed.requirements.add(reqId(df.capability, r.name));
-      for (const s of r.scenarios) changed.scenarios.add(scenarioId(df.capability, r.name, s.name));
+      changed.requirements.add(reqId(cap, r.name));
+      for (const s of r.scenarios) changed.scenarios.add(scenarioId(cap, r.name, s.name));
     }
   }
   return { ids, changed };
+}
+function specsAfterChange(p, id) {
+  const change = loadChange(p, id);
+  const specs = /* @__PURE__ */ new Map();
+  const deltas = /* @__PURE__ */ new Map();
+  const files = deltaFiles(p, change, new Diags());
+  const touched = new Set(files.map((d) => d.capability));
+  for (const f of walkFiles(p.specs)) {
+    const cap = capabilityOf(p.specs, f);
+    if (cap && !touched.has(cap)) specs.set(cap, (0, import_node_fs5.readFileSync)(f, "utf8"));
+  }
+  for (const df of files) {
+    const deltaText = (0, import_node_fs5.readFileSync)(df.file, "utf8");
+    deltas.set(df.capability, deltaText);
+    const merged = applyDelta(readText(df.mainFile), deltaText, df.capability);
+    specs.set(df.capability, merged.ok && merged.text ? merged.text : readText(df.mainFile) ?? "");
+  }
+  return { specs, deltas };
+}
+function requirementsAfterChange(p, id) {
+  const out = /* @__PURE__ */ new Map();
+  for (const [cap, text] of specsAfterChange(p, id).specs) {
+    for (const r of parseSpec(text).requirements) {
+      out.set(reqId(cap, r.name), { capability: cap, raw: r.raw, scenarios: r.scenarios.map((s) => scenarioId(cap, r.name, s.name)) });
+    }
+  }
+  return out;
 }
 function checkAnalysisDoc(text, file, d) {
   const secs = sections(text);
@@ -8311,6 +8335,8 @@ function firstMatch(rules, text) {
 }
 var APPROVE_COMMAND = /(^|[\s;&|(])(?:[^\s;&|]*\/)?aidw\s+approve\b/;
 var AIDW_COMMAND = /^\s*(?:[^\s;&|]*\/)?aidw\s/;
+var SHELL_CHAINING = /[;&|`<>]|\$\(/;
+var AIDW_STATE_COMMAND = /(^|[\s;&|(])(?:[^\s;&|]*\/)?aidw\s+(?:task|checkpoint|review|transition|approve|archive|merge|init|change|brief)\b/;
 
 // src/gate.ts
 var OPEN_STATES = /* @__PURE__ */ new Set(["approved", "executing", "verifying", "converging", "deploying"]);
@@ -8350,6 +8376,10 @@ function isFrozenPackageFile(p, file, frozen) {
   }
   return false;
 }
+function agentRole(agentType) {
+  const name = (agentType ?? "").split(":").pop();
+  return name === "implementer" || name === "reviewer" ? name : null;
+}
 var deny = (reason) => ({ decision: "deny", reason: `AIDW: ${reason}` });
 var ask = (reason) => ({ decision: "ask", reason: `AIDW: ${reason}` });
 var allow = (reason) => ({ decision: "allow", reason: `AIDW: ${reason}` });
@@ -8371,6 +8401,7 @@ function decide(input, env) {
     const secret = firstMatch(SECRET_PATHS, file);
     return secret && !inside(project, (0, import_node_path6.resolve)(cwd, file)) ? deny(`reading ${secret.why} is forbidden (tier x)`) : null;
   }
+  const role = agentRole(input.agent_type);
   if (tool === "Write" || tool === "Edit" || tool === "MultiEdit" || tool === "NotebookEdit") {
     const raw = String(ti.file_path ?? ti.notebook_path ?? "");
     if (!raw) return null;
@@ -8378,6 +8409,10 @@ function decide(input, env) {
     const secret = firstMatch(SECRET_PATHS, file);
     if (secret && !inside(project, file)) return deny(`writing ${secret.why} is forbidden (tier x)`);
     if (!inside(project, file)) return null;
+    if (role === "reviewer") return deny("the reviewer is read-only; report issues in the verdict instead of fixing them");
+    if (role === "implementer" && inside(p.aidw, file)) {
+      return deny("implementers do not write .aidw/; the orchestrator records progress and evidence");
+    }
     const st = gateState(p);
     if (inside(p.aidw, file)) {
       if (isFrozenPackageFile(p, file, st.frozen)) {
@@ -8393,14 +8428,21 @@ function decide(input, env) {
     const cmd2 = String(ti.command ?? "");
     const forbidden = firstMatch(FORBIDDEN_COMMANDS, cmd2) ?? firstMatch(SECRET_PATHS, cmd2);
     if (forbidden) return deny(`command ${forbidden.why}; forbidden (tier x)`);
+    if (role && AIDW_STATE_COMMAND.test(cmd2)) {
+      return deny(`the ${role} does not change aidw state (no self-verification); report back to the orchestrator`);
+    }
     if (APPROVE_COMMAND.test(cmd2)) {
       return ask("approving the Analysis package is the user's decision. Approve only if you (the user) reviewed analysis.md.");
     }
     const risky = firstMatch(ASK_COMMANDS, cmd2);
     if (risky) return ask(`this command ${risky.why}; it needs your confirmation (tier 2/3)`);
-    if (AIDW_COMMAND.test(cmd2)) return null;
+    if (role && /\bgit\s+(?:commit|merge|rebase|reset|tag|cherry-pick|revert)\b/.test(cmd2)) {
+      return deny(`the ${role} does not commit; the orchestrator commits each task after review`);
+    }
+    if (AIDW_COMMAND.test(cmd2) && !SHELL_CHAINING.test(cmd2)) return null;
     const writes = firstMatch(WRITE_COMMANDS, cmd2);
     if (writes) {
+      if (role === "reviewer") return deny(`the reviewer is read-only (this command ${writes.why})`);
       const st = gateState(p);
       if (!st.open) return deny(`this command ${writes.why}. ${closedReason(st)} Use the Write tool for files in ${AIDW_DIR}/.`);
     }
@@ -8489,11 +8531,11 @@ function runBackstop(stdin, env, dirtyProvider = gitDirtyPaths) {
   if (!dirty) return "";
   const unexpected = unexpectedChanges(dirty, readBaseline(p));
   if (!unexpected.length) return "";
-  const list = unexpected.slice(0, 20).map((f) => `  - ${f}`).join("\n");
+  const list3 = unexpected.slice(0, 20).map((f) => `  - ${f}`).join("\n");
   const more = unexpected.length > 20 ? `
   ... and ${unexpected.length - 20} more` : "";
   const reason = `AIDW backstop: the Analysis is not approved, yet these files outside ${AIDW_DIR}/ changed since the change was created:
-${list}${more}
+${list3}${more}
 Do not delete or revert anything yourself: some of these may be the user's own edits. Tell the user which of these you created or modified in this session and ask how to proceed. Until approval, write only inside .aidw/.`;
   if (input.stop_hook_active) {
     return JSON.stringify({ systemMessage: reason });
@@ -8789,12 +8831,12 @@ function projectStatus(p, only) {
       let tasks = null;
       if (tasksText !== null) {
         const byStatus = {};
-        const list = parseTasks(tasksText).tasks;
-        for (const t of list) {
+        const list3 = parseTasks(tasksText).tasks;
+        for (const t of list3) {
           const s = String(t?.status ?? "pending");
           byStatus[s] = (byStatus[s] ?? 0) + 1;
         }
-        tasks = { total: list.length, done: byStatus.done ?? 0, byStatus };
+        tasks = { total: list3.length, done: byStatus.done ?? 0, byStatus };
       }
       const paused = c.data.run?.paused ?? null;
       return {
@@ -8819,6 +8861,516 @@ function assertProject(p) {
   if (!isDir(p.aidw)) throw new OpError(`no .aidw/ in ${p.project}; run \`aidw init\``);
 }
 
+// src/pause.ts
+function runStopFailure(stdin, env) {
+  let input = {};
+  try {
+    input = JSON.parse(stdin);
+  } catch {
+  }
+  const project = findProject({ cwd: input.cwd ?? process.cwd(), env });
+  if (!project) return [];
+  const p = pathsFor(project);
+  const reason = String(input.error ?? input.error_type ?? "stop_failure").slice(0, 200);
+  const paused = [];
+  for (const id of listChangeIds(p)) {
+    try {
+      const state = stateOf(loadChange(p, id));
+      if (state && TRANSITIONS[state].includes("paused")) {
+        transition(p, id, "paused", { reason });
+        paused.push(id);
+      }
+    } catch {
+    }
+  }
+  return paused;
+}
+
+// src/run.ts
+var import_node_child_process3 = require("node:child_process");
+var import_node_fs8 = require("node:fs");
+var import_node_path9 = require("node:path");
+var import_yaml3 = __toESM(require_dist(), 1);
+
+// src/git.ts
+var import_node_child_process2 = require("node:child_process");
+function git(cwd, args) {
+  const r = (0, import_node_child_process2.spawnSync)("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024 });
+  return { ok: r.status === 0, out: (r.stdout ?? "").trim(), err: (r.stderr ?? "").trim() || (r.error?.message ?? "") };
+}
+function isGitRepo(cwd) {
+  return git(cwd, ["rev-parse", "--is-inside-work-tree"]).out === "true";
+}
+function headCommit(cwd) {
+  const r = git(cwd, ["rev-parse", "--verify", "-q", "HEAD"]);
+  return r.ok && r.out ? r.out : null;
+}
+function changedSince(cwd, base) {
+  if (!isGitRepo(cwd)) return null;
+  const files = /* @__PURE__ */ new Set();
+  const diff = base ? git(cwd, ["diff", "--name-only", base]) : git(cwd, ["diff", "--name-only", "--cached"]);
+  if (!diff.ok) return null;
+  for (const f of diff.out.split("\n")) if (f) files.add(f);
+  if (!base) {
+    for (const f of git(cwd, ["diff", "--name-only"]).out.split("\n")) if (f) files.add(f);
+  }
+  for (const f of git(cwd, ["ls-files", "--others", "--exclude-standard"]).out.split("\n")) if (f) files.add(f);
+  return [...files].sort();
+}
+
+// src/glob.ts
+function globToRegExp(glob) {
+  let g = glob.trim().replace(/^\.\//, "");
+  if (g.endsWith("/")) g += "**";
+  let re = "";
+  for (let i = 0; i < g.length; i++) {
+    const c = g[i];
+    if (c === "*") {
+      if (g[i + 1] === "*") {
+        const slashAfter = g[i + 2] === "/";
+        re += slashAfter ? "(?:.*/)?" : ".*";
+        i += slashAfter ? 2 : 1;
+      } else re += "[^/]*";
+    } else if (c === "?") re += "[^/]";
+    else if (c === "{") {
+      const end = g.indexOf("}", i);
+      if (end < 0) re += "\\{";
+      else {
+        re += `(?:${g.slice(i + 1, end).split(",").map((s) => s.replace(/[.+^$()|[\]\\]/g, "\\$&").replace(/\*/g, "[^/]*")).join("|")})`;
+        i = end;
+      }
+    } else re += c.replace(/[.+^$()|[\]\\}]/g, "\\$&");
+  }
+  return new RegExp(`^${re}(?:/.*)?$`);
+}
+function matchesAny(globs, path) {
+  return globs.some((g) => globToRegExp(g).test(path));
+}
+
+// src/skills.ts
+var ADDY = (name) => `addy/${name}`;
+var UI_TOUCH = /(^|\/)(components?|pages|views|layouts?|styles?|ui|public)(\/|$)|\.(tsx|jsx|vue|svelte|css|scss|html)\b|(^|\/)(src\/)?app\/(?!api\/)/;
+var API_TOUCH = /(^|\/)(api|server|routes?|actions?|trpc|graphql|controllers?|services?|handlers?|middleware)(\/|\.|$)/;
+var DATA_TOUCH = /(^|\/)(supabase|migrations?|prisma|drizzle|db|database|schema)(\/|\.|$)/;
+var SECURITY_HINT = /\b(auth|login|logout|sign-?in|sign-?up|session|password|permissions?|roles?|rls|policy|policies|payments?|stripe|checkout|billing|webhooks?|middleware|admin|tokens?|secrets?)\b/i;
+var BROWSER_VERIFY = /\b(playwright|cypress|e2e)\b/i;
+var list = (v) => Array.isArray(v) ? v.map(String) : [];
+function isSecuritySensitive(t) {
+  if (t.risk === "high") return true;
+  const text = [t.title ?? "", ...list(t.touches), ...list(t.specs), ...list(t.scenarios)].join(" ").replace(/[/_.-]/g, " ");
+  return SECURITY_HINT.test(text);
+}
+function touchesUi(t) {
+  return list(t.touches).some((g) => UI_TOUCH.test(g));
+}
+function selectSkills(t, kind, opts = {}) {
+  const picks = [];
+  const add = (name, reason) => {
+    const id = name.includes("/") ? name : ADDY(name);
+    if (!picks.some((p) => p.id === id)) picks.push({ id, reason });
+  };
+  const touches = list(t.touches);
+  const role = String(t.role ?? "");
+  if (kind === "review") {
+    add("code-review-and-quality", "every review");
+    if (isSecuritySensitive(t)) add("security-and-hardening", "security-sensitive task (risk or auth/payment/permissions)");
+    return picks;
+  }
+  add("incremental-implementation", "core: every implementation task");
+  add("test-driven-development", "core: tests per scenario before code");
+  const ui = touchesUi(t) || role === "frontend-engineer";
+  const api = touches.some((g) => API_TOUCH.test(g)) || role === "backend-engineer";
+  const data = touches.some((g) => DATA_TOUCH.test(g)) || role === "database-engineer";
+  if (ui) add("frontend-ui-engineering", "touches UI files");
+  if (api) add("api-and-interface-design", "touches API or server code");
+  else if (data) add("api-and-interface-design", "touches the data layer (schema is an interface)");
+  if (isSecuritySensitive(t)) add("security-and-hardening", "security-sensitive task (risk or auth/payment/permissions)");
+  if (list(t.verify).some((v) => BROWSER_VERIFY.test(v))) add("browser-testing-with-devtools", "verify runs browser/E2E tests");
+  if (opts.retry) add("debugging-and-error-recovery", "previous attempt failed");
+  for (const s of list(t.skills)) add(s, "requested by the task (tasks.yaml skills:)");
+  return picks;
+}
+
+// src/run.ts
+var now2 = () => (/* @__PURE__ */ new Date()).toISOString();
+var list2 = (v) => Array.isArray(v) ? v.map(String) : [];
+function loadTasks(p, id) {
+  const change = loadChange(p, id);
+  const file = (0, import_node_path9.join)(change.dir, "tasks.yaml");
+  const text = readText(file);
+  if (text === null) throw new OpError(`change "${id}" has no tasks.yaml`);
+  const d = validateTasksText(text, rel(p, file));
+  if (d.errors.length) throw new OpError(`tasks.yaml of "${id}" is invalid`, d);
+  return { change, file, doc: import_yaml3.default.parseDocument(text), tasks: parseTasks(text).tasks };
+}
+function saveTasks(tf) {
+  const text = String(tf.doc);
+  (0, import_node_fs8.writeFileSync)(tf.file, text);
+  tf.tasks = parseTasks(text).tasks;
+}
+function indexOf(tf, taskId) {
+  const i = tf.tasks.findIndex((t) => t.id === taskId);
+  if (i < 0) throw new OpError(`task "${taskId}" not found in ${tf.change.id}/tasks.yaml`);
+  return i;
+}
+function setField(tf, i, key, value) {
+  if (value === void 0 || value === null) tf.doc.deleteIn(["tasks", i, key]);
+  else tf.doc.setIn(["tasks", i, key], value);
+}
+var statusOf = (t) => String(t.status ?? "pending");
+var attemptsOf = (t) => Number.isInteger(t.attempts) ? Number(t.attempts) : 0;
+var maxAttemptsOf = (t) => Number.isInteger(t.max_attempts) ? Number(t.max_attempts) : DEFAULT_MAX_ATTEMPTS;
+function requireExecuting(p, change) {
+  const state = stateOf(change);
+  if (state !== "executing") {
+    const hint = state === "approved" ? `run \`aidw transition ${change.id} executing\` first` : state === "paused" ? `run \`aidw transition ${change.id} resume\` first` : "tasks run only in state executing";
+    throw new OpError(`change "${change.id}" is "${String(change.data.state)}": ${hint}`);
+  }
+  if (approvalStatus(p, change).status !== "valid") {
+    throw new OpError(`approval drift in "${change.id}": escalate and re-approve before running tasks`);
+  }
+}
+function nextAction(p, id) {
+  const tf = loadTasks(p, id);
+  requireExecuting(p, tf.change);
+  const byId = new Map(tf.tasks.map((t) => [t.id, t]));
+  const title = (t) => String(t.title ?? "");
+  for (const t of tf.tasks) if (statusOf(t) === "review") return { action: "review", task: t.id, title: title(t) };
+  for (const t of tf.tasks) if (statusOf(t) === "running") return { action: "implement", task: t.id, title: title(t), reason: "interrupted" };
+  for (const t of tf.tasks) {
+    if (statusOf(t) === "escalated") return { action: "escalate", task: t.id, reason: `task ${t.id} is escalated: ${String(t.notes ?? "needs the user")}` };
+  }
+  for (const t of tf.tasks) {
+    if (statusOf(t) !== "failed") continue;
+    if (attemptsOf(t) >= maxAttemptsOf(t)) {
+      return { action: "escalate", task: t.id, reason: `task ${t.id} failed ${attemptsOf(t)} of ${maxAttemptsOf(t)} attempts: ${String(t.notes ?? "")}` };
+    }
+    return { action: "implement", task: t.id, title: title(t), reason: "retry" };
+  }
+  for (const t of tf.tasks) {
+    if (statusOf(t) !== "pending") continue;
+    if (list2(t.depends_on).every((d) => statusOf(byId.get(d) ?? { id: d }) === "done")) {
+      return { action: "implement", task: t.id, title: title(t), reason: "new" };
+    }
+  }
+  const open = tf.tasks.filter((t) => statusOf(t) !== "done");
+  if (open.length === 0) return { action: "complete", done: tf.tasks.length };
+  const waiting = open.map((t) => `${t.id} (${statusOf(t)}${list2(t.depends_on).length ? `, needs ${list2(t.depends_on).join(", ")}` : ""})`);
+  return { action: "escalate", reason: `no runnable task: ${waiting.join("; ")}` };
+}
+function startTask(p, id, taskId) {
+  const tf = loadTasks(p, id);
+  requireExecuting(p, tf.change);
+  const i = indexOf(tf, taskId);
+  const t = tf.tasks[i];
+  const status = statusOf(t);
+  const byId = new Map(tf.tasks.map((x) => [x.id, x]));
+  if (status === "pending") {
+    const missing = list2(t.depends_on).filter((d) => statusOf(byId.get(d) ?? { id: d }) !== "done");
+    if (missing.length) throw new OpError(`task ${taskId} depends on unfinished task(s): ${missing.join(", ")}`);
+  } else if (status !== "failed" && status !== "running") {
+    throw new OpError(`task ${taskId} is "${status}"; only pending, failed or interrupted (running) tasks can start`);
+  }
+  const resumed = status === "running";
+  const attempt = resumed ? Math.max(attemptsOf(t), 1) : attemptsOf(t) + 1;
+  const max = maxAttemptsOf(t);
+  if (attempt > max) {
+    setField(tf, i, "status", "escalated");
+    setField(tf, i, "notes", `attempts exhausted (${max}); last: ${String(t.notes ?? "unknown")}`);
+    saveTasks(tf);
+    throw new OpError(`task ${taskId} used all ${max} attempts; it is now escalated`);
+  }
+  const base = typeof t.base === "string" ? t.base : status === "pending" ? headCommit(p.project) : null;
+  setField(tf, i, "status", "running");
+  setField(tf, i, "attempts", attempt);
+  if (!t.started_at) setField(tf, i, "started_at", now2());
+  if (base) setField(tf, i, "base", base);
+  saveTasks(tf);
+  return { task: taskId, attempt, maxAttempts: max, base, resumed };
+}
+function retryTask(p, id, taskId) {
+  const tf = loadTasks(p, id);
+  requireExecuting(p, tf.change);
+  const i = indexOf(tf, taskId);
+  const t = tf.tasks[i];
+  if (statusOf(t) !== "escalated" && statusOf(t) !== "failed") {
+    throw new OpError(`task ${taskId} is "${statusOf(t)}"; only escalated or failed tasks can be retried`);
+  }
+  setField(tf, i, "status", "failed");
+  setField(tf, i, "attempts", 0);
+  setField(tf, i, "notes", `retry granted by the user; before: ${String(t.notes ?? "")}`.slice(0, 500));
+  saveTasks(tf);
+  return { task: taskId };
+}
+var SKIP_DIRS = /* @__PURE__ */ new Set(["node_modules", ".git", ".aidw", ".next", ".nuxt", ".svelte-kit", ".turbo", ".vercel", "dist", "build", "out", "coverage", "playwright-report", "test-results"]);
+var TEST_FILE = /(^|\/)(__tests__|tests?|e2e|specs?)\/|\.(test|spec|e2e)\.[a-z0-9]+$/i;
+var MAX_TEST_FILE = 1024 * 1024;
+function walkProject(dir, root, out) {
+  let names;
+  try {
+    names = (0, import_node_fs8.readdirSync)(dir);
+  } catch {
+    return;
+  }
+  for (const name of names.sort()) {
+    if (SKIP_DIRS.has(name)) continue;
+    const full = (0, import_node_path9.join)(dir, name);
+    let st;
+    try {
+      st = (0, import_node_fs8.statSync)(full);
+    } catch {
+      continue;
+    }
+    if (st.isDirectory()) walkProject(full, root, out);
+    else if (st.size <= MAX_TEST_FILE) out.push((0, import_node_path9.relative)(root, full).split(import_node_path9.sep).join("/"));
+  }
+}
+function testFiles(project) {
+  const all = [];
+  walkProject(project, project, all);
+  return all.filter((f) => TEST_FILE.test(f));
+}
+function findScenarioTests(project, ids) {
+  const found = Object.fromEntries(ids.map((s) => [s, []]));
+  if (!ids.length) return found;
+  const patterns = ids.map((s) => [s, new RegExp(`(^|[^a-z0-9/-])${s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![a-z0-9/-])`)]);
+  for (const f of testFiles(project)) {
+    const lines = (0, import_node_fs8.readFileSync)((0, import_node_path9.join)(project, f), "utf8").split(/\r?\n/);
+    lines.forEach((line, n) => {
+      for (const [s, re] of patterns) if (re.test(line)) found[s]?.push(`${f}:${n + 1}`);
+    });
+  }
+  return found;
+}
+var evidenceRel = (taskId) => `evidence/${taskId}.json`;
+function readEvidence(change, t) {
+  const file = (0, import_node_path9.join)(change.dir, evidenceRel(t.id));
+  if ((0, import_node_fs8.existsSync)(file)) {
+    try {
+      return JSON.parse((0, import_node_fs8.readFileSync)(file, "utf8"));
+    } catch {
+    }
+  }
+  return { task: t.id, title: String(t.title ?? ""), checkpoints: [], reviews: [] };
+}
+function writeEvidence(change, ev) {
+  const file = (0, import_node_path9.join)(change.dir, evidenceRel(ev.task));
+  (0, import_node_fs8.mkdirSync)((0, import_node_path9.join)(change.dir, "evidence"), { recursive: true });
+  (0, import_node_fs8.writeFileSync)(file, `${JSON.stringify(ev, null, 2)}
+`);
+}
+var tailOf = (s, lines = 60) => s.split(/\r?\n/).slice(-lines).join("\n").trim();
+var shellRunner = (command, cwd, timeoutMs) => {
+  const r = (0, import_node_child_process3.spawnSync)(command, { cwd, shell: true, encoding: "utf8", timeout: timeoutMs, maxBuffer: 64 * 1024 * 1024 });
+  const timedOut = r.error?.code === "ETIMEDOUT";
+  return { exit: r.status, timedOut, tail: tailOf(`${r.stdout ?? ""}
+${r.stderr ?? ""}`) };
+};
+function checkpoint(p, id, taskId, opts = {}) {
+  const tf = loadTasks(p, id);
+  requireExecuting(p, tf.change);
+  const i = indexOf(tf, taskId);
+  const t = tf.tasks[i];
+  if (statusOf(t) !== "running") throw new OpError(`task ${taskId} is "${statusOf(t)}"; checkpoint needs a running task (aidw task start ${taskId})`);
+  const scenarios = findScenarioTests(p.project, list2(t.scenarios));
+  const missing = Object.entries(scenarios).filter(([, locs]) => locs.length === 0).map(([s]) => s);
+  const base = typeof t.base === "string" ? t.base : null;
+  const changed = changedSince(p.project, base)?.filter((f) => !f.startsWith(".aidw/")) ?? null;
+  const touches = list2(t.touches);
+  const outside = changed ? changed.filter((f) => !matchesAny(touches, f)) : [];
+  const runner = opts.runner ?? shellRunner;
+  const timeoutMs = opts.timeoutMs ?? 15 * 60 * 1e3;
+  const verify = [];
+  for (const command of list2(t.verify)) {
+    const started = Date.now();
+    const r = runner(command, p.project, timeoutMs);
+    verify.push({ command, ms: Date.now() - started, ...r });
+    if (r.exit !== 0) break;
+  }
+  const verifyOk = verify.length === list2(t.verify).length && verify.every((v) => v.exit === 0);
+  const ok = verifyOk && missing.length === 0;
+  const record = {
+    attempt: attemptsOf(t),
+    at: now2(),
+    ok,
+    base,
+    scenarios,
+    missing_scenarios: missing,
+    verify,
+    changed_files: changed,
+    outside_touches: outside
+  };
+  const ev = readEvidence(tf.change, t);
+  ev.checkpoints.push(record);
+  writeEvidence(tf.change, ev);
+  const problems = [];
+  if (missing.length) problems.push(`no test names scenario ${missing.join(", ")}`);
+  const failed = verify.find((v) => v.exit !== 0);
+  if (failed) problems.push(`verify failed: \`${failed.command}\`${failed.timedOut ? " (timed out)" : ` (exit ${failed.exit})`}`);
+  setField(tf, i, "status", ok ? "review" : "failed");
+  setField(tf, i, "evidence", evidenceRel(taskId));
+  setField(tf, i, "notes", ok ? null : `checkpoint: ${problems.join("; ")}`);
+  saveTasks(tf);
+  return { ...record, task: taskId, status: ok ? "review" : "failed", evidence: rel(p, (0, import_node_path9.join)(tf.change.dir, evidenceRel(taskId))) };
+}
+function recordReview(p, id, taskId, verdict, notes, opts = {}) {
+  const tf = loadTasks(p, id);
+  requireExecuting(p, tf.change);
+  const i = indexOf(tf, taskId);
+  const t = tf.tasks[i];
+  if (statusOf(t) !== "review") throw new OpError(`task ${taskId} is "${statusOf(t)}"; only a checkpointed task (review) can be reviewed`);
+  const ev = readEvidence(tf.change, t);
+  ev.reviews.push({ attempt: attemptsOf(t), at: now2(), verdict, notes: notes.trim() });
+  writeEvidence(tf.change, ev);
+  if (verdict === "fix") {
+    const exhausted = attemptsOf(t) >= maxAttemptsOf(t);
+    setField(tf, i, "status", exhausted ? "escalated" : "failed");
+    setField(tf, i, "notes", `review requested fixes (see ${evidenceRel(taskId)})${exhausted ? "; attempts exhausted" : ""}`);
+    saveTasks(tf);
+    return { task: taskId, verdict, status: exhausted ? "escalated" : "failed", commit: null };
+  }
+  setField(tf, i, "status", "done");
+  setField(tf, i, "notes", null);
+  setField(tf, i, "finished_at", now2());
+  saveTasks(tf);
+  if (opts.commit === false) return { task: taskId, verdict, status: "done", commit: null };
+  if (!isGitRepo(p.project)) return { task: taskId, verdict, status: "done", commit: null, warning: "not a git repository: task not committed" };
+  const add = git(p.project, ["add", "-A"]);
+  const msg = `${taskId}: ${String(t.title ?? "")}
+
+aidw change ${id}, task ${taskId}. Checkpoint and review evidence: .aidw/changes/${id}/${evidenceRel(taskId)}`;
+  const commit = add.ok ? git(p.project, ["commit", "-q", "-m", msg]) : add;
+  if (!commit.ok) {
+    setField(tf, i, "status", "review");
+    setField(tf, i, "finished_at", null);
+    saveTasks(tf);
+    throw new OpError(`task ${taskId} passed review but the commit failed: ${commit.err || commit.out}`);
+  }
+  return { task: taskId, verdict, status: "done", commit: headCommit(p.project) };
+}
+function pointer(p, file, what) {
+  return (0, import_node_fs8.existsSync)(file) ? `- \`${rel(p, file)}\`: ${what}` : null;
+}
+function adrPointers(p) {
+  return walkFiles(p.decisions).filter((f) => f.endsWith(".md")).map((f) => {
+    const title = ((0, import_node_fs8.readFileSync)(f, "utf8").match(/^#\s+(.+)$/m)?.[1] ?? "").trim();
+    return `- \`${rel(p, f)}\`${title ? `: ${title}` : ""}`;
+  });
+}
+function buildBrief(p, id, taskId, kind, vendorDir) {
+  const tf = loadTasks(p, id);
+  const t = tf.tasks[indexOf(tf, taskId)];
+  const status = statusOf(t);
+  const ev = readEvidence(tf.change, t);
+  const lastCheckpoint = ev.checkpoints.at(-1);
+  const lastReview = ev.reviews.at(-1);
+  const reviewIsLatest = !!lastReview && (!lastCheckpoint || lastReview.at >= lastCheckpoint.at);
+  const failedCheckpoint = !reviewIsLatest && lastCheckpoint && !lastCheckpoint.ok ? lastCheckpoint : void 0;
+  const fixReview = reviewIsLatest && lastReview?.verdict === "fix" ? lastReview : void 0;
+  const retry = kind === "implement" && (!!failedCheckpoint || !!fixReview);
+  const skills = selectSkills(t, kind, { retry }).map((s) => ({ ...s, path: (0, import_node_path9.join)(vendorDir, ...s.id.split("/"), "SKILL.md") }));
+  const reqs = requirementsAfterChange(p, id);
+  const scenarioIds = list2(t.scenarios);
+  const reqIds = [.../* @__PURE__ */ new Set([...list2(t.specs), ...scenarioIds.map((s) => s.split("/").slice(0, -1).join("/"))])];
+  const reqBlocks = reqIds.map((r) => {
+    const req = reqs.get(r);
+    return req ? `<!-- ${r} -->
+${req.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`;
+  });
+  const done = list2(t.depends_on).map((d) => {
+    const dep = tf.tasks.find((x) => x.id === d);
+    return `- ${d}: ${String(dep?.title ?? "")} (${dep ? statusOf(dep) : "unknown"})`;
+  });
+  const base = typeof t.base === "string" ? t.base : null;
+  const priorWork = kind === "implement" && status === "running" && base !== null && (changedSince(p.project, base) ?? []).some((f) => !f.startsWith(".aidw/"));
+  const pointers = [
+    pointer(p, p.constitution, "engineering principles every agent follows"),
+    pointer(p, (0, import_node_path9.join)(p.domain, "model.md"), "glossary, entities, business rules"),
+    pointer(p, (0, import_node_path9.join)(p.architecture, "overview.md"), "architecture, folder structure, integrations"),
+    pointer(p, (0, import_node_path9.join)(p.requirements, `${id}.md`), "user stories and implementation/testing decisions"),
+    ...touchesUi(t) ? [pointer(p, p.design, "design direction and assets (UI task)")] : []
+  ].filter((x) => x !== null);
+  const adrs = adrPointers(p);
+  const touches = list2(t.touches);
+  const verify = list2(t.verify);
+  const h = (title, body2) => body2.length ? [`## ${title}`, "", ...body2, ""] : [];
+  const header = [
+    `# ${kind === "implement" ? "Task" : "Review"} brief: ${taskId} - ${String(t.title ?? "")}`,
+    "",
+    `Change \`${id}\` \xB7 role ${String(t.role ?? "?")} \xB7 attempt ${attemptsOf(t) || 1} of ${maxAttemptsOf(t)}`,
+    ""
+  ];
+  const shared = [
+    ...h("Scenarios", scenarioIds.length ? scenarioIds.map((s) => `- \`${s}\``) : ["- (none: this task is verified by its verify commands only)"]),
+    ...h("Requirements (spec text after this change)", reqBlocks.length ? ["```markdown", reqBlocks.join("\n\n"), "```"] : []),
+    ...h("Builds on (finished tasks; see `git log`)", done),
+    ...h("Touches (files this task may change)", touches.map((g) => `- \`${g}\``)),
+    ...h("Verify", verify.map((v) => `- \`${v}\``)),
+    ...h("Read first (context pointers; read only what you need)", [...pointers, ...adrs]),
+    ...h("Skills (read each SKILL.md and apply it)", skills.map((s) => `- \`${s.path}\`: ${s.reason}`))
+  ];
+  let body;
+  if (kind === "implement") {
+    const previous = [];
+    if (failedCheckpoint) {
+      if (failedCheckpoint.missing_scenarios.length) previous.push(`- Missing scenario tests: ${failedCheckpoint.missing_scenarios.map((s) => `\`${s}\``).join(", ")}`);
+      const failed = failedCheckpoint.verify.find((v) => v.exit !== 0);
+      if (failed) previous.push(`- \`${failed.command}\` failed${failed.timedOut ? " (timed out)" : ` with exit ${failed.exit}`}:`, "", "```", failed.tail, "```");
+    }
+    if (fixReview) previous.push("- The reviewer asked for fixes:", "", fixReview.notes.split("\n").map((l) => `  ${l}`).join("\n"));
+    body = [
+      "You are the implementer of exactly this task, in a fresh context. Work from this brief and the files it points to.",
+      "",
+      "## Rules",
+      "",
+      "- Change only files matching **Touches**. If the task truly needs more, keep it minimal and say so in your report; never widen scope silently.",
+      "- Do not edit anything under `.aidw/`, do not run `aidw checkpoint`/`aidw review`, and do not commit, push or deploy: the orchestrator records progress and commits after an independent review.",
+      '- Test first. For every scenario, write a test whose name contains the scenario id verbatim, e.g. `test("booking/cancel-appointment/cancel-upcoming: cancels and frees the slot")`, asserting the THEN outcome. `aidw checkpoint` looks for these ids in test files.',
+      "- Run every **Verify** command yourself and make it pass before reporting.",
+      "- Report in at most 10 lines: what works now, files changed, verify result, anything the reviewer should know (e.g. files outside Touches and why).",
+      "",
+      ...priorWork ? h("Resuming", [
+        `Work from an earlier attempt or an interrupted session may already be in the working tree. Inspect it first (\`git status\`, \`git diff ${base}\`) and continue from it; do not start over.`
+      ]) : [],
+      ...h("Previous attempt", previous),
+      ...shared
+    ];
+  } else {
+    const diff = base ? `\`git diff ${base}\` plus untracked files (\`git status --porcelain\`)` : "the files matching Touches (no base commit was recorded)";
+    const outside = lastCheckpoint?.outside_touches ?? [];
+    body = [
+      "You are an independent reviewer in a fresh context. You did not write this code. You may read files and run read-only commands (tests included); you cannot edit anything.",
+      "",
+      "## What to review",
+      "",
+      `- The task's changes: ${diff}.`,
+      `- Checkpoint evidence: \`${rel(p, (0, import_node_path9.join)(tf.change.dir, evidenceRel(taskId)))}\` (verify output, where each scenario test lives).`,
+      ...outside.length ? [`- Files changed outside Touches: ${outside.map((f) => `\`${f}\``).join(", ")}. Decide whether each is justified.`] : [],
+      "",
+      "## Checklist",
+      "",
+      "1. Every scenario is implemented as the spec says, and its test really asserts the THEN outcome (not a placeholder, not mocked away).",
+      "2. Behavior matches the requirement text; nothing outside this task's scope was added.",
+      "3. Constitution, architecture and ADRs are followed.",
+      ...isSecuritySensitive(t) ? ["4. Security: authorization on every path, input validation, secrets handling, data exposure (security skill below)."] : [],
+      "",
+      "## Verdict",
+      "",
+      "Your reply starts with exactly one line: `VERDICT: pass` or `VERDICT: fix`.",
+      "For `fix`, follow with numbered blocking issues: file, problem, expected fix. Only blocking issues justify `fix`;",
+      "put anything else under `Non-blocking:`. Be concrete: the implementer will get your notes verbatim.",
+      "",
+      ...shared
+    ];
+  }
+  const text = [...header, ...body].join("\n").replace(/\n{3,}/g, "\n\n");
+  const dir = (0, import_node_path9.join)(p.run, "briefs", id);
+  (0, import_node_fs8.mkdirSync)(dir, { recursive: true });
+  const path = (0, import_node_path9.join)(dir, `${taskId}.${kind}.md`);
+  (0, import_node_fs8.writeFileSync)(path, text);
+  return { kind, task: taskId, path, text, skills };
+}
+
 // src/cli.ts
 var HELP = `aidw ${VERSION} - deterministic core of the AI Fullstack Autonomous Development Workflow
 
@@ -8837,14 +9389,27 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
   ids [<id>]                             requirement and scenario ids (after applying the change)
   vendor-path <upstream>/<skill>         absolute path of a vendored SKILL.md (e.g. pocock/grilling)
   plugin-path <path>                     absolute path of a plugin file (e.g. profiles/stack-pool.md)
+
+Execution (state executing; add --change <id> when several changes are active):
+  next                                   what the orchestrator does next (implement | review | escalate | complete)
+  task start <task>                      mark a task running (counts attempts, records the base commit)
+  task retry <task>                      user-granted fresh attempt budget for an escalated/failed task
+  brief <task> [--for implement|review]  write the context packet for a fresh subagent; prints its path
+  skills <task> [--for implement|review] vendored skills selected for the task
+  checkpoint <task> [--timeout <sec>]    evidence: a test per scenario id + every verify command passes
+  review <task> pass|fix [--notes-file F | --notes T] [--no-commit]
+                                         record the independent review; pass marks done and commits
+
+Hooks:
   gate                                   PreToolUse hook: reads hook JSON on stdin
   backstop                               Stop hook: reads hook JSON on stdin
+  stop-failure                           StopFailure hook: pauses running changes
   version
 
 States: ${STATES.join(", ")}
 Exit codes: 0 ok, 1 failed check or refused operation, 2 usage error
 `;
-var VALUE_FLAGS = /* @__PURE__ */ new Set(["root", "title", "input-type", "reason"]);
+var VALUE_FLAGS = /* @__PURE__ */ new Set(["root", "title", "input-type", "reason", "change", "for", "notes", "notes-file", "timeout"]);
 function parseArgs(argv) {
   const pos = [];
   const flags = {};
@@ -8870,9 +9435,9 @@ var UsageError = class extends Error {
 };
 function pluginRoot(env) {
   if (env.AIDW_PLUGIN_ROOT) return env.AIDW_PLUGIN_ROOT;
-  if (typeof __dirname !== "undefined") return (0, import_node_path9.join)(__dirname, "..");
+  if (typeof __dirname !== "undefined") return (0, import_node_path10.join)(__dirname, "..");
   if (env.CLAUDE_PLUGIN_ROOT) return env.CLAUDE_PLUGIN_ROOT;
-  return (0, import_node_path9.join)(process.cwd(), "plugins", "aidw");
+  return (0, import_node_path10.join)(process.cwd(), "plugins", "aidw");
 }
 function fmtDiag(d) {
   const where = d.line ? `${d.file}:${d.line}` : d.file;
@@ -8926,11 +9491,103 @@ function run(argv, env, cwd, io) {
         io.out(runBackstop(io.stdin?.() ?? "", env));
         return 0;
       }
+      case "stop-failure": {
+        try {
+          runStopFailure(io.stdin?.() ?? "", env);
+        } catch {
+        }
+        return 0;
+      }
+      case "next": {
+        const p = project();
+        const id = resolveChangeId(p, str(args.flags.change) ?? rest[0]);
+        const n = nextAction(p, id);
+        const text = n.action === "implement" ? `implement ${n.task} (${n.reason}): ${n.title}
+` : n.action === "review" ? `review ${n.task}: ${n.title}
+` : n.action === "escalate" ? `escalate: ${n.reason}
+` : `complete: all ${n.done} task(s) done
+`;
+        emit({ change: id, ...n }, text);
+        return 0;
+      }
+      case "task": {
+        if (rest[0] !== "start" && rest[0] !== "retry") throw new UsageError("usage: aidw task start|retry <task>");
+        const p = project();
+        const id = resolveChangeId(p, str(args.flags.change));
+        if (rest[0] === "retry") {
+          const r2 = retryTask(p, id, need(rest[1], "task id"));
+          emit({ ok: true, change: id, ...r2 }, `${r2.task}: retry granted (fresh attempt budget)
+`);
+          return 0;
+        }
+        const r = startTask(p, id, need(rest[1], "task id"));
+        emit(
+          { ok: true, change: id, ...r },
+          `${r.task} running: attempt ${r.attempt} of ${r.maxAttempts}${r.resumed ? " (resumed)" : ""}${r.base ? `, base ${r.base.slice(0, 8)}` : ""}
+`
+        );
+        return 0;
+      }
+      case "brief":
+      case "skills": {
+        const p = project();
+        const id = resolveChangeId(p, str(args.flags.change));
+        const taskId = need(rest[0], "task id");
+        const kind = str(args.flags.for) ?? "implement";
+        if (kind !== "implement" && kind !== "review") throw new UsageError('--for must be "implement" or "review"');
+        const b = buildBrief(p, id, taskId, kind, (0, import_node_path10.join)(pluginRoot(env), "vendor"));
+        if (cmd2 === "skills") {
+          emit({ change: id, task: taskId, for: kind, skills: b.skills }, b.skills.map((s) => `${s.path}  # ${s.reason}
+`).join(""));
+        } else {
+          emit({ change: id, task: taskId, for: kind, path: b.path, skills: b.skills }, `${b.path}
+`);
+        }
+        return 0;
+      }
+      case "checkpoint": {
+        const p = project();
+        const id = resolveChangeId(p, str(args.flags.change));
+        const timeout = str(args.flags.timeout);
+        if (timeout !== void 0 && !(Number(timeout) > 0)) throw new UsageError("--timeout must be a number of seconds");
+        const r = checkpoint(p, id, need(rest[0], "task id"), timeout ? { timeoutMs: Number(timeout) * 1e3 } : {});
+        const lines = [
+          `${r.ok ? "PASS" : "FAIL"} ${r.task} -> ${r.status}  (evidence ${r.evidence})`,
+          ...Object.entries(r.scenarios).map(([s, locs]) => `  ${locs.length ? "ok     " : "MISSING"} ${s}${locs.length ? `  ${locs[0]}` : ""}`),
+          ...r.verify.map((v) => `  ${v.exit === 0 ? "ok     " : "FAILED "} ${v.command}  (${Math.round(v.ms / 1e3)}s${v.timedOut ? ", timed out" : ""})`),
+          ...r.outside_touches.length ? [`  outside touches: ${r.outside_touches.join(", ")}`] : []
+        ];
+        const failed = r.verify.find((v) => v.exit !== 0);
+        emit({ change: id, ...r }, `${lines.join("\n")}
+${failed ? `
+--- ${failed.command} (tail)
+${failed.tail}
+` : ""}`);
+        return r.ok ? 0 : 1;
+      }
+      case "review": {
+        const p = project();
+        const id = resolveChangeId(p, str(args.flags.change));
+        const taskId = need(rest[0], "task id");
+        const verdict = need(rest[1], "verdict (pass|fix)");
+        if (verdict !== "pass" && verdict !== "fix") throw new UsageError('verdict must be "pass" or "fix"');
+        const notesFile = str(args.flags["notes-file"]);
+        const notes = notesFile ? (0, import_node_fs9.readFileSync)(notesFile, "utf8") : str(args.flags.notes) ?? "";
+        if (verdict === "fix" && !notes.trim()) throw new UsageError("a fix verdict needs --notes or --notes-file");
+        const r = recordReview(p, id, taskId, verdict, notes, { commit: args.flags["no-commit"] !== true });
+        emit(
+          { ok: true, change: id, ...r },
+          `${r.task}: review ${r.verdict} -> ${r.status}${r.commit ? ` (commit ${r.commit.slice(0, 8)})` : ""}${r.warning ? `
+  warning: ${r.warning}` : ""}
+`
+        );
+        return 0;
+      }
       case "vendor-path": {
         const ref = need(rest[0], "<upstream>/<skill>");
         if (!/^[a-z0-9-]+\/[a-z0-9-]+$/.test(ref)) throw new UsageError(`invalid vendored skill "${ref}"`);
-        const file = (0, import_node_path9.join)(pluginRoot(env), "vendor", ...ref.split("/"), "SKILL.md");
-        if (!(0, import_node_fs8.existsSync)(file)) throw new OpError(`vendored skill "${ref}" not found at ${file}`);
+        const file = (0, import_node_path10.join)(pluginRoot(env), "vendor", ...ref.split("/"), "SKILL.md");
+        if (!(0, import_node_fs9.existsSync)(file)) throw new OpError(`vendored skill "${ref}" not found at ${file}`);
         emit({ path: file }, `${file}
 `);
         return 0;
@@ -8940,8 +9597,8 @@ function run(argv, env, cwd, io) {
         if (!/^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/.test(ref) || ref.split("/").includes("..")) {
           throw new UsageError(`invalid plugin path "${ref}"`);
         }
-        const file = (0, import_node_path9.join)(pluginRoot(env), ...ref.split("/"));
-        if (!(0, import_node_fs8.existsSync)(file)) throw new OpError(`"${ref}" not found in the plugin (${file})`);
+        const file = (0, import_node_path10.join)(pluginRoot(env), ...ref.split("/"));
+        if (!(0, import_node_fs9.existsSync)(file)) throw new OpError(`"${ref}" not found in the plugin (${file})`);
         emit({ path: file }, `${file}
 `);
         return 0;
@@ -9139,7 +9796,7 @@ if (typeof require !== "undefined" && require.main === module) {
     err: (s) => process.stderr.write(s),
     stdin: () => {
       try {
-        return (0, import_node_fs8.readFileSync)(0, "utf8");
+        return (0, import_node_fs9.readFileSync)(0, "utf8");
       } catch {
         return "";
       }

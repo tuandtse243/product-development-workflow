@@ -20,4 +20,5 @@ The user has asked to approve. This is the single human gate of the workflow (Q2
 5. Report the approval hash. Explain that from now on:
    - the approved package (intake, analysis, specs, design, constitution) is frozen; changing it needs
      `aidw transition <id> escalated`, then `analyzing`, then a new approval;
-   - autonomous execution starts with the orchestrator (`/aidw:run`, workflow slice S3).
+   - autonomous execution starts with `/aidw:run` (one fresh implementer per task, checkpoint evidence,
+     independent review, a commit per task); after an interruption, `/aidw:resume`.

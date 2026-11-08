@@ -74,3 +74,9 @@ export const APPROVE_COMMAND = /(^|[\s;&|(])(?:[^\s;&|]*\/)?aidw\s+approve\b/;
 
 /** Commands that invoke the aidw CLI itself (its writes stay inside .aidw/). */
 export const AIDW_COMMAND = /^\s*(?:[^\s;&|]*\/)?aidw\s/;
+
+/** Shell syntax that chains or substitutes commands; an aidw command using it gets the full checks. */
+export const SHELL_CHAINING = /[;&|`<>]|\$\(/;
+
+/** aidw commands that record progress or change state: the orchestrator's job, never a subagent's. */
+export const AIDW_STATE_COMMAND = /(^|[\s;&|(])(?:[^\s;&|]*\/)?aidw\s+(?:task|checkpoint|review|transition|approve|archive|merge|init|change|brief)\b/;

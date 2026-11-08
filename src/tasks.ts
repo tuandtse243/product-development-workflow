@@ -1,10 +1,17 @@
 import YAML from "yaml";
 import { Diags } from "./diag.js";
 
-export const TASK_STATUSES = ["pending", "running", "done", "failed", "blocked", "escalated"] as const;
+/**
+ * pending -> running -> review -> done        (implement, checkpoint, independent review)
+ *              ^   \-> failed --/             (checkpoint or review asked for fixes; retried)
+ *              \------ escalated              (attempts exhausted; needs the user)
+ */
+export const TASK_STATUSES = ["pending", "running", "review", "done", "failed", "blocked", "escalated"] as const;
 
 /** Fields the orchestrator updates during execution; excluded from the approval hash. */
-export const RUNTIME_FIELDS = ["status", "attempts", "evidence", "started_at", "finished_at", "notes"] as const;
+export const RUNTIME_FIELDS = ["status", "attempts", "evidence", "started_at", "finished_at", "notes", "base"] as const;
+
+export const DEFAULT_MAX_ATTEMPTS = 3;
 
 export interface Task {
   id: string;
@@ -57,6 +64,10 @@ export function validateTasksText(text: string, file: string): Diags {
     if (!isStrList(t.touches) || t.touches.length === 0) d.error(file, `${where} needs a non-empty "touches" list of file globs`);
     if (!isStrList(t.verify) || t.verify.length === 0) d.error(file, `${where} needs a non-empty "verify" list`);
     if (t.depends_on !== undefined && !isStrList(t.depends_on)) d.error(file, `${where}: "depends_on" must be a list of task ids`);
+    if (t.skills !== undefined && !isStrList(t.skills)) d.error(file, `${where}: "skills" must be a list of vendored skill names`);
+    if (t.max_attempts !== undefined && !(Number.isInteger(t.max_attempts) && Number(t.max_attempts) >= 1)) {
+      d.error(file, `${where}: "max_attempts" must be a positive integer`);
+    }
     if (t.status !== undefined && !(TASK_STATUSES as readonly string[]).includes(String(t.status))) {
       d.error(file, `${where}: unknown status "${String(t.status)}" (expected ${TASK_STATUSES.join(", ")})`);
     }

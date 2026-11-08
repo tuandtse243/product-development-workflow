@@ -19,9 +19,11 @@ import {
   AIDW_COMMAND,
   APPROVE_COMMAND,
   ASK_COMMANDS,
+  AIDW_STATE_COMMAND,
   FORBIDDEN_COMMANDS,
   firstMatch,
   SECRET_PATHS,
+  SHELL_CHAINING,
   WRITE_COMMANDS,
 } from "./policy.js";
 
@@ -88,6 +90,12 @@ function isFrozenPackageFile(p: Paths, file: string, frozen: string[]): boolean 
   return false;
 }
 
+/** aidw subagent role from the hook's agent_type ("aidw:reviewer", "reviewer", ...). */
+export function agentRole(agentType: string | undefined): "implementer" | "reviewer" | null {
+  const name = (agentType ?? "").split(":").pop();
+  return name === "implementer" || name === "reviewer" ? name : null;
+}
+
 const deny = (reason: string): Decision => ({ decision: "deny", reason: `AIDW: ${reason}` });
 const ask = (reason: string): Decision => ({ decision: "ask", reason: `AIDW: ${reason}` });
 const allow = (reason: string): Decision => ({ decision: "allow", reason: `AIDW: ${reason}` });
@@ -113,6 +121,8 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
     return secret && !inside(project, resolve(cwd, file)) ? deny(`reading ${secret.why} is forbidden (tier x)`) : null;
   }
 
+  const role = agentRole(input.agent_type);
+
   if (tool === "Write" || tool === "Edit" || tool === "MultiEdit" || tool === "NotebookEdit") {
     const raw = String(ti.file_path ?? ti.notebook_path ?? "");
     if (!raw) return null;
@@ -121,6 +131,10 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
     if (secret && !inside(project, file)) return deny(`writing ${secret.why} is forbidden (tier x)`);
     if (!inside(project, file)) return null; // outside the project: normal permission rules apply
 
+    if (role === "reviewer") return deny("the reviewer is read-only; report issues in the verdict instead of fixing them");
+    if (role === "implementer" && inside(p.aidw, file)) {
+      return deny("implementers do not write .aidw/; the orchestrator records progress and evidence");
+    }
     const st = gateState(p);
     if (inside(p.aidw, file)) {
       if (isFrozenPackageFile(p, file, st.frozen)) {
@@ -137,14 +151,21 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
     const cmd = String(ti.command ?? "");
     const forbidden = firstMatch(FORBIDDEN_COMMANDS, cmd) ?? firstMatch(SECRET_PATHS, cmd);
     if (forbidden) return deny(`command ${forbidden.why}; forbidden (tier x)`);
+    if (role && AIDW_STATE_COMMAND.test(cmd)) {
+      return deny(`the ${role} does not change aidw state (no self-verification); report back to the orchestrator`);
+    }
     if (APPROVE_COMMAND.test(cmd)) {
       return ask("approving the Analysis package is the user's decision. Approve only if you (the user) reviewed analysis.md.");
     }
     const risky = firstMatch(ASK_COMMANDS, cmd);
     if (risky) return ask(`this command ${risky.why}; it needs your confirmation (tier 2/3)`);
-    if (AIDW_COMMAND.test(cmd)) return null;
+    if (role && /\bgit\s+(?:commit|merge|rebase|reset|tag|cherry-pick|revert)\b/.test(cmd)) {
+      return deny(`the ${role} does not commit; the orchestrator commits each task after review`);
+    }
+    if (AIDW_COMMAND.test(cmd) && !SHELL_CHAINING.test(cmd)) return null;
     const writes = firstMatch(WRITE_COMMANDS, cmd);
     if (writes) {
+      if (role === "reviewer") return deny(`the reviewer is read-only (this command ${writes.why})`);
       const st = gateState(p);
       if (!st.open) return deny(`this command ${writes.why}. ${closedReason(st)} Use the Write tool for files in ${AIDW_DIR}/.`);
     }

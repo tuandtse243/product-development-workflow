@@ -63,27 +63,49 @@ export function mainSpecIds(p: Paths): IdIndex {
  * main specs with every delta applied in memory.
  */
 export function idsAfterChange(p: Paths, id: string): { ids: IdIndex; changed: IdIndex } {
-  const change = loadChange(p, id);
   const ids: IdIndex = { requirements: new Set(), scenarios: new Set() };
   const changed: IdIndex = { requirements: new Set(), scenarios: new Set() };
-  const deltas = deltaFiles(p, change, new Diags());
-  const touched = new Set(deltas.map((d) => d.capability));
-
-  for (const f of walkFiles(p.specs)) {
-    const cap = capabilityOf(p.specs, f);
-    if (cap && !touched.has(cap)) indexSpec(cap, readFileSync(f, "utf8"), ids);
-  }
-  for (const df of deltas) {
-    const deltaText = readFileSync(df.file, "utf8");
-    const merged = applyDelta(readText(df.mainFile), deltaText, df.capability);
-    indexSpec(df.capability, merged.ok && merged.text ? merged.text : (readText(df.mainFile) ?? ""), ids);
+  const { specs, deltas } = specsAfterChange(p, id);
+  for (const [cap, text] of specs) indexSpec(cap, text, ids);
+  for (const [cap, deltaText] of deltas) {
     const delta = parseDelta(deltaText);
     for (const r of [...delta.added, ...delta.modified]) {
-      changed.requirements.add(reqId(df.capability, r.name));
-      for (const s of r.scenarios) changed.scenarios.add(scenarioId(df.capability, r.name, s.name));
+      changed.requirements.add(reqId(cap, r.name));
+      for (const s of r.scenarios) changed.scenarios.add(scenarioId(cap, r.name, s.name));
     }
   }
   return { ids, changed };
+}
+
+/** Spec text per capability as it will be after this change (deltas applied in memory). */
+export function specsAfterChange(p: Paths, id: string): { specs: Map<string, string>; deltas: Map<string, string> } {
+  const change = loadChange(p, id);
+  const specs = new Map<string, string>();
+  const deltas = new Map<string, string>();
+  const files = deltaFiles(p, change, new Diags());
+  const touched = new Set(files.map((d) => d.capability));
+  for (const f of walkFiles(p.specs)) {
+    const cap = capabilityOf(p.specs, f);
+    if (cap && !touched.has(cap)) specs.set(cap, readFileSync(f, "utf8"));
+  }
+  for (const df of files) {
+    const deltaText = readFileSync(df.file, "utf8");
+    deltas.set(df.capability, deltaText);
+    const merged = applyDelta(readText(df.mainFile), deltaText, df.capability);
+    specs.set(df.capability, merged.ok && merged.text ? merged.text : (readText(df.mainFile) ?? ""));
+  }
+  return { specs, deltas };
+}
+
+/** Requirement blocks by id (`<capability>/<requirement>`) after this change. */
+export function requirementsAfterChange(p: Paths, id: string): Map<string, { capability: string; raw: string; scenarios: string[] }> {
+  const out = new Map<string, { capability: string; raw: string; scenarios: string[] }>();
+  for (const [cap, text] of specsAfterChange(p, id).specs) {
+    for (const r of parseSpec(text).requirements) {
+      out.set(reqId(cap, r.name), { capability: cap, raw: r.raw, scenarios: r.scenarios.map((s) => scenarioId(cap, r.name, s.name)) });
+    }
+  }
+  return out;
 }
 
 function checkAnalysisDoc(text: string, file: string, d: Diags): void {

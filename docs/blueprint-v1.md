@@ -289,6 +289,12 @@ aidw vendor sync [pocock|addy]  -> clone upstream tam, diff voi ban vendor,
 
 ## 8. Agent roster [C Q4 / P chi tiết]
 
+> **Cập nhật S3 (D-23, đóng OPEN-10):** task được cắt theo lát dọc (Pocock `to-tickets`), nên phần thực thi dùng
+> **hai agent**: `aidw:implementer` (một lát, context mới, skill chọn theo task) và `aidw:reviewer` (chỉ đọc,
+> context mới). Các vai chuyên môn trong bảng dưới không còn là agent riêng khi implement: chúng trở thành
+> **bộ skill** do `aidw skills` chọn theo `touches`/`risk`/`verify`. Các reviewer chuyên biệt (ui, security,
+> qa) vẫn là kế hoạch cho S4/S7. Chi tiết ở §24.
+
 **Orchestrator = phiên chính** chạy skill `aidw:run`, **không phải subagent** [P-01]. Lý do:
 1. Phiên chính spawn được subagent và nói chuyện được với người dùng khi có escalation.
 2. State nằm hoàn toàn trong `bin/aidw`.
@@ -327,7 +333,7 @@ aidw vendor sync [pocock|addy]  -> clone upstream tam, diff voi ban vendor,
   verify:
     - pnpm vitest run lib/booking
     - pnpm tsc --noEmit
-  status: pending        # pending|running|done|failed|blocked|escalated
+  status: pending        # pending|running|review|done|failed|blocked|escalated
   attempts: 0
   max_attempts: 3
   evidence: evidence/tasks/T07.md
@@ -498,7 +504,7 @@ Vòng dev: `claude --plugin-dir ./plugins/aidw` trong thư mục fixture. Cài t
 |---|---|---|
 | S1 | `aidw` CLI: format `.aidw/`, validate, merge, hash, status + unit test | Test pass, merge deterministic. **Xong 2026-11-08**: init, change new, status, validate, approve, approval check, transition, merge, archive; 31 test |
 | S2 | `init`, `start` (adapter Pocock), analysis package, `analyze`, `approve`, gate hook | Tiêu chí [1][2][3]. **Code xong 2026-11-08** (xem §23); [2][3] có test, [1] chờ chạy thật |
-| S3 | Orchestrator tuần tự, task contract, checkpoint, `/aidw:resume` | [4][5] |
+| S3 | Orchestrator tuần tự, task contract, checkpoint, `/aidw:resume` | [4][5]. **Code xong 2026-11-08** (xem §24); [4][5] có test và chạy thử bằng bin, chờ chạy với Claude Code thật |
 | S4 | Quality: code/unit/integration/e2e, preview deploy | [6] |
 | S5 | Converge, archive/merge, deliver | [7][8] → **Mốc A** |
 | S6 | 4 design mode | |
@@ -561,6 +567,9 @@ Spike nằm ở scratchpad của phiên, không nằm trong repo. Khi làm S2 s�
 7. Vai của `improve-codebase-architecture` (Pocock) và `deprecation-and-migration` (Addy) cho brownfield (S10).
 8. JD thật để làm fixture số 1.
 9. `bashEditDiff` ở PostToolUse có dùng được trong permission mode của workflow không (§12).
+10. ~~Lát dọc và agent theo chuyên môn~~: **đóng bởi D-23** (§24).
+11. Giá trị thật của `agent_type` cho plugin agent (`aidw:implementer` hay `implementer`): gate chấp nhận cả hai, cần xác nhận khi chạy thật.
+12. Input của hook `StopFailure` (tên field lỗi): `aidw stop-failure` đọc `error`, nếu không có thì ghi `stop_failure`. Cần xác nhận khi chạy thật.
 
 ## 23. Nhật ký triển khai S2 (2026-11-08)
 
@@ -605,3 +614,54 @@ Spike nằm ở scratchpad của phiên, không nằm trong repo. Khi làm S2 s�
 | Chi phí token khi chạy song song | Chỉ chạy song song khi `touches` tách biệt và đáng giá, context gọn |
 | Ghi file lọt qua Bash | Stop hook phát hiện, revert hoặc escalate [V] |
 | Thay đổi nền tảng Claude Code | Gom phần phụ thuộc runtime vào plugin layer. `.aidw/` và task contract độc lập runtime (Q8) |
+
+## 24. Nhật ký triển khai S3 (2026-11-08)
+
+**Quyết định (D-23, phương án a+):**
+1. **Orchestrator mỏng ở phiên chính** (`/aidw:run`), không đọc/viết code. Mỗi task chạy trong **một subagent mới**
+   (`aidw:implementer`), chỉ nhận đường dẫn brief. Đây là mẫu `implement-spec` của Pocock (frontier, subagent mới
+   mỗi ticket, giao tiếp qua context pointer) cộng governance của aidw. Chạy **tuần tự**; song song để S8.
+2. **Skill chọn theo task** (`src/skills.ts`, tất định): lõi `incremental-implementation` + `test-driven-development`;
+   UI → `frontend-ui-engineering`; API/data → `api-and-interface-design`; auth/payment/permissions/RLS hoặc
+   `risk: high` → `security-and-hardening`; verify có playwright/cypress/e2e → `browser-testing-with-devtools`;
+   retry → `debugging-and-error-recovery`; `skills:` trong task để thêm tay. **Không có tín hiệu thì không nạp**
+   (lần chạy thử phát hiện luật "fullstack thì nạp cả frontend lẫn API" là lãng phí, đã bỏ). Reviewer:
+   `code-review-and-quality` (+ security khi nhạy cảm). Thường 2–4 skill mỗi task thay vì 13.
+3. **Bằng chứng theo scenario do máy kiểm** (`aidw checkpoint`): mỗi scenario id của task phải xuất hiện
+   nguyên văn trong một file test (khớp đúng biên, chỉ trong file test, bỏ qua node_modules/build), và mọi lệnh
+   `verify` phải pass. Kết quả, danh sách file đổi so với base commit và **file ngoài `touches`** được ghi vào
+   `.aidw/changes/<id>/evidence/<task>.json` (lịch sử mọi checkpoint và review, dùng cho delivery package).
+4. **Reviewer độc lập, chỉ đọc** (`aidw:reviewer`, context mới). Trả `VERDICT: pass|fix`. `fix` đưa nguyên văn ghi
+   chú vào brief lần sau. Tổng số lần thử của task giới hạn bởi `max_attempts` (mặc định 3, gồm cả checkpoint
+   fail và review fix); hết thì task `escalated`, chỉ người dùng cấp lại được (`aidw task retry`).
+5. **Một commit mỗi task**, do `aidw review <T> pass` tạo (code + `tasks.yaml` + evidence trong cùng commit;
+   `.aidw/run/` bị gitignore). Không phải git repo thì bỏ qua commit và cảnh báo.
+
+**Vòng đời task:** `pending → running → review → done`, nhánh `failed` (retry) và `escalated`. Trường runtime mới:
+`base` (commit lúc bắt đầu, để reviewer xem đúng diff của cả task). Mọi trường runtime nằm ngoài approval hash,
+nên tiến độ không bao giờ tính là drift (có test).
+
+**Resume (tiêu chí [5]):** mọi trạng thái nằm trong `tasks.yaml`, evidence và git. Task đang `running` khi phiên
+chết được `aidw next` trả về là `interrupted`; `task start` lần nữa không tính thêm lần thử; brief có mục
+`## Resuming` khi working tree có thay đổi so với base. Hook `StopFailure` (`aidw stop-failure`) chuyển change
+đang chạy sang `paused` kèm lý do; `/aidw:resume` gỡ pause rồi vào lại vòng lặp.
+
+**Gate theo vai (`agent_type`):** reviewer không được ghi file hay chạy lệnh ghi; implementer không được ghi
+`.aidw/`, không chạy `aidw checkpoint/review/task/transition/...`, không commit. Orchestrator (phiên chính) làm
+được tất cả. **Vá thêm lỗ hổng S2:** lệnh `aidw ...` từng được cho qua nguyên dòng, nên `aidw status && echo x >
+src/a.ts` lọt gate trước approve. Giờ lệnh aidw có nối lệnh (`; & | > <` hoặc `$(`) phải qua đủ kiểm tra.
+Đánh đổi: `--reason "a > b"` bị chặn nhầm trước approve (an toàn, agent viết lại là xong).
+
+**Lưu ý governance:** lệnh `verify` chạy bên trong tiến trình `aidw checkpoint`, tức không đi qua gate từng lệnh.
+Điều này chấp nhận được vì `verify` nằm trong `tasks.yaml` đã được duyệt (thuộc hash). Task do converge thêm
+(`origin: converge`, S5) nằm ngoài hash, nên S5 phải kiểm `verify` của chúng trước khi chạy.
+
+**Kiểm chứng:**
+- 63 test (thêm 13): vòng lặp đủ, retry với ghi chú review, hết lần thử → escalate → retry do người dùng cấp,
+  resume sau khi bị ngắt, StopFailure → paused → resume, brief, chọn skill, glob, gate theo vai, commit bằng
+  **git thật**, và **backstop với git thật** (đóng điểm còn treo của S2).
+- Plugin và marketplace qua `claude plugin validate` (agents và hook `StopFailure` được chấp nhận).
+- Chạy thử bằng bin đã bundle trên project có git: 2 task, bị kill giữa T01 rồi resume, reviewer bị chặn sửa
+  code, T02 bị review yêu cầu sửa rồi pass. Kết quả: 2 commit đúng tên task, working tree sạch, approval vẫn hợp lệ.
+- Chưa kiểm chứng: chạy với Claude Code thật (sandbox chặn đăng nhập của Claude lồng bên trong); giá trị
+  `agent_type` và input `StopFailure` thật (OPEN-11, OPEN-12).

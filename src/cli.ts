@@ -20,7 +20,9 @@ import {
   transition,
   writeMerge,
 } from "./ops.js";
+import { runStopFailure } from "./pause.js";
 import { findProject, pathsFor, rel, type Paths } from "./project.js";
+import { buildBrief, checkpoint, nextAction, recordReview, retryTask, startTask } from "./run.js";
 import { VERSION } from "./version.js";
 
 const HELP = `aidw ${VERSION} - deterministic core of the AI Fullstack Autonomous Development Workflow
@@ -40,8 +42,21 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
   ids [<id>]                             requirement and scenario ids (after applying the change)
   vendor-path <upstream>/<skill>         absolute path of a vendored SKILL.md (e.g. pocock/grilling)
   plugin-path <path>                     absolute path of a plugin file (e.g. profiles/stack-pool.md)
+
+Execution (state executing; add --change <id> when several changes are active):
+  next                                   what the orchestrator does next (implement | review | escalate | complete)
+  task start <task>                      mark a task running (counts attempts, records the base commit)
+  task retry <task>                      user-granted fresh attempt budget for an escalated/failed task
+  brief <task> [--for implement|review]  write the context packet for a fresh subagent; prints its path
+  skills <task> [--for implement|review] vendored skills selected for the task
+  checkpoint <task> [--timeout <sec>]    evidence: a test per scenario id + every verify command passes
+  review <task> pass|fix [--notes-file F | --notes T] [--no-commit]
+                                         record the independent review; pass marks done and commits
+
+Hooks:
   gate                                   PreToolUse hook: reads hook JSON on stdin
   backstop                               Stop hook: reads hook JSON on stdin
+  stop-failure                           StopFailure hook: pauses running changes
   version
 
 States: ${STATES.join(", ")}
@@ -53,7 +68,7 @@ interface Args {
   flags: Record<string, string | true>;
 }
 
-const VALUE_FLAGS = new Set(["root", "title", "input-type", "reason"]);
+const VALUE_FLAGS = new Set(["root", "title", "input-type", "reason", "change", "for", "notes", "notes-file", "timeout"]);
 
 export function parseArgs(argv: string[]): Args {
   const pos: string[] = [];
@@ -147,6 +162,98 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
 
       case "backstop": {
         io.out(runBackstop(io.stdin?.() ?? "", env));
+        return 0;
+      }
+
+      case "stop-failure": {
+        try {
+          runStopFailure(io.stdin?.() ?? "", env);
+        } catch {
+          // hook output is ignored; never fail the hook
+        }
+        return 0;
+      }
+
+      case "next": {
+        const p = project();
+        const id = resolveChangeId(p, str(args.flags.change) ?? rest[0]);
+        const n = nextAction(p, id);
+        const text =
+          n.action === "implement"
+            ? `implement ${n.task} (${n.reason}): ${n.title}\n`
+            : n.action === "review"
+              ? `review ${n.task}: ${n.title}\n`
+              : n.action === "escalate"
+                ? `escalate: ${n.reason}\n`
+                : `complete: all ${n.done} task(s) done\n`;
+        emit({ change: id, ...n }, text);
+        return 0;
+      }
+
+      case "task": {
+        if (rest[0] !== "start" && rest[0] !== "retry") throw new UsageError("usage: aidw task start|retry <task>");
+        const p = project();
+        const id = resolveChangeId(p, str(args.flags.change));
+        if (rest[0] === "retry") {
+          const r = retryTask(p, id, need(rest[1], "task id"));
+          emit({ ok: true, change: id, ...r }, `${r.task}: retry granted (fresh attempt budget)\n`);
+          return 0;
+        }
+        const r = startTask(p, id, need(rest[1], "task id"));
+        emit(
+          { ok: true, change: id, ...r },
+          `${r.task} running: attempt ${r.attempt} of ${r.maxAttempts}${r.resumed ? " (resumed)" : ""}${r.base ? `, base ${r.base.slice(0, 8)}` : ""}\n`,
+        );
+        return 0;
+      }
+
+      case "brief":
+      case "skills": {
+        const p = project();
+        const id = resolveChangeId(p, str(args.flags.change));
+        const taskId = need(rest[0], "task id");
+        const kind = str(args.flags.for) ?? "implement";
+        if (kind !== "implement" && kind !== "review") throw new UsageError('--for must be "implement" or "review"');
+        const b = buildBrief(p, id, taskId, kind, join(pluginRoot(env), "vendor"));
+        if (cmd === "skills") {
+          emit({ change: id, task: taskId, for: kind, skills: b.skills }, b.skills.map((s) => `${s.path}  # ${s.reason}\n`).join(""));
+        } else {
+          emit({ change: id, task: taskId, for: kind, path: b.path, skills: b.skills }, `${b.path}\n`);
+        }
+        return 0;
+      }
+
+      case "checkpoint": {
+        const p = project();
+        const id = resolveChangeId(p, str(args.flags.change));
+        const timeout = str(args.flags.timeout);
+        if (timeout !== undefined && !(Number(timeout) > 0)) throw new UsageError("--timeout must be a number of seconds");
+        const r = checkpoint(p, id, need(rest[0], "task id"), timeout ? { timeoutMs: Number(timeout) * 1000 } : {});
+        const lines = [
+          `${r.ok ? "PASS" : "FAIL"} ${r.task} -> ${r.status}  (evidence ${r.evidence})`,
+          ...Object.entries(r.scenarios).map(([s, locs]) => `  ${locs.length ? "ok     " : "MISSING"} ${s}${locs.length ? `  ${locs[0]}` : ""}`),
+          ...r.verify.map((v) => `  ${v.exit === 0 ? "ok     " : "FAILED "} ${v.command}  (${Math.round(v.ms / 1000)}s${v.timedOut ? ", timed out" : ""})`),
+          ...(r.outside_touches.length ? [`  outside touches: ${r.outside_touches.join(", ")}`] : []),
+        ];
+        const failed = r.verify.find((v) => v.exit !== 0);
+        emit({ change: id, ...r }, `${lines.join("\n")}\n${failed ? `\n--- ${failed.command} (tail)\n${failed.tail}\n` : ""}`);
+        return r.ok ? 0 : 1;
+      }
+
+      case "review": {
+        const p = project();
+        const id = resolveChangeId(p, str(args.flags.change));
+        const taskId = need(rest[0], "task id");
+        const verdict = need(rest[1], "verdict (pass|fix)");
+        if (verdict !== "pass" && verdict !== "fix") throw new UsageError('verdict must be "pass" or "fix"');
+        const notesFile = str(args.flags["notes-file"]);
+        const notes = notesFile ? readFileSync(notesFile, "utf8") : (str(args.flags.notes) ?? "");
+        if (verdict === "fix" && !notes.trim()) throw new UsageError("a fix verdict needs --notes or --notes-file");
+        const r = recordReview(p, id, taskId, verdict, notes, { commit: args.flags["no-commit"] !== true });
+        emit(
+          { ok: true, change: id, ...r },
+          `${r.task}: review ${r.verdict} -> ${r.status}${r.commit ? ` (commit ${r.commit.slice(0, 8)})` : ""}${r.warning ? `\n  warning: ${r.warning}` : ""}\n`,
+        );
         return 0;
       }
 

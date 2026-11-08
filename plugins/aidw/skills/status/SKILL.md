@@ -10,7 +10,8 @@ description: Show where aidw changes stand - state, approval, drift, tasks and v
 3. Explain the next step for each state:
    - `draft` / `intake` / `analyzing`: continue the Analysis (`/aidw:start` steps).
    - `awaiting_approval`: the user reviews `analysis.md`, then `/aidw:approve` or asks for changes.
-   - `approved` and later: execution (`/aidw:run`, slice S3).
+   - `approved` / `executing`: `/aidw:run` (for executing, also show `aidw next --change <id>`).
    - drift: the approved package changed. `aidw transition <id> escalated`, then `analyzing`, then re-approve.
-   - `paused`: `aidw transition <id> resume` once the cause is gone.
+   - `paused` / `escalated`: `/aidw:resume` once the cause is gone (escalation reason from the task's
+     `notes` and `.aidw/changes/<id>/evidence/<task>.json`).
 4. Show validation errors verbatim; do not fix anything unless the user asks.
