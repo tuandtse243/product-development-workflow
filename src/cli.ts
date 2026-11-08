@@ -22,6 +22,8 @@ import {
 } from "./ops.js";
 import { runStopFailure } from "./pause.js";
 import { findProject, pathsFor, rel, type Paths } from "./project.js";
+import { converge } from "./converge.js";
+import { deliver } from "./deliver.js";
 import { deploy, verify } from "./quality.js";
 import { buildBrief, checkpoint, nextAction, recordReview, retryTask, startTask } from "./run.js";
 import { VERSION } from "./version.js";
@@ -55,7 +57,9 @@ Execution (state executing; add --change <id> when several changes are active):
                                          record the independent review; pass marks done and commits
   verify [--layer L] [--fresh]           (verifying) run quality layers not yet passing on the current code;
                                          a failing layer adds a fix task and returns the change to executing
+  converge                               (converging) every changed scenario has a passing test; gaps become tasks
   deploy                                 (deploying) approved preview deploy + smoke checks, or record target none/local
+  deliver [--check]                      (delivered) write the delivery package and check its checklist
 
 Hooks:
   gate                                   PreToolUse hook: reads hook JSON on stdin
@@ -267,6 +271,28 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         return r.ok ? 0 : 1;
       }
 
+      case "converge": {
+        const p = project();
+        const id = resolveChangeId(p, str(args.flags.change) ?? rest[0]);
+        const r = converge(p, id);
+        const lines = Object.entries(r.scenarios).map(([s, x]) => `  ${x.status === "pass" ? "ok     " : x.status.toUpperCase().padEnd(7)} ${s}${x.where[0] ? `  ${x.where[0]}` : ""}`);
+        emit({ change: id, ...r }, `${r.ok ? "PASS" : "GAPS"} (${r.mode}): ${r.summary}\n${lines.join("\n")}\n`);
+        return r.ok ? 0 : 1;
+      }
+
+      case "deliver": {
+        const p = project();
+        const id = resolveChangeId(p, str(args.flags.change) ?? rest[0]);
+        const r = deliver(p, id, { check: args.flags.check === true });
+        const ok = r.diags.errors.length === 0;
+        const head = args.flags.check === true ? "" : `${r.dir}: wrote ${r.written.length} file(s)${r.created_handoff ? ", created handoff.md skeleton" : ""}, ${r.screenshots} screenshot(s)\n`;
+        emit(
+          { ok, change: id, dir: r.dir, written: r.written, created_handoff: r.created_handoff, screenshots: r.screenshots, ...diagsJson(r.diags) },
+          `${head}${printDiags(r.diags)}${ok ? "delivery package complete" : "INCOMPLETE: fix the items above"}\n`,
+        );
+        return ok ? 0 : 1;
+      }
+
       case "deploy": {
         const p = project();
         const id = resolveChangeId(p, str(args.flags.change) ?? rest[0]);
@@ -474,10 +500,10 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
       case "archive": {
         const p = project();
         const id = resolveChangeId(p, rest[0]);
-        const { target, merges } = archiveChange(p, id);
+        const { target, merges, commit } = archiveChange(p, id);
         emit(
-          { ok: true, id, archived: rel(p, target), capabilities: merges.map((m) => m.capability) },
-          `archived ${id} -> ${rel(p, target)} (${merges.length} capability spec(s) updated)\n`,
+          { ok: true, id, archived: rel(p, target), capabilities: merges.map((m) => m.capability), commit: commit ?? null },
+          `archived ${id} -> ${rel(p, target)} (${merges.length} capability spec(s) updated)${commit ? `, committed ${commit.slice(0, 8)}` : ""}\n`,
         );
         return 0;
       }

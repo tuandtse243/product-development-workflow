@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import YAML from "yaml";
 import { beforeEach, describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
+import { decide } from "../src/gate.js";
 import { ANALYSIS_MD, MAIN_SPEC, QUALITY_YAML, REQ, TASKS_YAML, tempProject, write } from "./fixtures.js";
 
 const ID = "2026-11-08-booking";
@@ -154,20 +155,55 @@ describe("aidw workflow", () => {
   it("archives a delivered change: merges specs and moves the folder", () => {
     cli(root, "approve", ID);
     expect(cli(root, "transition", ID, "executing").code).toBe(0);
-    // evidence normally written by the run loop, aidw verify and aidw deploy (covered in quality.test.ts)
+    // evidence normally written by the run loop, aidw verify, converge and deploy (covered in quality/converge tests)
     const c = join(root, ".aidw/changes", ID);
     const tasks = join(c, "tasks.yaml");
     writeFileSync(tasks, readFileSync(tasks, "utf8").replaceAll("status: pending", "status: done\n    finished_at: 2026-01-01T00:00:00.000Z"));
-    const pass = { status: "pass", at: new Date().toISOString(), head: null, runs: [] };
+    const at = new Date().toISOString();
+    const pass = { status: "pass", at, head: null, runs: [] };
     write(root, `.aidw/changes/${ID}/evidence/quality/summary.json`, JSON.stringify({ layers: { code: pass, unit: pass, e2e: pass } }));
-    write(root, `.aidw/changes/${ID}/evidence/deploy.json`, JSON.stringify({ runs: [{ ok: true, target: "preview", url: "https://x.vercel.app" }] }));
+    const scenarios = { "booking/reschedule-appointment/reschedule-appointment-works": { status: "pass", where: ["tests/x.test.ts:1"] } };
+    write(root, `.aidw/changes/${ID}/evidence/converge.json`, JSON.stringify({ runs: [{ at, head: null, mode: "presence", ok: true, scenarios, added: [], escalated: [] }] }));
+    write(root, `.aidw/changes/${ID}/evidence/deploy.json`, JSON.stringify({ runs: [{ ok: true, target: "preview", url: "https://x.vercel.app", skipped: false }] }));
     for (const s of ["verifying", "converging", "deploying", "delivered"]) {
       expect([s, cli(root, "transition", ID, s).err]).toEqual([s, ""]);
     }
+
+    // after delivery the gate only lets the env template into the project
+    const gate = (file: string) => decide({ tool_name: "Write", tool_input: { file_path: file }, cwd: root }, {})?.decision;
+    expect(gate(".env.example")).toBe("allow");
+    expect(gate("src/late-fix.ts")).toBe("deny");
+    expect(gate(`.aidw/changes/${ID}/delivery/handoff.md`)).toBe("allow");
+
+    // the delivery package must be complete before archive
+    const first = cli(root, "deliver", "--json");
+    expect(first.code).toBe(1);
+    expect(first.json().created_handoff).toBe(true);
+    const missing = first.json().errors.map((e: { message: string }) => e.message);
+    expect(missing).toContain("unresolved TODO(aidw) placeholder");
+    expect(missing).toContain("no screenshots (png, jpg, webp) of the main flows; this change has UI tasks");
+    expect(cli(root, "archive", ID).err).toMatch(/delivery package of .* is incomplete/);
+    const handoff = ["Overview", "Run locally", "Environment", "Deploy", "Usage", "Known issues", "Next steps"]
+      .map((h) => `## ${h}\n\n${h === "Environment" ? "SUPABASE_URL and SUPABASE_ANON_KEY, see .env.example." : `${h} text.`}\n`)
+      .join("\n");
+    write(root, `.aidw/changes/${ID}/delivery/handoff.md`, `# Handoff\n\n${handoff}`);
+    write(root, `.aidw/changes/${ID}/delivery/screenshots/01-book.png`, "png");
+    expect(cli(root, "deliver", "--check", "--json").json().errors.map((e: { message: string }) => e.message)).toEqual([
+      'missing: the handoff lists environment variables, so ship a .env.example (or write "None" under ## Environment)',
+    ]);
+    write(root, ".env.example", "SUPABASE_URL=\nSUPABASE_ANON_KEY=\n");
+    const done = cli(root, "deliver");
+    expect(done.out).toMatch(/delivery package complete/);
+    const readme = readFileSync(join(c, "delivery/README.md"), "utf8");
+    expect(readme).toMatch(/Preview: https:\/\/x\.vercel\.app/);
+    expect(readme).toMatch(/screenshots\/\): 01-book\.png/);
+    expect(readFileSync(join(c, "delivery/quality-report.md"), "utf8")).toMatch(/\*\*presence only\*\*/);
+
     const r = cli(root, "archive", ID, "--json");
     expect(r.code).toBe(0);
     expect(r.json().archived).toBe(`.aidw/archive/${ID}`);
     expect(existsSync(join(root, ".aidw/changes", ID))).toBe(false);
+    expect(existsSync(join(root, ".aidw/archive", ID, "delivery/handoff.md"))).toBe(true);
     const archived = YAML.parse(readFileSync(join(root, ".aidw/archive", ID, "change.yaml"), "utf8"));
     expect(archived.state).toBe("archived");
     expect(readFileSync(join(root, ".aidw/specs/booking/spec.md"), "utf8")).toContain("Reschedule appointment");

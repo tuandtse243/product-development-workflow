@@ -221,7 +221,10 @@ export function testFiles(project: string): string[] {
   return all.filter((f) => TEST_FILE.test(f));
 }
 
-/** Locations (file:line) where each scenario id appears verbatim in a test file. */
+/** A test line that is declared but not run (skip, todo, fixme, xit...). */
+export const SKIPPED_LINE = /\.(skip|todo|fixme)\s*\(|\b(xit|xtest|xdescribe)\s*\(/;
+
+/** Locations (file:line) where each scenario id appears verbatim in a test file, on a line that is not skipped. */
 export function findScenarioTests(project: string, ids: string[]): Record<string, string[]> {
   const found: Record<string, string[]> = Object.fromEntries(ids.map((s) => [s, [] as string[]]));
   if (!ids.length) return found;
@@ -229,6 +232,7 @@ export function findScenarioTests(project: string, ids: string[]): Record<string
   for (const f of testFiles(project)) {
     const lines = readFileSync(join(project, f), "utf8").split(/\r?\n/);
     lines.forEach((line, n) => {
+      if (SKIPPED_LINE.test(line)) return;
       for (const [s, re] of patterns) if (re.test(line)) found[s]?.push(`${f}:${n + 1}`);
     });
   }

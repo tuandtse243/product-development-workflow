@@ -176,6 +176,8 @@ describe("verify -> fix -> deploy (exit criterion [6])", () => {
     expect(cli(root, "verify", "--json").json().layers.map((l: { status: string }) => l.status)).toEqual(["skipped", "skipped", "skipped"]);
 
     expect(cli(root, "transition", ID, "converging").code).toBe(0);
+    expect(cli(root, "transition", ID, "deploying").err).toMatch(/needs a passing converge on the current code: run `aidw converge` first/);
+    expect(cli(root, "converge").out).toMatch(/^PASS \(presence\): all 1 scenario\(s\) have a passing test/);
     expect(cli(root, "transition", ID, "deploying").code).toBe(0);
     expect(cli(root, "transition", ID, "delivered").err).toMatch(/needs a successful `aidw deploy`/);
 
@@ -218,7 +220,9 @@ describe("verify -> fix -> deploy (exit criterion [6])", () => {
     write(root, "unit-ok", "");
     for (const s of ["verifying"]) cli(root, "transition", ID, s);
     expect(cli(root, "verify").code).toBe(0);
-    for (const s of ["converging", "deploying"]) expect(cli(root, "transition", ID, s).code).toBe(0);
+    expect(cli(root, "transition", ID, "converging").code).toBe(0);
+    expect(cli(root, "converge").code).toBe(0);
+    expect(cli(root, "transition", ID, "deploying").code).toBe(0);
     expect(cli(root, "deploy").out).toMatch(/deploy skipped: target "none"/);
     expect(cli(root, "transition", ID, "delivered").code).toBe(0);
   });
@@ -238,7 +242,9 @@ describe("verify -> fix -> deploy (exit criterion [6])", () => {
     write(root, "notes-of-the-user.md", "not ours\n");
     for (const s of ["verifying"]) cli(root, "transition", ID, s);
     expect(cli(root, "verify").code).toBe(0);
-    for (const s of ["converging", "deploying"]) cli(root, "transition", ID, s);
+    cli(root, "transition", ID, "converging");
+    cli(root, "converge");
+    cli(root, "transition", ID, "deploying");
     cli(root, "deploy");
     expect(cli(root, "transition", ID, "delivered", "--json").json().commit).toMatch(/^[0-9a-f]{40}$/);
     expect(g("log", "-1", "--format=%s").trim()).toBe(`aidw: ${ID} delivered`);

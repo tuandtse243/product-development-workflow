@@ -1,0 +1,290 @@
+/**
+ * `aidw deliver` (blueprint step 17, section 14): the Complete Delivery Package in
+ * `.aidw/changes/<id>/delivery/`.
+ *
+ * The engine writes what it can derive deterministically from evidence (README with checklist and
+ * deploy status, quality report, task table, decisions). The agent writes the prose a client needs
+ * (handoff.md) and captures screenshots, then `aidw deliver --check` enforces the checklist.
+ * Archive refuses a change whose delivery package does not pass.
+ */
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { PLACEHOLDER } from "./analyze.js";
+import { loadChange, stateOf, type Change } from "./change.js";
+import { lastConverge } from "./converge.js";
+import { Diags } from "./diag.js";
+import { git, isGitRepo } from "./git.js";
+import { OpError } from "./ops.js";
+import { readText, rel, walkFiles, type Paths } from "./project.js";
+import { EXPECTED_LAYERS, lastDeploy, loadQuality, parseQuality, qualityFile, readSummary } from "./quality.js";
+import { loadTasks, type Evidence } from "./run.js";
+import { touchesUi } from "./skills.js";
+import type { Task } from "./tasks.js";
+import { sections } from "./spec/parse.js";
+
+export const HANDOFF_SECTIONS = ["Overview", "Run locally", "Environment", "Deploy", "Usage", "Known issues", "Next steps"] as const;
+/** Layers planned for later slices; the report lists them as not run so nothing looks covered that is not. */
+const LATER_LAYERS = ["ui-ux", "a11y", "security", "performance"];
+const IMAGE = /\.(png|jpe?g|webp)$/i;
+
+export const deliveryDir = (change: Change) => join(change.dir, "delivery");
+
+const HANDOFF = (title: string) => `# Handoff: ${title}
+
+## Overview
+
+${PLACEHOLDER}: what was built, for whom, and what is out of scope (from the Analysis).
+
+## Run locally
+
+${PLACEHOLDER}: prerequisites and exact commands (install, local services, dev server, tests).
+
+## Environment
+
+${PLACEHOLDER}: every environment variable, what it is for and where its value comes from; point to .env.example. Write "None" if there are none.
+
+## Deploy
+
+${PLACEHOLDER}: how this was deployed (target, URL) and how the client deploys to production themselves.
+
+## Usage
+
+${PLACEHOLDER}: the main flows for an end user, with the screenshots in screenshots/.
+
+## Known issues
+
+${PLACEHOLDER}: anything that does not work or was cut, failing or skipped checks, limitations. Write "None known" only if true.
+
+## Next steps
+
+${PLACEHOLDER}: recommended follow-ups.
+`;
+
+const statusOf = (t: Task) => String(t.status ?? "pending");
+
+function readEvidence(change: Change, taskId: string): Evidence | null {
+  const f = join(change.dir, "evidence", `${taskId}.json`);
+  if (!existsSync(f)) return null;
+  try {
+    return JSON.parse(readFileSync(f, "utf8")) as Evidence;
+  } catch {
+    return null;
+  }
+}
+
+function commitOf(p: Paths, taskId: string): string {
+  if (!isGitRepo(p.project)) return "";
+  const r = git(p.project, ["log", "--format=%h", "-n", "1", "--grep", `^${taskId}: `]);
+  return r.ok ? r.out : "";
+}
+
+const cell = (s: string) => s.replace(/\|/g, "\\|").replace(/\n/g, " ");
+
+function tasksMd(p: Paths, change: Change, tasks: Task[]): string {
+  const rows = tasks.map((t) => {
+    const ev = readEvidence(change, t.id);
+    const reviews = (ev?.reviews ?? []).map((r) => r.verdict).join(", ") || "-";
+    return `| ${t.id} | ${cell(String(t.title ?? ""))} | ${String(t.origin ?? "plan")} | ${statusOf(t)} | ${String(t.attempts ?? 0)} | ${reviews} | ${commitOf(p, t.id) || "-"} |`;
+  });
+  const outside = tasks.flatMap((t) => {
+    const files = readEvidence(change, t.id)?.checkpoints.at(-1)?.outside_touches ?? [];
+    return files.length ? [`- ${t.id}: ${files.map((f) => `\`${f}\``).join(", ")}`] : [];
+  });
+  return [
+    `# Tasks: ${String(change.data.title ?? change.id)}`,
+    "",
+    "Origin `plan` = approved in the Analysis; `quality` = added to fix a failing quality layer; `converge` = added to cover a scenario.",
+    "",
+    "| Task | Title | Origin | Status | Attempts | Reviews | Commit |",
+    "|---|---|---|---|---|---|---|",
+    ...rows,
+    "",
+    "## Files changed outside a task's touches",
+    "",
+    ...(outside.length ? outside : ["None."]),
+    "",
+  ].join("\n");
+}
+
+function qualityMd(p: Paths, change: Change, tasks: Task[]): string {
+  const text = readText(qualityFile(change)) ?? "";
+  const { config } = parseQuality(text, "quality.yaml");
+  const summary = readSummary(change);
+  const conv = lastConverge(change);
+  const deploy = lastDeploy(change);
+  const out: string[] = [`# Quality report: ${String(change.data.title ?? change.id)}`, ""];
+
+  out.push("## Layers", "", "| Layer | Status | Last run | Fix rounds | Commands |", "|---|---|---|---|---|");
+  for (const l of config?.layers ?? []) {
+    const r = summary.layers[l.name];
+    const rounds = tasks.filter((t) => t.origin === "quality" && t.layer === l.name).length;
+    out.push(`| ${l.name} | ${r?.status ?? "not run"} | ${r?.at ?? "-"} | ${rounds} | ${cell([...l.setup, ...l.run].map((c) => `\`${c}\``).join("<br>"))} |`);
+  }
+  out.push("");
+  const absent = (n: string) => !config?.layers.some((l) => l.name === n);
+  const notRun = [
+    ...EXPECTED_LAYERS.filter(absent).map((n) => `layer "${n}" was not in the approved quality profile (see the Analysis for why)`),
+    ...LATER_LAYERS.filter(absent).map((n) => `layer "${n}" did not run (not in the quality profile of this workflow version)`),
+    ...Object.entries(summary.layers).flatMap(([n, r]) => (r.missing_reports?.length ? [`layer "${n}": declared report(s) missing: ${r.missing_reports.join(", ")}`] : [])),
+  ];
+  out.push("## Not covered", "", ...(notRun.length ? notRun.map((m) => `- ${m}`) : ["Nothing beyond the layers above."]), "");
+
+  const fixes = tasks.filter((t) => t.origin === "quality");
+  out.push("## Quality fix history", "");
+  if (!fixes.length) out.push("No layer failed.");
+  for (const t of fixes) {
+    const first = String(t.problem ?? "").split("\n")[0] ?? "";
+    out.push(`- ${t.id} (${statusOf(t)}, ${String(t.attempts ?? 0)} attempt(s)): ${first}`);
+  }
+  out.push("");
+
+  out.push("## Scenarios (converge)", "");
+  if (!conv) out.push("Converge did not run.");
+  else {
+    out.push(
+      conv.mode === "junit"
+        ? "Evidence: passing test cases in the layers' JUnit reports, on the delivered code."
+        : "Evidence: **presence only** (no JUnit reports configured): a non-skipped test names each scenario and every layer passed. A test that names a scenario but asserts the wrong thing would not be caught here; the per-task reviewer checked the assertions.",
+      "",
+      "| Scenario | Status | Evidence |",
+      "|---|---|---|",
+      ...Object.entries(conv.scenarios).map(([s, r]) => `| \`${s}\` | ${r.status} | ${cell(r.where.slice(0, 3).join("; ") || "-")} |`),
+    );
+  }
+  out.push("");
+
+  const nonBlocking = tasks.flatMap((t) =>
+    (readEvidence(change, t.id)?.reviews ?? [])
+      .filter((r) => r.verdict === "pass" && /non-blocking/i.test(r.notes))
+      .map((r) => `- ${t.id}: ${cell(r.notes.slice(r.notes.search(/non-blocking/i)).replace(/^non-blocking:?\s*/i, ""))}`),
+  );
+  out.push("## Reviewer remarks (non-blocking)", "", ...(nonBlocking.length ? nonBlocking : ["None recorded."]), "");
+
+  out.push("## Deploy", "", deployLine(deploy), "");
+  return out.join("\n");
+}
+
+function deployLine(d: ReturnType<typeof lastDeploy>): string {
+  if (!d) return "Not deployed.";
+  if (d.skipped) return `No deployment (target \`${d.target}\`).`;
+  return d.ok ? `Preview: ${d.url} (smoke checks passed, ${d.at}).` : `Failed: ${d.error ?? "unknown"}.`;
+}
+
+function decisionsMd(p: Paths): string {
+  const adrs = walkFiles(p.decisions)
+    .filter((f) => f.endsWith(".md"))
+    .map((f) => {
+      const title = (readFileSync(f, "utf8").match(/^#\s+(.+)$/m)?.[1] ?? "").trim();
+      return `- \`${rel(p, f)}\`${title ? `: ${title}` : ""}`;
+    });
+  return ["# Decisions", "", "Architecture decision records of the project (see also `## Architecture` in the Analysis).", "", ...(adrs.length ? adrs : ["No ADRs."]), ""].join("\n");
+}
+
+function screenshots(change: Change): string[] {
+  const dir = join(deliveryDir(change), "screenshots");
+  return existsSync(dir) ? readdirSync(dir).filter((f) => IMAGE.test(f)).sort() : [];
+}
+
+function needsScreenshots(tasks: Task[]): boolean {
+  return tasks.some((t) => touchesUi(t));
+}
+
+/** Checklist of blueprint section 14. Errors block archive. */
+export function checkDelivery(p: Paths, id: string): Diags {
+  const change = loadChange(p, id);
+  const d = new Diags();
+  const dir = deliveryDir(change);
+  const where = (f: string) => rel(p, join(dir, f));
+  for (const f of ["README.md", "quality-report.md", "tasks.md", "decisions.md", "handoff.md"]) {
+    if (!existsSync(join(dir, f))) d.error(where(f), "missing; run `aidw deliver`");
+  }
+  const handoff = readText(join(dir, "handoff.md"));
+  if (handoff !== null) {
+    const secs = sections(handoff);
+    for (const name of HANDOFF_SECTIONS) {
+      const s = secs.find((x) => x.name.toLowerCase() === name.toLowerCase());
+      if (!s) d.error(where("handoff.md"), `missing section "## ${name}"`);
+      else if (!s.body.trim()) d.error(where("handoff.md"), `section "## ${name}" is empty`, s.line);
+    }
+    handoff.split(/\r?\n/).forEach((l, i) => {
+      if (l.includes(PLACEHOLDER)) d.error(where("handoff.md"), `unresolved ${PLACEHOLDER} placeholder`, i + 1);
+    });
+    const env = secs.find((x) => x.name.toLowerCase() === "environment");
+    if (env && !env.body.includes(PLACEHOLDER) && !/^\s*none\b/im.test(env.body) && !existsSync(join(p.project, ".env.example"))) {
+      d.error(rel(p, join(p.project, ".env.example")), 'missing: the handoff lists environment variables, so ship a .env.example (or write "None" under ## Environment)');
+    }
+  }
+  if (needsScreenshots(loadTasks(p, id).tasks) && screenshots(change).length === 0) {
+    d.error(where("screenshots/"), "no screenshots (png, jpg, webp) of the main flows; this change has UI tasks");
+  }
+  if (!lastConverge(change)?.ok) d.error(where("quality-report.md"), "converge has not passed");
+  return d;
+}
+
+export interface DeliverResult {
+  dir: string;
+  written: string[];
+  created_handoff: boolean;
+  screenshots: number;
+  diags: Diags;
+}
+
+/** Writes the generated parts of the package (always regenerated) and a handoff skeleton (never overwritten). */
+export function deliver(p: Paths, id: string, opts: { check?: boolean } = {}): DeliverResult {
+  const change = loadChange(p, id);
+  if (stateOf(change) !== "delivered") throw new OpError(`change "${id}" is "${String(change.data.state)}"; aidw deliver runs in state delivered`);
+  loadQuality(p, change); // a broken quality.yaml is an error here, not a silent gap
+  const dir = deliveryDir(change);
+  const written: string[] = [];
+  let createdHandoff = false;
+  if (!opts.check) {
+    const tasks = loadTasks(p, id).tasks;
+    mkdirSync(join(dir, "screenshots"), { recursive: true });
+    const write = (name: string, text: string) => {
+      writeFileSync(join(dir, name), text);
+      written.push(rel(p, join(dir, name)));
+    };
+    write("quality-report.md", qualityMd(p, change, tasks));
+    write("tasks.md", tasksMd(p, change, tasks));
+    write("decisions.md", decisionsMd(p));
+    if (!existsSync(join(dir, "handoff.md"))) {
+      writeFileSync(join(dir, "handoff.md"), HANDOFF(String(change.data.title ?? id)));
+      createdHandoff = true;
+    }
+    write("README.md", readmeMd(p, change, tasks));
+  }
+  return { dir: rel(p, dir), written, created_handoff: createdHandoff, screenshots: screenshots(change).length, diags: checkDelivery(p, id) };
+}
+
+function readmeMd(p: Paths, change: Change, tasks: Task[]): string {
+  const deploy = lastDeploy(change);
+  const shots = screenshots(change);
+  const done = tasks.filter((t) => statusOf(t) === "done").length;
+  const summary = readSummary(change);
+  const layers = Object.entries(summary.layers).map(([n, r]) => `${n} ${r.status}`).join(", ") || "none";
+  const conv = lastConverge(change);
+  const env = existsSync(join(p.project, ".env.example"));
+  return [
+    `# Delivery: ${String(change.data.title ?? change.id)}`,
+    "",
+    `Change \`${change.id}\` · ${done}/${tasks.length} tasks done · quality: ${layers} · scenarios: ${conv ? `${Object.values(conv.scenarios).filter((r) => r.status === "pass").length}/${Object.keys(conv.scenarios).length} passing (${conv.mode})` : "not converged"}`,
+    "",
+    "## Deploy",
+    "",
+    deployLine(deploy),
+    "",
+    "## Contents",
+    "",
+    "- [handoff.md](handoff.md): overview, run locally, environment, deploy, usage, known issues, next steps",
+    "- [quality-report.md](quality-report.md): every layer with evidence, what failed and what was not covered",
+    "- [tasks.md](tasks.md): plan and task status, attempts, reviews, commits",
+    "- [decisions.md](decisions.md): architecture decision records",
+    `- [screenshots/](screenshots/): ${shots.length ? shots.join(", ") : "none"}`,
+    "- [../analysis.md](../analysis.md): the approved Analysis (scope, stack, design, plan, permissions, risks)",
+    `- \`.env.example\` at the project root: ${env ? "yes" : "no"}`,
+    "",
+    "Evidence behind every line: `../evidence/` (per task, per quality layer, converge, deploy).",
+    "",
+  ].join("\n");
+}
+

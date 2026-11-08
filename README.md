@@ -8,7 +8,8 @@ autonomous build → layered quality gates → living specs → complete deliver
   stop backstop, vendored Pocock and Addy skills), **S3 code done** (sequential orchestrator: a fresh
   implementer per task, scenario evidence, independent reviewer, a commit per task, resume), **S4 code done**
   (quality layers from the approved `quality.yaml`, failing layers become fix tasks, preview deploy with smoke
-  checks, tier-2 allowlist). Converge, delivery package and archive come in S5.
+  checks, tier-2 allowlist), **S5 code done** (converge from JUnit reports, delivery package, archive). All
+  milestone-A code is in; it awaits one real end-to-end run in Claude Code.
 
 ## Use it in a project (local, no install)
 
@@ -21,6 +22,7 @@ claude --plugin-dir /path/to/product-development-workflow/plugins/aidw
 /aidw:approve
 /aidw:run        # autonomous build of the approved task graph
 /aidw:resume     # after a killed session, a rate limit or a resolved escalation
+/aidw:deliver    # delivery package + archive (run calls it at the end)
 ```
 
 ## Vendored skills
@@ -75,6 +77,8 @@ aidw skills <task> [--for implement|review]  vendored skills selected for the ta
 aidw checkpoint <task> [--timeout <sec>]     a test per scenario id + every verify command passes
 aidw review <task> pass|fix [--notes-file F] independent verdict; pass marks done and commits
 aidw verify [--layer L] [--fresh]            quality layers not yet passing; a failure adds a fix task
+aidw converge                                every changed scenario has a passing test; gaps become tasks
 aidw deploy                                  approved preview deploy + smoke checks (or record none/local)
+aidw deliver [--check]                       delivery package (generated parts + handoff skeleton), checklist
 aidw gate | backstop | stop-failure          hook entry points (JSON on stdin)
 ```

@@ -32,6 +32,8 @@ export interface Layer {
   name: string;
   setup: string[];
   run: string[];
+  /** JUnit XML files the layer writes (project-relative); converge reads test results from them */
+  reports: string[];
 }
 
 export interface QualityConfig {
@@ -67,7 +69,15 @@ export function parseQuality(text: string, file: string): { config: QualityConfi
       else if (layers.some((x) => x.name === l.name)) d.error(file, `duplicate layer "${l.name}"`);
       if (!isStrList(l.run) || l.run.length === 0) d.error(file, `${where} needs a non-empty "run" list of commands`);
       if (l.setup !== undefined && !isStrList(l.setup)) d.error(file, `${where}: "setup" must be a list of commands`);
-      layers.push({ name: String(l.name), setup: isStrList(l.setup) ? l.setup : [], run: isStrList(l.run) ? l.run : [] });
+      if (l.reports !== undefined && !(isStrList(l.reports) && l.reports.every((r) => !r.startsWith("/") && !r.split("/").includes("..")))) {
+        d.error(file, `${where}: "reports" must be a list of project-relative JUnit XML paths`);
+      }
+      layers.push({
+        name: String(l.name),
+        setup: isStrList(l.setup) ? l.setup : [],
+        run: isStrList(l.run) ? l.run : [],
+        reports: isStrList(l.reports) ? l.reports : [],
+      });
     }
     for (const name of EXPECTED_LAYERS) {
       if (!layers.some((l) => l.name === name)) d.warn(file, `no "${name}" layer; say in analysis.md why this project does not need it`);
@@ -147,11 +157,20 @@ export function grantedResources(p: Paths, ids: string[], openStates: ReadonlySe
 
 // ---------------------------------------------------------------- evidence
 
+export interface TestCase {
+  name: string;
+  status: "pass" | "fail" | "skipped";
+}
+
 export interface LayerResult {
   status: "pass" | "fail";
   at: string;
   head: string | null;
   runs: VerifyRun[];
+  /** test cases read from the layer's JUnit reports after this run */
+  tests?: TestCase[];
+  /** declared reports that were missing or unreadable after the run */
+  missing_reports?: string[];
 }
 
 export interface QualitySummary {
@@ -199,6 +218,50 @@ export function pendingLayers(p: Paths, id: string): { config: QualityConfig; pe
   const head = headCommit(p.project);
   const pending = config.layers.filter((l) => !(summary.layers[l.name]?.status === "pass" && isFresh(summary.layers[l.name], tasks, head))).map((l) => l.name);
   return { config, pending, summary };
+}
+
+// ---------------------------------------------------------------- JUnit
+
+const TESTCASE = /<testcase\b((?:[^>"']|"[^"]*"|'[^']*')*?)(?:\/>|>([\s\S]*?)<\/testcase>)/g;
+const MAX_TESTS = 10000;
+
+function xmlAttr(attrs: string, name: string): string {
+  const m = attrs.match(new RegExp(`\\b${name}\\s*=\\s*"([^"]*)"`)) ?? attrs.match(new RegExp(`\\b${name}\\s*=\\s*'([^']*)'`));
+  return (m?.[1] ?? "")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&#(\d+);/g, (_, n: string) => String.fromCodePoint(Number(n)))
+    .replace(/&amp;/g, "&");
+}
+
+/** Test cases from JUnit XML (vitest, Playwright, node --test, jest-junit all write this format). */
+export function parseJunit(xml: string): TestCase[] {
+  const out: TestCase[] = [];
+  for (const m of xml.matchAll(TESTCASE)) {
+    const attrs = m[1] ?? "";
+    const body = m[2] ?? "";
+    const name = [xmlAttr(attrs, "classname"), xmlAttr(attrs, "name")].filter(Boolean).join(" > ");
+    const status = /<(failure|error)\b/.test(body) ? "fail" : /<skipped\b/.test(body) ? "skipped" : "pass";
+    out.push({ name, status });
+    if (out.length >= MAX_TESTS) break;
+  }
+  return out;
+}
+
+export function readJunit(project: string, reports: string[]): { tests: TestCase[]; missing: string[] } {
+  const tests: TestCase[] = [];
+  const missing: string[] = [];
+  for (const r of reports) {
+    const f = join(project, ...r.split("/"));
+    if (!existsSync(f)) {
+      missing.push(r);
+      continue;
+    }
+    tests.push(...parseJunit(readFileSync(f, "utf8")));
+  }
+  return { tests, missing };
 }
 
 // ---------------------------------------------------------------- verify
@@ -258,6 +321,11 @@ export function verify(
     const runs = runCommands([...layer.setup, ...layer.run], p.project, timeoutMs, runner);
     const ok = runs.length === layer.setup.length + layer.run.length && !failedRun(runs);
     const result: LayerResult = { status: ok ? "pass" : "fail", at: now(), head, runs };
+    if (layer.reports.length) {
+      const { tests, missing } = readJunit(p.project, layer.reports);
+      result.tests = tests;
+      if (missing.length) result.missing_reports = missing;
+    }
     summary.layers[layer.name] = result;
     writeJson(summaryFile(change), summary);
     appendHistory(join(qualityDir(change), `${layer.name}.json`), result);
@@ -325,26 +393,6 @@ function appendHistory(file: string, entry: unknown): void {
 export function qualityPassed(p: Paths, id: string): { ok: boolean; pending: string[] } {
   const { pending } = pendingLayers(p, id);
   return { ok: pending.length === 0, pending };
-}
-
-/**
- * Evidence required before entering a state (blueprint section 11: never skip silently).
- * Returns why the transition is refused, or null.
- */
-export function transitionGuard(p: Paths, id: string, target: string): string | null {
-  if (target === "verifying") {
-    const open = loadTasks(p, id).tasks.filter((t) => String(t.status ?? "pending") !== "done");
-    if (open.length) return `"verifying" needs every task done; open: ${open.map((t) => `${t.id} (${String(t.status ?? "pending")})`).join(", ")}`;
-  }
-  if (target === "converging") {
-    const q = qualityPassed(p, id);
-    if (!q.ok) return `"converging" needs every quality layer passing on the current code; run \`aidw verify\` (pending: ${q.pending.join(", ")})`;
-  }
-  if (target === "delivered") {
-    const d = lastDeploy(loadChange(p, id));
-    if (!d?.ok) return `"delivered" needs a successful \`aidw deploy\`${d ? ` (last: ${d.error ?? "failed"})` : ""}`;
-  }
-  return null;
 }
 
 // ---------------------------------------------------------------- deploy

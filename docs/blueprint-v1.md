@@ -506,7 +506,7 @@ Vòng dev: `claude --plugin-dir ./plugins/aidw` trong thư mục fixture. Cài t
 | S2 | `init`, `start` (adapter Pocock), analysis package, `analyze`, `approve`, gate hook | Tiêu chí [1][2][3]. **Code xong 2026-11-08** (xem §23); [2][3] có test, [1] chờ chạy thật |
 | S3 | Orchestrator tuần tự, task contract, checkpoint, `/aidw:resume` | [4][5]. **Code xong 2026-11-08** (xem §24); [4][5] có test và chạy thử bằng bin, chờ chạy với Claude Code thật |
 | S4 | Quality: code/unit/integration/e2e, preview deploy | [6]. **Code xong 2026-11-08** (xem §25); có test và chạy thử bằng bin với deploy giả, chờ project Next.js thật + Vercel thật |
-| S5 | Converge, archive/merge, deliver | [7][8] → **Mốc A** |
+| S5 | Converge, archive/merge, deliver | [7][8] → **Mốc A**. **Code xong 2026-11-08** (xem §26); cả 8 tiêu chí có test và đã chạy thử trọn bằng bin, chờ một lần chạy thật với Claude Code |
 | S6 | 4 design mode | |
 | S7 | Các layer ui-ux, a11y, security, perf và reviewers | |
 | S8 | Song song + worktree + integration verify | |
@@ -706,3 +706,59 @@ src/a.ts` lọt gate trước approve. Giờ lệnh aidw có nối lệnh (`; & 
   được commit sau delivered.
 - Chưa kiểm chứng: Next.js + Playwright + Supabase local + Vercel thật (cần đăng nhập và Docker), thời gian chạy
   thật của các layer so với giới hạn 10 phút của Bash tool (skill hướng dẫn chạy nền khi cần).
+
+## 26. Nhật ký triển khai S5 (2026-11-08) — đóng code mốc A
+
+**Quyết định (D-25):**
+1. **`aidw converge`** (state converging) xét mọi scenario do change thêm hoặc sửa. Bằng chứng:
+   - **junit** (khi layer khai báo `reports`): `aidw verify` đọc JUnit XML ngay sau khi layer chạy và lưu test case
+     vào evidence của layer. Scenario pass khi có test case mang đúng id ở trạng thái pass, từ layer còn mới trên
+     code hiện tại. Fail hoặc skip đều là gap. Vitest, Playwright, `node --test`, jest-junit đều xuất định dạng này.
+   - **presence** (không có report): có dòng test **không bị skip** nêu id, và mọi layer đã pass. Quality report ghi
+     rõ đây là bằng chứng yếu hơn (test sai assertion không bị bắt ở đây; reviewer từng task đã xem assertion).
+2. **Gap → task `Cnn`** (`origin: converge`, `scenarios: [id]`, `verify` = setup+run của các layer test đã duyệt,
+   không gồm `code`; `problem` nói rõ thiếu hay fail/skip ở đâu). Change quay về executing → verify → converge lại.
+   Scenario vẫn là gap sau khi đã có task converge cho nó → **escalated**, không lặp vô hạn.
+3. **Guard:** deploying cần một converge pass **trên code hiện tại** (mới hơn task xong gần nhất, cùng HEAD).
+4. **`aidw deliver`** (state delivered) ghi `.aidw/changes/<id>/delivery/`: `README.md` (mục lục, trạng thái deploy,
+   tóm tắt), `quality-report.md` (mọi layer, số vòng sửa, scenario và loại bằng chứng, **phần không được phủ**:
+   layer chuẩn bị bỏ, layer của các slice sau như ui-ux/a11y/security/performance, report thiếu; nhận xét
+   non-blocking của reviewer; deploy), `tasks.md` (task, nguồn gốc plan/quality/converge, số lần thử, review,
+   commit, file ngoài touches), `decisions.md`, và skeleton `handoff.md` (chỉ tạo khi chưa có). Phần sinh tự động
+   được sinh lại mỗi lần chạy.
+5. **`aidw deliver --check`** cưỡng chế checklist §14: đủ file; `handoff.md` có đủ 7 mục (Overview, Run locally,
+   Environment, Deploy, Usage, Known issues, Next steps), không còn `TODO(aidw)`; có biến môi trường thì phải có
+   `.env.example`; change có task UI thì phải có screenshot; converge đã pass. **`aidw archive` từ chối package thiếu**,
+   rồi merge spec, chuyển change vào archive và commit `.aidw/`.
+6. Sau delivered gate đóng với code, **chỉ mở cho `.env.example`**. Script chụp màn hình đặt trong `.aidw/run/`.
+   Skill `start` yêu cầu task scaffold tạo sẵn `.env.example` và cấu hình JUnit reporter.
+7. Skill `/aidw:deliver` nạp Addy `documentation-and-adrs` và `shipping-and-launch` (đúng phân vai §7.2, bước 17).
+
+**Lỗ hổng tìm thấy và đã sửa:** checkpoint của S3 tính cả `test.skip("<id>")`/`test.todo` là có test. Giờ checkpoint
+và converge dùng chung luật nhận diện test bị skip.
+
+**Kiểm chứng:**
+- 76 test (thêm 5 file test converge, mở rộng test archive): parse JUnit (entity, failure, skipped, `>` trong
+  thuộc tính), presence (skip → gap → C01 → pass), escalate khi gap lặp lại, junit (report nói skip thì là gap dù
+  source có test), report cũ không được tính, checkpoint bỏ qua test bị skip, delivery package thiếu thì archive bị
+  chặn, gate sau delivered chỉ cho `.env.example`.
+- Chạy thử trọn mốc A bằng bin trên project Node có git: approve → T01 → verify fail (bug thật) → Q01 → verify lại →
+  **converge junit** từ report thật của `node --test` → deploy (vercel giả) → delivered → deliver báo thiếu → viết
+  handoff → package đạt → archive (merge spec, commit) → `validate --strict` sạch, working tree sạch. Lịch sử git:
+  approved analysis, T01, Q01, delivered, archive.
+
+**Trạng thái tiêu chí mốc A:**
+
+| # | Tiêu chí | Đã có |
+|---|---|---|
+| 1 | `/aidw:start` sinh intake + analysis đầy đủ | skill + `analyze`; **chờ chạy thật** (grilling cần người) |
+| 2 | Chặn ghi ngoài `.aidw/` trước approve | test + spike v2 (Claude Code thật) |
+| 3 | Sửa analysis sau approve → drift, bị chặn | test |
+| 4 | Chạy hết task graph tuần tự, mỗi task một commit | test + chạy thử bằng bin |
+| 5 | Kill giữa chừng, resume đúng task | test + chạy thử bằng bin |
+| 6 | Build/unit/E2E pass, deploy preview | test + chạy thử với deploy giả; **chờ Next.js + Vercel thật** |
+| 7 | Archive merge delta, validate pass | test + chạy thử bằng bin |
+| 8 | Delivery package đủ checklist | test + chạy thử bằng bin |
+
+Việc còn lại để đóng mốc A: **một lần chạy thật** với Claude Code (hook thật, subagent thật, `agent_type` thật,
+grilling với người, Next.js + Playwright + Vercel preview thật).

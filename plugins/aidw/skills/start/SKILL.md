@@ -152,7 +152,8 @@ tasks:
 ```
 
 - Every requirement and scenario marked `*` (changed) in `aidw ids <id>` must be referenced by some task.
-- The first tasks usually scaffold the project with the approved stack and set up the test harness.
+- The first tasks usually scaffold the project with the approved stack and set up the test harness, the
+  JUnit reporters of quality.yaml, and `.env.example` for every environment variable (names only).
 
 ## 8. Quality, deploy and permissions
 

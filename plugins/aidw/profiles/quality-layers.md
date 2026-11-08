@@ -12,13 +12,15 @@ layers:                         # run in this order by `aidw verify`; any kebab-
   - name: code
     run: ["pnpm lint", "pnpm exec tsc --noEmit", "pnpm build"]
   - name: unit
-    run: ["pnpm exec vitest run --project unit"]
+    run: ["pnpm exec vitest run --project unit --reporter=default --reporter=junit --outputFile.junit=test-results/unit.xml"]
+    reports: [test-results/unit.xml]       # JUnit XML: converge reads real pass/fail/skip per scenario
   - name: integration
     setup: ["pnpm exec supabase start"]          # optional; runs before `run` every time
     run: ["pnpm exec vitest run --project integration"]
   - name: e2e
     setup: ["pnpm exec playwright install chromium"]
-    run: ["pnpm exec playwright test"]
+    run: ["PLAYWRIGHT_JUNIT_OUTPUT_NAME=test-results/e2e.xml pnpm exec playwright test --reporter=list,junit"]
+    reports: [test-results/e2e.xml]
 deploy:
   target: preview               # none | local | preview   (production is tier 3: never automatic)
   command: pnpm dlx vercel deploy --yes
@@ -32,6 +34,11 @@ max_fix_rounds: 3               # fix tasks per failing layer before escalating 
   Supabase (tier 1), never a cloud project.
 - **`code`, `unit`, `e2e` are expected** for web projects (Q5: comprehensive by default). Dropping one is a
   warning; justify it in `## Quality profile`.
+- **Reports (recommended).** With `reports`, `aidw converge` reads each test case's real result (pass, fail,
+  skipped) by scenario id. Without them it falls back to "a non-skipped test names the scenario and the layer
+  passed", and the quality report says the evidence is presence-only. Runners: vitest
+  `--reporter=junit --outputFile.junit=<file>`, Playwright `reporter: [["junit", { outputFile: "<file>" }]]`,
+  `node --test --test-reporter=junit --test-reporter-destination=<file>`, Jest `jest-junit`.
 - **E2E covers the scenarios.** Each scenario id appears in a test name (the checkpoint enforces that per
   task); the e2e layer then proves the main flows pass together on the built app.
 - **Deploy** `command` must be a recognized preview deploy (Vercel or Netlify draft), and its tier-2 key must

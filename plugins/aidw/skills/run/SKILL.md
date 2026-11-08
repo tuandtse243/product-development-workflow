@@ -88,23 +88,32 @@ aidw next --change <id> --json
 3. Do not edit quality.yaml, skip a layer or weaken a test to get green: the package is frozen and the gate
    denies it. If a layer cannot pass for a reason outside the code (missing Docker, missing login), escalate.
 
-## 4. Converge, deploy, deliver
+## 4. Converge
 
-1. `aidw transition <id> converging` (refused unless every layer passed on the current code). Converge (every
-   scenario has a passing test, gaps become tasks) arrives with workflow slice S5; for now continue.
-2. `aidw transition <id> deploying`, then `aidw deploy --change <id>`.
+1. `aidw transition <id> converging` (refused unless every layer passed on the current code).
+2. `aidw converge --change <id>`: every scenario this change adds or modifies must have a passing test
+   (from the layers' JUnit reports when configured, otherwise a non-skipped test naming the scenario id).
+   - `PASS`: go to section 5.
+   - `GAPS` with converge tasks `Cnn` added: the change is back in `executing`. Return to the loop (section 1);
+     after the tasks, verify (section 3) and converge again.
+   - A scenario still without a passing test after its converge task: the change is `escalated`. Tell the user.
+
+## 5. Deploy and deliver
+
+1. `aidw transition <id> deploying` (refused without a passing converge on the current code), then
+   `aidw deploy --change <id>`.
    - target `preview`: runs the approved deploy command and the smoke checks; prints the URL.
    - target `none` / `local`: records that nothing was deployed.
    - `DEPLOY FAILED`: escalate with the output (usually a missing provider login or env var). Do not retry with
      different commands: anything beyond the approved command needs the user.
-3. `aidw transition <id> delivered` (refused without a successful deploy record).
-4. Report to the user: tasks and commits (`git log --oneline` since the first task's base), quality layers and
-   fix rounds, the preview URL, reviewer findings worth knowing, files changed outside touches. The delivery
-   package and archive come with slice S5.
+2. `aidw transition <id> delivered` (refused without a successful deploy record; commits `.aidw/`).
+3. Follow `$(aidw plugin-path skills/deliver/SKILL.md)`: delivery package, screenshots, check, archive.
+4. Final report to the user: tasks and commits, quality layers and fix rounds, converge result, the preview
+   URL, known issues, and where the delivery package is.
 
 ## Long-running commands
 
-`aidw checkpoint`, `aidw verify` and `aidw deploy` run builds and test suites. Call them with the Bash tool's
+`aidw checkpoint`, `aidw verify`, `aidw deploy` (and Playwright screenshots) run builds and test suites. Call them with the Bash tool's
 maximum timeout (600000 ms). If one may take longer, run it in the background and wait for its completion
 notification instead of polling. A verify killed half-way loses nothing: the next call skips layers that
 already passed.

@@ -280,10 +280,11 @@ describe("scenario evidence", () => {
     write(root, "e2e/book.spec.ts", "test('a/b/c: works', () => {})\ntest('a/b/c-d: other', () => {})\n");
     write(root, "src/a.ts", "// a/b/c is mentioned in source, which is not a test\n");
     write(root, "node_modules/x/a.test.js", "a/b/c\n");
+    write(root, "tests/x.test.ts", "test.skip('a/b/x: later', () => {})\nit.todo('a/b/x: todo')\n");
     expect(findScenarioTests(root, ["a/b/c", "a/b/c-d", "a/b/x"])).toEqual({
       "a/b/c": ["e2e/book.spec.ts:1"],
       "a/b/c-d": ["e2e/book.spec.ts:2"],
-      "a/b/x": [],
+      "a/b/x": [], // skipped or todo tests do not count
     });
   });
 });

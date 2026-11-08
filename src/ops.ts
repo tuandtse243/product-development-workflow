@@ -21,7 +21,8 @@ import { capabilityOf, isDir, pathsFor, readText, rel, walkFiles, type Paths } f
 import { applyDelta, type MergeSummary } from "./spec/merge.js";
 import { parseSpec } from "./spec/parse.js";
 import { git, headCommit, isGitRepo } from "./git.js";
-import { transitionGuard } from "./quality.js";
+import { checkDelivery } from "./deliver.js";
+import { transitionGuard } from "./guards.js";
 import { parseTasks } from "./tasks.js";
 import { VERSION } from "./version.js";
 
@@ -338,13 +339,15 @@ export function writeMerge(merges: CapabilityMerge[]): void {
   }
 }
 
-export function archiveChange(p: Paths, id: string): { target: string; merges: CapabilityMerge[] } {
+export function archiveChange(p: Paths, id: string): { target: string; merges: CapabilityMerge[]; commit?: string } {
   const change = loadChange(p, id);
   if (stateOf(change) !== "delivered") {
     throw new OpError(`change "${id}" is in state "${String(change.data.state)}"; only "delivered" changes can be archived`);
   }
   const d = checkChange(p, id);
   if (d.errors.length) throw new OpError(`change "${id}" has validation errors; nothing was archived`, d);
+  const delivery = checkDelivery(p, id);
+  if (delivery.errors.length) throw new OpError(`the delivery package of "${id}" is incomplete; run \`aidw deliver\` and complete it`, delivery);
   const merges = planMerge(p, id);
 
   const date = now().slice(0, 10);
@@ -358,7 +361,8 @@ export function archiveChange(p: Paths, id: string): { target: string; merges: C
   saveChange(change);
   mkdirSync(p.archive, { recursive: true });
   renameSync(change.dir, target);
-  return { target, merges };
+  const commit = commitAidw(p, `aidw: archive ${id}\n\nDelta specs merged into .aidw/specs; change moved to ${rel(p, target)}.`);
+  return { target, merges, ...(commit ? { commit } : {}) };
 }
 
 // ---------------------------------------------------------------- status

@@ -7328,12 +7328,12 @@ __export(cli_exports, {
   run: () => run
 });
 module.exports = __toCommonJS(cli_exports);
-var import_node_fs10 = require("node:fs");
-var import_node_path11 = require("node:path");
+var import_node_fs12 = require("node:fs");
+var import_node_path13 = require("node:path");
 
 // src/analyze.ts
-var import_node_fs9 = require("node:fs");
-var import_node_path10 = require("node:path");
+var import_node_fs11 = require("node:fs");
+var import_node_path12 = require("node:path");
 
 // src/change.ts
 var import_node_fs2 = require("node:fs");
@@ -7481,8 +7481,8 @@ function resolveChangeId(p, id) {
 }
 
 // src/check.ts
-var import_node_fs8 = require("node:fs");
-var import_node_path9 = require("node:path");
+var import_node_fs10 = require("node:fs");
+var import_node_path11 = require("node:path");
 
 // src/approval.ts
 var import_node_crypto = require("node:crypto");
@@ -8073,8 +8073,8 @@ function validateDeltaText(text, file, mainText, capability) {
 }
 
 // src/quality.ts
-var import_node_fs7 = require("node:fs");
-var import_node_path8 = require("node:path");
+var import_node_fs9 = require("node:fs");
+var import_node_path10 = require("node:path");
 var import_yaml4 = __toESM(require_dist(), 1);
 
 // src/git.ts
@@ -8104,8 +8104,8 @@ function changedSince(cwd, base) {
 }
 
 // src/ops.ts
-var import_node_fs5 = require("node:fs");
-var import_node_path6 = require("node:path");
+var import_node_fs8 = require("node:fs");
+var import_node_path9 = require("node:path");
 
 // src/backstop.ts
 var import_node_child_process2 = require("node:child_process");
@@ -8184,7 +8184,7 @@ var AIDW_STATE_COMMAND = /(^|[\s;&|(])(?:[^\s;&|]*\/)?aidw\s+(?:task|checkpoint|
 var OPEN_STATES = /* @__PURE__ */ new Set(["approved", "executing", "verifying", "converging", "deploying"]);
 var FROZEN_STATES = new Set([...POST_APPROVAL].filter((s) => s !== "escalated"));
 function gateState(p) {
-  const st = { open: false, drift: [], frozen: [], summary: "" };
+  const st = { open: false, drift: [], frozen: [], delivered: false, summary: "" };
   const parts = [];
   for (const id of listChangeIds(p)) {
     let state = null;
@@ -8195,6 +8195,7 @@ function gateState(p) {
         const a = approvalStatus(p, c).status;
         if (a === "drift") st.drift.push(id);
         if (a === "valid" && OPEN_STATES.has(state)) st.open = true;
+        if (a === "valid" && state === "delivered") st.delivered = true;
         if (FROZEN_STATES.has(state)) st.frozen.push(id);
       }
     } catch {
@@ -8264,7 +8265,9 @@ function decide(input, env) {
       }
       return allow("aidw state directory");
     }
-    return st.open ? allow("analysis approved") : deny(closedReason(st));
+    if (st.open) return allow("analysis approved");
+    if (st.delivered && rel(p, file) === ".env.example") return allow("environment template for the delivery package");
+    return deny(closedReason(st));
   }
   if (tool === "Bash") {
     const cmd2 = String(ti.command ?? "");
@@ -8396,340 +8399,18 @@ Do not delete or revert anything yourself: some of these may be the user's own e
   return JSON.stringify({ decision: "block", reason });
 }
 
-// src/version.ts
-var VERSION = "0.1.0";
+// src/deliver.ts
+var import_node_fs7 = require("node:fs");
+var import_node_path8 = require("node:path");
 
-// src/ops.ts
-var OpError = class extends Error {
-  constructor(message, diags) {
-    super(message);
-    this.diags = diags;
-  }
-};
-var now = () => (/* @__PURE__ */ new Date()).toISOString();
-var RESUMABLE = Object.keys(TRANSITIONS).filter((s) => TRANSITIONS[s].includes("paused"));
-var PROJECT_YAML = (name) => `# aidw project configuration
-schema: 1
-name: ${name}
-stack:
-  source: null # client | ai | fallback
-  items: {}
-  reason: null
-design_mode: null # existing | claude_design | ai_design | hybrid
-quality_profile: null
-deploy:
-  targets: []
-engine_version: ${VERSION}
-`;
-var CONSTITUTION = `# Constitution
-
-Project-wide engineering principles. Every agent reads this file before working.
-It is part of the approved Analysis package: changing it after approval is drift.
-
-## Principles
-
-- <principle>
-
-## Stack and conventions
-
-- <stack profile, coding standards, folder conventions>
-`;
-var SKELETON_DIRS = ["requirements", "specs", "domain", "architecture", "decisions", "design", "changes", "archive", "run"];
-function initProject(projectDir) {
-  const p = pathsFor(projectDir);
-  if ((0, import_node_fs5.existsSync)(p.aidw)) throw new OpError(`${rel(p, p.aidw)}/ already exists; refusing to overwrite`);
-  const created = [];
-  const write = (file, content) => {
-    (0, import_node_fs5.mkdirSync)((0, import_node_path6.dirname)(file), { recursive: true });
-    (0, import_node_fs5.writeFileSync)(file, content);
-    created.push(rel(p, file));
-  };
-  write(p.projectYaml, PROJECT_YAML((0, import_node_path6.basename)(projectDir)));
-  write(p.constitution, CONSTITUTION);
-  write((0, import_node_path6.join)(p.aidw, ".gitignore"), "run/\n");
-  for (const d of SKELETON_DIRS) {
-    const keep = (0, import_node_path6.join)(p.aidw, d, ".gitkeep");
-    if (d !== "run") write(keep, "");
-    else (0, import_node_fs5.mkdirSync)((0, import_node_path6.join)(p.aidw, d), { recursive: true });
-  }
-  return { created, paths: p };
-}
-var INPUT_TYPES = ["idea", "prd", "upwork_jd", "client_request", "codebase"];
-var INTAKE = (title) => `# Intake: ${title}
-
-## Input type
-
-<idea | prd | upwork_jd | client_request | codebase>
-
-## Source
-
-<paste or link the original request; keep the client's wording>
-
-## Client constraints
-
-- Stack required by the client: <none | ...>
-- Deadline / budget / other: <...>
-`;
-function newChange(p, id, opts) {
-  if (!CHANGE_ID.test(id)) throw new OpError(`change id "${id}" must be kebab-case (e.g. 2026-11-08-booking-app)`);
-  if (opts.inputType && !INPUT_TYPES.includes(opts.inputType)) {
-    throw new OpError(`unknown input type "${opts.inputType}" (expected ${INPUT_TYPES.join(", ")})`);
-  }
-  const dir = changeDir(p, id);
-  if ((0, import_node_fs5.existsSync)(dir)) throw new OpError(`change "${id}" already exists`);
-  const title = opts.title ?? id;
-  (0, import_node_fs5.mkdirSync)((0, import_node_path6.join)(dir, "specs"), { recursive: true });
-  (0, import_node_fs5.writeFileSync)(
-    (0, import_node_path6.join)(dir, "change.yaml"),
-    [
-      "schema: 1",
-      `id: ${id}`,
-      `title: ${JSON.stringify(title)}`,
-      `input_type: ${opts.inputType ?? "null"}`,
-      "state: draft",
-      `created_at: ${now()}`,
-      "skip_specs: false",
-      "approval: null",
-      "run:",
-      "  paused: null",
-      ""
-    ].join("\n")
-  );
-  (0, import_node_fs5.writeFileSync)((0, import_node_path6.join)(dir, "intake.md"), INTAKE(title));
-  (0, import_node_fs5.writeFileSync)((0, import_node_path6.join)(dir, "analysis.md"), ANALYSIS(title));
-  recordBaseline(p);
-  return dir;
-}
-var ANALYSIS = (title) => `# Analysis: ${title}
-
-## Summary
-
-${PLACEHOLDER}: one page the user can review in minutes - goal, scope, the 5-10 key decisions, and the risks and assumptions that need their attention.
-
-## Requirements and scope
-
-${PLACEHOLDER}: in scope, out of scope, assumptions. Link .aidw/requirements/<change>.md.
-
-## Domain
-
-${PLACEHOLDER}: key entities and business rules. Link .aidw/domain/model.md.
-
-## Stack
-
-Source: ${PLACEHOLDER} (client | ai | fallback)
-
-${PLACEHOLDER}: chosen stack and why. If outside the familiar stack pool, say why.
-
-## Design
-
-Mode: ${PLACEHOLDER} (existing | claude_design | ai_design | hybrid)
-
-${PLACEHOLDER}: design references, bundle, or AI design direction.
-
-## Architecture
-
-${PLACEHOLDER}: architecture overview and new ADRs. Link .aidw/architecture/overview.md.
-
-## Specs
-
-${PLACEHOLDER}: capabilities added or changed, number of requirements and scenarios.
-
-## Plan
-
-${PLACEHOLDER}: number of tasks and waves, what can run in parallel, which agents are needed.
-
-## Quality profile
-
-${PLACEHOLDER}: quality layers that run (code, unit, integration, e2e, ui-ux, a11y, security, performance, review) and their thresholds.
-
-## Deploy strategy
-
-${PLACEHOLDER}: local | preview | staging | production (production always asks first).
-
-## Permissions
-
-${PLACEHOLDER}: one bullet per tier-2 resource requested (free cloud resources, preview deploys), or "None".
-
-## Risks and assumptions
-
-${PLACEHOLDER}: what could go wrong and what was assumed.
-
-## Appendix: discovery Q&A
-
-${PLACEHOLDER}: the grilling rounds, questions and answers.
-`;
-function readinessCheck(p, id, asState) {
-  const d = checkChange(p, id, asState ? { asState } : {});
-  d.add(analyzeChange(p, id));
-  return d;
-}
-function approve(p, id) {
-  const change = loadChange(p, id);
-  const state = stateOf(change);
-  if (state !== "awaiting_approval") {
-    throw new OpError(`change "${id}" is in state "${String(change.data.state)}"; only "awaiting_approval" can be approved`);
-  }
-  const d = readinessCheck(p, id);
-  if (d.errors.length) throw new OpError(`change "${id}" has validation errors; fix them before approving`, d);
-  const { hash, files } = computeApprovalHash(p, change);
-  change.doc.set("approval", change.doc.createNode({ hash, at: now(), by: "user" }));
-  change.doc.set("state", "approved");
-  saveChange(change);
-  return { hash, files };
-}
-function transition(p, id, to, opts) {
-  const change = loadChange(p, id);
-  const from = stateOf(change);
-  if (!from) throw new OpError(`change "${id}" has an unknown state "${String(change.data.state)}"`);
-  let target;
-  if (to === "resume") {
-    if (from !== "paused") throw new OpError(`change "${id}" is not paused`);
-    const back = change.data.run?.paused?.from;
-    if (!back || !RESUMABLE.includes(back)) {
-      throw new OpError(`change "${id}" has no valid paused.from state to resume to`);
-    }
-    target = back;
-  } else {
-    if (to === "approved") throw new OpError("use `aidw approve` to approve a change");
-    if (to === "archived") throw new OpError("use `aidw archive` to archive a change");
-    if (!TRANSITIONS[from].includes(to)) {
-      const allowed = TRANSITIONS[from].join(", ") || "none";
-      throw new OpError(`cannot go from "${from}" to "${to}" (allowed: ${allowed})`);
-    }
-    target = to;
-  }
-  if (POST_APPROVAL.has(target) && target !== "escalated") {
-    const a = approvalStatus(p, change);
-    if (a.status !== "valid") {
-      throw new OpError(
-        a.status === "none" ? `"${target}" requires an approval` : "approval drift: the approved Analysis package changed; go back to analyzing (via escalated) and approve again"
-      );
-    }
-  }
-  if (from !== "paused") {
-    const refused = transitionGuard(p, id, target);
-    if (refused) throw new OpError(refused);
-  }
-  if (target === "awaiting_approval") {
-    const d = readinessCheck(p, id, target);
-    if (d.errors.length) throw new OpError("Analysis package is not ready for approval", d);
-  }
-  if (target === "paused") {
-    change.doc.setIn(["run", "paused"], change.doc.createNode({ from, reason: opts.reason ?? "unspecified", at: now() }));
-  } else if (from === "paused") {
-    change.doc.setIn(["run", "paused"], null);
-  }
-  if (target === "analyzing" && from !== "intake") {
-    change.doc.set("approval", null);
-  }
-  change.doc.set("state", target);
-  saveChange(change);
-  if (target === "delivered") {
-    const commit = commitAidw(p, `aidw: ${id} delivered
-
-Quality layer and deploy evidence: .aidw/changes/${id}/evidence/`);
-    return { from, to: target, ...commit ? { commit } : {} };
-  }
-  return { from, to: target };
-}
-function commitAidw(p, message) {
-  if (!isGitRepo(p.project)) return null;
-  if (!git(p.project, ["add", "--", ".aidw"]).ok) return null;
-  if (git(p.project, ["diff", "--cached", "--quiet", "--", ".aidw"]).ok) return null;
-  return git(p.project, ["commit", "-q", "-m", message, "--", ".aidw"]).ok ? headCommit(p.project) : null;
-}
-function planMerge(p, id) {
-  const change = loadChange(p, id);
-  const d = new Diags();
-  const files = deltaFiles(p, change, d);
-  const results = [];
-  for (const df of files) {
-    const r = applyDelta(readText(df.mainFile), (0, import_node_fs5.readFileSync)(df.file, "utf8"), df.capability);
-    if (!r.ok || !r.text) {
-      for (const e of r.errors) d.error(rel(p, df.file), e);
-      continue;
-    }
-    results.push({ capability: df.capability, file: df.mainFile, created: r.created, summary: r.summary, text: r.text });
-  }
-  if (d.errors.length) throw new OpError(`merge of change "${id}" failed; nothing was written`, d);
-  return results;
-}
-function writeMerge(merges) {
-  for (const m of merges) {
-    (0, import_node_fs5.mkdirSync)((0, import_node_path6.dirname)(m.file), { recursive: true });
-    (0, import_node_fs5.writeFileSync)(m.file, m.text);
-  }
-}
-function archiveChange(p, id) {
-  const change = loadChange(p, id);
-  if (stateOf(change) !== "delivered") {
-    throw new OpError(`change "${id}" is in state "${String(change.data.state)}"; only "delivered" changes can be archived`);
-  }
-  const d = checkChange(p, id);
-  if (d.errors.length) throw new OpError(`change "${id}" has validation errors; nothing was archived`, d);
-  const merges = planMerge(p, id);
-  const date = now().slice(0, 10);
-  const name = /^\d{4}-\d{2}-\d{2}-/.test(id) ? id : `${date}-${id}`;
-  const target = (0, import_node_path6.join)(p.archive, name);
-  if ((0, import_node_fs5.existsSync)(target)) throw new OpError(`archive target ${rel(p, target)} already exists`);
-  writeMerge(merges);
-  change.doc.set("state", "archived");
-  change.doc.set("archived_at", now());
-  saveChange(change);
-  (0, import_node_fs5.mkdirSync)(p.archive, { recursive: true });
-  (0, import_node_fs5.renameSync)(change.dir, target);
-  return { target, merges };
-}
-function projectStatus(p, only) {
-  let capabilities = 0;
-  let requirements = 0;
-  for (const f of walkFiles(p.specs)) {
-    if (!capabilityOf(p.specs, f)) continue;
-    capabilities++;
-    requirements += parseSpec((0, import_node_fs5.readFileSync)(f, "utf8")).requirements.length;
-  }
-  const ids = only ? [only] : listChangeIds(p);
-  const changes = ids.map((id) => {
-    try {
-      const c = loadChange(p, id);
-      const tasksText = readText((0, import_node_path6.join)(c.dir, "tasks.yaml"));
-      let tasks = null;
-      if (tasksText !== null) {
-        const byStatus = {};
-        const list3 = parseTasks(tasksText).tasks;
-        for (const t of list3) {
-          const s = String(t?.status ?? "pending");
-          byStatus[s] = (byStatus[s] ?? 0) + 1;
-        }
-        tasks = { total: list3.length, done: byStatus.done ?? 0, byStatus };
-      }
-      const paused = c.data.run?.paused ?? null;
-      return {
-        id,
-        ...typeof c.data.title === "string" ? { title: c.data.title } : {},
-        state: String(c.data.state),
-        approval: approvalStatus(p, c).status,
-        tasks,
-        paused,
-        deltas: deltaFiles(p, c, new Diags()).length
-      };
-    } catch (e) {
-      if (e instanceof ChangeError) {
-        return { id, state: "?", approval: "none", tasks: null, paused: null, deltas: 0, error: e.message };
-      }
-      throw e;
-    }
-  });
-  return { project: p.project, engineVersion: VERSION, specs: { capabilities, requirements }, changes };
-}
-function assertProject(p) {
-  if (!isDir(p.aidw)) throw new OpError(`no .aidw/ in ${p.project}; run \`aidw init\``);
-}
+// src/converge.ts
+var import_node_fs6 = require("node:fs");
+var import_node_path7 = require("node:path");
 
 // src/run.ts
 var import_node_child_process3 = require("node:child_process");
-var import_node_fs6 = require("node:fs");
-var import_node_path7 = require("node:path");
+var import_node_fs5 = require("node:fs");
+var import_node_path6 = require("node:path");
 var import_yaml3 = __toESM(require_dist(), 1);
 
 // src/glob.ts
@@ -8807,11 +8488,11 @@ function selectSkills(t, kind, opts = {}) {
 }
 
 // src/run.ts
-var now2 = () => (/* @__PURE__ */ new Date()).toISOString();
+var now = () => (/* @__PURE__ */ new Date()).toISOString();
 var list2 = (v) => Array.isArray(v) ? v.map(String) : [];
 function loadTasks(p, id) {
   const change = loadChange(p, id);
-  const file = (0, import_node_path7.join)(change.dir, "tasks.yaml");
+  const file = (0, import_node_path6.join)(change.dir, "tasks.yaml");
   const text = readText(file);
   if (text === null) throw new OpError(`change "${id}" has no tasks.yaml`);
   const d = validateTasksText(text, rel(p, file));
@@ -8823,7 +8504,7 @@ function saveTasksDoc(tf) {
 }
 function saveTasks(tf) {
   const text = String(tf.doc);
-  (0, import_node_fs6.writeFileSync)(tf.file, text);
+  (0, import_node_fs5.writeFileSync)(tf.file, text);
   tf.tasks = parseTasks(text).tasks;
 }
 function indexOf(tf, taskId) {
@@ -8901,7 +8582,7 @@ function startTask(p, id, taskId) {
   const base = typeof t.base === "string" ? t.base : status === "pending" ? headCommit(p.project) : null;
   setField(tf, i, "status", "running");
   setField(tf, i, "attempts", attempt);
-  if (!t.started_at) setField(tf, i, "started_at", now2());
+  if (!t.started_at) setField(tf, i, "started_at", now());
   if (base) setField(tf, i, "base", base);
   saveTasks(tf);
   return { task: taskId, attempt, maxAttempts: max, base, resumed };
@@ -8926,21 +8607,21 @@ var MAX_TEST_FILE = 1024 * 1024;
 function walkProject(dir, root, out) {
   let names;
   try {
-    names = (0, import_node_fs6.readdirSync)(dir);
+    names = (0, import_node_fs5.readdirSync)(dir);
   } catch {
     return;
   }
   for (const name of names.sort()) {
     if (SKIP_DIRS.has(name)) continue;
-    const full = (0, import_node_path7.join)(dir, name);
+    const full = (0, import_node_path6.join)(dir, name);
     let st;
     try {
-      st = (0, import_node_fs6.statSync)(full);
+      st = (0, import_node_fs5.statSync)(full);
     } catch {
       continue;
     }
     if (st.isDirectory()) walkProject(full, root, out);
-    else if (st.size <= MAX_TEST_FILE) out.push((0, import_node_path7.relative)(root, full).split(import_node_path7.sep).join("/"));
+    else if (st.size <= MAX_TEST_FILE) out.push((0, import_node_path6.relative)(root, full).split(import_node_path6.sep).join("/"));
   }
 }
 function testFiles(project) {
@@ -8948,13 +8629,15 @@ function testFiles(project) {
   walkProject(project, project, all);
   return all.filter((f) => TEST_FILE.test(f));
 }
+var SKIPPED_LINE = /\.(skip|todo|fixme)\s*\(|\b(xit|xtest|xdescribe)\s*\(/;
 function findScenarioTests(project, ids) {
   const found = Object.fromEntries(ids.map((s) => [s, []]));
   if (!ids.length) return found;
   const patterns = ids.map((s) => [s, new RegExp(`(^|[^a-z0-9/-])${s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![a-z0-9/-])`)]);
   for (const f of testFiles(project)) {
-    const lines = (0, import_node_fs6.readFileSync)((0, import_node_path7.join)(project, f), "utf8").split(/\r?\n/);
+    const lines = (0, import_node_fs5.readFileSync)((0, import_node_path6.join)(project, f), "utf8").split(/\r?\n/);
     lines.forEach((line, n) => {
+      if (SKIPPED_LINE.test(line)) return;
       for (const [s, re] of patterns) if (re.test(line)) found[s]?.push(`${f}:${n + 1}`);
     });
   }
@@ -8962,19 +8645,19 @@ function findScenarioTests(project, ids) {
 }
 var evidenceRel = (taskId) => `evidence/${taskId}.json`;
 function readEvidence(change, t) {
-  const file = (0, import_node_path7.join)(change.dir, evidenceRel(t.id));
-  if ((0, import_node_fs6.existsSync)(file)) {
+  const file = (0, import_node_path6.join)(change.dir, evidenceRel(t.id));
+  if ((0, import_node_fs5.existsSync)(file)) {
     try {
-      return JSON.parse((0, import_node_fs6.readFileSync)(file, "utf8"));
+      return JSON.parse((0, import_node_fs5.readFileSync)(file, "utf8"));
     } catch {
     }
   }
   return { task: t.id, title: String(t.title ?? ""), checkpoints: [], reviews: [] };
 }
 function writeEvidence(change, ev) {
-  const file = (0, import_node_path7.join)(change.dir, evidenceRel(ev.task));
-  (0, import_node_fs6.mkdirSync)((0, import_node_path7.join)(change.dir, "evidence"), { recursive: true });
-  (0, import_node_fs6.writeFileSync)(file, `${JSON.stringify(ev, null, 2)}
+  const file = (0, import_node_path6.join)(change.dir, evidenceRel(ev.task));
+  (0, import_node_fs5.mkdirSync)((0, import_node_path6.join)(change.dir, "evidence"), { recursive: true });
+  (0, import_node_fs5.writeFileSync)(file, `${JSON.stringify(ev, null, 2)}
 `);
 }
 var tailOf = (s, lines = 60) => s.split(/\r?\n/).slice(-lines).join("\n").trim();
@@ -9016,7 +8699,7 @@ function checkpoint(p, id, taskId, opts = {}) {
   const ok = verifyOk && missing.length === 0;
   const record = {
     attempt: attemptsOf(t),
-    at: now2(),
+    at: now(),
     ok,
     base,
     scenarios,
@@ -9036,7 +8719,7 @@ function checkpoint(p, id, taskId, opts = {}) {
   setField(tf, i, "evidence", evidenceRel(taskId));
   setField(tf, i, "notes", ok ? null : `checkpoint: ${problems.join("; ")}`);
   saveTasks(tf);
-  return { ...record, task: taskId, status: ok ? "review" : "failed", evidence: rel(p, (0, import_node_path7.join)(tf.change.dir, evidenceRel(taskId))) };
+  return { ...record, task: taskId, status: ok ? "review" : "failed", evidence: rel(p, (0, import_node_path6.join)(tf.change.dir, evidenceRel(taskId))) };
 }
 function recordReview(p, id, taskId, verdict, notes, opts = {}) {
   const tf = loadTasks(p, id);
@@ -9045,7 +8728,7 @@ function recordReview(p, id, taskId, verdict, notes, opts = {}) {
   const t = tf.tasks[i];
   if (statusOf(t) !== "review") throw new OpError(`task ${taskId} is "${statusOf(t)}"; only a checkpointed task (review) can be reviewed`);
   const ev = readEvidence(tf.change, t);
-  ev.reviews.push({ attempt: attemptsOf(t), at: now2(), verdict, notes: notes.trim() });
+  ev.reviews.push({ attempt: attemptsOf(t), at: now(), verdict, notes: notes.trim() });
   writeEvidence(tf.change, ev);
   if (verdict === "fix") {
     const exhausted = attemptsOf(t) >= maxAttemptsOf(t);
@@ -9056,7 +8739,7 @@ function recordReview(p, id, taskId, verdict, notes, opts = {}) {
   }
   setField(tf, i, "status", "done");
   setField(tf, i, "notes", null);
-  setField(tf, i, "finished_at", now2());
+  setField(tf, i, "finished_at", now());
   saveTasks(tf);
   if (opts.commit === false) return { task: taskId, verdict, status: "done", commit: null };
   if (!isGitRepo(p.project)) return { task: taskId, verdict, status: "done", commit: null, warning: "not a git repository: task not committed" };
@@ -9074,11 +8757,11 @@ aidw change ${id}, task ${taskId}. Checkpoint and review evidence: .aidw/changes
   return { task: taskId, verdict, status: "done", commit: headCommit(p.project) };
 }
 function pointer(p, file, what) {
-  return (0, import_node_fs6.existsSync)(file) ? `- \`${rel(p, file)}\`: ${what}` : null;
+  return (0, import_node_fs5.existsSync)(file) ? `- \`${rel(p, file)}\`: ${what}` : null;
 }
 function adrPointers(p) {
   return walkFiles(p.decisions).filter((f) => f.endsWith(".md")).map((f) => {
-    const title = ((0, import_node_fs6.readFileSync)(f, "utf8").match(/^#\s+(.+)$/m)?.[1] ?? "").trim();
+    const title = ((0, import_node_fs5.readFileSync)(f, "utf8").match(/^#\s+(.+)$/m)?.[1] ?? "").trim();
     return `- \`${rel(p, f)}\`${title ? `: ${title}` : ""}`;
   });
 }
@@ -9093,7 +8776,7 @@ function buildBrief(p, id, taskId, kind, vendorDir) {
   const failedCheckpoint = !reviewIsLatest && lastCheckpoint && !lastCheckpoint.ok ? lastCheckpoint : void 0;
   const fixReview = reviewIsLatest && lastReview?.verdict === "fix" ? lastReview : void 0;
   const retry = kind === "implement" && (!!failedCheckpoint || !!fixReview);
-  const skills = selectSkills(t, kind, { retry }).map((s) => ({ ...s, path: (0, import_node_path7.join)(vendorDir, ...s.id.split("/"), "SKILL.md") }));
+  const skills = selectSkills(t, kind, { retry }).map((s) => ({ ...s, path: (0, import_node_path6.join)(vendorDir, ...s.id.split("/"), "SKILL.md") }));
   const reqs = requirementsAfterChange(p, id);
   const scenarioIds = list2(t.scenarios);
   const reqIds = [.../* @__PURE__ */ new Set([...list2(t.specs), ...scenarioIds.map((s) => s.split("/").slice(0, -1).join("/"))])];
@@ -9110,9 +8793,9 @@ ${req.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`;
   const priorWork = kind === "implement" && status === "running" && base !== null && (changedSince(p.project, base) ?? []).some((f) => !f.startsWith(".aidw/"));
   const pointers = [
     pointer(p, p.constitution, "engineering principles every agent follows"),
-    pointer(p, (0, import_node_path7.join)(p.domain, "model.md"), "glossary, entities, business rules"),
-    pointer(p, (0, import_node_path7.join)(p.architecture, "overview.md"), "architecture, folder structure, integrations"),
-    pointer(p, (0, import_node_path7.join)(p.requirements, `${id}.md`), "user stories and implementation/testing decisions"),
+    pointer(p, (0, import_node_path6.join)(p.domain, "model.md"), "glossary, entities, business rules"),
+    pointer(p, (0, import_node_path6.join)(p.architecture, "overview.md"), "architecture, folder structure, integrations"),
+    pointer(p, (0, import_node_path6.join)(p.requirements, `${id}.md`), "user stories and implementation/testing decisions"),
     ...touchesUi(t) ? [pointer(p, p.design, "design direction and assets (UI task)")] : []
   ].filter((x) => x !== null);
   const adrs = adrPointers(p);
@@ -9170,7 +8853,7 @@ ${req.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`;
       "## What to review",
       "",
       `- The task's changes: ${diff}.`,
-      `- Checkpoint evidence: \`${rel(p, (0, import_node_path7.join)(tf.change.dir, evidenceRel(taskId)))}\` (verify output, where each scenario test lives).`,
+      `- Checkpoint evidence: \`${rel(p, (0, import_node_path6.join)(tf.change.dir, evidenceRel(taskId)))}\` (verify output, where each scenario test lives).`,
       ...outside.length ? [`- Files changed outside Touches: ${outside.map((f) => `\`${f}\``).join(", ")}. Decide whether each is justified.`] : [],
       "",
       "## Checklist",
@@ -9190,11 +8873,726 @@ ${req.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`;
     ];
   }
   const text = [...header, ...body].join("\n").replace(/\n{3,}/g, "\n\n");
-  const dir = (0, import_node_path7.join)(p.run, "briefs", id);
-  (0, import_node_fs6.mkdirSync)(dir, { recursive: true });
-  const path = (0, import_node_path7.join)(dir, `${taskId}.${kind}.md`);
-  (0, import_node_fs6.writeFileSync)(path, text);
+  const dir = (0, import_node_path6.join)(p.run, "briefs", id);
+  (0, import_node_fs5.mkdirSync)(dir, { recursive: true });
+  const path = (0, import_node_path6.join)(dir, `${taskId}.${kind}.md`);
+  (0, import_node_fs5.writeFileSync)(path, text);
   return { kind, task: taskId, path, text, skills };
+}
+
+// src/converge.ts
+var convergeFile = (change) => (0, import_node_path7.join)(change.dir, "evidence", "converge.json");
+var now2 = () => (/* @__PURE__ */ new Date()).toISOString();
+var idPattern = (id) => new RegExp(`(^|[^a-z0-9/-])${id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![a-z0-9/-])`);
+function fromJunit(id, tests) {
+  const re = idPattern(id);
+  const hits = tests.filter((t) => re.test(t.name));
+  if (!hits.length) return { status: "missing", where: [] };
+  const status = hits.some((t) => t.status === "fail") ? "fail" : hits.some((t) => t.status === "pass") ? "pass" : "skipped";
+  return { status, where: hits.map((t) => `${t.name} (${t.status})`) };
+}
+function fromPresence(id, files) {
+  const re = idPattern(id);
+  const where = [];
+  let live = false;
+  for (const { file, lines } of files) {
+    lines.forEach((line, n) => {
+      if (!re.test(line)) return;
+      const skipped = SKIPPED_LINE.test(line);
+      if (!skipped) live = true;
+      where.push(`${file}:${n + 1}${skipped ? " (skipped)" : ""}`);
+    });
+  }
+  return { status: live ? "pass" : where.length ? "skipped" : "missing", where };
+}
+function scenarioResults(p, id) {
+  const change = loadChange(p, id);
+  const config = loadQuality(p, change);
+  const { summary } = pendingLayers(p, id);
+  const tasks = loadTasks(p, id).tasks;
+  const head = headCommit(p.project);
+  const ids = [...idsAfterChange(p, id).changed.scenarios].sort();
+  const withReports = config.layers.filter((l) => l.reports.length);
+  const scenarios = {};
+  if (withReports.length) {
+    const tests = withReports.flatMap((l) => isFresh(summary.layers[l.name], tasks, head) ? summary.layers[l.name]?.tests ?? [] : []);
+    for (const s of ids) scenarios[s] = fromJunit(s, tests);
+    return { mode: "junit", scenarios };
+  }
+  const files = testFiles(p.project).map((f) => ({ file: f, lines: (0, import_node_fs6.readFileSync)((0, import_node_path7.join)(p.project, f), "utf8").split(/\r?\n/) }));
+  for (const s of ids) scenarios[s] = fromPresence(s, files);
+  return { mode: "presence", scenarios };
+}
+function converge(p, id) {
+  const change = loadChange(p, id);
+  if (stateOf(change) !== "converging") throw new OpError(`change "${id}" is "${String(change.data.state)}"; aidw converge runs in state converging`);
+  if (approvalStatus(p, change).status !== "valid") throw new OpError(`approval drift in "${id}": escalate and re-approve`);
+  const { pending } = pendingLayers(p, id);
+  if (pending.length) throw new OpError(`quality layers not passing on the current code: ${pending.join(", ")}; run \`aidw verify\` first`);
+  const { mode, scenarios } = scenarioResults(p, id);
+  const gaps = Object.entries(scenarios).filter(([, r]) => r.status !== "pass").map(([s]) => s);
+  const tf = loadTasks(p, id);
+  const config = loadQuality(p, change);
+  const record = { at: now2(), head: headCommit(p.project), mode, ok: gaps.length === 0, scenarios, added: [], escalated: [] };
+  const coveredBefore = (s) => tf.tasks.some((t) => t.origin === "converge" && Array.isArray(t.scenarios) && t.scenarios.includes(s));
+  record.escalated = gaps.filter(coveredBefore);
+  const fresh = gaps.filter((s) => !coveredBefore(s));
+  if (record.escalated.length) {
+    writeRecord(change, record);
+    transition(p, id, "escalated", { reason: `converge: still no passing test after a converge task for ${record.escalated.join(", ")}` });
+    return { ...record, summary: `escalated: ${record.escalated.length} scenario(s) still without a passing test after a converge task` };
+  }
+  if (fresh.length) {
+    const testLayers = config.layers.filter((l) => l.name !== "code");
+    const verify2 = (testLayers.length ? testLayers : config.layers).flatMap((l) => [...l.setup, ...l.run]);
+    let n = tf.tasks.filter((t) => t.origin === "converge").length;
+    const seq = tf.doc.get("tasks");
+    for (const s of fresh) {
+      n += 1;
+      const taskId = `C${String(n).padStart(2, "0")}`;
+      const r = scenarios[s];
+      seq.add(
+        tf.doc.createNode({
+          id: taskId,
+          title: `Cover scenario ${s}`,
+          role: "fullstack-engineer",
+          origin: "converge",
+          specs: [s.split("/").slice(0, -1).join("/")],
+          scenarios: [s],
+          depends_on: [],
+          touches: ["**"],
+          verify: verify2,
+          problem: r.status === "missing" ? `Converge found no test for scenario ${s} (${mode} evidence). Write a test named with the id that asserts its THEN outcome, and make it pass.` : `Converge found the test for scenario ${s} ${r.status === "fail" ? "failing" : "skipped"}: ${r.where.join("; ")}. Make it a real, passing test.`,
+          status: "pending"
+        })
+      );
+      record.added.push(taskId);
+    }
+    saveTasksDoc(tf);
+    writeRecord(change, record);
+    transition(p, id, "executing", {});
+    return { ...record, summary: `${fresh.length} scenario gap(s): converge task(s) ${record.added.join(", ")} added; change is executing again` };
+  }
+  writeRecord(change, record);
+  return { ...record, summary: `all ${Object.keys(scenarios).length} scenario(s) have a passing test (${mode} evidence)` };
+}
+function writeRecord(change, record) {
+  const f = convergeFile(change);
+  (0, import_node_fs6.mkdirSync)((0, import_node_path7.join)(change.dir, "evidence"), { recursive: true });
+  let runs = [];
+  if ((0, import_node_fs6.existsSync)(f)) {
+    try {
+      runs = JSON.parse((0, import_node_fs6.readFileSync)(f, "utf8")).runs ?? [];
+    } catch {
+      runs = [];
+    }
+  }
+  (0, import_node_fs6.writeFileSync)(f, `${JSON.stringify({ runs: [...runs, record] }, null, 2)}
+`);
+}
+function lastConverge(change) {
+  const f = convergeFile(change);
+  if (!(0, import_node_fs6.existsSync)(f)) return null;
+  try {
+    return (JSON.parse((0, import_node_fs6.readFileSync)(f, "utf8")).runs ?? []).at(-1) ?? null;
+  } catch {
+    return null;
+  }
+}
+function convergePassed(p, id) {
+  const change = loadChange(p, id);
+  const last = lastConverge(change);
+  if (!last) return { ok: false, reason: "run `aidw converge` first" };
+  if (!last.ok) return { ok: false, reason: "the last converge found gaps" };
+  const tasks = loadTasks(p, id).tasks;
+  const fresh = isFresh({ status: "pass", at: last.at, head: last.head, runs: [] }, tasks, headCommit(p.project));
+  return fresh ? { ok: true } : { ok: false, reason: "code changed after the last converge; run `aidw converge` again" };
+}
+
+// src/deliver.ts
+var HANDOFF_SECTIONS = ["Overview", "Run locally", "Environment", "Deploy", "Usage", "Known issues", "Next steps"];
+var LATER_LAYERS = ["ui-ux", "a11y", "security", "performance"];
+var IMAGE = /\.(png|jpe?g|webp)$/i;
+var deliveryDir = (change) => (0, import_node_path8.join)(change.dir, "delivery");
+var HANDOFF = (title) => `# Handoff: ${title}
+
+## Overview
+
+${PLACEHOLDER}: what was built, for whom, and what is out of scope (from the Analysis).
+
+## Run locally
+
+${PLACEHOLDER}: prerequisites and exact commands (install, local services, dev server, tests).
+
+## Environment
+
+${PLACEHOLDER}: every environment variable, what it is for and where its value comes from; point to .env.example. Write "None" if there are none.
+
+## Deploy
+
+${PLACEHOLDER}: how this was deployed (target, URL) and how the client deploys to production themselves.
+
+## Usage
+
+${PLACEHOLDER}: the main flows for an end user, with the screenshots in screenshots/.
+
+## Known issues
+
+${PLACEHOLDER}: anything that does not work or was cut, failing or skipped checks, limitations. Write "None known" only if true.
+
+## Next steps
+
+${PLACEHOLDER}: recommended follow-ups.
+`;
+var statusOf2 = (t) => String(t.status ?? "pending");
+function readEvidence2(change, taskId) {
+  const f = (0, import_node_path8.join)(change.dir, "evidence", `${taskId}.json`);
+  if (!(0, import_node_fs7.existsSync)(f)) return null;
+  try {
+    return JSON.parse((0, import_node_fs7.readFileSync)(f, "utf8"));
+  } catch {
+    return null;
+  }
+}
+function commitOf(p, taskId) {
+  if (!isGitRepo(p.project)) return "";
+  const r = git(p.project, ["log", "--format=%h", "-n", "1", "--grep", `^${taskId}: `]);
+  return r.ok ? r.out : "";
+}
+var cell = (s) => s.replace(/\|/g, "\\|").replace(/\n/g, " ");
+function tasksMd(p, change, tasks) {
+  const rows = tasks.map((t) => {
+    const ev = readEvidence2(change, t.id);
+    const reviews = (ev?.reviews ?? []).map((r) => r.verdict).join(", ") || "-";
+    return `| ${t.id} | ${cell(String(t.title ?? ""))} | ${String(t.origin ?? "plan")} | ${statusOf2(t)} | ${String(t.attempts ?? 0)} | ${reviews} | ${commitOf(p, t.id) || "-"} |`;
+  });
+  const outside = tasks.flatMap((t) => {
+    const files = readEvidence2(change, t.id)?.checkpoints.at(-1)?.outside_touches ?? [];
+    return files.length ? [`- ${t.id}: ${files.map((f) => `\`${f}\``).join(", ")}`] : [];
+  });
+  return [
+    `# Tasks: ${String(change.data.title ?? change.id)}`,
+    "",
+    "Origin `plan` = approved in the Analysis; `quality` = added to fix a failing quality layer; `converge` = added to cover a scenario.",
+    "",
+    "| Task | Title | Origin | Status | Attempts | Reviews | Commit |",
+    "|---|---|---|---|---|---|---|",
+    ...rows,
+    "",
+    "## Files changed outside a task's touches",
+    "",
+    ...outside.length ? outside : ["None."],
+    ""
+  ].join("\n");
+}
+function qualityMd(p, change, tasks) {
+  const text = readText(qualityFile(change)) ?? "";
+  const { config } = parseQuality(text, "quality.yaml");
+  const summary = readSummary(change);
+  const conv = lastConverge(change);
+  const deploy2 = lastDeploy(change);
+  const out = [`# Quality report: ${String(change.data.title ?? change.id)}`, ""];
+  out.push("## Layers", "", "| Layer | Status | Last run | Fix rounds | Commands |", "|---|---|---|---|---|");
+  for (const l of config?.layers ?? []) {
+    const r = summary.layers[l.name];
+    const rounds = tasks.filter((t) => t.origin === "quality" && t.layer === l.name).length;
+    out.push(`| ${l.name} | ${r?.status ?? "not run"} | ${r?.at ?? "-"} | ${rounds} | ${cell([...l.setup, ...l.run].map((c) => `\`${c}\``).join("<br>"))} |`);
+  }
+  out.push("");
+  const absent = (n) => !config?.layers.some((l) => l.name === n);
+  const notRun = [
+    ...EXPECTED_LAYERS.filter(absent).map((n) => `layer "${n}" was not in the approved quality profile (see the Analysis for why)`),
+    ...LATER_LAYERS.filter(absent).map((n) => `layer "${n}" did not run (not in the quality profile of this workflow version)`),
+    ...Object.entries(summary.layers).flatMap(([n, r]) => r.missing_reports?.length ? [`layer "${n}": declared report(s) missing: ${r.missing_reports.join(", ")}`] : [])
+  ];
+  out.push("## Not covered", "", ...notRun.length ? notRun.map((m) => `- ${m}`) : ["Nothing beyond the layers above."], "");
+  const fixes = tasks.filter((t) => t.origin === "quality");
+  out.push("## Quality fix history", "");
+  if (!fixes.length) out.push("No layer failed.");
+  for (const t of fixes) {
+    const first = String(t.problem ?? "").split("\n")[0] ?? "";
+    out.push(`- ${t.id} (${statusOf2(t)}, ${String(t.attempts ?? 0)} attempt(s)): ${first}`);
+  }
+  out.push("");
+  out.push("## Scenarios (converge)", "");
+  if (!conv) out.push("Converge did not run.");
+  else {
+    out.push(
+      conv.mode === "junit" ? "Evidence: passing test cases in the layers' JUnit reports, on the delivered code." : "Evidence: **presence only** (no JUnit reports configured): a non-skipped test names each scenario and every layer passed. A test that names a scenario but asserts the wrong thing would not be caught here; the per-task reviewer checked the assertions.",
+      "",
+      "| Scenario | Status | Evidence |",
+      "|---|---|---|",
+      ...Object.entries(conv.scenarios).map(([s, r]) => `| \`${s}\` | ${r.status} | ${cell(r.where.slice(0, 3).join("; ") || "-")} |`)
+    );
+  }
+  out.push("");
+  const nonBlocking = tasks.flatMap(
+    (t) => (readEvidence2(change, t.id)?.reviews ?? []).filter((r) => r.verdict === "pass" && /non-blocking/i.test(r.notes)).map((r) => `- ${t.id}: ${cell(r.notes.slice(r.notes.search(/non-blocking/i)).replace(/^non-blocking:?\s*/i, ""))}`)
+  );
+  out.push("## Reviewer remarks (non-blocking)", "", ...nonBlocking.length ? nonBlocking : ["None recorded."], "");
+  out.push("## Deploy", "", deployLine(deploy2), "");
+  return out.join("\n");
+}
+function deployLine(d) {
+  if (!d) return "Not deployed.";
+  if (d.skipped) return `No deployment (target \`${d.target}\`).`;
+  return d.ok ? `Preview: ${d.url} (smoke checks passed, ${d.at}).` : `Failed: ${d.error ?? "unknown"}.`;
+}
+function decisionsMd(p) {
+  const adrs = walkFiles(p.decisions).filter((f) => f.endsWith(".md")).map((f) => {
+    const title = ((0, import_node_fs7.readFileSync)(f, "utf8").match(/^#\s+(.+)$/m)?.[1] ?? "").trim();
+    return `- \`${rel(p, f)}\`${title ? `: ${title}` : ""}`;
+  });
+  return ["# Decisions", "", "Architecture decision records of the project (see also `## Architecture` in the Analysis).", "", ...adrs.length ? adrs : ["No ADRs."], ""].join("\n");
+}
+function screenshots(change) {
+  const dir = (0, import_node_path8.join)(deliveryDir(change), "screenshots");
+  return (0, import_node_fs7.existsSync)(dir) ? (0, import_node_fs7.readdirSync)(dir).filter((f) => IMAGE.test(f)).sort() : [];
+}
+function needsScreenshots(tasks) {
+  return tasks.some((t) => touchesUi(t));
+}
+function checkDelivery(p, id) {
+  const change = loadChange(p, id);
+  const d = new Diags();
+  const dir = deliveryDir(change);
+  const where = (f) => rel(p, (0, import_node_path8.join)(dir, f));
+  for (const f of ["README.md", "quality-report.md", "tasks.md", "decisions.md", "handoff.md"]) {
+    if (!(0, import_node_fs7.existsSync)((0, import_node_path8.join)(dir, f))) d.error(where(f), "missing; run `aidw deliver`");
+  }
+  const handoff = readText((0, import_node_path8.join)(dir, "handoff.md"));
+  if (handoff !== null) {
+    const secs = sections(handoff);
+    for (const name of HANDOFF_SECTIONS) {
+      const s = secs.find((x) => x.name.toLowerCase() === name.toLowerCase());
+      if (!s) d.error(where("handoff.md"), `missing section "## ${name}"`);
+      else if (!s.body.trim()) d.error(where("handoff.md"), `section "## ${name}" is empty`, s.line);
+    }
+    handoff.split(/\r?\n/).forEach((l, i) => {
+      if (l.includes(PLACEHOLDER)) d.error(where("handoff.md"), `unresolved ${PLACEHOLDER} placeholder`, i + 1);
+    });
+    const env = secs.find((x) => x.name.toLowerCase() === "environment");
+    if (env && !env.body.includes(PLACEHOLDER) && !/^\s*none\b/im.test(env.body) && !(0, import_node_fs7.existsSync)((0, import_node_path8.join)(p.project, ".env.example"))) {
+      d.error(rel(p, (0, import_node_path8.join)(p.project, ".env.example")), 'missing: the handoff lists environment variables, so ship a .env.example (or write "None" under ## Environment)');
+    }
+  }
+  if (needsScreenshots(loadTasks(p, id).tasks) && screenshots(change).length === 0) {
+    d.error(where("screenshots/"), "no screenshots (png, jpg, webp) of the main flows; this change has UI tasks");
+  }
+  if (!lastConverge(change)?.ok) d.error(where("quality-report.md"), "converge has not passed");
+  return d;
+}
+function deliver(p, id, opts = {}) {
+  const change = loadChange(p, id);
+  if (stateOf(change) !== "delivered") throw new OpError(`change "${id}" is "${String(change.data.state)}"; aidw deliver runs in state delivered`);
+  loadQuality(p, change);
+  const dir = deliveryDir(change);
+  const written = [];
+  let createdHandoff = false;
+  if (!opts.check) {
+    const tasks = loadTasks(p, id).tasks;
+    (0, import_node_fs7.mkdirSync)((0, import_node_path8.join)(dir, "screenshots"), { recursive: true });
+    const write = (name, text) => {
+      (0, import_node_fs7.writeFileSync)((0, import_node_path8.join)(dir, name), text);
+      written.push(rel(p, (0, import_node_path8.join)(dir, name)));
+    };
+    write("quality-report.md", qualityMd(p, change, tasks));
+    write("tasks.md", tasksMd(p, change, tasks));
+    write("decisions.md", decisionsMd(p));
+    if (!(0, import_node_fs7.existsSync)((0, import_node_path8.join)(dir, "handoff.md"))) {
+      (0, import_node_fs7.writeFileSync)((0, import_node_path8.join)(dir, "handoff.md"), HANDOFF(String(change.data.title ?? id)));
+      createdHandoff = true;
+    }
+    write("README.md", readmeMd(p, change, tasks));
+  }
+  return { dir: rel(p, dir), written, created_handoff: createdHandoff, screenshots: screenshots(change).length, diags: checkDelivery(p, id) };
+}
+function readmeMd(p, change, tasks) {
+  const deploy2 = lastDeploy(change);
+  const shots = screenshots(change);
+  const done = tasks.filter((t) => statusOf2(t) === "done").length;
+  const summary = readSummary(change);
+  const layers = Object.entries(summary.layers).map(([n, r]) => `${n} ${r.status}`).join(", ") || "none";
+  const conv = lastConverge(change);
+  const env = (0, import_node_fs7.existsSync)((0, import_node_path8.join)(p.project, ".env.example"));
+  return [
+    `# Delivery: ${String(change.data.title ?? change.id)}`,
+    "",
+    `Change \`${change.id}\` \xB7 ${done}/${tasks.length} tasks done \xB7 quality: ${layers} \xB7 scenarios: ${conv ? `${Object.values(conv.scenarios).filter((r) => r.status === "pass").length}/${Object.keys(conv.scenarios).length} passing (${conv.mode})` : "not converged"}`,
+    "",
+    "## Deploy",
+    "",
+    deployLine(deploy2),
+    "",
+    "## Contents",
+    "",
+    "- [handoff.md](handoff.md): overview, run locally, environment, deploy, usage, known issues, next steps",
+    "- [quality-report.md](quality-report.md): every layer with evidence, what failed and what was not covered",
+    "- [tasks.md](tasks.md): plan and task status, attempts, reviews, commits",
+    "- [decisions.md](decisions.md): architecture decision records",
+    `- [screenshots/](screenshots/): ${shots.length ? shots.join(", ") : "none"}`,
+    "- [../analysis.md](../analysis.md): the approved Analysis (scope, stack, design, plan, permissions, risks)",
+    `- \`.env.example\` at the project root: ${env ? "yes" : "no"}`,
+    "",
+    "Evidence behind every line: `../evidence/` (per task, per quality layer, converge, deploy).",
+    ""
+  ].join("\n");
+}
+
+// src/guards.ts
+function transitionGuard(p, id, target) {
+  if (target === "verifying") {
+    const open = loadTasks(p, id).tasks.filter((t) => String(t.status ?? "pending") !== "done");
+    if (open.length) return `"verifying" needs every task done; open: ${open.map((t) => `${t.id} (${String(t.status ?? "pending")})`).join(", ")}`;
+  }
+  if (target === "converging") {
+    const q = qualityPassed(p, id);
+    if (!q.ok) return `"converging" needs every quality layer passing on the current code; run \`aidw verify\` (pending: ${q.pending.join(", ")})`;
+  }
+  if (target === "deploying") {
+    const c = convergePassed(p, id);
+    if (!c.ok) return `"deploying" needs a passing converge on the current code: ${c.reason}`;
+  }
+  if (target === "delivered") {
+    const d = lastDeploy(loadChange(p, id));
+    if (!d?.ok) return `"delivered" needs a successful \`aidw deploy\`${d ? ` (last: ${d.error ?? "failed"})` : ""}`;
+  }
+  return null;
+}
+
+// src/version.ts
+var VERSION = "0.1.0";
+
+// src/ops.ts
+var OpError = class extends Error {
+  constructor(message, diags) {
+    super(message);
+    this.diags = diags;
+  }
+};
+var now3 = () => (/* @__PURE__ */ new Date()).toISOString();
+var RESUMABLE = Object.keys(TRANSITIONS).filter((s) => TRANSITIONS[s].includes("paused"));
+var PROJECT_YAML = (name) => `# aidw project configuration
+schema: 1
+name: ${name}
+stack:
+  source: null # client | ai | fallback
+  items: {}
+  reason: null
+design_mode: null # existing | claude_design | ai_design | hybrid
+quality_profile: null
+deploy:
+  targets: []
+engine_version: ${VERSION}
+`;
+var CONSTITUTION = `# Constitution
+
+Project-wide engineering principles. Every agent reads this file before working.
+It is part of the approved Analysis package: changing it after approval is drift.
+
+## Principles
+
+- <principle>
+
+## Stack and conventions
+
+- <stack profile, coding standards, folder conventions>
+`;
+var SKELETON_DIRS = ["requirements", "specs", "domain", "architecture", "decisions", "design", "changes", "archive", "run"];
+function initProject(projectDir) {
+  const p = pathsFor(projectDir);
+  if ((0, import_node_fs8.existsSync)(p.aidw)) throw new OpError(`${rel(p, p.aidw)}/ already exists; refusing to overwrite`);
+  const created = [];
+  const write = (file, content) => {
+    (0, import_node_fs8.mkdirSync)((0, import_node_path9.dirname)(file), { recursive: true });
+    (0, import_node_fs8.writeFileSync)(file, content);
+    created.push(rel(p, file));
+  };
+  write(p.projectYaml, PROJECT_YAML((0, import_node_path9.basename)(projectDir)));
+  write(p.constitution, CONSTITUTION);
+  write((0, import_node_path9.join)(p.aidw, ".gitignore"), "run/\n");
+  for (const d of SKELETON_DIRS) {
+    const keep = (0, import_node_path9.join)(p.aidw, d, ".gitkeep");
+    if (d !== "run") write(keep, "");
+    else (0, import_node_fs8.mkdirSync)((0, import_node_path9.join)(p.aidw, d), { recursive: true });
+  }
+  return { created, paths: p };
+}
+var INPUT_TYPES = ["idea", "prd", "upwork_jd", "client_request", "codebase"];
+var INTAKE = (title) => `# Intake: ${title}
+
+## Input type
+
+<idea | prd | upwork_jd | client_request | codebase>
+
+## Source
+
+<paste or link the original request; keep the client's wording>
+
+## Client constraints
+
+- Stack required by the client: <none | ...>
+- Deadline / budget / other: <...>
+`;
+function newChange(p, id, opts) {
+  if (!CHANGE_ID.test(id)) throw new OpError(`change id "${id}" must be kebab-case (e.g. 2026-11-08-booking-app)`);
+  if (opts.inputType && !INPUT_TYPES.includes(opts.inputType)) {
+    throw new OpError(`unknown input type "${opts.inputType}" (expected ${INPUT_TYPES.join(", ")})`);
+  }
+  const dir = changeDir(p, id);
+  if ((0, import_node_fs8.existsSync)(dir)) throw new OpError(`change "${id}" already exists`);
+  const title = opts.title ?? id;
+  (0, import_node_fs8.mkdirSync)((0, import_node_path9.join)(dir, "specs"), { recursive: true });
+  (0, import_node_fs8.writeFileSync)(
+    (0, import_node_path9.join)(dir, "change.yaml"),
+    [
+      "schema: 1",
+      `id: ${id}`,
+      `title: ${JSON.stringify(title)}`,
+      `input_type: ${opts.inputType ?? "null"}`,
+      "state: draft",
+      `created_at: ${now3()}`,
+      "skip_specs: false",
+      "approval: null",
+      "run:",
+      "  paused: null",
+      ""
+    ].join("\n")
+  );
+  (0, import_node_fs8.writeFileSync)((0, import_node_path9.join)(dir, "intake.md"), INTAKE(title));
+  (0, import_node_fs8.writeFileSync)((0, import_node_path9.join)(dir, "analysis.md"), ANALYSIS(title));
+  recordBaseline(p);
+  return dir;
+}
+var ANALYSIS = (title) => `# Analysis: ${title}
+
+## Summary
+
+${PLACEHOLDER}: one page the user can review in minutes - goal, scope, the 5-10 key decisions, and the risks and assumptions that need their attention.
+
+## Requirements and scope
+
+${PLACEHOLDER}: in scope, out of scope, assumptions. Link .aidw/requirements/<change>.md.
+
+## Domain
+
+${PLACEHOLDER}: key entities and business rules. Link .aidw/domain/model.md.
+
+## Stack
+
+Source: ${PLACEHOLDER} (client | ai | fallback)
+
+${PLACEHOLDER}: chosen stack and why. If outside the familiar stack pool, say why.
+
+## Design
+
+Mode: ${PLACEHOLDER} (existing | claude_design | ai_design | hybrid)
+
+${PLACEHOLDER}: design references, bundle, or AI design direction.
+
+## Architecture
+
+${PLACEHOLDER}: architecture overview and new ADRs. Link .aidw/architecture/overview.md.
+
+## Specs
+
+${PLACEHOLDER}: capabilities added or changed, number of requirements and scenarios.
+
+## Plan
+
+${PLACEHOLDER}: number of tasks and waves, what can run in parallel, which agents are needed.
+
+## Quality profile
+
+${PLACEHOLDER}: quality layers that run (code, unit, integration, e2e, ui-ux, a11y, security, performance, review) and their thresholds.
+
+## Deploy strategy
+
+${PLACEHOLDER}: local | preview | staging | production (production always asks first).
+
+## Permissions
+
+${PLACEHOLDER}: one bullet per tier-2 resource requested (free cloud resources, preview deploys), or "None".
+
+## Risks and assumptions
+
+${PLACEHOLDER}: what could go wrong and what was assumed.
+
+## Appendix: discovery Q&A
+
+${PLACEHOLDER}: the grilling rounds, questions and answers.
+`;
+function readinessCheck(p, id, asState) {
+  const d = checkChange(p, id, asState ? { asState } : {});
+  d.add(analyzeChange(p, id));
+  return d;
+}
+function approve(p, id) {
+  const change = loadChange(p, id);
+  const state = stateOf(change);
+  if (state !== "awaiting_approval") {
+    throw new OpError(`change "${id}" is in state "${String(change.data.state)}"; only "awaiting_approval" can be approved`);
+  }
+  const d = readinessCheck(p, id);
+  if (d.errors.length) throw new OpError(`change "${id}" has validation errors; fix them before approving`, d);
+  const { hash, files } = computeApprovalHash(p, change);
+  change.doc.set("approval", change.doc.createNode({ hash, at: now3(), by: "user" }));
+  change.doc.set("state", "approved");
+  saveChange(change);
+  return { hash, files };
+}
+function transition(p, id, to, opts) {
+  const change = loadChange(p, id);
+  const from = stateOf(change);
+  if (!from) throw new OpError(`change "${id}" has an unknown state "${String(change.data.state)}"`);
+  let target;
+  if (to === "resume") {
+    if (from !== "paused") throw new OpError(`change "${id}" is not paused`);
+    const back = change.data.run?.paused?.from;
+    if (!back || !RESUMABLE.includes(back)) {
+      throw new OpError(`change "${id}" has no valid paused.from state to resume to`);
+    }
+    target = back;
+  } else {
+    if (to === "approved") throw new OpError("use `aidw approve` to approve a change");
+    if (to === "archived") throw new OpError("use `aidw archive` to archive a change");
+    if (!TRANSITIONS[from].includes(to)) {
+      const allowed = TRANSITIONS[from].join(", ") || "none";
+      throw new OpError(`cannot go from "${from}" to "${to}" (allowed: ${allowed})`);
+    }
+    target = to;
+  }
+  if (POST_APPROVAL.has(target) && target !== "escalated") {
+    const a = approvalStatus(p, change);
+    if (a.status !== "valid") {
+      throw new OpError(
+        a.status === "none" ? `"${target}" requires an approval` : "approval drift: the approved Analysis package changed; go back to analyzing (via escalated) and approve again"
+      );
+    }
+  }
+  if (from !== "paused") {
+    const refused = transitionGuard(p, id, target);
+    if (refused) throw new OpError(refused);
+  }
+  if (target === "awaiting_approval") {
+    const d = readinessCheck(p, id, target);
+    if (d.errors.length) throw new OpError("Analysis package is not ready for approval", d);
+  }
+  if (target === "paused") {
+    change.doc.setIn(["run", "paused"], change.doc.createNode({ from, reason: opts.reason ?? "unspecified", at: now3() }));
+  } else if (from === "paused") {
+    change.doc.setIn(["run", "paused"], null);
+  }
+  if (target === "analyzing" && from !== "intake") {
+    change.doc.set("approval", null);
+  }
+  change.doc.set("state", target);
+  saveChange(change);
+  if (target === "delivered") {
+    const commit = commitAidw(p, `aidw: ${id} delivered
+
+Quality layer and deploy evidence: .aidw/changes/${id}/evidence/`);
+    return { from, to: target, ...commit ? { commit } : {} };
+  }
+  return { from, to: target };
+}
+function commitAidw(p, message) {
+  if (!isGitRepo(p.project)) return null;
+  if (!git(p.project, ["add", "--", ".aidw"]).ok) return null;
+  if (git(p.project, ["diff", "--cached", "--quiet", "--", ".aidw"]).ok) return null;
+  return git(p.project, ["commit", "-q", "-m", message, "--", ".aidw"]).ok ? headCommit(p.project) : null;
+}
+function planMerge(p, id) {
+  const change = loadChange(p, id);
+  const d = new Diags();
+  const files = deltaFiles(p, change, d);
+  const results = [];
+  for (const df of files) {
+    const r = applyDelta(readText(df.mainFile), (0, import_node_fs8.readFileSync)(df.file, "utf8"), df.capability);
+    if (!r.ok || !r.text) {
+      for (const e of r.errors) d.error(rel(p, df.file), e);
+      continue;
+    }
+    results.push({ capability: df.capability, file: df.mainFile, created: r.created, summary: r.summary, text: r.text });
+  }
+  if (d.errors.length) throw new OpError(`merge of change "${id}" failed; nothing was written`, d);
+  return results;
+}
+function writeMerge(merges) {
+  for (const m of merges) {
+    (0, import_node_fs8.mkdirSync)((0, import_node_path9.dirname)(m.file), { recursive: true });
+    (0, import_node_fs8.writeFileSync)(m.file, m.text);
+  }
+}
+function archiveChange(p, id) {
+  const change = loadChange(p, id);
+  if (stateOf(change) !== "delivered") {
+    throw new OpError(`change "${id}" is in state "${String(change.data.state)}"; only "delivered" changes can be archived`);
+  }
+  const d = checkChange(p, id);
+  if (d.errors.length) throw new OpError(`change "${id}" has validation errors; nothing was archived`, d);
+  const delivery = checkDelivery(p, id);
+  if (delivery.errors.length) throw new OpError(`the delivery package of "${id}" is incomplete; run \`aidw deliver\` and complete it`, delivery);
+  const merges = planMerge(p, id);
+  const date = now3().slice(0, 10);
+  const name = /^\d{4}-\d{2}-\d{2}-/.test(id) ? id : `${date}-${id}`;
+  const target = (0, import_node_path9.join)(p.archive, name);
+  if ((0, import_node_fs8.existsSync)(target)) throw new OpError(`archive target ${rel(p, target)} already exists`);
+  writeMerge(merges);
+  change.doc.set("state", "archived");
+  change.doc.set("archived_at", now3());
+  saveChange(change);
+  (0, import_node_fs8.mkdirSync)(p.archive, { recursive: true });
+  (0, import_node_fs8.renameSync)(change.dir, target);
+  const commit = commitAidw(p, `aidw: archive ${id}
+
+Delta specs merged into .aidw/specs; change moved to ${rel(p, target)}.`);
+  return { target, merges, ...commit ? { commit } : {} };
+}
+function projectStatus(p, only) {
+  let capabilities = 0;
+  let requirements = 0;
+  for (const f of walkFiles(p.specs)) {
+    if (!capabilityOf(p.specs, f)) continue;
+    capabilities++;
+    requirements += parseSpec((0, import_node_fs8.readFileSync)(f, "utf8")).requirements.length;
+  }
+  const ids = only ? [only] : listChangeIds(p);
+  const changes = ids.map((id) => {
+    try {
+      const c = loadChange(p, id);
+      const tasksText = readText((0, import_node_path9.join)(c.dir, "tasks.yaml"));
+      let tasks = null;
+      if (tasksText !== null) {
+        const byStatus = {};
+        const list3 = parseTasks(tasksText).tasks;
+        for (const t of list3) {
+          const s = String(t?.status ?? "pending");
+          byStatus[s] = (byStatus[s] ?? 0) + 1;
+        }
+        tasks = { total: list3.length, done: byStatus.done ?? 0, byStatus };
+      }
+      const paused = c.data.run?.paused ?? null;
+      return {
+        id,
+        ...typeof c.data.title === "string" ? { title: c.data.title } : {},
+        state: String(c.data.state),
+        approval: approvalStatus(p, c).status,
+        tasks,
+        paused,
+        deltas: deltaFiles(p, c, new Diags()).length
+      };
+    } catch (e) {
+      if (e instanceof ChangeError) {
+        return { id, state: "?", approval: "none", tasks: null, paused: null, deltas: 0, error: e.message };
+      }
+      throw e;
+    }
+  });
+  return { project: p.project, engineVersion: VERSION, specs: { capabilities, requirements }, changes };
+}
+function assertProject(p) {
+  if (!isDir(p.aidw)) throw new OpError(`no .aidw/ in ${p.project}; run \`aidw init\``);
 }
 
 // src/quality.ts
@@ -9203,7 +9601,7 @@ var DEFAULT_MAX_FIX_ROUNDS = 3;
 var EXPECTED_LAYERS = ["code", "unit", "e2e"];
 var isStrList2 = (v) => Array.isArray(v) && v.every((x) => typeof x === "string" && x.trim() !== "");
 var LAYER_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-var qualityFile = (change) => (0, import_node_path8.join)(change.dir, "quality.yaml");
+var qualityFile = (change) => (0, import_node_path10.join)(change.dir, "quality.yaml");
 function parseQuality(text, file) {
   const d = new Diags();
   let data;
@@ -9223,7 +9621,15 @@ function parseQuality(text, file) {
       else if (layers.some((x) => x.name === l.name)) d.error(file, `duplicate layer "${l.name}"`);
       if (!isStrList2(l.run) || l.run.length === 0) d.error(file, `${where} needs a non-empty "run" list of commands`);
       if (l.setup !== void 0 && !isStrList2(l.setup)) d.error(file, `${where}: "setup" must be a list of commands`);
-      layers.push({ name: String(l.name), setup: isStrList2(l.setup) ? l.setup : [], run: isStrList2(l.run) ? l.run : [] });
+      if (l.reports !== void 0 && !(isStrList2(l.reports) && l.reports.every((r) => !r.startsWith("/") && !r.split("/").includes("..")))) {
+        d.error(file, `${where}: "reports" must be a list of project-relative JUnit XML paths`);
+      }
+      layers.push({
+        name: String(l.name),
+        setup: isStrList2(l.setup) ? l.setup : [],
+        run: isStrList2(l.run) ? l.run : [],
+        reports: isStrList2(l.reports) ? l.reports : []
+      });
     }
     for (const name of EXPECTED_LAYERS) {
       if (!layers.some((l) => l.name === name)) d.warn(file, `no "${name}" layer; say in analysis.md why this project does not need it`);
@@ -9292,22 +9698,22 @@ function grantedResources(p, ids, openStates) {
   }
   return out;
 }
-var qualityDir = (change) => (0, import_node_path8.join)(change.dir, "evidence", "quality");
-var summaryFile = (change) => (0, import_node_path8.join)(qualityDir(change), "summary.json");
-var deployFile = (change) => (0, import_node_path8.join)(change.dir, "evidence", "deploy.json");
-var now3 = () => (/* @__PURE__ */ new Date()).toISOString();
+var qualityDir = (change) => (0, import_node_path10.join)(change.dir, "evidence", "quality");
+var summaryFile = (change) => (0, import_node_path10.join)(qualityDir(change), "summary.json");
+var deployFile = (change) => (0, import_node_path10.join)(change.dir, "evidence", "deploy.json");
+var now4 = () => (/* @__PURE__ */ new Date()).toISOString();
 function readSummary(change) {
   const f = summaryFile(change);
-  if (!(0, import_node_fs7.existsSync)(f)) return { layers: {} };
+  if (!(0, import_node_fs9.existsSync)(f)) return { layers: {} };
   try {
-    return JSON.parse((0, import_node_fs7.readFileSync)(f, "utf8"));
+    return JSON.parse((0, import_node_fs9.readFileSync)(f, "utf8"));
   } catch {
     return { layers: {} };
   }
 }
 function writeJson(file, data) {
-  (0, import_node_fs7.mkdirSync)((0, import_node_path8.join)(file, ".."), { recursive: true });
-  (0, import_node_fs7.writeFileSync)(file, `${JSON.stringify(data, null, 2)}
+  (0, import_node_fs9.mkdirSync)((0, import_node_path10.join)(file, ".."), { recursive: true });
+  (0, import_node_fs9.writeFileSync)(file, `${JSON.stringify(data, null, 2)}
 `);
 }
 function codeChangedAt(tasks) {
@@ -9326,6 +9732,37 @@ function pendingLayers(p, id) {
   const head = headCommit(p.project);
   const pending = config.layers.filter((l) => !(summary.layers[l.name]?.status === "pass" && isFresh(summary.layers[l.name], tasks, head))).map((l) => l.name);
   return { config, pending, summary };
+}
+var TESTCASE = /<testcase\b((?:[^>"']|"[^"]*"|'[^']*')*?)(?:\/>|>([\s\S]*?)<\/testcase>)/g;
+var MAX_TESTS = 1e4;
+function xmlAttr(attrs, name) {
+  const m = attrs.match(new RegExp(`\\b${name}\\s*=\\s*"([^"]*)"`)) ?? attrs.match(new RegExp(`\\b${name}\\s*=\\s*'([^']*)'`));
+  return (m?.[1] ?? "").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n))).replace(/&amp;/g, "&");
+}
+function parseJunit(xml) {
+  const out = [];
+  for (const m of xml.matchAll(TESTCASE)) {
+    const attrs = m[1] ?? "";
+    const body = m[2] ?? "";
+    const name = [xmlAttr(attrs, "classname"), xmlAttr(attrs, "name")].filter(Boolean).join(" > ");
+    const status = /<(failure|error)\b/.test(body) ? "fail" : /<skipped\b/.test(body) ? "skipped" : "pass";
+    out.push({ name, status });
+    if (out.length >= MAX_TESTS) break;
+  }
+  return out;
+}
+function readJunit(project, reports) {
+  const tests = [];
+  const missing = [];
+  for (const r of reports) {
+    const f = (0, import_node_path10.join)(project, ...r.split("/"));
+    if (!(0, import_node_fs9.existsSync)(f)) {
+      missing.push(r);
+      continue;
+    }
+    tests.push(...parseJunit((0, import_node_fs9.readFileSync)(f, "utf8")));
+  }
+  return { tests, missing };
 }
 function runCommands(commands, cwd, timeoutMs, runner, env) {
   const runs = [];
@@ -9357,10 +9794,15 @@ function verify(p, id, opts = {}) {
     }
     const runs = runCommands([...layer.setup, ...layer.run], p.project, timeoutMs, runner);
     const ok = runs.length === layer.setup.length + layer.run.length && !failedRun(runs);
-    const result = { status: ok ? "pass" : "fail", at: now3(), head, runs };
+    const result = { status: ok ? "pass" : "fail", at: now4(), head, runs };
+    if (layer.reports.length) {
+      const { tests, missing } = readJunit(p.project, layer.reports);
+      result.tests = tests;
+      if (missing.length) result.missing_reports = missing;
+    }
     summary.layers[layer.name] = result;
     writeJson(summaryFile(change), summary);
-    appendHistory((0, import_node_path8.join)(qualityDir(change), `${layer.name}.json`), result);
+    appendHistory((0, import_node_path10.join)(qualityDir(change), `${layer.name}.json`), result);
     outcomes.push({ name: layer.name, status: result.status, runs });
     if (!ok) failed = layer;
   }
@@ -9406,9 +9848,9 @@ ${bad.tail}` : `Quality layer "${failed.name}" did not complete.`;
 }
 function appendHistory(file, entry) {
   let history = [];
-  if ((0, import_node_fs7.existsSync)(file)) {
+  if ((0, import_node_fs9.existsSync)(file)) {
     try {
-      const data = JSON.parse((0, import_node_fs7.readFileSync)(file, "utf8"));
+      const data = JSON.parse((0, import_node_fs9.readFileSync)(file, "utf8"));
       history = Array.isArray(data.runs) ? data.runs : [];
     } catch {
       history = [];
@@ -9420,21 +9862,6 @@ function qualityPassed(p, id) {
   const { pending } = pendingLayers(p, id);
   return { ok: pending.length === 0, pending };
 }
-function transitionGuard(p, id, target) {
-  if (target === "verifying") {
-    const open = loadTasks(p, id).tasks.filter((t) => String(t.status ?? "pending") !== "done");
-    if (open.length) return `"verifying" needs every task done; open: ${open.map((t) => `${t.id} (${String(t.status ?? "pending")})`).join(", ")}`;
-  }
-  if (target === "converging") {
-    const q = qualityPassed(p, id);
-    if (!q.ok) return `"converging" needs every quality layer passing on the current code; run \`aidw verify\` (pending: ${q.pending.join(", ")})`;
-  }
-  if (target === "delivered") {
-    const d = lastDeploy(loadChange(p, id));
-    if (!d?.ok) return `"delivered" needs a successful \`aidw deploy\`${d ? ` (last: ${d.error ?? "failed"})` : ""}`;
-  }
-  return null;
-}
 var URL_RE = /https:\/\/[^\s"'<>`)\]]+/g;
 var DASHBOARD_URL = /^https:\/\/(?:(?:www\.)?vercel\.com|app\.netlify\.com|supabase\.com)\//;
 function deploy(p, id, opts = {}) {
@@ -9445,7 +9872,7 @@ function deploy(p, id, opts = {}) {
   const runner = opts.runner ?? shellRunner;
   const timeoutMs = opts.timeoutMs ?? 20 * 60 * 1e3;
   const head = headCommit(p.project);
-  const base = { at: now3(), target: config.deploy.target, head, runs: [], smoke: [] };
+  const base = { at: now4(), target: config.deploy.target, head, runs: [], smoke: [] };
   let record;
   if (config.deploy.target !== "preview" || !config.deploy.command) {
     record = { ...base, ok: true, skipped: true, url: null };
@@ -9466,9 +9893,9 @@ function deploy(p, id, opts = {}) {
 }
 function lastDeploy(change) {
   const f = deployFile(change);
-  if (!(0, import_node_fs7.existsSync)(f)) return null;
+  if (!(0, import_node_fs9.existsSync)(f)) return null;
   try {
-    const runs = JSON.parse((0, import_node_fs7.readFileSync)(f, "utf8")).runs ?? [];
+    const runs = JSON.parse((0, import_node_fs9.readFileSync)(f, "utf8")).runs ?? [];
     return runs.at(-1) ?? null;
   } catch {
     return null;
@@ -9477,7 +9904,7 @@ function lastDeploy(change) {
 
 // src/check.ts
 function deltaFiles(p, change, d) {
-  const specsDir = (0, import_node_path9.join)(change.dir, "specs");
+  const specsDir = (0, import_node_path11.join)(change.dir, "specs");
   const out = [];
   for (const f of walkFiles(specsDir)) {
     const cap = capabilityOf(specsDir, f);
@@ -9489,7 +9916,7 @@ function deltaFiles(p, change, d) {
     }
     const bad = cap.split("/").find((s) => !KEBAB_SEGMENT.test(s));
     if (bad) d.error(rel(p, f), `capability path segment "${bad}" must be kebab-case`);
-    out.push({ capability: cap, file: f, mainFile: (0, import_node_path9.join)(p.specs, ...cap.split("/"), "spec.md") });
+    out.push({ capability: cap, file: f, mainFile: (0, import_node_path11.join)(p.specs, ...cap.split("/"), "spec.md") });
   }
   return out;
 }
@@ -9501,7 +9928,7 @@ function checkSpecs(p) {
       if (f.endsWith(".md")) d.warn(rel(p, f), "not a spec: specs must be named specs/<capability>/spec.md");
       continue;
     }
-    d.add(validateSpecText((0, import_node_fs8.readFileSync)(f, "utf8"), rel(p, f)));
+    d.add(validateSpecText((0, import_node_fs10.readFileSync)(f, "utf8"), rel(p, f)));
   }
   return d;
 }
@@ -9511,7 +9938,7 @@ function checkChange(p, id, opts = {}) {
   try {
     change = loadChange(p, id);
   } catch (e) {
-    d.error(rel(p, (0, import_node_path9.join)(p.changes, id)), e.message);
+    d.error(rel(p, (0, import_node_path11.join)(p.changes, id)), e.message);
     return d;
   }
   const meta = rel(p, change.file);
@@ -9524,15 +9951,15 @@ function checkChange(p, id, opts = {}) {
   }
   const deltas = deltaFiles(p, change, d);
   for (const df of deltas) {
-    d.add(validateDeltaText((0, import_node_fs8.readFileSync)(df.file, "utf8"), rel(p, df.file), readText(df.mainFile), df.capability));
+    d.add(validateDeltaText((0, import_node_fs10.readFileSync)(df.file, "utf8"), rel(p, df.file), readText(df.mainFile), df.capability));
   }
-  const tasksFile = (0, import_node_path9.join)(change.dir, "tasks.yaml");
-  if ((0, import_node_fs8.existsSync)(tasksFile)) d.add(validateTasksText((0, import_node_fs8.readFileSync)(tasksFile, "utf8"), rel(p, tasksFile)));
-  const qFile = (0, import_node_path9.join)(change.dir, "quality.yaml");
-  if ((0, import_node_fs8.existsSync)(qFile)) d.add(parseQuality((0, import_node_fs8.readFileSync)(qFile, "utf8"), rel(p, qFile)).diags);
+  const tasksFile = (0, import_node_path11.join)(change.dir, "tasks.yaml");
+  if ((0, import_node_fs10.existsSync)(tasksFile)) d.add(validateTasksText((0, import_node_fs10.readFileSync)(tasksFile, "utf8"), rel(p, tasksFile)));
+  const qFile = (0, import_node_path11.join)(change.dir, "quality.yaml");
+  if ((0, import_node_fs10.existsSync)(qFile)) d.add(parseQuality((0, import_node_fs10.readFileSync)(qFile, "utf8"), rel(p, qFile)).diags);
   if (NEEDS_ANALYSIS.has(state)) {
     for (const name of ["intake.md", "analysis.md", "tasks.yaml", "quality.yaml"]) {
-      if (!(0, import_node_fs8.existsSync)((0, import_node_path9.join)(change.dir, name))) d.error(meta, `state "${state}" requires ${name}`);
+      if (!(0, import_node_fs10.existsSync)((0, import_node_path11.join)(change.dir, name))) d.error(meta, `state "${state}" requires ${name}`);
     }
     if (deltas.length === 0 && change.data.skip_specs !== true) {
       d.error(meta, `state "${state}" requires at least one delta spec, or skip_specs: true when no behavior changes`);
@@ -9578,7 +10005,7 @@ function mainSpecIds(p) {
   const ids = { requirements: /* @__PURE__ */ new Set(), scenarios: /* @__PURE__ */ new Set() };
   for (const f of walkFiles(p.specs)) {
     const cap = capabilityOf(p.specs, f);
-    if (cap) indexSpec(cap, (0, import_node_fs9.readFileSync)(f, "utf8"), ids);
+    if (cap) indexSpec(cap, (0, import_node_fs11.readFileSync)(f, "utf8"), ids);
   }
   return ids;
 }
@@ -9604,10 +10031,10 @@ function specsAfterChange(p, id) {
   const touched = new Set(files.map((d) => d.capability));
   for (const f of walkFiles(p.specs)) {
     const cap = capabilityOf(p.specs, f);
-    if (cap && !touched.has(cap)) specs.set(cap, (0, import_node_fs9.readFileSync)(f, "utf8"));
+    if (cap && !touched.has(cap)) specs.set(cap, (0, import_node_fs11.readFileSync)(f, "utf8"));
   }
   for (const df of files) {
-    const deltaText = (0, import_node_fs9.readFileSync)(df.file, "utf8");
+    const deltaText = (0, import_node_fs11.readFileSync)(df.file, "utf8");
     deltas.set(df.capability, deltaText);
     const merged = applyDelta(readText(df.mainFile), deltaText, df.capability);
     specs.set(df.capability, merged.ok && merged.text ? merged.text : readText(df.mainFile) ?? "");
@@ -9650,11 +10077,11 @@ function checkAnalysisDoc(text, file, d) {
 function analyzeChange(p, id) {
   const d = new Diags();
   const change = loadChange(p, id);
-  const analysisFile = (0, import_node_path10.join)(change.dir, "analysis.md");
+  const analysisFile = (0, import_node_path12.join)(change.dir, "analysis.md");
   const analysis = readText(analysisFile);
   if (analysis === null) d.error(rel(p, analysisFile), "analysis.md is missing");
   else checkAnalysisDoc(analysis, rel(p, analysisFile), d);
-  const qText = readText((0, import_node_path10.join)(change.dir, "quality.yaml"));
+  const qText = readText((0, import_node_path12.join)(change.dir, "quality.yaml"));
   const quality = qText === null ? null : parseQuality(qText, "quality.yaml").config;
   if (quality && analysis !== null) {
     const perms = sections(analysis).find((s) => s.name.toLowerCase() === "permissions");
@@ -9667,7 +10094,7 @@ function analyzeChange(p, id) {
       d.warn(rel(p, analysisFile), '"## Permissions" lists resources but quality.yaml requests none; add their keys to quality.yaml permissions or write "None"', perms.line);
     }
   }
-  const tasksFile = (0, import_node_path10.join)(change.dir, "tasks.yaml");
+  const tasksFile = (0, import_node_path12.join)(change.dir, "tasks.yaml");
   const tasksText = readText(tasksFile);
   if (tasksText === null) {
     d.error(rel(p, tasksFile), "tasks.yaml is missing");
@@ -9756,7 +10183,9 @@ Execution (state executing; add --change <id> when several changes are active):
                                          record the independent review; pass marks done and commits
   verify [--layer L] [--fresh]           (verifying) run quality layers not yet passing on the current code;
                                          a failing layer adds a fix task and returns the change to executing
+  converge                               (converging) every changed scenario has a passing test; gaps become tasks
   deploy                                 (deploying) approved preview deploy + smoke checks, or record target none/local
+  deliver [--check]                      (delivered) write the delivery package and check its checklist
 
 Hooks:
   gate                                   PreToolUse hook: reads hook JSON on stdin
@@ -9793,9 +10222,9 @@ var UsageError = class extends Error {
 };
 function pluginRoot(env) {
   if (env.AIDW_PLUGIN_ROOT) return env.AIDW_PLUGIN_ROOT;
-  if (typeof __dirname !== "undefined") return (0, import_node_path11.join)(__dirname, "..");
+  if (typeof __dirname !== "undefined") return (0, import_node_path13.join)(__dirname, "..");
   if (env.CLAUDE_PLUGIN_ROOT) return env.CLAUDE_PLUGIN_ROOT;
-  return (0, import_node_path11.join)(process.cwd(), "plugins", "aidw");
+  return (0, import_node_path13.join)(process.cwd(), "plugins", "aidw");
 }
 function fmtDiag(d) {
   const where = d.line ? `${d.file}:${d.line}` : d.file;
@@ -9893,7 +10322,7 @@ function run(argv, env, cwd, io) {
         const taskId = need(rest[0], "task id");
         const kind = str(args.flags.for) ?? "implement";
         if (kind !== "implement" && kind !== "review") throw new UsageError('--for must be "implement" or "review"');
-        const b = buildBrief(p, id, taskId, kind, (0, import_node_path11.join)(pluginRoot(env), "vendor"));
+        const b = buildBrief(p, id, taskId, kind, (0, import_node_path13.join)(pluginRoot(env), "vendor"));
         if (cmd2 === "skills") {
           emit({ change: id, task: taskId, for: kind, skills: b.skills }, b.skills.map((s) => `${s.path}  # ${s.reason}
 `).join(""));
@@ -9950,6 +10379,30 @@ ${failed.tail}
         );
         return r.ok ? 0 : 1;
       }
+      case "converge": {
+        const p = project();
+        const id = resolveChangeId(p, str(args.flags.change) ?? rest[0]);
+        const r = converge(p, id);
+        const lines = Object.entries(r.scenarios).map(([s, x]) => `  ${x.status === "pass" ? "ok     " : x.status.toUpperCase().padEnd(7)} ${s}${x.where[0] ? `  ${x.where[0]}` : ""}`);
+        emit({ change: id, ...r }, `${r.ok ? "PASS" : "GAPS"} (${r.mode}): ${r.summary}
+${lines.join("\n")}
+`);
+        return r.ok ? 0 : 1;
+      }
+      case "deliver": {
+        const p = project();
+        const id = resolveChangeId(p, str(args.flags.change) ?? rest[0]);
+        const r = deliver(p, id, { check: args.flags.check === true });
+        const ok = r.diags.errors.length === 0;
+        const head = args.flags.check === true ? "" : `${r.dir}: wrote ${r.written.length} file(s)${r.created_handoff ? ", created handoff.md skeleton" : ""}, ${r.screenshots} screenshot(s)
+`;
+        emit(
+          { ok, change: id, dir: r.dir, written: r.written, created_handoff: r.created_handoff, screenshots: r.screenshots, ...diagsJson(r.diags) },
+          `${head}${printDiags(r.diags)}${ok ? "delivery package complete" : "INCOMPLETE: fix the items above"}
+`
+        );
+        return ok ? 0 : 1;
+      }
       case "deploy": {
         const p = project();
         const id = resolveChangeId(p, str(args.flags.change) ?? rest[0]);
@@ -9972,7 +10425,7 @@ ${[...r.runs, ...r.smoke].find((x) => x.exit !== 0)?.tail ?? r.runs[0]?.tail ?? 
         const verdict = need(rest[1], "verdict (pass|fix)");
         if (verdict !== "pass" && verdict !== "fix") throw new UsageError('verdict must be "pass" or "fix"');
         const notesFile = str(args.flags["notes-file"]);
-        const notes = notesFile ? (0, import_node_fs10.readFileSync)(notesFile, "utf8") : str(args.flags.notes) ?? "";
+        const notes = notesFile ? (0, import_node_fs12.readFileSync)(notesFile, "utf8") : str(args.flags.notes) ?? "";
         if (verdict === "fix" && !notes.trim()) throw new UsageError("a fix verdict needs --notes or --notes-file");
         const r = recordReview(p, id, taskId, verdict, notes, { commit: args.flags["no-commit"] !== true });
         emit(
@@ -9986,8 +10439,8 @@ ${[...r.runs, ...r.smoke].find((x) => x.exit !== 0)?.tail ?? r.runs[0]?.tail ?? 
       case "vendor-path": {
         const ref = need(rest[0], "<upstream>/<skill>");
         if (!/^[a-z0-9-]+\/[a-z0-9-]+$/.test(ref)) throw new UsageError(`invalid vendored skill "${ref}"`);
-        const file = (0, import_node_path11.join)(pluginRoot(env), "vendor", ...ref.split("/"), "SKILL.md");
-        if (!(0, import_node_fs10.existsSync)(file)) throw new OpError(`vendored skill "${ref}" not found at ${file}`);
+        const file = (0, import_node_path13.join)(pluginRoot(env), "vendor", ...ref.split("/"), "SKILL.md");
+        if (!(0, import_node_fs12.existsSync)(file)) throw new OpError(`vendored skill "${ref}" not found at ${file}`);
         emit({ path: file }, `${file}
 `);
         return 0;
@@ -9997,8 +10450,8 @@ ${[...r.runs, ...r.smoke].find((x) => x.exit !== 0)?.tail ?? r.runs[0]?.tail ?? 
         if (!/^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/.test(ref) || ref.split("/").includes("..")) {
           throw new UsageError(`invalid plugin path "${ref}"`);
         }
-        const file = (0, import_node_path11.join)(pluginRoot(env), ...ref.split("/"));
-        if (!(0, import_node_fs10.existsSync)(file)) throw new OpError(`"${ref}" not found in the plugin (${file})`);
+        const file = (0, import_node_path13.join)(pluginRoot(env), ...ref.split("/"));
+        if (!(0, import_node_fs12.existsSync)(file)) throw new OpError(`"${ref}" not found in the plugin (${file})`);
         emit({ path: file }, `${file}
 `);
         return 0;
@@ -10161,10 +10614,10 @@ ${lines.join("\n")}
       case "archive": {
         const p = project();
         const id = resolveChangeId(p, rest[0]);
-        const { target, merges } = archiveChange(p, id);
+        const { target, merges, commit } = archiveChange(p, id);
         emit(
-          { ok: true, id, archived: rel(p, target), capabilities: merges.map((m) => m.capability) },
-          `archived ${id} -> ${rel(p, target)} (${merges.length} capability spec(s) updated)
+          { ok: true, id, archived: rel(p, target), capabilities: merges.map((m) => m.capability), commit: commit ?? null },
+          `archived ${id} -> ${rel(p, target)} (${merges.length} capability spec(s) updated)${commit ? `, committed ${commit.slice(0, 8)}` : ""}
 `
         );
         return 0;
@@ -10196,7 +10649,7 @@ if (typeof require !== "undefined" && require.main === module) {
     err: (s) => process.stderr.write(s),
     stdin: () => {
       try {
-        return (0, import_node_fs10.readFileSync)(0, "utf8");
+        return (0, import_node_fs12.readFileSync)(0, "utf8");
       } catch {
         return "";
       }

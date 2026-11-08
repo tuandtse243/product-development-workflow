@@ -12,6 +12,8 @@ description: Show where aidw changes stand - state, approval, drift, tasks and v
    - `awaiting_approval`: the user reviews `analysis.md`, then `/aidw:approve` or asks for changes.
    - `approved` / `executing`: `/aidw:run` (for executing, also show `aidw next --change <id>`).
    - drift: the approved package changed. `aidw transition <id> escalated`, then `analyzing`, then re-approve.
+   - `verifying` / `converging` / `deploying`: `/aidw:run` continues the loop (verify, converge, deploy).
+   - `delivered`: `/aidw:deliver` (delivery package, then archive).
    - `paused` / `escalated`: `/aidw:resume` once the cause is gone (escalation reason from the task's
      `notes` and `.aidw/changes/<id>/evidence/<task>.json`).
 4. Show validation errors verbatim; do not fix anything unless the user asks.

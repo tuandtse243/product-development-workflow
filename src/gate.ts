@@ -14,7 +14,7 @@
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { approvalStatus, CHANGE_PACKAGE_FILES, FROZEN_PROJECT_DIRS } from "./approval.js";
 import { listChangeIds, loadChange, POST_APPROVAL, stateOf, type State } from "./change.js";
-import { AIDW_DIR, findProject, pathsFor, type Paths } from "./project.js";
+import { AIDW_DIR, findProject, pathsFor, rel, type Paths } from "./project.js";
 import {
   AIDW_COMMAND,
   APPROVE_COMMAND,
@@ -50,11 +50,13 @@ export interface GateState {
   drift: string[];
   /** ids of changes whose approved package is frozen */
   frozen: string[];
+  /** a change is delivered with a valid approval (delivery package being written) */
+  delivered: boolean;
   summary: string;
 }
 
 export function gateState(p: Paths): GateState {
-  const st: GateState = { open: false, drift: [], frozen: [], summary: "" };
+  const st: GateState = { open: false, drift: [], frozen: [], delivered: false, summary: "" };
   const parts: string[] = [];
   for (const id of listChangeIds(p)) {
     let state: State | null = null;
@@ -65,6 +67,7 @@ export function gateState(p: Paths): GateState {
         const a = approvalStatus(p, c).status;
         if (a === "drift") st.drift.push(id);
         if (a === "valid" && OPEN_STATES.has(state)) st.open = true;
+        if (a === "valid" && state === "delivered") st.delivered = true;
         if (FROZEN_STATES.has(state)) st.frozen.push(id);
       }
     } catch {
@@ -146,7 +149,10 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
       }
       return allow("aidw state directory");
     }
-    return st.open ? allow("analysis approved") : deny(closedReason(st));
+    if (st.open) return allow("analysis approved");
+    // The delivery package may add the env template after the code is final; nothing else.
+    if (st.delivered && rel(p, file) === ".env.example") return allow("environment template for the delivery package");
+    return deny(closedReason(st));
   }
 
   if (tool === "Bash") {
