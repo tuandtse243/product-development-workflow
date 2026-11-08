@@ -7323,6 +7323,7 @@ var require_dist = __commonJS({
 // src/cli.ts
 var cli_exports = {};
 __export(cli_exports, {
+  addBinToPath: () => addBinToPath,
   parseArgs: () => parseArgs,
   pluginRoot: () => pluginRoot,
   run: () => run
@@ -8175,10 +8176,10 @@ var WRITE_COMMANDS = [
 function firstMatch(rules, text) {
   return rules.find((r) => r.re.test(text));
 }
-var APPROVE_COMMAND = /(^|[\s;&|(])(?:[^\s;&|]*\/)?aidw\s+approve\b/;
-var AIDW_COMMAND = /^\s*(?:[^\s;&|]*\/)?aidw\s/;
+var APPROVE_COMMAND = /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+approve\b/;
+var AIDW_COMMAND = /^\s*["']?(?:[^\s;&|"']*\/)?aidw["']?\s/;
 var SHELL_CHAINING = /[;&|`<>]|\$\(/;
-var AIDW_STATE_COMMAND = /(^|[\s;&|(])(?:[^\s;&|]*\/)?aidw\s+(?:task|checkpoint|review|transition|approve|archive|merge|init|change|brief)\b/;
+var AIDW_STATE_COMMAND = /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+(?:task|checkpoint|review|transition|approve|archive|merge|init|change|brief)\b/;
 
 // src/gate.ts
 var OPEN_STATES = /* @__PURE__ */ new Set(["approved", "executing", "verifying", "converging", "deploying"]);
@@ -10191,6 +10192,7 @@ Hooks:
   gate                                   PreToolUse hook: reads hook JSON on stdin
   backstop                               Stop hook: reads hook JSON on stdin
   stop-failure                           StopFailure hook: pauses running changes
+  session-start                          SessionStart hook: appends the plugin bin/ to PATH via CLAUDE_ENV_FILE
   version
 
 States: ${STATES.join(", ")}
@@ -10225,6 +10227,18 @@ function pluginRoot(env) {
   if (typeof __dirname !== "undefined") return (0, import_node_path13.join)(__dirname, "..");
   if (env.CLAUDE_PLUGIN_ROOT) return env.CLAUDE_PLUGIN_ROOT;
   return (0, import_node_path13.join)(process.cwd(), "plugins", "aidw");
+}
+function addBinToPath(env) {
+  const file = env.CLAUDE_ENV_FILE;
+  if (!file) return false;
+  const bin = (0, import_node_path13.join)(pluginRoot(env), "bin");
+  if (bin.includes("'")) return false;
+  const line = `export PATH="$PATH":'${bin}'`;
+  const current = (0, import_node_fs12.existsSync)(file) ? (0, import_node_fs12.readFileSync)(file, "utf8") : "";
+  if (current.split("\n").includes(line)) return false;
+  (0, import_node_fs12.appendFileSync)(file, `${current && !current.endsWith("\n") ? "\n" : ""}${line}
+`);
+  return true;
 }
 function logHook(env, hook, input, output) {
   const file = env.AIDW_HOOK_LOG;
@@ -10280,6 +10294,13 @@ function run(argv, env, cwd, io) {
       case "--help":
         io.out(HELP);
         return args.pos.length === 0 && !args.flags.help ? 2 : 0;
+      case "session-start": {
+        try {
+          addBinToPath(env);
+        } catch {
+        }
+        return 0;
+      }
       case "version":
         emit({ version: VERSION }, `${VERSION}
 `);
@@ -10680,6 +10701,7 @@ if (typeof require !== "undefined" && require.main === module) {
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
+  addBinToPath,
   parseArgs,
   pluginRoot,
   run

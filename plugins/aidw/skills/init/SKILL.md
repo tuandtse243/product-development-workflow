@@ -6,6 +6,9 @@ disable-model-invocation: true
 
 # aidw: initialize a project
 
+The `aidw` CLI ships with this plugin as `${CLAUDE_PLUGIN_ROOT}/bin/aidw`. If a command fails with
+`aidw: command not found`, run that path instead of `aidw` (here and in every command below).
+
 1. If `aidw status` already finds a `.aidw/`, report its status and stop.
 2. Classify the project:
    - **greenfield**: empty or only docs/briefs, no application code;

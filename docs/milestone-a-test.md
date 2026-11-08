@@ -37,8 +37,11 @@ AIDW_HOOK_LOG=$HOME/aidw-trial-hooks.jsonl \
 File log nằm **ngoài** project, để backstop không coi nó là thay đổi trái phép. Trong Claude Code, kiểm:
 
 - `/plugin` thấy plugin `aidw`, và `/aidw:` gợi ý đủ 7 skill.
-- Gõ `! aidw version`: chạy được nghĩa là bin của plugin đã có trên PATH. Nếu `command not found`, ghi lại; đó là
-  lỗi cần sửa trước khi đi tiếp.
+- Gõ `! aidw version`. Kỳ vọng in `0.1.0`. Hook SessionStart của plugin thêm `bin/` vào cuối PATH, nên đây là lệnh
+  kiểm hook đó chạy được. Nếu vẫn `command not found`, gửi tôi kết quả của
+  `! echo "$PATH" | tr ':' '\n' | tail -5`, rồi **cứ đi tiếp**: các skill tự chuyển sang đường dẫn tuyệt đối
+  `${CLAUDE_PLUGIN_ROOT}/bin/aidw` khi không tìm thấy `aidw`.
+- Session nào mở **trước** khi cập nhật plugin thì phải thoát và mở lại, vì hook SessionStart chỉ chạy lúc mở session.
 
 ## 2. Ý tưởng để chạy
 

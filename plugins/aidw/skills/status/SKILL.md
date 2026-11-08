@@ -5,6 +5,9 @@ description: Show where aidw changes stand - state, approval, drift, tasks and v
 
 # aidw: status
 
+The `aidw` CLI ships with this plugin as `${CLAUDE_PLUGIN_ROOT}/bin/aidw`. If a command fails with
+`aidw: command not found`, run that path instead of `aidw` (here and in every command below).
+
 1. Run `aidw status` and `aidw validate`.
 2. Report per change: state, approval (`none` / `valid` / `APPROVAL DRIFT`), task progress, paused reason.
 3. Explain the next step for each state:

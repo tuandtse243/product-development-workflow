@@ -7,6 +7,9 @@ argument-hint: "<idea text | path to PRD/JD | 'this codebase'>"
 
 # aidw: start a change and run the Analysis
 
+The `aidw` CLI ships with this plugin as `${CLAUDE_PLUGIN_ROOT}/bin/aidw`. If a command fails with
+`aidw: command not found`, run that path instead of `aidw` (here and in every command below).
+
 You are running the **Analysis** of an Analysis-gated autonomous workflow. Everything you produce here is
 reviewed by the user **once**, at the approval gate. After approval the workflow builds autonomously, so
 the Analysis must be complete, consistent and honest about risks.

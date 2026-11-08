@@ -7,6 +7,9 @@ argument-hint: "[change id]"
 
 # aidw: resume
 
+The `aidw` CLI ships with this plugin as `${CLAUDE_PLUGIN_ROOT}/bin/aidw`. If a command fails with
+`aidw: command not found`, run that path instead of `aidw` (here and in every command below).
+
 All progress lives in `.aidw/` and git, so resuming needs no memory of the previous session.
 
 1. `aidw status`. Pick the change (`$ARGUMENTS`, or the single active one) and report where it stands:

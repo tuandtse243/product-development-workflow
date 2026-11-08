@@ -1,20 +1,49 @@
 {
   "description": "aidw governance: approval gate, permission tiers, the stop backstop and pausing on API failures. No-op outside projects that contain .aidw/.",
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/aidw\" session-start",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash|Read",
-        "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/aidw\" gate", "timeout": 15 }]
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/aidw\" gate",
+            "timeout": 15
+          }
+        ]
       }
     ],
     "Stop": [
       {
-        "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/aidw\" backstop", "timeout": 15 }]
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/aidw\" backstop",
+            "timeout": 15
+          }
+        ]
       }
     ],
     "StopFailure": [
       {
-        "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/aidw\" stop-failure", "timeout": 15 }]
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/aidw\" stop-failure",
+            "timeout": 15
+          }
+        ]
       }
     ]
   }

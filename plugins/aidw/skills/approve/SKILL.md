@@ -7,6 +7,9 @@ argument-hint: "[change id]"
 
 # aidw: approve the Analysis
 
+The `aidw` CLI ships with this plugin as `${CLAUDE_PLUGIN_ROOT}/bin/aidw`. If a command fails with
+`aidw: command not found`, run that path instead of `aidw` (here and in every command below).
+
 The user has asked to approve. This is the single human gate of the workflow (Q2).
 
 1. Run `aidw status`. Pick the change in `awaiting_approval` (or `$ARGUMENTS` if given). If none is waiting,

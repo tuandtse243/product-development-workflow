@@ -2,7 +2,8 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { unexpectedChanges, runBackstop } from "../src/backstop.js";
-import { run } from "../src/cli.js";
+import { addBinToPath, run } from "../src/cli.js";
+import { AIDW_COMMAND, AIDW_STATE_COMMAND, APPROVE_COMMAND } from "../src/policy.js";
 import { decide, runGate, type HookInput } from "../src/gate.js";
 import { ANALYSIS_MD, MAIN_SPEC, QUALITY_YAML, REQ, TASKS_YAML, tempProject, write } from "./fixtures.js";
 
@@ -174,5 +175,25 @@ describe("AIDW_HOOK_LOG", () => {
     expect(lines.map((l) => l.hook)).toEqual(["gate", "stop-failure"]);
     expect(lines[0].input.agent_type).toBe("aidw:implementer");
     expect(lines[0].output).toContain("deny");
+  });
+});
+
+describe("plugin bin on PATH", () => {
+  it("appends the bin dir to CLAUDE_ENV_FILE once, after the existing PATH", () => {
+    const file = join(root, "env.sh");
+    const env = { CLAUDE_ENV_FILE: file, AIDW_PLUGIN_ROOT: "/opt/aidw" } as NodeJS.ProcessEnv;
+    expect(addBinToPath(env)).toBe(true);
+    expect(addBinToPath(env)).toBe(false);
+    expect(readFileSync(file, "utf8")).toBe(`export PATH="$PATH":'/opt/aidw/bin'\n`);
+    expect(addBinToPath({} as NodeJS.ProcessEnv)).toBe(false);
+  });
+
+  it("treats a quoted absolute path to the CLI like the bare name", () => {
+    const bin = '"/Users/x/.claude/plugins/aidw/bin/aidw"';
+    expect(AIDW_COMMAND.test(`${bin} status`)).toBe(true);
+    expect(APPROVE_COMMAND.test(`${bin} approve app`)).toBe(true);
+    expect(AIDW_STATE_COMMAND.test(`${bin} transition app executing`)).toBe(true);
+    expect(AIDW_COMMAND.test("/opt/aidw/bin/aidw status")).toBe(true);
+    expect(AIDW_COMMAND.test("aidwx status")).toBe(false);
   });
 });

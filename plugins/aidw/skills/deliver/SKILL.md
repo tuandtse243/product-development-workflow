@@ -7,6 +7,9 @@ argument-hint: "[change id]"
 
 # aidw: deliver
 
+The `aidw` CLI ships with this plugin as `${CLAUDE_PLUGIN_ROOT}/bin/aidw`. If a command fails with
+`aidw: command not found`, run that path instead of `aidw` (here and in every command below).
+
 The change is `delivered`: the code is final, verified, converged and deployed. You now package it for the
 client (blueprint section 14). Do not change product code: the gate only lets you write `.aidw/` and the
 project's `.env.example`.

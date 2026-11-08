@@ -65,6 +65,7 @@ Hooks:
   gate                                   PreToolUse hook: reads hook JSON on stdin
   backstop                               Stop hook: reads hook JSON on stdin
   stop-failure                           StopFailure hook: pauses running changes
+  session-start                          SessionStart hook: appends the plugin bin/ to PATH via CLAUDE_ENV_FILE
   version
 
 States: ${STATES.join(", ")}
@@ -114,6 +115,22 @@ export function pluginRoot(env: NodeJS.ProcessEnv): string {
   if (typeof __dirname !== "undefined") return join(__dirname, "..");
   if (env.CLAUDE_PLUGIN_ROOT) return env.CLAUDE_PLUGIN_ROOT;
   return join(process.cwd(), "plugins", "aidw");
+}
+
+/**
+ * Appends the plugin bin/ to the END of PATH via $CLAUDE_ENV_FILE, once. Appending keeps any shims the user puts
+ * first (e.g. supply-chain guards); the name `aidw` collides with nothing. Exported for tests.
+ */
+export function addBinToPath(env: NodeJS.ProcessEnv): boolean {
+  const file = env.CLAUDE_ENV_FILE;
+  if (!file) return false;
+  const bin = join(pluginRoot(env), "bin");
+  if (bin.includes("'")) return false;
+  const line = `export PATH="$PATH":'${bin}'`;
+  const current = existsSync(file) ? readFileSync(file, "utf8") : "";
+  if (current.split("\n").includes(line)) return false;
+  appendFileSync(file, `${current && !current.endsWith("\n") ? "\n" : ""}${line}\n`);
+  return true;
 }
 
 /**
@@ -178,6 +195,17 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
       case "--help":
         io.out(HELP);
         return args.pos.length === 0 && !args.flags.help ? 2 : 0;
+
+      case "session-start": {
+        // SessionStart hook: append the plugin's bin/ to the PATH of Bash commands through CLAUDE_ENV_FILE, in
+        // case Claude Code did not add it. Prints nothing: SessionStart stdout would become session context.
+        try {
+          addBinToPath(env);
+        } catch {
+          // never fail the hook
+        }
+        return 0;
+      }
 
       case "version":
         emit({ version: VERSION }, `${VERSION}\n`);
