@@ -12,7 +12,7 @@
  * Fails closed inside an aidw project: an internal error denies the call.
  */
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
-import { approvalStatus } from "./approval.js";
+import { approvalStatus, FROZEN_PROJECT_DIRS } from "./approval.js";
 import { listChangeIds, loadChange, POST_APPROVAL, stateOf, type State } from "./change.js";
 import { AIDW_DIR, findProject, pathsFor, type Paths } from "./project.js";
 import {
@@ -78,7 +78,7 @@ function inside(parent: string, child: string): boolean {
 }
 
 function isFrozenPackageFile(p: Paths, file: string, frozen: string[]): boolean {
-  if (inside(p.design, file) || file === p.constitution) return frozen.length > 0;
+  if (file === p.constitution || FROZEN_PROJECT_DIRS(p).some((d) => inside(d, file))) return frozen.length > 0;
   for (const id of frozen) {
     const dir = join(p.changes, id);
     if (!inside(dir, file)) continue;

@@ -7612,6 +7612,7 @@ function stableStringify(v) {
 }
 
 // src/approval.ts
+var FROZEN_PROJECT_DIRS = (p) => [p.design, p.domain, p.architecture, p.requirements];
 var sha256 = (s) => (0, import_node_crypto.createHash)("sha256").update(s).digest("hex");
 var normalize = (s) => s.replace(/\r\n?/g, "\n");
 function computeApprovalHash(p, change) {
@@ -7626,7 +7627,7 @@ function computeApprovalHash(p, change) {
   const tasksFile = (0, import_node_path3.join)(change.dir, "tasks.yaml");
   if ((0, import_node_fs3.existsSync)(tasksFile)) add(tasksFile, canonicalTasks((0, import_node_fs3.readFileSync)(tasksFile, "utf8")));
   add(p.constitution);
-  for (const f of walkFiles(p.design)) add(f);
+  for (const dir of FROZEN_PROJECT_DIRS(p)) for (const f of walkFiles(dir)) add(f);
   entries.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
   const manifest = entries.map((e) => `${e.path}
 ${e.digest}
@@ -8340,7 +8341,7 @@ function inside(parent, child) {
   return r === "" || r !== ".." && !r.startsWith(`..${import_node_path6.sep}`) && !(0, import_node_path6.isAbsolute)(r);
 }
 function isFrozenPackageFile(p, file, frozen) {
-  if (inside(p.design, file) || file === p.constitution) return frozen.length > 0;
+  if (file === p.constitution || FROZEN_PROJECT_DIRS(p).some((d) => inside(d, file))) return frozen.length > 0;
   for (const id of frozen) {
     const dir = (0, import_node_path6.join)(p.changes, id);
     if (!inside(dir, file)) continue;

@@ -123,7 +123,7 @@ L4 RUNTIME     Claude Code plugin (skills, agents, hooks, bin/, worktrees, headl
 - Chuyển trạng thái **chỉ qua `bin/aidw`**. Lệnh này kiểm tra điều kiện trước khi đổi (ví dụ không thể `executing` nếu chưa `approved`).
 - Nếu sửa Analysis package sau khi đã approve thì hash lệch (drift) và mọi transition sau approve bị chặn. Riêng `escalated` vẫn vào được, vì đó là lối thoát. Đường quay lại là `escalated → analyzing`, bước này xóa approval cũ, rồi trình duyệt lại. [V test S1]
 - `paused` ghi lại `paused.from`. Lệnh `aidw transition <id> resume` đưa change về đúng state trước đó.
-- Hash bao gồm: `intake.md`, `analysis.md`, `design.md`, delta `specs/**`, `tasks.yaml` (chỉ các trường kế hoạch: bỏ `status`, `attempts`, `evidence`... và bỏ task có `origin: converge`), `constitution.md`, `design/**`. Tiến độ thực thi vì vậy **không** bị tính là drift.
+- Hash bao gồm: `intake.md`, `analysis.md`, `design.md`, delta `specs/**`, `tasks.yaml` (chỉ các trường kế hoạch: bỏ `status`, `attempts`, `evidence`... và bỏ task có `origin: converge`), `constitution.md`, `design/**`, `domain/**`, `architecture/**`, `requirements/**`. Tiến độ thực thi vì vậy **không** bị tính là drift. `decisions/` không nằm trong hash vì có thể phát sinh ADR mức implementation trong lúc thực thi. (Phần domain, architecture và requirements được thêm sau khi chạy thử S2 phát hiện chúng bị bỏ sót.)
 
 ---
 
@@ -583,6 +583,14 @@ Spike nằm ở scratchpad của phiên, không nằm trong repo. Khi làm S2 s�
 - Đồng bộ vendor là **script dev của repo** (`node scripts/vendor.mjs <upstream>`), không phải lệnh `aidw vendor sync` cho người dùng cuối. Lý do: vendor là nội dung của repo engine.
 - Skill vendor nằm ở `plugins/aidw/vendor/`, ngoài `skills/`, nên Claude Code **không tự load** chúng. Điều này đóng OPEN-2. Skill của aidw đọc chúng qua `aidw vendor-path`.
 - Thêm role `fullstack-engineer` cho task cắt lát dọc theo `to-tickets` (xem OPEN-10).
+
+**Chạy thử S2 (agent do Claude đóng vai, gate được gọi bằng input giả lập, không có Claude Code lồng bên trong):** đi trọn từ JD fixture tới archive.
+- Analysis: 4 capability, 12 requirement, 17 scenario, 8 task cắt lát dọc.
+- `analyze` bắt được một scenario phân quyền bị quên chưa có task phủ.
+- Gate đúng ở tất cả các trường hợp: trước approve, sau approve, khi package bị khóa, ở tier 2/3/x, và khi drift.
+- Phục hồi sau drift chạy được: escalated → analyzing → approve lại. Archive merge 4 spec, `validate --strict` sạch.
+- Lỗ hổng phát hiện và **đã sửa**: domain, architecture và requirements chưa nằm trong hash và chưa bị khóa.
+- Chưa kiểm chứng được: hook nối vào Claude Code thật (sandbox chặn đăng nhập), phần grilling với người thật, backstop với git thật.
 
 **OPEN-10:** `to-tickets` (Pocock) cắt task theo lát dọc (một task đi qua DB, API, UI và test), trong khi danh sách agent ở §8 chia theo chuyên môn (frontend/backend/database). Cần chốt ở S3: dùng một implementer fullstack nạp nhiều skill Addy cho mỗi lát, hay tách lát thành các task con theo chuyên môn.
 

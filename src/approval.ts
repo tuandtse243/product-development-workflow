@@ -11,14 +11,18 @@ export interface ApprovalHash {
   files: string[];
 }
 
+/** Project-level directories that belong to the approved package (with constitution.md). */
+export const FROZEN_PROJECT_DIRS = (p: Paths): string[] => [p.design, p.domain, p.architecture, p.requirements];
+
 const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
 const normalize = (s: string) => s.replace(/\r\n?/g, "\n");
 
 /**
  * Hash of everything the user approves at the gate:
  *   change: intake.md, analysis.md, design.md, specs/** (deltas), tasks.yaml (planned fields only)
- *   project: constitution.md, design/**
+ *   project: constitution.md, design/**, domain/**, architecture/**, requirements/**
  * Execution progress (task status, evidence, run state) is deliberately excluded.
+ * decisions/ (ADRs) is excluded: implementation-level ADRs may be added during execution.
  */
 export function computeApprovalHash(p: Paths, change: Change): ApprovalHash {
   const entries: { path: string; digest: string }[] = [];
@@ -33,7 +37,7 @@ export function computeApprovalHash(p: Paths, change: Change): ApprovalHash {
   const tasksFile = join(change.dir, "tasks.yaml");
   if (existsSync(tasksFile)) add(tasksFile, canonicalTasks(readFileSync(tasksFile, "utf8")));
   add(p.constitution);
-  for (const f of walkFiles(p.design)) add(f);
+  for (const dir of FROZEN_PROJECT_DIRS(p)) for (const f of walkFiles(dir)) add(f);
 
   entries.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   const manifest = entries.map((e) => `${e.path}\n${e.digest}\n`).join("");

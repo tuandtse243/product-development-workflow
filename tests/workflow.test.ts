@@ -86,6 +86,17 @@ describe("aidw workflow", () => {
     expect(cli(root, "validate", ID).code).toBe(0);
   });
 
+  it("treats domain, architecture and requirements as part of the approved package", () => {
+    write(root, ".aidw/domain/model.md", "# Domain\n");
+    cli(root, "approve", ID);
+    expect(cli(root, "approval", "check", ID, "--json").json().files).toContain(".aidw/domain/model.md");
+    write(root, ".aidw/domain/model.md", "# Domain\n\nA new entity appeared during execution.\n");
+    expect(cli(root, "approval", "check", ID).code).toBe(1);
+    write(root, ".aidw/decisions/0009-impl.md", "# Implementation detail\n");
+    write(root, ".aidw/domain/model.md", "# Domain\n");
+    expect(cli(root, "approval", "check", ID).code).toBe(0);
+  });
+
   it("detects drift when the approved package changes and blocks further transitions", () => {
     cli(root, "approve", ID);
     cli(root, "transition", ID, "executing");

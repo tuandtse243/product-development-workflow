@@ -77,6 +77,10 @@ describe("gate after approval", () => {
     expect(decision(hook("Edit", { file_path: `.aidw/changes/${ID}/analysis.md` }))).toBe("deny");
     expect(decision(hook("Write", { file_path: `.aidw/changes/${ID}/specs/booking/spec.md` }))).toBe("deny");
     expect(decision(hook("Edit", { file_path: ".aidw/constitution.md" }))).toBe("deny");
+    for (const f of [".aidw/domain/model.md", ".aidw/architecture/overview.md", ".aidw/requirements/app.md", ".aidw/design/direction.md"]) {
+      expect([f, decision(hook("Write", { file_path: f }))]).toEqual([f, "deny"]);
+    }
+    expect(decision(hook("Write", { file_path: ".aidw/decisions/0002-impl-detail.md" }))).toBe("allow");
     expect(decision(hook("Edit", { file_path: `.aidw/changes/${ID}/tasks.yaml` }))).toBe("allow");
     expect(decision(hook("Write", { file_path: ".aidw/run/progress.json" }))).toBe("allow");
   });
