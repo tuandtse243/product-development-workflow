@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -5,7 +6,7 @@ import { unexpectedChanges, runBackstop } from "../src/backstop.js";
 import { addBinToPath, run } from "../src/cli.js";
 import { AIDW_COMMAND, AIDW_STATE_COMMAND, APPROVE_COMMAND } from "../src/policy.js";
 import { decide, runGate, type HookInput } from "../src/gate.js";
-import { ANALYSIS_MD, MAIN_SPEC, QUALITY_YAML, REQ, TASKS_YAML, tempProject, write } from "./fixtures.js";
+import { ANALYSIS_MD, TOKENS_YAML, MAIN_SPEC, QUALITY_YAML, REQ, TASKS_YAML, tempProject, write } from "./fixtures.js";
 
 const ID = "app";
 let root: string;
@@ -26,6 +27,7 @@ const decision = (h: HookInput) => decide(h, env)?.decision ?? "none";
 function readyForApproval() {
   write(root, ".aidw/specs/booking/spec.md", MAIN_SPEC);
   write(root, `.aidw/changes/${ID}/analysis.md`, ANALYSIS_MD);
+  write(root, ".aidw/design/tokens.yaml", TOKENS_YAML);
   write(root, `.aidw/changes/${ID}/tasks.yaml`, TASKS_YAML);
   write(root, `.aidw/changes/${ID}/quality.yaml`, QUALITY_YAML);
   write(root, `.aidw/changes/${ID}/specs/booking/spec.md`, `## ADDED Requirements\n\n${REQ("Reschedule appointment")}`);
@@ -195,5 +197,27 @@ describe("plugin bin on PATH", () => {
     expect(AIDW_STATE_COMMAND.test(`${bin} transition app executing`)).toBe(true);
     expect(AIDW_COMMAND.test("/opt/aidw/bin/aidw status")).toBe(true);
     expect(AIDW_COMMAND.test("aidwx status")).toBe(false);
+  });
+});
+
+describe("trial fixes", () => {
+  it("backstop: re-opening the Analysis after execution does not blame the build's files", () => {
+    execFileSync("git", ["init", "-q"], { cwd: root });
+    readyForApproval();
+    cli("approve", ID);
+    expect(cli("transition", ID, "executing")).toBe(0);
+    write(root, "app/page.tsx", "export default 1;\n"); // written by an implementer while approved
+    expect(cli("transition", ID, "escalated", "--reason", "env")).toBe(0);
+    expect(cli("transition", ID, "analyzing")).toBe(0);
+    expect(runBackstop(JSON.stringify({ cwd: root }), env)).toBe("");
+    write(root, "app/other.tsx", "x\n"); // a new write while analyzing is still reported
+    expect(runBackstop(JSON.stringify({ cwd: root }), env)).toMatch(/app\/other\.tsx/);
+  });
+
+  it("gate: redirects to temp locations are not project writes", () => {
+    for (const c of ['npx next start > "$TMPDIR/next.log" 2>&1', "node a.js > $TMPDIR/x", "echo hi > /tmp/x", "ls > /dev/stderr"]) {
+      expect(decision(hook("Bash", { command: c })), c).toBe("none");
+    }
+    expect(decision(hook("Bash", { command: "echo hi > src/x.ts" }))).toBe("deny");
   });
 });

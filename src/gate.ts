@@ -109,6 +109,9 @@ function closedReason(st: GateState): string {
   if (st.drift.length) {
     return `approval drift in ${st.drift.join(", ")}: the approved Analysis package changed. Escalate and re-approve before writing project files.`;
   }
+  if (st.delivered) {
+    return `the change is delivered (${st.summary}): only .aidw/, .env.example and README.md may be written. Write temporary output under $TMPDIR.`;
+  }
   return `Analysis is not approved yet (${st.summary}). Only .aidw/ may be written before approval.`;
 }
 
@@ -137,7 +140,7 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
     if (!inside(project, file)) return null; // outside the project: normal permission rules apply
 
     if (role === "reviewer") return deny("the reviewer is read-only; report issues in the verdict instead of fixing them");
-    if (role === "implementer" && inside(p.aidw, file)) {
+    if (role === "implementer" && inside(p.aidw, file) && !inside(join(p.run, "shots"), file)) {
       return deny("implementers do not write .aidw/; the orchestrator records progress and evidence");
     }
     const st = gateState(p);
@@ -152,6 +155,7 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
     if (st.open) return allow("analysis approved");
     // The delivery package may add the env template after the code is final; nothing else.
     if (st.delivered && rel(p, file) === ".env.example") return allow("environment template for the delivery package");
+    if (st.delivered && rel(p, file) === "README.md") return allow("project README brought up to date at delivery");
     return deny(closedReason(st));
   }
 

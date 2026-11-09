@@ -1,0 +1,14 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "inter",
+        "createdAt": "2026-11-09T09:10:37.843Z",
+        "reason": "Claude: test fixture string in tests/design.test.ts exercising the font-token presence check, not a UI design choice"
+      }
+    ]
+  }
+}

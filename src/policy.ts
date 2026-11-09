@@ -86,7 +86,7 @@ export const isTier2Resource = (s: string): s is Tier2Resource => Object.prototy
 
 /** Bash commands that write files or install/scaffold; blocked before approval. */
 export const WRITE_COMMANDS: Rule[] = [
-  { re: /(^|[^0-9&<>=-])>{1,2}\s*(?!&|\/dev\/null\b)[^\s&|;]/, why: "redirects output into a file" },
+  { re: /(^|[^0-9&<>=-])>{1,2}\s*(?!&|\/dev\/|["']?(?:\$\{?TMPDIR\b|\/tmp\/|\/private\/tmp\/|\/var\/folders\/))[^\s&|;]/, why: "redirects output into a file" },
   { re: cmd(String.raw`tee\b`), why: "writes files with tee" },
   { re: /\|\s*tee\b/, why: "writes files with tee" },
   { re: cmd(String.raw`sed\s+(?:-[a-zA-Z]*i|--in-place)`), why: "edits files in place" },

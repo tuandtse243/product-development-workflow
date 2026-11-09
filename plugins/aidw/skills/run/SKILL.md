@@ -26,6 +26,10 @@ commit per task. In this slice tasks run **sequentially**; parallel waves come l
   are the verification.
 - The aidw gate still applies: tier-3 actions (production deploy, pushing, paid resources) ask the user.
 - Talk to the user in their language; keep status lines short (`T03 done (2/8)`).
+- Spawn subagents with the prompt given below and nothing else: the brief already carries failures, review
+  notes, decisions and design. If another plugin's hook rewrites the Agent input and auto mode asks you to
+  resend it, resend that input once, verbatim, and mention once to the user that the plugin costs an extra
+  call per subagent.
 
 ## 0. Enter execution
 

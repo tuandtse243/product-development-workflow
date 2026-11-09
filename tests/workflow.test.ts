@@ -5,7 +5,7 @@ import YAML from "yaml";
 import { beforeEach, describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
 import { decide } from "../src/gate.js";
-import { ANALYSIS_MD, MAIN_SPEC, QUALITY_YAML, REQ, TASKS_YAML, tempProject, write } from "./fixtures.js";
+import { ANALYSIS_MD, TOKENS_YAML, MAIN_SPEC, QUALITY_YAML, REQ, TASKS_YAML, tempProject, write } from "./fixtures.js";
 
 const ID = "2026-11-08-booking";
 
@@ -28,6 +28,7 @@ function readyProject(): string {
   expect(cli(root, "change", "new", ID, "--title", "Booking", "--input-type", "upwork_jd").code).toBe(0);
   const c = `.aidw/changes/${ID}`;
   write(root, `${c}/analysis.md`, ANALYSIS_MD);
+  write(root, ".aidw/design/tokens.yaml", TOKENS_YAML);
   write(root, `${c}/tasks.yaml`, TASKS_YAML);
   write(root, `${c}/quality.yaml`, QUALITY_YAML);
   write(root, `${c}/specs/booking/spec.md`, `## ADDED Requirements\n\n${REQ("Reschedule appointment")}`);
@@ -72,6 +73,7 @@ describe("aidw workflow", () => {
       ".aidw/changes/2026-11-08-booking/specs/booking/spec.md",
       ".aidw/changes/2026-11-08-booking/tasks.yaml",
       ".aidw/constitution.md",
+      ".aidw/design/tokens.yaml",
     ]);
     expect(changeYaml(root)).toMatchObject({ state: "approved", approval: { by: "user" } });
     expect(cli(root, "transition", ID, "executing").code).toBe(0);

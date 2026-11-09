@@ -56,7 +56,9 @@ Capture the main flows (one image per key screen, desktop width; add mobile for 
 ## 4. Check and archive
 
 1. `aidw deliver --change <id>` again (regenerates README with the screenshots), then
-   `aidw deliver --check --change <id>`. Fix every item it reports.
+   `aidw deliver --check --change <id>`. Fix every item it reports. It also checks the **project's** README:
+   every `npm run` / `pnpm <script>` it names must exist in package.json. Update the project README so its
+   setup and test commands are the ones that work now (the handoff's Run locally section).
 2. If the client asked for documentation in the repository (see intake), copy `handoff.md` to `docs/` only
    when the user confirms: after delivery, project writes outside `.env.example` need them.
 3. `aidw archive <id>`: merges the delta specs into `.aidw/specs/`, moves the change to `.aidw/archive/` and

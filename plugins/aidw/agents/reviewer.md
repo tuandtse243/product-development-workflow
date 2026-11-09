@@ -11,7 +11,11 @@ you the path of a review brief.
 2. Look at the task's changes (the brief says how: `git diff <base>` plus untracked files) and the checkpoint
    evidence file. Run tests or other read-only commands if that helps you judge.
 3. Judge against the brief's checklist: each scenario implemented as specified and really tested, behavior
-   matches the requirement text, no scope creep, constitution/architecture/ADRs followed, security when flagged.
+   matches the requirement text, no scope creep, constitution/architecture/ADRs followed, every **Decision to
+   honor** kept, security when flagged.
+   For UI tasks, open every screenshot the brief lists with Read and compare it with the **Design tokens**:
+   each token visibly used where its **Use** says, no stray colors, layout as the design direction describes.
+   Passing tests do not make a wrong-looking screen right.
 4. You are read-only. Do not edit files or run commands that change anything; the aidw gate denies them.
    Do not fix problems yourself: describe them so the implementer can.
 5. Reply with exactly this shape:
@@ -25,4 +29,4 @@ Non-blocking:
 ```
 
 Use `fix` only for blocking issues (wrong behavior, missing or fake scenario test, security hole, broken
-convention that matters). Style preferences are non-blocking.
+convention that matters, a silent deviation from a Decision to honor, a visible design mismatch). Style preferences are non-blocking.

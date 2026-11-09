@@ -150,6 +150,12 @@ const ANALYSIS = (title: string) => `# Analysis: ${title}
 
 ${PLACEHOLDER}: one page the user can review in minutes - goal, scope, the 5-10 key decisions, and the risks and assumptions that need their attention.
 
+## Decisions to honor
+
+${PLACEHOLDER}: the concrete choices the code must keep, one per line as "- D1: <decision>" (names, keys, formats,
+tools, libraries, conventions, limits). Implementers stop and report instead of deviating; reviewers check them.
+Write "None" only if there are none.
+
 ## Requirements and scope
 
 ${PLACEHOLDER}: in scope, out of scope, assumptions. Link .aidw/requirements/<change>.md.
@@ -168,7 +174,7 @@ ${PLACEHOLDER}: chosen stack and why. If outside the familiar stack pool, say wh
 
 Mode: ${PLACEHOLDER} (existing | claude_design | ai_design | hybrid)
 
-${PLACEHOLDER}: design references, bundle, or AI design direction.
+${PLACEHOLDER}: design references, bundle, or AI design direction. UI work also needs .aidw/design/tokens.yaml.
 
 ## Architecture
 
@@ -271,6 +277,10 @@ export function transition(p: Paths, id: string, to: string, opts: { reason?: st
     if (refused) throw new OpError(refused);
   }
 
+  // Re-opening the Analysis after execution: files the approved build already changed are known, not the
+  // agent writing before approval, so the backstop must not report them while the package is revised.
+  if (from === "escalated" && target === "analyzing") recordBaseline(p);
+
   if (target === "awaiting_approval") {
     // Validate as if already in the target state, so the user is never asked to approve an incomplete package.
     const d = readinessCheck(p, id, target);
@@ -296,12 +306,16 @@ export function transition(p: Paths, id: string, to: string, opts: { reason?: st
   return { from, to: target };
 }
 
-/** Commits pending changes under .aidw/ only. Returns the commit, or null outside git or when nothing changed. */
-export function commitAidw(p: Paths, message: string): string | null {
+/**
+ * Commits pending changes under .aidw/ plus the delivery files the gate lets in after delivery (README.md,
+ * .env.example) and nothing else. Returns the commit, or null outside git or when nothing changed.
+ */
+export function commitAidw(p: Paths, message: string, opts: { delivery?: boolean } = {}): string | null {
   if (!isGitRepo(p.project)) return null;
-  if (!git(p.project, ["add", "--", ".aidw"]).ok) return null;
-  if (git(p.project, ["diff", "--cached", "--quiet", "--", ".aidw"]).ok) return null;
-  return git(p.project, ["commit", "-q", "-m", message, "--", ".aidw"]).ok ? headCommit(p.project) : null;
+  const paths = [".aidw", ...(opts.delivery ? ["README.md", ".env.example"].filter((f) => existsSync(join(p.project, f))) : [])];
+  if (!git(p.project, ["add", "--", ...paths]).ok) return null;
+  if (git(p.project, ["diff", "--cached", "--quiet", "--", ...paths]).ok) return null;
+  return git(p.project, ["commit", "-q", "-m", message, "--", ...paths]).ok ? headCommit(p.project) : null;
 }
 
 // ---------------------------------------------------------------- merge / archive
@@ -361,7 +375,7 @@ export function archiveChange(p: Paths, id: string): { target: string; merges: C
   saveChange(change);
   mkdirSync(p.archive, { recursive: true });
   renameSync(change.dir, target);
-  const commit = commitAidw(p, `aidw: archive ${id}\n\nDelta specs merged into .aidw/specs; change moved to ${rel(p, target)}.`);
+  const commit = commitAidw(p, `aidw: archive ${id}\n\nDelta specs merged into .aidw/specs; change moved to ${rel(p, target)}.`, { delivery: true });
   return { target, merges, ...(commit ? { commit } : {}) };
 }
 

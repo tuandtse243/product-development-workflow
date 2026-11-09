@@ -109,3 +109,18 @@ git status --short
 4. Nếu dừng giữa chừng: thông báo lỗi nguyên văn và lệnh cuối cùng agent chạy.
 
 Không cần chạy hết mới gửi: gặp lỗi chặn đường thì gửi ngay, tôi sửa rồi chạy tiếp từ chỗ dừng.
+
+## Lần chạy 2 (sau S6)
+
+Làm lại các bước 1–6 trên một project mới (ví dụ `~/Desktop/Learning/aidw-trial-2`) với một ý tưởng khác có UI rõ
+ràng. Điều kiện trước khi chạy: `npm i -g vercel && vercel login`, và cài trình duyệt Playwright sẵn ở terminal
+thường (`npx playwright install chromium`). Lần này kiểm thêm:
+
+| # | Điều cần kiểm | Cách biết |
+|---|---|---|
+| 11 | Analysis có `## Decisions to honor` và `design/tokens.yaml` với luật `use` cụ thể | Đọc trước khi approve |
+| 12 | Bước kiểm tra môi trường phát hiện thiếu trình duyệt hoặc sandbox chặn **trước** approve | Phần Risks trong Summary |
+| 13 | Implementer task UI tự chụp ảnh vào `.aidw/run/shots/<change>/<task>/` | Thư mục đó và evidence `design.screenshots` |
+| 14 | Reviewer mở ảnh và trả `fix` khi thấy lệch token hoặc lệch quyết định | Evidence `reviews[].notes` |
+| 15 | README cuối cùng chỉ ghi lệnh thật sự chạy được | `aidw deliver --check` sạch |
+| 16 | Vercel preview thật và smoke | URL preview |

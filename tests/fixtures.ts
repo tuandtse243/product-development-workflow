@@ -54,6 +54,11 @@ export const ANALYSIS_MD = `# Analysis: Booking
 
 Clinic booking app. Patients book, reschedule and cancel; staff manage slots.
 
+## Decisions to honor
+
+- D1: Times are stored in UTC and shown in the clinic's timezone.
+- D2: Booking state lives in Supabase; no client-side cache of slots.
+
 ## Requirements and scope
 
 In: booking, rescheduling. Out: payments.
@@ -101,6 +106,22 @@ Vercel preview.
 ## Risks and assumptions
 
 Assumes one clinic, one timezone.
+`;
+
+export const TOKENS_YAML = `tokens:
+  - name: accent
+    kind: color
+    value: "#E5533D"
+    dark: "#FF7A66"
+    use: primary buttons and the selected slot
+  - name: surface
+    kind: color
+    value: "#FAF5EC"
+    use: page background
+  - name: body
+    kind: font
+    value: Inter, sans-serif
+    use: all body text
 `;
 
 export const QUALITY_YAML = `layers:

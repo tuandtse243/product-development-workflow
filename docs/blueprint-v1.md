@@ -507,7 +507,7 @@ Vòng dev: `claude --plugin-dir ./plugins/aidw` trong thư mục fixture. Cài t
 | S3 | Orchestrator tuần tự, task contract, checkpoint, `/aidw:resume` | [4][5]. **Code xong 2026-11-08** (xem §24); [4][5] có test và chạy thử bằng bin, chờ chạy với Claude Code thật |
 | S4 | Quality: code/unit/integration/e2e, preview deploy | [6]. **Code xong 2026-11-08** (xem §25); có test và chạy thử bằng bin với deploy giả, chờ project Next.js thật + Vercel thật |
 | S5 | Converge, archive/merge, deliver | [7][8] → **Mốc A**. **Code xong 2026-11-08** (xem §26); cả 8 tiêu chí có test và đã chạy thử trọn bằng bin, chờ một lần chạy thật với Claude Code |
-| S6 | 4 design mode | |
+| S6 | 4 design mode + tuân thủ thiết kế và Analysis (D-26) | code xong (§28) |
 | S7 | Các layer ui-ux, a11y, security, perf và reviewers | |
 | S8 | Song song + worktree + integration verify | |
 | S9 | Auto-resume khi hết quota (`aidw run`) | |
@@ -568,8 +568,8 @@ Spike nằm ở scratchpad của phiên, không nằm trong repo. Khi làm S2 s�
 8. JD thật để làm fixture số 1.
 9. `bashEditDiff` ở PostToolUse có dùng được trong permission mode của workflow không (§12).
 10. ~~Lát dọc và agent theo chuyên môn~~: **đóng bởi D-23** (§24).
-11. Giá trị thật của `agent_type` cho plugin agent (`aidw:implementer` hay `implementer`): gate chấp nhận cả hai, cần xác nhận khi chạy thật.
-12. Input của hook `StopFailure` (tên field lỗi): `aidw stop-failure` đọc `error`, nếu không có thì ghi `stop_failure`. Cần xác nhận khi chạy thật.
+11. ~~Giá trị thật của `agent_type`~~: **đóng** sau lần chạy thật (§27). Giá trị là `aidw:implementer` và `aidw:reviewer`, kèm `agent_id`.
+12. Input của hook `StopFailure` (tên field lỗi): `aidw stop-failure` đọc `error`, nếu không có thì ghi `stop_failure`. Cần xác nhận khi chạy thật. **Đóng** (§28): Claude Code 2.1.319 gửi `error`, `error_details` và `last_assistant_message`, và chỉ gửi ở session chính.
 
 ## 23. Nhật ký triển khai S2 (2026-11-08)
 
@@ -762,3 +762,85 @@ và converge dùng chung luật nhận diện test bị skip.
 
 Việc còn lại để đóng mốc A: **một lần chạy thật** với Claude Code (hook thật, subagent thật, `agent_type` thật,
 grilling với người, Next.js + Playwright + Vercel preview thật).
+
+## 27. Lần chạy thật mốc A (2026-11-09)
+
+**Project:** `aidw-trial`, ứng dụng Next.js 16 "Pomodoro + ghi chú" (localStorage), Claude Code 2.1.319, permission mode
+auto, sandbox bật, `AIDW_HOOK_LOG` bật. Ghi được 269 lần gọi hook.
+
+**Kết quả:**
+- Luồng chạy trọn: init → start (grilling 16 câu với người) → approve → run (6 task) → escalate vì môi trường →
+  sửa Analysis → approve lại → run → verify (e2e fail) → Q01 → pause/resume do người dùng → verify pass →
+  converge junit (36/36 scenario) → deploy `local` → delivered → deliver (5 ảnh chụp) → archive.
+- `validate --strict` sạch, working tree sạch, mỗi task một commit.
+- Mỗi task mất 2–10 phút. Tổng khoảng 2 giờ, đã trừ 20 phút pause.
+
+**Đã xác nhận trên Claude Code thật:**
+- `agent_type` = `aidw:implementer` / `aidw:reviewer` (OPEN-11 đóng).
+- Lệnh approve thành permission prompt, và chỉ thành prompt.
+- Subagent chạy nền, orchestrator chờ notification. Checkpoint báo file ngoài `touches`, reviewer quyết định file đó
+  có hợp lý không.
+
+**Lỗi tìm thấy và đã sửa:**
+1. Bin `aidw` không nằm trên PATH. Sửa bằng hook SessionStart ghi `CLAUDE_ENV_FILE`, cộng đường dẫn tuyệt đối dự phòng
+   trong skill, và gate nhận lệnh gọi bằng đường dẫn có dấu nháy.
+2. Backstop báo nhầm các file mà build đã duyệt tạo ra, sau khi change đi `escalated → analyzing`. Giờ lượt
+   chuyển này ghi lại baseline.
+3. Gate chặn redirect vào `$TMPDIR`, lý do in ra cũng sai ("not approved" trong khi change đã `delivered`).
+   Giờ redirect vào thư mục tạm được phép, và trạng thái delivered có lý do riêng.
+4. Brief của task Qnn chỉ có phần cuối output (toàn dòng pass), nên orchestrator phải tự chèn gợi ý vào prompt.
+   Giờ brief liệt kê các test fail kèm message lấy từ JUnit.
+5. Sandbox chặn tải và chạy Chromium, `pnpm` shim hỏng. Cả hai chỉ lộ ra ở checkpoint T01, tức là sau khi đã
+   duyệt. Thêm bước *environment preflight* vào `/aidw:start` (bước 8) và ghi chú trong profile quality-layers.
+
+**Chuyển sang slice sau:**
+- **S6/S7:** UI không theo `design/direction.md` (màu chủ đạo chưa dùng) mà không reviewer hay test nào bắt
+  được. Cần kiểm design compliance và layer ui-ux.
+- **Lệch so với Analysis đã duyệt nhưng không bị phát hiện:** key localStorage, README cũ còn ghi lệnh không dùng.
+  Đáng thêm vào checklist của reviewer và deliver.
+- **Môi trường người dùng:** hook của plugin context-mode sửa prompt của Agent, khiến auto mode bắt gửi lại mỗi
+  lần spawn. Không phải lỗi aidw, nhưng tốn một lượt gọi mỗi task.
+- **Chưa kiểm:** Vercel preview thật (tiêu chí 6) và input StopFailure (OPEN-12).
+
+## 28. Nhật ký triển khai S6 (2026-11-09)
+
+**Quyết định (D-26):** Mọi thứ đã duyệt phải kiểm được sau khi duyệt, không chỉ phần hành vi. Mục tiêu là sửa ba lỗi lần chạy thật bỏ lọt:
+UI không theo direction, code lệch quyết định trong Analysis, README cũ.
+
+**Đã làm:**
+- `src/design.ts`:
+  - `tokens.yaml` gồm 8 kind và luật `use` bắt buộc;
+  - so màu theo dạng chuẩn: hex 3/4/6/8 ký tự, `rgb()` (cả cú pháp có dấu cách), `hsl()`, `oklch()`;
+  - `missingTokens` và `hardcodedColors` (bỏ qua file test và output build);
+  - `taskShots` lấy ảnh mới hơn lần checkpoint trước.
+- `aidw analyze`:
+  - bắt buộc `## Decisions to honor`, gồm các dòng `- D<n>: ...` hoặc `None`;
+  - bắt buộc `tokens.yaml` hợp lệ khi có task UI.
+- Checkpoint task UI:
+  - fail nếu token không có trong code hoặc không có ảnh mới;
+  - evidence `design { missing_tokens, hardcoded_colors, screenshots }`.
+- Brief:
+  - mục *Decisions to honor* và bảng *Design tokens*;
+  - luật cho implementer: lệch thì báo blocker, chụp ảnh vào thư mục shots;
+  - checklist reviewer có thêm mục 4 (decisions) và mục 5 (design, mở từng ảnh).
+- Gate: implementer chỉ được ghi `.aidw/run/shots/`; sau delivered được ghi `README.md`.
+- Deliver:
+  - `staleReadmeCommands` báo các lệnh `npm run` / `pnpm <script>` không có trong package.json;
+  - commit archive gồm cả `README.md` và `.env.example`.
+- OPEN-12 đóng nhờ đọc mã Claude Code. Input là `{ error, error_details, last_assistant_message }`, và hook không
+  chạy trong subagent. Lý do pause giờ có cả `error_details`.
+- Skill:
+  - start bước 5 (token theo từng mode) và bước 9 (Decisions to honor);
+  - profile `design-tokens.md`;
+  - agent implementer và reviewer;
+  - run: subagent chỉ nhận đường dẫn brief, gửi lại input bị hook sửa một lần;
+  - deliver: README.
+- Test: 93 pass. Có bộ `tests/design.test.ts` mới.
+
+**Chưa kiểm trên Claude Code thật:**
+- implementer có tự chụp ảnh không;
+- reviewer có đọc ảnh và bắt lệch thiết kế không;
+- Vercel preview.
+
+Đây là mục tiêu của lần chạy thử thứ hai.
+

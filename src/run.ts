@@ -14,9 +14,10 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import YAML from "yaml";
-import { requirementsAfterChange } from "./analyze.js";
+import { decisionsToHonor, requirementsAfterChange } from "./analyze.js";
 import { approvalStatus } from "./approval.js";
 import { loadChange, stateOf, type Change } from "./change.js";
+import { hardcodedColors, loadTokens, missingTokens, shotsDir, taskShots, tokensFile, tokensTable } from "./design.js";
 import { changedSince, git, headCommit, isGitRepo } from "./git.js";
 import { matchesAny } from "./glob.js";
 import { OpError } from "./ops.js";
@@ -257,6 +258,29 @@ export interface CheckpointRecord {
   verify: VerifyRun[];
   changed_files: string[] | null;
   outside_touches: string[];
+  /** UI tasks with approved design tokens only */
+  design?: DesignEvidence;
+}
+
+export interface DesignEvidence {
+  /** color/font tokens whose value is nowhere in the code (fails the checkpoint) */
+  missing_tokens: string[];
+  /** color literals in changed files that are not tokens (for the reviewer) */
+  hardcoded_colors: string[];
+  /** fresh screenshots of this attempt (at least one required) */
+  screenshots: string[];
+}
+
+/** Design checks for a UI task when the approved design has tokens; null otherwise. */
+function designEvidence(p: Paths, id: string, t: Task, changed: string[] | null, since: string | undefined): DesignEvidence | null {
+  if (!touchesUi(t)) return null;
+  const { tokens, exists, diags } = loadTokens(p);
+  if (!exists || diags.errors.length > 0 || tokens.length === 0) return null;
+  return {
+    missing_tokens: missingTokens(p.project, tokens),
+    hardcoded_colors: hardcodedColors(p.project, changed ?? [], tokens),
+    screenshots: taskShots(p, id, t.id, since),
+  };
 }
 
 export interface ReviewRecord {
@@ -348,7 +372,10 @@ export function checkpoint(
     if (r.exit !== 0) break; // later commands usually depend on earlier ones passing
   }
   const verifyOk = verify.length === list(t.verify).length && verify.every((v) => v.exit === 0);
-  const ok = verifyOk && missing.length === 0;
+  const previous = readEvidence(tf.change, t).checkpoints.at(-1)?.at;
+  const design = designEvidence(p, id, t, changed, previous ?? (typeof t.started_at === "string" ? t.started_at : undefined));
+  const designOk = !design || (design.missing_tokens.length === 0 && design.screenshots.length > 0);
+  const ok = verifyOk && missing.length === 0 && designOk;
 
   const record: CheckpointRecord = {
     attempt: attemptsOf(t),
@@ -360,6 +387,7 @@ export function checkpoint(
     verify,
     changed_files: changed,
     outside_touches: outside,
+    ...(design ? { design } : {}),
   };
   const ev = readEvidence(tf.change, t);
   ev.checkpoints.push(record);
@@ -369,6 +397,8 @@ export function checkpoint(
   if (missing.length) problems.push(`no test names scenario ${missing.join(", ")}`);
   const failed = verify.find((v) => v.exit !== 0);
   if (failed) problems.push(`verify failed: \`${failed.command}\`${failed.timedOut ? " (timed out)" : ` (exit ${failed.exit})`}`);
+  if (design?.missing_tokens.length) problems.push(`design tokens not in the code: ${design.missing_tokens.join(", ")}`);
+  if (design && design.screenshots.length === 0) problems.push(`no fresh screenshot in ${rel(p, shotsDir(p, id, taskId))}`);
   setField(tf, i, "status", ok ? "review" : "failed");
   setField(tf, i, "evidence", evidenceRel(taskId));
   setField(tf, i, "notes", ok ? null : `checkpoint: ${problems.join("; ")}`);
@@ -497,6 +527,10 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
   const touches = list(t.touches);
   const verify = list(t.verify);
   const h = (title: string, body: string[]) => (body.length ? [`## ${title}`, "", ...body, ""] : []);
+  const decisions = decisionsToHonor(readText(join(tf.change.dir, "analysis.md")) ?? "");
+  const tokenInfo = touchesUi(t) ? loadTokens(p) : null;
+  const tokens = tokenInfo && tokenInfo.diags.errors.length === 0 ? tokenInfo.tokens : [];
+  const shots = shotsDir(p, id, taskId);
   const header = [
     `# ${kind === "implement" ? "Task" : "Review"} brief: ${taskId} - ${String(t.title ?? "")}`,
     "",
@@ -507,6 +541,11 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
   const shared = [
     ...h("Scenarios", scenarioIds.length ? scenarioIds.map((s) => `- \`${s}\``) : ["- (none: this task is verified by its verify commands only)"]),
     ...h("Requirements (spec text after this change)", reqBlocks.length ? ["```markdown", reqBlocks.join("\n\n"), "```"] : []),
+    ...h("Decisions to honor (approved; binding)", decisions.map((x) => `- ${x}`)),
+    ...h(
+      "Design tokens (approved; binding for UI)",
+      tokens.length ? [...tokensTable(tokens), "", `Source: \`${rel(p, tokensFile(p))}\`. Each token's **Use** says where it must appear.`] : [],
+    ),
     ...h("Builds on (finished tasks; see `git log`)", done),
     ...h("Touches (files this task may change)", touches.map((g) => `- \`${g}\``)),
     ...h("Verify", verify.map((v) => `- \`${v}\``)),
@@ -521,6 +560,8 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
       if (failedCheckpoint.missing_scenarios.length) previous.push(`- Missing scenario tests: ${failedCheckpoint.missing_scenarios.map((s) => `\`${s}\``).join(", ")}`);
       const failed = failedCheckpoint.verify.find((v) => v.exit !== 0);
       if (failed) previous.push(`- \`${failed.command}\` failed${failed.timedOut ? " (timed out)" : ` with exit ${failed.exit}`}:`, "", "```", failed.tail, "```");
+      if (failedCheckpoint.design?.missing_tokens.length) previous.push(`- Design tokens not found in the code: ${failedCheckpoint.design.missing_tokens.map((x) => `\`${x}\``).join(", ")}`);
+      if (failedCheckpoint.design && failedCheckpoint.design.screenshots.length === 0) previous.push(`- No fresh screenshot in \`${shots}\``);
     }
     if (fixReview) previous.push("- The reviewer asked for fixes:", "", fixReview.notes.split("\n").map((l) => `  ${l}`).join("\n"));
     body = [
@@ -532,6 +573,15 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
       "- Do not edit anything under `.aidw/`, do not run `aidw checkpoint`/`aidw review`, and do not commit, push or deploy: the orchestrator records progress and commits after an independent review.",
       "- Test first. For every scenario, write a test whose name contains the scenario id verbatim, e.g. `test(\"booking/cancel-appointment/cancel-upcoming: cancels and frees the slot\")`, asserting the THEN outcome. `aidw checkpoint` looks for these ids in test files.",
       "- Run every **Verify** command yourself and make it pass before reporting.",
+      ...(decisions.length
+        ? ["- **Decisions to honor** are approved and binding. If one is wrong or blocks the task, stop and report it as a blocker; never deviate silently (not even a key name or a tool)."]
+        : []),
+      ...(tokens.length
+        ? [
+            "- **Design**: style through the tokens below (CSS variables or theme), never hard-coded colors, and apply each token where its **Use** says.",
+            `- **Screenshots**: when it works, save PNG screenshots of every screen and state this task changes (desktop and mobile width; dark theme too if tokens have dark values) into \`${shots}\` (create it; e.g. a short Playwright script against the running app). The checkpoint requires at least one fresh screenshot; the reviewer judges the design from them.`,
+          ]
+        : []),
       "- Report in at most 10 lines: what works now, files changed, verify result, anything the reviewer should know (e.g. files outside Touches and why).",
       "",
       ...(priorWork
@@ -546,6 +596,7 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
   } else {
     const diff = base ? `\`git diff ${base}\` plus untracked files (\`git status --porcelain\`)` : "the files matching Touches (no base commit was recorded)";
     const outside = lastCheckpoint?.outside_touches ?? [];
+    const design = lastCheckpoint?.design;
     body = [
       "You are an independent reviewer in a fresh context. You did not write this code. You may read files and run read-only commands (tests included); you cannot edit anything.",
       "",
@@ -554,13 +605,19 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
       `- The task's changes: ${diff}.`,
       `- Checkpoint evidence: \`${rel(p, join(tf.change.dir, evidenceRel(taskId)))}\` (verify output, where each scenario test lives).`,
       ...(outside.length ? [`- Files changed outside Touches: ${outside.map((f) => `\`${f}\``).join(", ")}. Decide whether each is justified.`] : []),
+      ...(design?.screenshots.length ? [`- Screenshots (open each with Read): ${design.screenshots.map((f) => `\`${join(p.project, f)}\``).join(", ")}`] : []),
+      ...(design?.hardcoded_colors.length ? [`- Color literals that are not tokens, in changed files: ${design.hardcoded_colors.map((f) => `\`${f}\``).join(", ")}. Each needs a reason or becomes a token.`] : []),
       "",
       "## Checklist",
       "",
       "1. Every scenario is implemented as the spec says, and its test really asserts the THEN outcome (not a placeholder, not mocked away).",
       "2. Behavior matches the requirement text; nothing outside this task's scope was added.",
       "3. Constitution, architecture and ADRs are followed.",
-      ...(isSecuritySensitive(t) ? ["4. Security: authorization on every path, input validation, secrets handling, data exposure (security skill below)."] : []),
+      ...(decisions.length ? ["4. Every **Decision to honor** below is kept exactly (names, keys, formats, tools). A silent deviation is a blocking issue."] : []),
+      ...(tokens.length
+        ? ["5. Design: look at every screenshot. Each token is used where its **Use** says (e.g. the accent color really appears on what it names), the layout matches the design direction, and no stray colors. A visible mismatch is a blocking issue."]
+        : []),
+      ...(isSecuritySensitive(t) ? ["6. Security: authorization on every path, input validation, secrets handling, data exposure (security skill below)."] : []),
       "",
       "## Verdict",
       "",

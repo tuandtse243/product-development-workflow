@@ -94,7 +94,7 @@ var require_visit = __commonJS({
     "use strict";
     var identity = require_identity();
     var BREAK = Symbol("break visit");
-    var SKIP = Symbol("skip children");
+    var SKIP2 = Symbol("skip children");
     var REMOVE = Symbol("remove node");
     function visit(node, visitor) {
       const visitor_ = initVisitor(visitor);
@@ -106,7 +106,7 @@ var require_visit = __commonJS({
         visit_(null, node, visitor_, Object.freeze([]));
     }
     visit.BREAK = BREAK;
-    visit.SKIP = SKIP;
+    visit.SKIP = SKIP2;
     visit.REMOVE = REMOVE;
     function visit_(key, node, visitor, path) {
       const ctrl = callVisitor(key, node, visitor, path);
@@ -154,7 +154,7 @@ var require_visit = __commonJS({
         await visitAsync_(null, node, visitor_, Object.freeze([]));
     }
     visitAsync.BREAK = BREAK;
-    visitAsync.SKIP = SKIP;
+    visitAsync.SKIP = SKIP2;
     visitAsync.REMOVE = REMOVE;
     async function visitAsync_(key, node, visitor, path) {
       const ctrl = await callVisitor(key, node, visitor, path);
@@ -5535,7 +5535,7 @@ var require_cst_visit = __commonJS({
   "node_modules/yaml/dist/parse/cst-visit.js"(exports2) {
     "use strict";
     var BREAK = Symbol("break visit");
-    var SKIP = Symbol("skip children");
+    var SKIP2 = Symbol("skip children");
     var REMOVE = Symbol("remove item");
     function visit(cst, visitor) {
       if ("type" in cst && cst.type === "document")
@@ -5543,7 +5543,7 @@ var require_cst_visit = __commonJS({
       _visit(Object.freeze([]), cst, visitor);
     }
     visit.BREAK = BREAK;
-    visit.SKIP = SKIP;
+    visit.SKIP = SKIP2;
     visit.REMOVE = REMOVE;
     visit.itemAtPath = (cst, path) => {
       let item = cst;
@@ -7329,12 +7329,12 @@ __export(cli_exports, {
   run: () => run
 });
 module.exports = __toCommonJS(cli_exports);
-var import_node_fs12 = require("node:fs");
-var import_node_path13 = require("node:path");
+var import_node_fs13 = require("node:fs");
+var import_node_path14 = require("node:path");
 
 // src/analyze.ts
-var import_node_fs11 = require("node:fs");
-var import_node_path12 = require("node:path");
+var import_node_fs12 = require("node:fs");
+var import_node_path13 = require("node:path");
 
 // src/change.ts
 var import_node_fs2 = require("node:fs");
@@ -7482,8 +7482,8 @@ function resolveChangeId(p, id) {
 }
 
 // src/check.ts
-var import_node_fs10 = require("node:fs");
-var import_node_path11 = require("node:path");
+var import_node_fs11 = require("node:fs");
+var import_node_path12 = require("node:path");
 
 // src/approval.ts
 var import_node_crypto = require("node:crypto");
@@ -8074,9 +8074,9 @@ function validateDeltaText(text, file, mainText, capability) {
 }
 
 // src/quality.ts
-var import_node_fs9 = require("node:fs");
-var import_node_path10 = require("node:path");
-var import_yaml4 = __toESM(require_dist(), 1);
+var import_node_fs10 = require("node:fs");
+var import_node_path11 = require("node:path");
+var import_yaml5 = __toESM(require_dist(), 1);
 
 // src/git.ts
 var import_node_child_process = require("node:child_process");
@@ -8105,8 +8105,8 @@ function changedSince(cwd, base) {
 }
 
 // src/ops.ts
-var import_node_fs8 = require("node:fs");
-var import_node_path9 = require("node:path");
+var import_node_fs9 = require("node:fs");
+var import_node_path10 = require("node:path");
 
 // src/backstop.ts
 var import_node_child_process2 = require("node:child_process");
@@ -8165,7 +8165,7 @@ var TIER2_COMMANDS = [
 ];
 var isTier2Resource = (s) => Object.prototype.hasOwnProperty.call(TIER2_RESOURCES, s);
 var WRITE_COMMANDS = [
-  { re: /(^|[^0-9&<>=-])>{1,2}\s*(?!&|\/dev\/null\b)[^\s&|;]/, why: "redirects output into a file" },
+  { re: /(^|[^0-9&<>=-])>{1,2}\s*(?!&|\/dev\/|["']?(?:\$\{?TMPDIR\b|\/tmp\/|\/private\/tmp\/|\/var\/folders\/))[^\s&|;]/, why: "redirects output into a file" },
   { re: cmd(String.raw`tee\b`), why: "writes files with tee" },
   { re: /\|\s*tee\b/, why: "writes files with tee" },
   { re: cmd(String.raw`sed\s+(?:-[a-zA-Z]*i|--in-place)`), why: "edits files in place" },
@@ -8231,6 +8231,9 @@ function closedReason(st) {
   if (st.drift.length) {
     return `approval drift in ${st.drift.join(", ")}: the approved Analysis package changed. Escalate and re-approve before writing project files.`;
   }
+  if (st.delivered) {
+    return `the change is delivered (${st.summary}): only .aidw/, .env.example and README.md may be written. Write temporary output under $TMPDIR.`;
+  }
   return `Analysis is not approved yet (${st.summary}). Only .aidw/ may be written before approval.`;
 }
 function decide(input, env) {
@@ -8254,7 +8257,7 @@ function decide(input, env) {
     if (secret && !inside(project, file)) return deny(`writing ${secret.why} is forbidden (tier x)`);
     if (!inside(project, file)) return null;
     if (role === "reviewer") return deny("the reviewer is read-only; report issues in the verdict instead of fixing them");
-    if (role === "implementer" && inside(p.aidw, file)) {
+    if (role === "implementer" && inside(p.aidw, file) && !inside((0, import_node_path4.join)(p.run, "shots"), file)) {
       return deny("implementers do not write .aidw/; the orchestrator records progress and evidence");
     }
     const st = gateState(p);
@@ -8268,6 +8271,7 @@ function decide(input, env) {
     }
     if (st.open) return allow("analysis approved");
     if (st.delivered && rel(p, file) === ".env.example") return allow("environment template for the delivery package");
+    if (st.delivered && rel(p, file) === "README.md") return allow("project README brought up to date at delivery");
     return deny(closedReason(st));
   }
   if (tool === "Bash") {
@@ -8401,18 +8405,197 @@ Do not delete or revert anything yourself: some of these may be the user's own e
 }
 
 // src/deliver.ts
+var import_node_fs8 = require("node:fs");
+var import_node_path9 = require("node:path");
+
+// src/converge.ts
 var import_node_fs7 = require("node:fs");
 var import_node_path8 = require("node:path");
 
-// src/converge.ts
-var import_node_fs6 = require("node:fs");
-var import_node_path7 = require("node:path");
-
 // src/run.ts
 var import_node_child_process3 = require("node:child_process");
+var import_node_fs6 = require("node:fs");
+var import_node_path7 = require("node:path");
+var import_yaml4 = __toESM(require_dist(), 1);
+
+// src/design.ts
 var import_node_fs5 = require("node:fs");
 var import_node_path6 = require("node:path");
 var import_yaml3 = __toESM(require_dist(), 1);
+var TOKEN_KINDS = ["color", "font", "size", "space", "radius", "shadow", "motion", "other"];
+var tokensFile = (p) => (0, import_node_path6.join)(p.design, "tokens.yaml");
+function parseTokens(text, file, d) {
+  let data;
+  try {
+    data = import_yaml3.default.parse(text);
+  } catch (e) {
+    d.error(file, `invalid YAML: ${e.message}`);
+    return [];
+  }
+  const list3 = data?.tokens;
+  if (!Array.isArray(list3) || list3.length === 0) {
+    d.error(file, "must contain a non-empty `tokens:` list");
+    return [];
+  }
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  list3.forEach((raw, i) => {
+    const t = raw ?? {};
+    const where = `tokens[${i}]`;
+    const name = typeof t.name === "string" ? t.name.trim() : "";
+    if (!/^[a-z][a-z0-9-]*$/.test(name)) return d.error(file, `${where}: name must be kebab-case`);
+    if (seen.has(name)) return d.error(file, `${where}: duplicate token "${name}"`);
+    seen.add(name);
+    const kind = String(t.kind ?? "");
+    if (!TOKEN_KINDS.includes(kind)) return d.error(file, `${where} (${name}): kind must be one of ${TOKEN_KINDS.join(", ")}`);
+    const value = t.value === void 0 || t.value === null ? "" : String(t.value).trim();
+    if (!value) return d.error(file, `${where} (${name}): value is required`);
+    const use = typeof t.use === "string" ? t.use.trim() : "";
+    if (use.length < 8) return d.error(file, `${where} (${name}): \`use\` must say where the token is used (the reviewer checks it)`);
+    const token = { name, kind, value, use };
+    if (t.dark !== void 0 && t.dark !== null && String(t.dark).trim()) token.dark = String(t.dark).trim();
+    if (kind === "color") {
+      for (const v of [token.value, token.dark].filter((x) => !!x)) {
+        if (!normalizeColor(v)) d.error(file, `${where} (${name}): "${v}" is not a color literal (hex, rgb(), hsl() or oklch())`);
+      }
+    }
+    out.push(token);
+  });
+  if (!out.some((t) => t.kind === "color")) d.error(file, "needs at least one color token");
+  return out;
+}
+function loadTokens(p) {
+  const d = new Diags();
+  const f = tokensFile(p);
+  if (!(0, import_node_fs5.existsSync)(f)) return { tokens: [], diags: d, exists: false };
+  return { tokens: parseTokens((0, import_node_fs5.readFileSync)(f, "utf8"), rel(p, f), d), diags: d, exists: true };
+}
+var HEX = /#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3,4})\b/g;
+var FUNC = /\b(?:rgba?|hsla?|oklch|oklab|lab|lch)\([^()]*\)/gi;
+function normalizeColor(v) {
+  const s = v.trim().toLowerCase();
+  let m = /^#([0-9a-f]{3,4})$/.exec(s);
+  if (m) return `#${[...m[1]].map((c) => c + c).join("")}`.replace(/^(#[0-9a-f]{6})ff$/, "$1");
+  m = /^#([0-9a-f]{6}|[0-9a-f]{8})$/.exec(s);
+  if (m) return `#${m[1]}`.replace(/^(#[0-9a-f]{6})ff$/, "$1");
+  m = /^rgba?\(\s*(\d{1,3})[\s,]+(\d{1,3})[\s,]+(\d{1,3})(?:\s*[,/]\s*([\d.]+%?))?\s*\)$/.exec(s);
+  if (m) {
+    const hex = [m[1], m[2], m[3]].map((n) => Math.min(255, Number(n)).toString(16).padStart(2, "0")).join("");
+    const a = m[4];
+    if (a === void 0 || a === "1" || a === "100%") return `#${hex}`;
+    const alpha = a.endsWith("%") ? Number(a.slice(0, -1)) / 100 : Number(a);
+    return `#${hex}${Math.round(alpha * 255).toString(16).padStart(2, "0")}`;
+  }
+  if (/^(?:hsla?|oklch|oklab|lab|lch)\([^()]*\)$/.test(s)) return s.replace(/\s+/g, " ").replace(/\(\s+/, "(").replace(/\s+\)/, ")");
+  return null;
+}
+function colorLiterals(text) {
+  const out = [];
+  for (const m of text.matchAll(HEX)) {
+    const n = normalizeColor(m[0]);
+    if (n) out.push(n);
+  }
+  for (const m of text.matchAll(FUNC)) {
+    const n = normalizeColor(m[0]);
+    if (n) out.push(n);
+  }
+  return out;
+}
+var STYLE_FILE = /\.(css|scss|sass|less|pcss|tsx|jsx|ts|js|mjs|cjs|vue|svelte|astro|html)$/;
+var SKIP = /* @__PURE__ */ new Set(["node_modules", ".git", ".aidw", ".next", ".nuxt", ".svelte-kit", "dist", "build", "out", "coverage", "test-results", "playwright-report", ".turbo", ".vercel"]);
+var TEST = /(^|\/)(__tests__|tests?|e2e)\/|\.(test|spec)\.[a-z]+$/;
+var MAX_FILE = 512 * 1024;
+function styleFiles(project) {
+  const out = [];
+  const walk = (dir, prefix) => {
+    let entries;
+    try {
+      entries = (0, import_node_fs5.readdirSync)(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      if (e.isDirectory()) {
+        if (!SKIP.has(e.name) && !e.name.startsWith(".")) walk((0, import_node_path6.join)(dir, e.name), `${prefix}${e.name}/`);
+      } else if (e.isFile() && STYLE_FILE.test(e.name)) {
+        const r = `${prefix}${e.name}`;
+        if (!TEST.test(r)) out.push(r);
+      }
+    }
+  };
+  walk(project, "");
+  return out.sort();
+}
+function read(project, f) {
+  try {
+    const full = (0, import_node_path6.join)(project, f);
+    return (0, import_node_fs5.statSync)(full).size > MAX_FILE ? "" : (0, import_node_fs5.readFileSync)(full, "utf8");
+  } catch {
+    return "";
+  }
+}
+function missingTokens(project, tokens, files = styleFiles(project)) {
+  const colors = /* @__PURE__ */ new Set();
+  let text = "";
+  for (const f of files) {
+    const t = read(project, f);
+    text += `
+${t.toLowerCase()}`;
+    for (const c of colorLiterals(t)) colors.add(c);
+  }
+  const missing = [];
+  for (const t of tokens) {
+    if (t.kind === "color") {
+      for (const v of [t.value, t.dark].filter((x) => !!x)) {
+        if (!colors.has(normalizeColor(v) ?? v)) missing.push(`${t.name}${v === t.dark ? " (dark)" : ""} ${v}`);
+      }
+    } else if (t.kind === "font") {
+      const family = t.value.split(",")[0]?.replace(/["']/g, "").trim().toLowerCase() ?? "";
+      if (family && !text.includes(family)) missing.push(`${t.name} ${t.value}`);
+    }
+  }
+  return missing;
+}
+function hardcodedColors(project, files, tokens) {
+  const allowed = /* @__PURE__ */ new Set(["#000000", "#ffffff", "#00000000"]);
+  for (const t of tokens) {
+    if (t.kind !== "color") continue;
+    for (const v of [t.value, t.dark]) if (v) allowed.add(normalizeColor(v) ?? v);
+  }
+  const out = [];
+  for (const f of files) {
+    if (!STYLE_FILE.test(f) || TEST.test(f)) continue;
+    const found = [...new Set(colorLiterals(read(project, f)))].filter((c) => !allowed.has(c));
+    for (const c of found) out.push(`${f}: ${c}`);
+    if (out.length >= 30) break;
+  }
+  return out;
+}
+var IMAGE = /\.(png|jpe?g|webp)$/i;
+var shotsDir = (p, id, taskId) => (0, import_node_path6.join)(p.run, "shots", id, taskId);
+function taskShots(p, id, taskId, since) {
+  const dir = shotsDir(p, id, taskId);
+  if (!(0, import_node_fs5.existsSync)(dir)) return [];
+  const after = since ? Date.parse(since) : 0;
+  const out = [];
+  const walk = (d) => {
+    for (const e of (0, import_node_fs5.readdirSync)(d, { withFileTypes: true })) {
+      const full = (0, import_node_path6.join)(d, e.name);
+      if (e.isDirectory()) walk(full);
+      else if (IMAGE.test(e.name) && (0, import_node_fs5.statSync)(full).mtimeMs >= after - 1e3) out.push(rel(p, full));
+    }
+  };
+  walk(dir);
+  return out.sort();
+}
+function tokensTable(tokens) {
+  const esc = (s) => s.replace(/\|/g, "\\|").replace(/\n/g, " ");
+  return [
+    "| Token | Kind | Value | Dark | Use |",
+    "|---|---|---|---|---|",
+    ...tokens.map((t) => `| \`${t.name}\` | ${t.kind} | \`${esc(t.value)}\` | ${t.dark ? `\`${esc(t.dark)}\`` : ""} | ${esc(t.use)} |`)
+  ];
+}
 
 // src/glob.ts
 function globToRegExp(glob) {
@@ -8493,19 +8676,19 @@ var now = () => (/* @__PURE__ */ new Date()).toISOString();
 var list2 = (v) => Array.isArray(v) ? v.map(String) : [];
 function loadTasks(p, id) {
   const change = loadChange(p, id);
-  const file = (0, import_node_path6.join)(change.dir, "tasks.yaml");
+  const file = (0, import_node_path7.join)(change.dir, "tasks.yaml");
   const text = readText(file);
   if (text === null) throw new OpError(`change "${id}" has no tasks.yaml`);
   const d = validateTasksText(text, rel(p, file));
   if (d.errors.length) throw new OpError(`tasks.yaml of "${id}" is invalid`, d);
-  return { change, file, doc: import_yaml3.default.parseDocument(text), tasks: parseTasks(text).tasks };
+  return { change, file, doc: import_yaml4.default.parseDocument(text), tasks: parseTasks(text).tasks };
 }
 function saveTasksDoc(tf) {
   saveTasks(tf);
 }
 function saveTasks(tf) {
   const text = String(tf.doc);
-  (0, import_node_fs5.writeFileSync)(tf.file, text);
+  (0, import_node_fs6.writeFileSync)(tf.file, text);
   tf.tasks = parseTasks(text).tasks;
 }
 function indexOf(tf, taskId) {
@@ -8608,21 +8791,21 @@ var MAX_TEST_FILE = 1024 * 1024;
 function walkProject(dir, root, out) {
   let names;
   try {
-    names = (0, import_node_fs5.readdirSync)(dir);
+    names = (0, import_node_fs6.readdirSync)(dir);
   } catch {
     return;
   }
   for (const name of names.sort()) {
     if (SKIP_DIRS.has(name)) continue;
-    const full = (0, import_node_path6.join)(dir, name);
+    const full = (0, import_node_path7.join)(dir, name);
     let st;
     try {
-      st = (0, import_node_fs5.statSync)(full);
+      st = (0, import_node_fs6.statSync)(full);
     } catch {
       continue;
     }
     if (st.isDirectory()) walkProject(full, root, out);
-    else if (st.size <= MAX_TEST_FILE) out.push((0, import_node_path6.relative)(root, full).split(import_node_path6.sep).join("/"));
+    else if (st.size <= MAX_TEST_FILE) out.push((0, import_node_path7.relative)(root, full).split(import_node_path7.sep).join("/"));
   }
 }
 function testFiles(project) {
@@ -8636,7 +8819,7 @@ function findScenarioTests(project, ids) {
   if (!ids.length) return found;
   const patterns = ids.map((s) => [s, new RegExp(`(^|[^a-z0-9/-])${s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![a-z0-9/-])`)]);
   for (const f of testFiles(project)) {
-    const lines = (0, import_node_fs5.readFileSync)((0, import_node_path6.join)(project, f), "utf8").split(/\r?\n/);
+    const lines = (0, import_node_fs6.readFileSync)((0, import_node_path7.join)(project, f), "utf8").split(/\r?\n/);
     lines.forEach((line, n) => {
       if (SKIPPED_LINE.test(line)) return;
       for (const [s, re] of patterns) if (re.test(line)) found[s]?.push(`${f}:${n + 1}`);
@@ -8644,21 +8827,31 @@ function findScenarioTests(project, ids) {
   }
   return found;
 }
+function designEvidence(p, id, t, changed, since) {
+  if (!touchesUi(t)) return null;
+  const { tokens, exists, diags } = loadTokens(p);
+  if (!exists || diags.errors.length > 0 || tokens.length === 0) return null;
+  return {
+    missing_tokens: missingTokens(p.project, tokens),
+    hardcoded_colors: hardcodedColors(p.project, changed ?? [], tokens),
+    screenshots: taskShots(p, id, t.id, since)
+  };
+}
 var evidenceRel = (taskId) => `evidence/${taskId}.json`;
 function readEvidence(change, t) {
-  const file = (0, import_node_path6.join)(change.dir, evidenceRel(t.id));
-  if ((0, import_node_fs5.existsSync)(file)) {
+  const file = (0, import_node_path7.join)(change.dir, evidenceRel(t.id));
+  if ((0, import_node_fs6.existsSync)(file)) {
     try {
-      return JSON.parse((0, import_node_fs5.readFileSync)(file, "utf8"));
+      return JSON.parse((0, import_node_fs6.readFileSync)(file, "utf8"));
     } catch {
     }
   }
   return { task: t.id, title: String(t.title ?? ""), checkpoints: [], reviews: [] };
 }
 function writeEvidence(change, ev) {
-  const file = (0, import_node_path6.join)(change.dir, evidenceRel(ev.task));
-  (0, import_node_fs5.mkdirSync)((0, import_node_path6.join)(change.dir, "evidence"), { recursive: true });
-  (0, import_node_fs5.writeFileSync)(file, `${JSON.stringify(ev, null, 2)}
+  const file = (0, import_node_path7.join)(change.dir, evidenceRel(ev.task));
+  (0, import_node_fs6.mkdirSync)((0, import_node_path7.join)(change.dir, "evidence"), { recursive: true });
+  (0, import_node_fs6.writeFileSync)(file, `${JSON.stringify(ev, null, 2)}
 `);
 }
 var tailOf = (s, lines = 60) => s.split(/\r?\n/).slice(-lines).join("\n").trim();
@@ -8697,7 +8890,10 @@ function checkpoint(p, id, taskId, opts = {}) {
     if (r.exit !== 0) break;
   }
   const verifyOk = verify2.length === list2(t.verify).length && verify2.every((v) => v.exit === 0);
-  const ok = verifyOk && missing.length === 0;
+  const previous = readEvidence(tf.change, t).checkpoints.at(-1)?.at;
+  const design = designEvidence(p, id, t, changed, previous ?? (typeof t.started_at === "string" ? t.started_at : void 0));
+  const designOk = !design || design.missing_tokens.length === 0 && design.screenshots.length > 0;
+  const ok = verifyOk && missing.length === 0 && designOk;
   const record = {
     attempt: attemptsOf(t),
     at: now(),
@@ -8707,7 +8903,8 @@ function checkpoint(p, id, taskId, opts = {}) {
     missing_scenarios: missing,
     verify: verify2,
     changed_files: changed,
-    outside_touches: outside
+    outside_touches: outside,
+    ...design ? { design } : {}
   };
   const ev = readEvidence(tf.change, t);
   ev.checkpoints.push(record);
@@ -8716,11 +8913,13 @@ function checkpoint(p, id, taskId, opts = {}) {
   if (missing.length) problems.push(`no test names scenario ${missing.join(", ")}`);
   const failed = verify2.find((v) => v.exit !== 0);
   if (failed) problems.push(`verify failed: \`${failed.command}\`${failed.timedOut ? " (timed out)" : ` (exit ${failed.exit})`}`);
+  if (design?.missing_tokens.length) problems.push(`design tokens not in the code: ${design.missing_tokens.join(", ")}`);
+  if (design && design.screenshots.length === 0) problems.push(`no fresh screenshot in ${rel(p, shotsDir(p, id, taskId))}`);
   setField(tf, i, "status", ok ? "review" : "failed");
   setField(tf, i, "evidence", evidenceRel(taskId));
   setField(tf, i, "notes", ok ? null : `checkpoint: ${problems.join("; ")}`);
   saveTasks(tf);
-  return { ...record, task: taskId, status: ok ? "review" : "failed", evidence: rel(p, (0, import_node_path6.join)(tf.change.dir, evidenceRel(taskId))) };
+  return { ...record, task: taskId, status: ok ? "review" : "failed", evidence: rel(p, (0, import_node_path7.join)(tf.change.dir, evidenceRel(taskId))) };
 }
 function recordReview(p, id, taskId, verdict, notes, opts = {}) {
   const tf = loadTasks(p, id);
@@ -8758,11 +8957,11 @@ aidw change ${id}, task ${taskId}. Checkpoint and review evidence: .aidw/changes
   return { task: taskId, verdict, status: "done", commit: headCommit(p.project) };
 }
 function pointer(p, file, what) {
-  return (0, import_node_fs5.existsSync)(file) ? `- \`${rel(p, file)}\`: ${what}` : null;
+  return (0, import_node_fs6.existsSync)(file) ? `- \`${rel(p, file)}\`: ${what}` : null;
 }
 function adrPointers(p) {
   return walkFiles(p.decisions).filter((f) => f.endsWith(".md")).map((f) => {
-    const title = ((0, import_node_fs5.readFileSync)(f, "utf8").match(/^#\s+(.+)$/m)?.[1] ?? "").trim();
+    const title = ((0, import_node_fs6.readFileSync)(f, "utf8").match(/^#\s+(.+)$/m)?.[1] ?? "").trim();
     return `- \`${rel(p, f)}\`${title ? `: ${title}` : ""}`;
   });
 }
@@ -8777,7 +8976,7 @@ function buildBrief(p, id, taskId, kind, vendorDir) {
   const failedCheckpoint = !reviewIsLatest && lastCheckpoint && !lastCheckpoint.ok ? lastCheckpoint : void 0;
   const fixReview = reviewIsLatest && lastReview?.verdict === "fix" ? lastReview : void 0;
   const retry = kind === "implement" && (!!failedCheckpoint || !!fixReview);
-  const skills = selectSkills(t, kind, { retry }).map((s) => ({ ...s, path: (0, import_node_path6.join)(vendorDir, ...s.id.split("/"), "SKILL.md") }));
+  const skills = selectSkills(t, kind, { retry }).map((s) => ({ ...s, path: (0, import_node_path7.join)(vendorDir, ...s.id.split("/"), "SKILL.md") }));
   const reqs = requirementsAfterChange(p, id);
   const scenarioIds = list2(t.scenarios);
   const reqIds = [.../* @__PURE__ */ new Set([...list2(t.specs), ...scenarioIds.map((s) => s.split("/").slice(0, -1).join("/"))])];
@@ -8794,15 +8993,19 @@ ${req.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`;
   const priorWork = kind === "implement" && status === "running" && base !== null && (changedSince(p.project, base) ?? []).some((f) => !f.startsWith(".aidw/"));
   const pointers = [
     pointer(p, p.constitution, "engineering principles every agent follows"),
-    pointer(p, (0, import_node_path6.join)(p.domain, "model.md"), "glossary, entities, business rules"),
-    pointer(p, (0, import_node_path6.join)(p.architecture, "overview.md"), "architecture, folder structure, integrations"),
-    pointer(p, (0, import_node_path6.join)(p.requirements, `${id}.md`), "user stories and implementation/testing decisions"),
+    pointer(p, (0, import_node_path7.join)(p.domain, "model.md"), "glossary, entities, business rules"),
+    pointer(p, (0, import_node_path7.join)(p.architecture, "overview.md"), "architecture, folder structure, integrations"),
+    pointer(p, (0, import_node_path7.join)(p.requirements, `${id}.md`), "user stories and implementation/testing decisions"),
     ...touchesUi(t) ? [pointer(p, p.design, "design direction and assets (UI task)")] : []
   ].filter((x) => x !== null);
   const adrs = adrPointers(p);
   const touches = list2(t.touches);
   const verify2 = list2(t.verify);
   const h = (title, body2) => body2.length ? [`## ${title}`, "", ...body2, ""] : [];
+  const decisions = decisionsToHonor(readText((0, import_node_path7.join)(tf.change.dir, "analysis.md")) ?? "");
+  const tokenInfo = touchesUi(t) ? loadTokens(p) : null;
+  const tokens = tokenInfo && tokenInfo.diags.errors.length === 0 ? tokenInfo.tokens : [];
+  const shots = shotsDir(p, id, taskId);
   const header = [
     `# ${kind === "implement" ? "Task" : "Review"} brief: ${taskId} - ${String(t.title ?? "")}`,
     "",
@@ -8812,6 +9015,11 @@ ${req.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`;
   const shared = [
     ...h("Scenarios", scenarioIds.length ? scenarioIds.map((s) => `- \`${s}\``) : ["- (none: this task is verified by its verify commands only)"]),
     ...h("Requirements (spec text after this change)", reqBlocks.length ? ["```markdown", reqBlocks.join("\n\n"), "```"] : []),
+    ...h("Decisions to honor (approved; binding)", decisions.map((x) => `- ${x}`)),
+    ...h(
+      "Design tokens (approved; binding for UI)",
+      tokens.length ? [...tokensTable(tokens), "", `Source: \`${rel(p, tokensFile(p))}\`. Each token's **Use** says where it must appear.`] : []
+    ),
     ...h("Builds on (finished tasks; see `git log`)", done),
     ...h("Touches (files this task may change)", touches.map((g) => `- \`${g}\``)),
     ...h("Verify", verify2.map((v) => `- \`${v}\``)),
@@ -8825,6 +9033,8 @@ ${req.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`;
       if (failedCheckpoint.missing_scenarios.length) previous.push(`- Missing scenario tests: ${failedCheckpoint.missing_scenarios.map((s) => `\`${s}\``).join(", ")}`);
       const failed = failedCheckpoint.verify.find((v) => v.exit !== 0);
       if (failed) previous.push(`- \`${failed.command}\` failed${failed.timedOut ? " (timed out)" : ` with exit ${failed.exit}`}:`, "", "```", failed.tail, "```");
+      if (failedCheckpoint.design?.missing_tokens.length) previous.push(`- Design tokens not found in the code: ${failedCheckpoint.design.missing_tokens.map((x) => `\`${x}\``).join(", ")}`);
+      if (failedCheckpoint.design && failedCheckpoint.design.screenshots.length === 0) previous.push(`- No fresh screenshot in \`${shots}\``);
     }
     if (fixReview) previous.push("- The reviewer asked for fixes:", "", fixReview.notes.split("\n").map((l) => `  ${l}`).join("\n"));
     body = [
@@ -8836,6 +9046,11 @@ ${req.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`;
       "- Do not edit anything under `.aidw/`, do not run `aidw checkpoint`/`aidw review`, and do not commit, push or deploy: the orchestrator records progress and commits after an independent review.",
       '- Test first. For every scenario, write a test whose name contains the scenario id verbatim, e.g. `test("booking/cancel-appointment/cancel-upcoming: cancels and frees the slot")`, asserting the THEN outcome. `aidw checkpoint` looks for these ids in test files.',
       "- Run every **Verify** command yourself and make it pass before reporting.",
+      ...decisions.length ? ["- **Decisions to honor** are approved and binding. If one is wrong or blocks the task, stop and report it as a blocker; never deviate silently (not even a key name or a tool)."] : [],
+      ...tokens.length ? [
+        "- **Design**: style through the tokens below (CSS variables or theme), never hard-coded colors, and apply each token where its **Use** says.",
+        `- **Screenshots**: when it works, save PNG screenshots of every screen and state this task changes (desktop and mobile width; dark theme too if tokens have dark values) into \`${shots}\` (create it; e.g. a short Playwright script against the running app). The checkpoint requires at least one fresh screenshot; the reviewer judges the design from them.`
+      ] : [],
       "- Report in at most 10 lines: what works now, files changed, verify result, anything the reviewer should know (e.g. files outside Touches and why).",
       "",
       ...priorWork ? h("Resuming", [
@@ -8848,21 +9063,26 @@ ${req.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`;
   } else {
     const diff = base ? `\`git diff ${base}\` plus untracked files (\`git status --porcelain\`)` : "the files matching Touches (no base commit was recorded)";
     const outside = lastCheckpoint?.outside_touches ?? [];
+    const design = lastCheckpoint?.design;
     body = [
       "You are an independent reviewer in a fresh context. You did not write this code. You may read files and run read-only commands (tests included); you cannot edit anything.",
       "",
       "## What to review",
       "",
       `- The task's changes: ${diff}.`,
-      `- Checkpoint evidence: \`${rel(p, (0, import_node_path6.join)(tf.change.dir, evidenceRel(taskId)))}\` (verify output, where each scenario test lives).`,
+      `- Checkpoint evidence: \`${rel(p, (0, import_node_path7.join)(tf.change.dir, evidenceRel(taskId)))}\` (verify output, where each scenario test lives).`,
       ...outside.length ? [`- Files changed outside Touches: ${outside.map((f) => `\`${f}\``).join(", ")}. Decide whether each is justified.`] : [],
+      ...design?.screenshots.length ? [`- Screenshots (open each with Read): ${design.screenshots.map((f) => `\`${(0, import_node_path7.join)(p.project, f)}\``).join(", ")}`] : [],
+      ...design?.hardcoded_colors.length ? [`- Color literals that are not tokens, in changed files: ${design.hardcoded_colors.map((f) => `\`${f}\``).join(", ")}. Each needs a reason or becomes a token.`] : [],
       "",
       "## Checklist",
       "",
       "1. Every scenario is implemented as the spec says, and its test really asserts the THEN outcome (not a placeholder, not mocked away).",
       "2. Behavior matches the requirement text; nothing outside this task's scope was added.",
       "3. Constitution, architecture and ADRs are followed.",
-      ...isSecuritySensitive(t) ? ["4. Security: authorization on every path, input validation, secrets handling, data exposure (security skill below)."] : [],
+      ...decisions.length ? ["4. Every **Decision to honor** below is kept exactly (names, keys, formats, tools). A silent deviation is a blocking issue."] : [],
+      ...tokens.length ? ["5. Design: look at every screenshot. Each token is used where its **Use** says (e.g. the accent color really appears on what it names), the layout matches the design direction, and no stray colors. A visible mismatch is a blocking issue."] : [],
+      ...isSecuritySensitive(t) ? ["6. Security: authorization on every path, input validation, secrets handling, data exposure (security skill below)."] : [],
       "",
       "## Verdict",
       "",
@@ -8874,15 +9094,15 @@ ${req.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`;
     ];
   }
   const text = [...header, ...body].join("\n").replace(/\n{3,}/g, "\n\n");
-  const dir = (0, import_node_path6.join)(p.run, "briefs", id);
-  (0, import_node_fs5.mkdirSync)(dir, { recursive: true });
-  const path = (0, import_node_path6.join)(dir, `${taskId}.${kind}.md`);
-  (0, import_node_fs5.writeFileSync)(path, text);
+  const dir = (0, import_node_path7.join)(p.run, "briefs", id);
+  (0, import_node_fs6.mkdirSync)(dir, { recursive: true });
+  const path = (0, import_node_path7.join)(dir, `${taskId}.${kind}.md`);
+  (0, import_node_fs6.writeFileSync)(path, text);
   return { kind, task: taskId, path, text, skills };
 }
 
 // src/converge.ts
-var convergeFile = (change) => (0, import_node_path7.join)(change.dir, "evidence", "converge.json");
+var convergeFile = (change) => (0, import_node_path8.join)(change.dir, "evidence", "converge.json");
 var now2 = () => (/* @__PURE__ */ new Date()).toISOString();
 var idPattern = (id) => new RegExp(`(^|[^a-z0-9/-])${id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![a-z0-9/-])`);
 function fromJunit(id, tests) {
@@ -8920,7 +9140,7 @@ function scenarioResults(p, id) {
     for (const s of ids) scenarios[s] = fromJunit(s, tests);
     return { mode: "junit", scenarios };
   }
-  const files = testFiles(p.project).map((f) => ({ file: f, lines: (0, import_node_fs6.readFileSync)((0, import_node_path7.join)(p.project, f), "utf8").split(/\r?\n/) }));
+  const files = testFiles(p.project).map((f) => ({ file: f, lines: (0, import_node_fs7.readFileSync)((0, import_node_path8.join)(p.project, f), "utf8").split(/\r?\n/) }));
   for (const s of ids) scenarios[s] = fromPresence(s, files);
   return { mode: "presence", scenarios };
 }
@@ -8979,23 +9199,23 @@ function converge(p, id) {
 }
 function writeRecord(change, record) {
   const f = convergeFile(change);
-  (0, import_node_fs6.mkdirSync)((0, import_node_path7.join)(change.dir, "evidence"), { recursive: true });
+  (0, import_node_fs7.mkdirSync)((0, import_node_path8.join)(change.dir, "evidence"), { recursive: true });
   let runs = [];
-  if ((0, import_node_fs6.existsSync)(f)) {
+  if ((0, import_node_fs7.existsSync)(f)) {
     try {
-      runs = JSON.parse((0, import_node_fs6.readFileSync)(f, "utf8")).runs ?? [];
+      runs = JSON.parse((0, import_node_fs7.readFileSync)(f, "utf8")).runs ?? [];
     } catch {
       runs = [];
     }
   }
-  (0, import_node_fs6.writeFileSync)(f, `${JSON.stringify({ runs: [...runs, record] }, null, 2)}
+  (0, import_node_fs7.writeFileSync)(f, `${JSON.stringify({ runs: [...runs, record] }, null, 2)}
 `);
 }
 function lastConverge(change) {
   const f = convergeFile(change);
-  if (!(0, import_node_fs6.existsSync)(f)) return null;
+  if (!(0, import_node_fs7.existsSync)(f)) return null;
   try {
-    return (JSON.parse((0, import_node_fs6.readFileSync)(f, "utf8")).runs ?? []).at(-1) ?? null;
+    return (JSON.parse((0, import_node_fs7.readFileSync)(f, "utf8")).runs ?? []).at(-1) ?? null;
   } catch {
     return null;
   }
@@ -9013,8 +9233,8 @@ function convergePassed(p, id) {
 // src/deliver.ts
 var HANDOFF_SECTIONS = ["Overview", "Run locally", "Environment", "Deploy", "Usage", "Known issues", "Next steps"];
 var LATER_LAYERS = ["ui-ux", "a11y", "security", "performance"];
-var IMAGE = /\.(png|jpe?g|webp)$/i;
-var deliveryDir = (change) => (0, import_node_path8.join)(change.dir, "delivery");
+var IMAGE2 = /\.(png|jpe?g|webp)$/i;
+var deliveryDir = (change) => (0, import_node_path9.join)(change.dir, "delivery");
 var HANDOFF = (title) => `# Handoff: ${title}
 
 ## Overview
@@ -9047,10 +9267,10 @@ ${PLACEHOLDER}: recommended follow-ups.
 `;
 var statusOf2 = (t) => String(t.status ?? "pending");
 function readEvidence2(change, taskId) {
-  const f = (0, import_node_path8.join)(change.dir, "evidence", `${taskId}.json`);
-  if (!(0, import_node_fs7.existsSync)(f)) return null;
+  const f = (0, import_node_path9.join)(change.dir, "evidence", `${taskId}.json`);
+  if (!(0, import_node_fs8.existsSync)(f)) return null;
   try {
-    return JSON.parse((0, import_node_fs7.readFileSync)(f, "utf8"));
+    return JSON.parse((0, import_node_fs8.readFileSync)(f, "utf8"));
   } catch {
     return null;
   }
@@ -9141,27 +9361,55 @@ function deployLine(d) {
 }
 function decisionsMd(p) {
   const adrs = walkFiles(p.decisions).filter((f) => f.endsWith(".md")).map((f) => {
-    const title = ((0, import_node_fs7.readFileSync)(f, "utf8").match(/^#\s+(.+)$/m)?.[1] ?? "").trim();
+    const title = ((0, import_node_fs8.readFileSync)(f, "utf8").match(/^#\s+(.+)$/m)?.[1] ?? "").trim();
     return `- \`${rel(p, f)}\`${title ? `: ${title}` : ""}`;
   });
   return ["# Decisions", "", "Architecture decision records of the project (see also `## Architecture` in the Analysis).", "", ...adrs.length ? adrs : ["No ADRs."], ""].join("\n");
 }
 function screenshots(change) {
-  const dir = (0, import_node_path8.join)(deliveryDir(change), "screenshots");
-  return (0, import_node_fs7.existsSync)(dir) ? (0, import_node_fs7.readdirSync)(dir).filter((f) => IMAGE.test(f)).sort() : [];
+  const dir = (0, import_node_path9.join)(deliveryDir(change), "screenshots");
+  return (0, import_node_fs8.existsSync)(dir) ? (0, import_node_fs8.readdirSync)(dir).filter((f) => IMAGE2.test(f)).sort() : [];
 }
 function needsScreenshots(tasks) {
   return tasks.some((t) => touchesUi(t));
+}
+var SCRIPT_CALL = /\b(npm|pnpm|yarn|bun)\s+(?:run\s+)?([a-z0-9][\w:.-]*)/gi;
+var PM_BUILTINS = new Set(
+  "install i add remove rm uninstall update up upgrade ci init create exec dlx x link unlink publish pack audit outdated why list ls config cache info view login logout version help store prune rebuild dedupe import patch patch-commit env setup global bin root run test start".split(" ")
+);
+function staleReadmeCommands(project) {
+  const readme = readText((0, import_node_path9.join)(project, "README.md"));
+  const pkgText = readText((0, import_node_path9.join)(project, "package.json"));
+  if (readme === null || pkgText === null) return [];
+  let scripts = {};
+  try {
+    scripts = JSON.parse(pkgText).scripts ?? {};
+  } catch {
+    return [];
+  }
+  const out = /* @__PURE__ */ new Set();
+  for (const m of readme.matchAll(SCRIPT_CALL)) {
+    const pm = m[1].toLowerCase();
+    const name = m[2];
+    const explicitRun = /\srun\s/.test(m[0]);
+    if (!explicitRun && (name === "test" || name === "start")) {
+      if (!(name in scripts)) out.add(m[0]);
+      continue;
+    }
+    if (!explicitRun && (pm === "npm" || PM_BUILTINS.has(name))) continue;
+    if (!(name in scripts)) out.add(m[0]);
+  }
+  return [...out];
 }
 function checkDelivery(p, id) {
   const change = loadChange(p, id);
   const d = new Diags();
   const dir = deliveryDir(change);
-  const where = (f) => rel(p, (0, import_node_path8.join)(dir, f));
+  const where = (f) => rel(p, (0, import_node_path9.join)(dir, f));
   for (const f of ["README.md", "quality-report.md", "tasks.md", "decisions.md", "handoff.md"]) {
-    if (!(0, import_node_fs7.existsSync)((0, import_node_path8.join)(dir, f))) d.error(where(f), "missing; run `aidw deliver`");
+    if (!(0, import_node_fs8.existsSync)((0, import_node_path9.join)(dir, f))) d.error(where(f), "missing; run `aidw deliver`");
   }
-  const handoff = readText((0, import_node_path8.join)(dir, "handoff.md"));
+  const handoff = readText((0, import_node_path9.join)(dir, "handoff.md"));
   if (handoff !== null) {
     const secs = sections(handoff);
     for (const name of HANDOFF_SECTIONS) {
@@ -9173,14 +9421,17 @@ function checkDelivery(p, id) {
       if (l.includes(PLACEHOLDER)) d.error(where("handoff.md"), `unresolved ${PLACEHOLDER} placeholder`, i + 1);
     });
     const env = secs.find((x) => x.name.toLowerCase() === "environment");
-    if (env && !env.body.includes(PLACEHOLDER) && !/^\s*none\b/im.test(env.body) && !(0, import_node_fs7.existsSync)((0, import_node_path8.join)(p.project, ".env.example"))) {
-      d.error(rel(p, (0, import_node_path8.join)(p.project, ".env.example")), 'missing: the handoff lists environment variables, so ship a .env.example (or write "None" under ## Environment)');
+    if (env && !env.body.includes(PLACEHOLDER) && !/^\s*none\b/im.test(env.body) && !(0, import_node_fs8.existsSync)((0, import_node_path9.join)(p.project, ".env.example"))) {
+      d.error(rel(p, (0, import_node_path9.join)(p.project, ".env.example")), 'missing: the handoff lists environment variables, so ship a .env.example (or write "None" under ## Environment)');
     }
   }
   if (needsScreenshots(loadTasks(p, id).tasks) && screenshots(change).length === 0) {
     d.error(where("screenshots/"), "no screenshots (png, jpg, webp) of the main flows; this change has UI tasks");
   }
   if (!lastConverge(change)?.ok) d.error(where("quality-report.md"), "converge has not passed");
+  for (const c of staleReadmeCommands(p.project)) {
+    d.error("README.md", `\`${c}\` calls a script that package.json does not define; update the README to the commands that work`);
+  }
   return d;
 }
 function deliver(p, id, opts = {}) {
@@ -9192,16 +9443,16 @@ function deliver(p, id, opts = {}) {
   let createdHandoff = false;
   if (!opts.check) {
     const tasks = loadTasks(p, id).tasks;
-    (0, import_node_fs7.mkdirSync)((0, import_node_path8.join)(dir, "screenshots"), { recursive: true });
+    (0, import_node_fs8.mkdirSync)((0, import_node_path9.join)(dir, "screenshots"), { recursive: true });
     const write = (name, text) => {
-      (0, import_node_fs7.writeFileSync)((0, import_node_path8.join)(dir, name), text);
-      written.push(rel(p, (0, import_node_path8.join)(dir, name)));
+      (0, import_node_fs8.writeFileSync)((0, import_node_path9.join)(dir, name), text);
+      written.push(rel(p, (0, import_node_path9.join)(dir, name)));
     };
     write("quality-report.md", qualityMd(p, change, tasks));
     write("tasks.md", tasksMd(p, change, tasks));
     write("decisions.md", decisionsMd(p));
-    if (!(0, import_node_fs7.existsSync)((0, import_node_path8.join)(dir, "handoff.md"))) {
-      (0, import_node_fs7.writeFileSync)((0, import_node_path8.join)(dir, "handoff.md"), HANDOFF(String(change.data.title ?? id)));
+    if (!(0, import_node_fs8.existsSync)((0, import_node_path9.join)(dir, "handoff.md"))) {
+      (0, import_node_fs8.writeFileSync)((0, import_node_path9.join)(dir, "handoff.md"), HANDOFF(String(change.data.title ?? id)));
       createdHandoff = true;
     }
     write("README.md", readmeMd(p, change, tasks));
@@ -9215,7 +9466,7 @@ function readmeMd(p, change, tasks) {
   const summary = readSummary(change);
   const layers = Object.entries(summary.layers).map(([n, r]) => `${n} ${r.status}`).join(", ") || "none";
   const conv = lastConverge(change);
-  const env = (0, import_node_fs7.existsSync)((0, import_node_path8.join)(p.project, ".env.example"));
+  const env = (0, import_node_fs8.existsSync)((0, import_node_path9.join)(p.project, ".env.example"));
   return [
     `# Delivery: ${String(change.data.title ?? change.id)}`,
     "",
@@ -9302,20 +9553,20 @@ It is part of the approved Analysis package: changing it after approval is drift
 var SKELETON_DIRS = ["requirements", "specs", "domain", "architecture", "decisions", "design", "changes", "archive", "run"];
 function initProject(projectDir) {
   const p = pathsFor(projectDir);
-  if ((0, import_node_fs8.existsSync)(p.aidw)) throw new OpError(`${rel(p, p.aidw)}/ already exists; refusing to overwrite`);
+  if ((0, import_node_fs9.existsSync)(p.aidw)) throw new OpError(`${rel(p, p.aidw)}/ already exists; refusing to overwrite`);
   const created = [];
   const write = (file, content) => {
-    (0, import_node_fs8.mkdirSync)((0, import_node_path9.dirname)(file), { recursive: true });
-    (0, import_node_fs8.writeFileSync)(file, content);
+    (0, import_node_fs9.mkdirSync)((0, import_node_path10.dirname)(file), { recursive: true });
+    (0, import_node_fs9.writeFileSync)(file, content);
     created.push(rel(p, file));
   };
-  write(p.projectYaml, PROJECT_YAML((0, import_node_path9.basename)(projectDir)));
+  write(p.projectYaml, PROJECT_YAML((0, import_node_path10.basename)(projectDir)));
   write(p.constitution, CONSTITUTION);
-  write((0, import_node_path9.join)(p.aidw, ".gitignore"), "run/\n");
+  write((0, import_node_path10.join)(p.aidw, ".gitignore"), "run/\n");
   for (const d of SKELETON_DIRS) {
-    const keep = (0, import_node_path9.join)(p.aidw, d, ".gitkeep");
+    const keep = (0, import_node_path10.join)(p.aidw, d, ".gitkeep");
     if (d !== "run") write(keep, "");
-    else (0, import_node_fs8.mkdirSync)((0, import_node_path9.join)(p.aidw, d), { recursive: true });
+    else (0, import_node_fs9.mkdirSync)((0, import_node_path10.join)(p.aidw, d), { recursive: true });
   }
   return { created, paths: p };
 }
@@ -9341,11 +9592,11 @@ function newChange(p, id, opts) {
     throw new OpError(`unknown input type "${opts.inputType}" (expected ${INPUT_TYPES.join(", ")})`);
   }
   const dir = changeDir(p, id);
-  if ((0, import_node_fs8.existsSync)(dir)) throw new OpError(`change "${id}" already exists`);
+  if ((0, import_node_fs9.existsSync)(dir)) throw new OpError(`change "${id}" already exists`);
   const title = opts.title ?? id;
-  (0, import_node_fs8.mkdirSync)((0, import_node_path9.join)(dir, "specs"), { recursive: true });
-  (0, import_node_fs8.writeFileSync)(
-    (0, import_node_path9.join)(dir, "change.yaml"),
+  (0, import_node_fs9.mkdirSync)((0, import_node_path10.join)(dir, "specs"), { recursive: true });
+  (0, import_node_fs9.writeFileSync)(
+    (0, import_node_path10.join)(dir, "change.yaml"),
     [
       "schema: 1",
       `id: ${id}`,
@@ -9360,8 +9611,8 @@ function newChange(p, id, opts) {
       ""
     ].join("\n")
   );
-  (0, import_node_fs8.writeFileSync)((0, import_node_path9.join)(dir, "intake.md"), INTAKE(title));
-  (0, import_node_fs8.writeFileSync)((0, import_node_path9.join)(dir, "analysis.md"), ANALYSIS(title));
+  (0, import_node_fs9.writeFileSync)((0, import_node_path10.join)(dir, "intake.md"), INTAKE(title));
+  (0, import_node_fs9.writeFileSync)((0, import_node_path10.join)(dir, "analysis.md"), ANALYSIS(title));
   recordBaseline(p);
   return dir;
 }
@@ -9370,6 +9621,12 @@ var ANALYSIS = (title) => `# Analysis: ${title}
 ## Summary
 
 ${PLACEHOLDER}: one page the user can review in minutes - goal, scope, the 5-10 key decisions, and the risks and assumptions that need their attention.
+
+## Decisions to honor
+
+${PLACEHOLDER}: the concrete choices the code must keep, one per line as "- D1: <decision>" (names, keys, formats,
+tools, libraries, conventions, limits). Implementers stop and report instead of deviating; reviewers check them.
+Write "None" only if there are none.
 
 ## Requirements and scope
 
@@ -9389,7 +9646,7 @@ ${PLACEHOLDER}: chosen stack and why. If outside the familiar stack pool, say wh
 
 Mode: ${PLACEHOLDER} (existing | claude_design | ai_design | hybrid)
 
-${PLACEHOLDER}: design references, bundle, or AI design direction.
+${PLACEHOLDER}: design references, bundle, or AI design direction. UI work also needs .aidw/design/tokens.yaml.
 
 ## Architecture
 
@@ -9475,6 +9732,7 @@ function transition(p, id, to, opts) {
     const refused = transitionGuard(p, id, target);
     if (refused) throw new OpError(refused);
   }
+  if (from === "escalated" && target === "analyzing") recordBaseline(p);
   if (target === "awaiting_approval") {
     const d = readinessCheck(p, id, target);
     if (d.errors.length) throw new OpError("Analysis package is not ready for approval", d);
@@ -9497,11 +9755,12 @@ Quality layer and deploy evidence: .aidw/changes/${id}/evidence/`);
   }
   return { from, to: target };
 }
-function commitAidw(p, message) {
+function commitAidw(p, message, opts = {}) {
   if (!isGitRepo(p.project)) return null;
-  if (!git(p.project, ["add", "--", ".aidw"]).ok) return null;
-  if (git(p.project, ["diff", "--cached", "--quiet", "--", ".aidw"]).ok) return null;
-  return git(p.project, ["commit", "-q", "-m", message, "--", ".aidw"]).ok ? headCommit(p.project) : null;
+  const paths = [".aidw", ...opts.delivery ? ["README.md", ".env.example"].filter((f) => (0, import_node_fs9.existsSync)((0, import_node_path10.join)(p.project, f))) : []];
+  if (!git(p.project, ["add", "--", ...paths]).ok) return null;
+  if (git(p.project, ["diff", "--cached", "--quiet", "--", ...paths]).ok) return null;
+  return git(p.project, ["commit", "-q", "-m", message, "--", ...paths]).ok ? headCommit(p.project) : null;
 }
 function planMerge(p, id) {
   const change = loadChange(p, id);
@@ -9509,7 +9768,7 @@ function planMerge(p, id) {
   const files = deltaFiles(p, change, d);
   const results = [];
   for (const df of files) {
-    const r = applyDelta(readText(df.mainFile), (0, import_node_fs8.readFileSync)(df.file, "utf8"), df.capability);
+    const r = applyDelta(readText(df.mainFile), (0, import_node_fs9.readFileSync)(df.file, "utf8"), df.capability);
     if (!r.ok || !r.text) {
       for (const e of r.errors) d.error(rel(p, df.file), e);
       continue;
@@ -9521,8 +9780,8 @@ function planMerge(p, id) {
 }
 function writeMerge(merges) {
   for (const m of merges) {
-    (0, import_node_fs8.mkdirSync)((0, import_node_path9.dirname)(m.file), { recursive: true });
-    (0, import_node_fs8.writeFileSync)(m.file, m.text);
+    (0, import_node_fs9.mkdirSync)((0, import_node_path10.dirname)(m.file), { recursive: true });
+    (0, import_node_fs9.writeFileSync)(m.file, m.text);
   }
 }
 function archiveChange(p, id) {
@@ -9537,17 +9796,17 @@ function archiveChange(p, id) {
   const merges = planMerge(p, id);
   const date = now3().slice(0, 10);
   const name = /^\d{4}-\d{2}-\d{2}-/.test(id) ? id : `${date}-${id}`;
-  const target = (0, import_node_path9.join)(p.archive, name);
-  if ((0, import_node_fs8.existsSync)(target)) throw new OpError(`archive target ${rel(p, target)} already exists`);
+  const target = (0, import_node_path10.join)(p.archive, name);
+  if ((0, import_node_fs9.existsSync)(target)) throw new OpError(`archive target ${rel(p, target)} already exists`);
   writeMerge(merges);
   change.doc.set("state", "archived");
   change.doc.set("archived_at", now3());
   saveChange(change);
-  (0, import_node_fs8.mkdirSync)(p.archive, { recursive: true });
-  (0, import_node_fs8.renameSync)(change.dir, target);
+  (0, import_node_fs9.mkdirSync)(p.archive, { recursive: true });
+  (0, import_node_fs9.renameSync)(change.dir, target);
   const commit = commitAidw(p, `aidw: archive ${id}
 
-Delta specs merged into .aidw/specs; change moved to ${rel(p, target)}.`);
+Delta specs merged into .aidw/specs; change moved to ${rel(p, target)}.`, { delivery: true });
   return { target, merges, ...commit ? { commit } : {} };
 }
 function projectStatus(p, only) {
@@ -9556,13 +9815,13 @@ function projectStatus(p, only) {
   for (const f of walkFiles(p.specs)) {
     if (!capabilityOf(p.specs, f)) continue;
     capabilities++;
-    requirements += parseSpec((0, import_node_fs8.readFileSync)(f, "utf8")).requirements.length;
+    requirements += parseSpec((0, import_node_fs9.readFileSync)(f, "utf8")).requirements.length;
   }
   const ids = only ? [only] : listChangeIds(p);
   const changes = ids.map((id) => {
     try {
       const c = loadChange(p, id);
-      const tasksText = readText((0, import_node_path9.join)(c.dir, "tasks.yaml"));
+      const tasksText = readText((0, import_node_path10.join)(c.dir, "tasks.yaml"));
       let tasks = null;
       if (tasksText !== null) {
         const byStatus = {};
@@ -9602,12 +9861,12 @@ var DEFAULT_MAX_FIX_ROUNDS = 3;
 var EXPECTED_LAYERS = ["code", "unit", "e2e"];
 var isStrList2 = (v) => Array.isArray(v) && v.every((x) => typeof x === "string" && x.trim() !== "");
 var LAYER_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-var qualityFile = (change) => (0, import_node_path10.join)(change.dir, "quality.yaml");
+var qualityFile = (change) => (0, import_node_path11.join)(change.dir, "quality.yaml");
 function parseQuality(text, file) {
   const d = new Diags();
   let data;
   try {
-    data = import_yaml4.default.parse(text) ?? {};
+    data = import_yaml5.default.parse(text) ?? {};
   } catch (e) {
     d.error(file, `not valid YAML: ${e.message}`);
     return { config: null, diags: d };
@@ -9699,22 +9958,22 @@ function grantedResources(p, ids, openStates) {
   }
   return out;
 }
-var qualityDir = (change) => (0, import_node_path10.join)(change.dir, "evidence", "quality");
-var summaryFile = (change) => (0, import_node_path10.join)(qualityDir(change), "summary.json");
-var deployFile = (change) => (0, import_node_path10.join)(change.dir, "evidence", "deploy.json");
+var qualityDir = (change) => (0, import_node_path11.join)(change.dir, "evidence", "quality");
+var summaryFile = (change) => (0, import_node_path11.join)(qualityDir(change), "summary.json");
+var deployFile = (change) => (0, import_node_path11.join)(change.dir, "evidence", "deploy.json");
 var now4 = () => (/* @__PURE__ */ new Date()).toISOString();
 function readSummary(change) {
   const f = summaryFile(change);
-  if (!(0, import_node_fs9.existsSync)(f)) return { layers: {} };
+  if (!(0, import_node_fs10.existsSync)(f)) return { layers: {} };
   try {
-    return JSON.parse((0, import_node_fs9.readFileSync)(f, "utf8"));
+    return JSON.parse((0, import_node_fs10.readFileSync)(f, "utf8"));
   } catch {
     return { layers: {} };
   }
 }
 function writeJson(file, data) {
-  (0, import_node_fs9.mkdirSync)((0, import_node_path10.join)(file, ".."), { recursive: true });
-  (0, import_node_fs9.writeFileSync)(file, `${JSON.stringify(data, null, 2)}
+  (0, import_node_fs10.mkdirSync)((0, import_node_path11.join)(file, ".."), { recursive: true });
+  (0, import_node_fs10.writeFileSync)(file, `${JSON.stringify(data, null, 2)}
 `);
 }
 function codeChangedAt(tasks) {
@@ -9738,7 +9997,10 @@ var TESTCASE = /<testcase\b((?:[^>"']|"[^"]*"|'[^']*')*?)(?:\/>|>([\s\S]*?)<\/te
 var MAX_TESTS = 1e4;
 function xmlAttr(attrs, name) {
   const m = attrs.match(new RegExp(`\\b${name}\\s*=\\s*"([^"]*)"`)) ?? attrs.match(new RegExp(`\\b${name}\\s*=\\s*'([^']*)'`));
-  return (m?.[1] ?? "").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n))).replace(/&amp;/g, "&");
+  return decodeXml(m?.[1] ?? "");
+}
+function decodeXml(text) {
+  return text.replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n))).replace(/&amp;/g, "&");
 }
 function parseJunit(xml) {
   const out = [];
@@ -9747,7 +10009,14 @@ function parseJunit(xml) {
     const body = m[2] ?? "";
     const name = [xmlAttr(attrs, "classname"), xmlAttr(attrs, "name")].filter(Boolean).join(" > ");
     const status = /<(failure|error)\b/.test(body) ? "fail" : /<skipped\b/.test(body) ? "skipped" : "pass";
-    out.push({ name, status });
+    const tc = { name, status };
+    if (status === "fail") {
+      const f = /<(?:failure|error)\b((?:[^>"']|"[^"]*"|'[^']*')*?)(?:\/>|>([\s\S]*?)<\/(?:failure|error)>)/.exec(body);
+      const text = `${xmlAttr(f?.[1] ?? "", "message")}
+${decodeXml((f?.[2] ?? "").replace(/<!\[CDATA\[|\]\]>/g, ""))}`.trim();
+      if (text) tc.message = text.replace(/\x1b\[[0-9;]*m/g, "").split("\n").slice(0, 12).join("\n").slice(0, 1200);
+    }
+    out.push(tc);
     if (out.length >= MAX_TESTS) break;
   }
   return out;
@@ -9756,12 +10025,12 @@ function readJunit(project, reports) {
   const tests = [];
   const missing = [];
   for (const r of reports) {
-    const f = (0, import_node_path10.join)(project, ...r.split("/"));
-    if (!(0, import_node_fs9.existsSync)(f)) {
+    const f = (0, import_node_path11.join)(project, ...r.split("/"));
+    if (!(0, import_node_fs10.existsSync)(f)) {
       missing.push(r);
       continue;
     }
-    tests.push(...parseJunit((0, import_node_fs9.readFileSync)(f, "utf8")));
+    tests.push(...parseJunit((0, import_node_fs10.readFileSync)(f, "utf8")));
   }
   return { tests, missing };
 }
@@ -9803,7 +10072,7 @@ function verify(p, id, opts = {}) {
     }
     summary.layers[layer.name] = result;
     writeJson(summaryFile(change), summary);
-    appendHistory((0, import_node_path10.join)(qualityDir(change), `${layer.name}.json`), result);
+    appendHistory((0, import_node_path11.join)(qualityDir(change), `${layer.name}.json`), result);
     outcomes.push({ name: layer.name, status: result.status, runs });
     if (!ok) failed = layer;
   }
@@ -9815,9 +10084,17 @@ function verify(p, id, opts = {}) {
   const tf = loadTasks(p, id);
   const rounds = tf.tasks.filter((t) => t.origin === "quality" && t.layer === failed.name).length;
   const bad = failedRun(summary.layers[failed.name]?.runs ?? []);
+  const failing = (summary.layers[failed.name]?.tests ?? []).filter((t) => t.status === "fail");
+  const cases = failing.length ? `Failing tests (from the JUnit report):
+${failing.slice(0, 10).map((t) => `- ${t.name}${t.message ? `
+${t.message.replace(/^/gm, "    ")}` : ""}`).join("\n")}${failing.length > 10 ? `
+- ... and ${failing.length - 10} more` : ""}
+
+Output tail:
+` : "";
   const problem = bad ? `Quality layer "${failed.name}" failed: \`${bad.command}\`${bad.timedOut ? " timed out" : ` exited ${bad.exit}`}.
 
-${bad.tail}` : `Quality layer "${failed.name}" did not complete.`;
+${cases}${bad.tail}` : `Quality layer "${failed.name}" did not complete.`;
   if (rounds >= config.maxFixRounds) {
     transition(p, id, "escalated", { reason: `quality layer "${failed.name}" still failing after ${rounds} fix round(s)` });
     return { ok: false, layers: outcomes, failed: failed.name, escalated: true, summary: `layer "${failed.name}" failed; fix rounds exhausted (${rounds}/${config.maxFixRounds}): escalated` };
@@ -9849,9 +10126,9 @@ ${bad.tail}` : `Quality layer "${failed.name}" did not complete.`;
 }
 function appendHistory(file, entry) {
   let history = [];
-  if ((0, import_node_fs9.existsSync)(file)) {
+  if ((0, import_node_fs10.existsSync)(file)) {
     try {
-      const data = JSON.parse((0, import_node_fs9.readFileSync)(file, "utf8"));
+      const data = JSON.parse((0, import_node_fs10.readFileSync)(file, "utf8"));
       history = Array.isArray(data.runs) ? data.runs : [];
     } catch {
       history = [];
@@ -9894,9 +10171,9 @@ function deploy(p, id, opts = {}) {
 }
 function lastDeploy(change) {
   const f = deployFile(change);
-  if (!(0, import_node_fs9.existsSync)(f)) return null;
+  if (!(0, import_node_fs10.existsSync)(f)) return null;
   try {
-    const runs = JSON.parse((0, import_node_fs9.readFileSync)(f, "utf8")).runs ?? [];
+    const runs = JSON.parse((0, import_node_fs10.readFileSync)(f, "utf8")).runs ?? [];
     return runs.at(-1) ?? null;
   } catch {
     return null;
@@ -9905,7 +10182,7 @@ function lastDeploy(change) {
 
 // src/check.ts
 function deltaFiles(p, change, d) {
-  const specsDir = (0, import_node_path11.join)(change.dir, "specs");
+  const specsDir = (0, import_node_path12.join)(change.dir, "specs");
   const out = [];
   for (const f of walkFiles(specsDir)) {
     const cap = capabilityOf(specsDir, f);
@@ -9917,7 +10194,7 @@ function deltaFiles(p, change, d) {
     }
     const bad = cap.split("/").find((s) => !KEBAB_SEGMENT.test(s));
     if (bad) d.error(rel(p, f), `capability path segment "${bad}" must be kebab-case`);
-    out.push({ capability: cap, file: f, mainFile: (0, import_node_path11.join)(p.specs, ...cap.split("/"), "spec.md") });
+    out.push({ capability: cap, file: f, mainFile: (0, import_node_path12.join)(p.specs, ...cap.split("/"), "spec.md") });
   }
   return out;
 }
@@ -9929,7 +10206,7 @@ function checkSpecs(p) {
       if (f.endsWith(".md")) d.warn(rel(p, f), "not a spec: specs must be named specs/<capability>/spec.md");
       continue;
     }
-    d.add(validateSpecText((0, import_node_fs10.readFileSync)(f, "utf8"), rel(p, f)));
+    d.add(validateSpecText((0, import_node_fs11.readFileSync)(f, "utf8"), rel(p, f)));
   }
   return d;
 }
@@ -9939,7 +10216,7 @@ function checkChange(p, id, opts = {}) {
   try {
     change = loadChange(p, id);
   } catch (e) {
-    d.error(rel(p, (0, import_node_path11.join)(p.changes, id)), e.message);
+    d.error(rel(p, (0, import_node_path12.join)(p.changes, id)), e.message);
     return d;
   }
   const meta = rel(p, change.file);
@@ -9952,15 +10229,15 @@ function checkChange(p, id, opts = {}) {
   }
   const deltas = deltaFiles(p, change, d);
   for (const df of deltas) {
-    d.add(validateDeltaText((0, import_node_fs10.readFileSync)(df.file, "utf8"), rel(p, df.file), readText(df.mainFile), df.capability));
+    d.add(validateDeltaText((0, import_node_fs11.readFileSync)(df.file, "utf8"), rel(p, df.file), readText(df.mainFile), df.capability));
   }
-  const tasksFile = (0, import_node_path11.join)(change.dir, "tasks.yaml");
-  if ((0, import_node_fs10.existsSync)(tasksFile)) d.add(validateTasksText((0, import_node_fs10.readFileSync)(tasksFile, "utf8"), rel(p, tasksFile)));
-  const qFile = (0, import_node_path11.join)(change.dir, "quality.yaml");
-  if ((0, import_node_fs10.existsSync)(qFile)) d.add(parseQuality((0, import_node_fs10.readFileSync)(qFile, "utf8"), rel(p, qFile)).diags);
+  const tasksFile = (0, import_node_path12.join)(change.dir, "tasks.yaml");
+  if ((0, import_node_fs11.existsSync)(tasksFile)) d.add(validateTasksText((0, import_node_fs11.readFileSync)(tasksFile, "utf8"), rel(p, tasksFile)));
+  const qFile = (0, import_node_path12.join)(change.dir, "quality.yaml");
+  if ((0, import_node_fs11.existsSync)(qFile)) d.add(parseQuality((0, import_node_fs11.readFileSync)(qFile, "utf8"), rel(p, qFile)).diags);
   if (NEEDS_ANALYSIS.has(state)) {
     for (const name of ["intake.md", "analysis.md", "tasks.yaml", "quality.yaml"]) {
-      if (!(0, import_node_fs10.existsSync)((0, import_node_path11.join)(change.dir, name))) d.error(meta, `state "${state}" requires ${name}`);
+      if (!(0, import_node_fs11.existsSync)((0, import_node_path12.join)(change.dir, name))) d.error(meta, `state "${state}" requires ${name}`);
     }
     if (deltas.length === 0 && change.data.skip_specs !== true) {
       d.error(meta, `state "${state}" requires at least one delta spec, or skip_specs: true when no behavior changes`);
@@ -9979,6 +10256,7 @@ function checkChange(p, id, opts = {}) {
 // src/analyze.ts
 var ANALYSIS_SECTIONS = [
   "Summary",
+  "Decisions to honor",
   "Requirements and scope",
   "Domain",
   "Stack",
@@ -9992,6 +10270,12 @@ var ANALYSIS_SECTIONS = [
   "Risks and assumptions"
 ];
 var PLACEHOLDER = "TODO(aidw)";
+var DECISION = /^\s*[-*]\s+\**(D\d+)\**\s*:\s*(\S.*)$/;
+function decisionsToHonor(analysis) {
+  const s = sections(analysis).find((x) => x.name.toLowerCase() === "decisions to honor");
+  if (!s) return [];
+  return s.body.split(/\r?\n/).map((l) => DECISION.exec(l)).filter((m) => m !== null).map((m) => `${m[1]}: ${m[2].trim()}`);
+}
 var STACK_SOURCES = ["client", "ai", "fallback"];
 var DESIGN_MODES = ["existing", "claude_design", "ai_design", "hybrid"];
 var reqId = (capability, name) => `${capability}/${slugify(name)}`;
@@ -10006,7 +10290,7 @@ function mainSpecIds(p) {
   const ids = { requirements: /* @__PURE__ */ new Set(), scenarios: /* @__PURE__ */ new Set() };
   for (const f of walkFiles(p.specs)) {
     const cap = capabilityOf(p.specs, f);
-    if (cap) indexSpec(cap, (0, import_node_fs11.readFileSync)(f, "utf8"), ids);
+    if (cap) indexSpec(cap, (0, import_node_fs12.readFileSync)(f, "utf8"), ids);
   }
   return ids;
 }
@@ -10032,10 +10316,10 @@ function specsAfterChange(p, id) {
   const touched = new Set(files.map((d) => d.capability));
   for (const f of walkFiles(p.specs)) {
     const cap = capabilityOf(p.specs, f);
-    if (cap && !touched.has(cap)) specs.set(cap, (0, import_node_fs11.readFileSync)(f, "utf8"));
+    if (cap && !touched.has(cap)) specs.set(cap, (0, import_node_fs12.readFileSync)(f, "utf8"));
   }
   for (const df of files) {
-    const deltaText = (0, import_node_fs11.readFileSync)(df.file, "utf8");
+    const deltaText = (0, import_node_fs12.readFileSync)(df.file, "utf8");
     deltas.set(df.capability, deltaText);
     const merged = applyDelta(readText(df.mainFile), deltaText, df.capability);
     specs.set(df.capability, merged.ok && merged.text ? merged.text : readText(df.mainFile) ?? "");
@@ -10070,6 +10354,18 @@ function checkAnalysisDoc(text, file, d) {
   if (design && !new RegExp(`^Mode:\\s*(${DESIGN_MODES.join("|")})\\b`, "im").test(design.body)) {
     d.error(file, `"## Design" must declare "Mode: ${DESIGN_MODES.join(" | ")}"`, design.line);
   }
+  const honor = byName.get("decisions to honor");
+  if (honor && honor.body && !/^\s*none\b/im.test(honor.body)) {
+    const bullets = honor.body.split(/\r?\n/).filter((l) => /^\s*[-*]\s+\S/.test(l));
+    const ids = /* @__PURE__ */ new Set();
+    for (const l of bullets) {
+      const m = DECISION.exec(l);
+      if (!m) d.error(file, `"## Decisions to honor": "${l.trim().slice(0, 60)}" must be "- D<n>: <decision>"`, honor.line);
+      else if (ids.has(m[1])) d.error(file, `"## Decisions to honor": duplicate ${m[1]}`, honor.line);
+      else ids.add(m[1]);
+    }
+    if (!bullets.length) d.error(file, '"## Decisions to honor" must list "- D<n>: <decision>" bullets, or say "None"', honor.line);
+  }
   const perms = byName.get("permissions");
   if (perms && !/^\s*[-*]\s+\S/m.test(perms.body) && !/^\s*none\b/im.test(perms.body)) {
     d.error(file, '"## Permissions" must list each tier-2 resource as a bullet, or say "None"', perms.line);
@@ -10078,11 +10374,11 @@ function checkAnalysisDoc(text, file, d) {
 function analyzeChange(p, id) {
   const d = new Diags();
   const change = loadChange(p, id);
-  const analysisFile = (0, import_node_path12.join)(change.dir, "analysis.md");
+  const analysisFile = (0, import_node_path13.join)(change.dir, "analysis.md");
   const analysis = readText(analysisFile);
   if (analysis === null) d.error(rel(p, analysisFile), "analysis.md is missing");
   else checkAnalysisDoc(analysis, rel(p, analysisFile), d);
-  const qText = readText((0, import_node_path12.join)(change.dir, "quality.yaml"));
+  const qText = readText((0, import_node_path13.join)(change.dir, "quality.yaml"));
   const quality = qText === null ? null : parseQuality(qText, "quality.yaml").config;
   if (quality && analysis !== null) {
     const perms = sections(analysis).find((s) => s.name.toLowerCase() === "permissions");
@@ -10095,7 +10391,7 @@ function analyzeChange(p, id) {
       d.warn(rel(p, analysisFile), '"## Permissions" lists resources but quality.yaml requests none; add their keys to quality.yaml permissions or write "None"', perms.line);
     }
   }
-  const tasksFile = (0, import_node_path12.join)(change.dir, "tasks.yaml");
+  const tasksFile = (0, import_node_path13.join)(change.dir, "tasks.yaml");
   const tasksText = readText(tasksFile);
   if (tasksText === null) {
     d.error(rel(p, tasksFile), "tasks.yaml is missing");
@@ -10103,6 +10399,12 @@ function analyzeChange(p, id) {
   }
   const { tasks, error } = parseTasks(tasksText);
   if (error) return d;
+  const tokens = loadTokens(p);
+  d.add(tokens.diags);
+  const ui = tasks.filter((t) => touchesUi(t)).map((t) => t.id);
+  if (ui.length && !tokens.exists) {
+    d.error(rel(p, tokensFile(p)), `missing: task(s) ${ui.join(", ")} change UI, so the design needs tokens with use rules (see /aidw:start step 5)`);
+  }
   const { ids, changed } = idsAfterChange(p, id);
   const coveredReqs = /* @__PURE__ */ new Set();
   const coveredScenarios = /* @__PURE__ */ new Set();
@@ -10139,7 +10441,8 @@ function runStopFailure(stdin, env) {
   const project = findProject({ cwd: input.cwd ?? process.cwd(), env });
   if (!project) return [];
   const p = pathsFor(project);
-  const reason = String(input.error ?? input.error_type ?? "stop_failure").slice(0, 200);
+  const details = typeof input.error_details === "string" && input.error_details.trim() ? `: ${input.error_details.trim()}` : "";
+  const reason = `${String(input.error ?? input.error_type ?? "stop_failure")}${details}`.slice(0, 200);
   const paused = [];
   for (const id of listChangeIds(p)) {
     try {
@@ -10224,19 +10527,19 @@ var UsageError = class extends Error {
 };
 function pluginRoot(env) {
   if (env.AIDW_PLUGIN_ROOT) return env.AIDW_PLUGIN_ROOT;
-  if (typeof __dirname !== "undefined") return (0, import_node_path13.join)(__dirname, "..");
+  if (typeof __dirname !== "undefined") return (0, import_node_path14.join)(__dirname, "..");
   if (env.CLAUDE_PLUGIN_ROOT) return env.CLAUDE_PLUGIN_ROOT;
-  return (0, import_node_path13.join)(process.cwd(), "plugins", "aidw");
+  return (0, import_node_path14.join)(process.cwd(), "plugins", "aidw");
 }
 function addBinToPath(env) {
   const file = env.CLAUDE_ENV_FILE;
   if (!file) return false;
-  const bin = (0, import_node_path13.join)(pluginRoot(env), "bin");
+  const bin = (0, import_node_path14.join)(pluginRoot(env), "bin");
   if (bin.includes("'")) return false;
   const line = `export PATH="$PATH":'${bin}'`;
-  const current = (0, import_node_fs12.existsSync)(file) ? (0, import_node_fs12.readFileSync)(file, "utf8") : "";
+  const current = (0, import_node_fs13.existsSync)(file) ? (0, import_node_fs13.readFileSync)(file, "utf8") : "";
   if (current.split("\n").includes(line)) return false;
-  (0, import_node_fs12.appendFileSync)(file, `${current && !current.endsWith("\n") ? "\n" : ""}${line}
+  (0, import_node_fs13.appendFileSync)(file, `${current && !current.endsWith("\n") ? "\n" : ""}${line}
 `);
   return true;
 }
@@ -10249,7 +10552,7 @@ function logHook(env, hook, input, output) {
       parsed = JSON.parse(input);
     } catch {
     }
-    (0, import_node_fs12.appendFileSync)(file, `${JSON.stringify({ at: (/* @__PURE__ */ new Date()).toISOString(), hook, input: parsed, output: output || null })}
+    (0, import_node_fs13.appendFileSync)(file, `${JSON.stringify({ at: (/* @__PURE__ */ new Date()).toISOString(), hook, input: parsed, output: output || null })}
 `);
   } catch {
   }
@@ -10365,7 +10668,7 @@ function run(argv, env, cwd, io) {
         const taskId = need(rest[0], "task id");
         const kind = str(args.flags.for) ?? "implement";
         if (kind !== "implement" && kind !== "review") throw new UsageError('--for must be "implement" or "review"');
-        const b = buildBrief(p, id, taskId, kind, (0, import_node_path13.join)(pluginRoot(env), "vendor"));
+        const b = buildBrief(p, id, taskId, kind, (0, import_node_path14.join)(pluginRoot(env), "vendor"));
         if (cmd2 === "skills") {
           emit({ change: id, task: taskId, for: kind, skills: b.skills }, b.skills.map((s) => `${s.path}  # ${s.reason}
 `).join(""));
@@ -10468,7 +10771,7 @@ ${[...r.runs, ...r.smoke].find((x) => x.exit !== 0)?.tail ?? r.runs[0]?.tail ?? 
         const verdict = need(rest[1], "verdict (pass|fix)");
         if (verdict !== "pass" && verdict !== "fix") throw new UsageError('verdict must be "pass" or "fix"');
         const notesFile = str(args.flags["notes-file"]);
-        const notes = notesFile ? (0, import_node_fs12.readFileSync)(notesFile, "utf8") : str(args.flags.notes) ?? "";
+        const notes = notesFile ? (0, import_node_fs13.readFileSync)(notesFile, "utf8") : str(args.flags.notes) ?? "";
         if (verdict === "fix" && !notes.trim()) throw new UsageError("a fix verdict needs --notes or --notes-file");
         const r = recordReview(p, id, taskId, verdict, notes, { commit: args.flags["no-commit"] !== true });
         emit(
@@ -10482,8 +10785,8 @@ ${[...r.runs, ...r.smoke].find((x) => x.exit !== 0)?.tail ?? r.runs[0]?.tail ?? 
       case "vendor-path": {
         const ref = need(rest[0], "<upstream>/<skill>");
         if (!/^[a-z0-9-]+\/[a-z0-9-]+$/.test(ref)) throw new UsageError(`invalid vendored skill "${ref}"`);
-        const file = (0, import_node_path13.join)(pluginRoot(env), "vendor", ...ref.split("/"), "SKILL.md");
-        if (!(0, import_node_fs12.existsSync)(file)) throw new OpError(`vendored skill "${ref}" not found at ${file}`);
+        const file = (0, import_node_path14.join)(pluginRoot(env), "vendor", ...ref.split("/"), "SKILL.md");
+        if (!(0, import_node_fs13.existsSync)(file)) throw new OpError(`vendored skill "${ref}" not found at ${file}`);
         emit({ path: file }, `${file}
 `);
         return 0;
@@ -10493,8 +10796,8 @@ ${[...r.runs, ...r.smoke].find((x) => x.exit !== 0)?.tail ?? r.runs[0]?.tail ?? 
         if (!/^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/.test(ref) || ref.split("/").includes("..")) {
           throw new UsageError(`invalid plugin path "${ref}"`);
         }
-        const file = (0, import_node_path13.join)(pluginRoot(env), ...ref.split("/"));
-        if (!(0, import_node_fs12.existsSync)(file)) throw new OpError(`"${ref}" not found in the plugin (${file})`);
+        const file = (0, import_node_path14.join)(pluginRoot(env), ...ref.split("/"));
+        if (!(0, import_node_fs13.existsSync)(file)) throw new OpError(`"${ref}" not found in the plugin (${file})`);
         emit({ path: file }, `${file}
 `);
         return 0;
@@ -10692,7 +10995,7 @@ if (typeof require !== "undefined" && require.main === module) {
     err: (s) => process.stderr.write(s),
     stdin: () => {
       try {
-        return (0, import_node_fs12.readFileSync)(0, "utf8");
+        return (0, import_node_fs13.readFileSync)(0, "utf8");
       } catch {
         return "";
       }

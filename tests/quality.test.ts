@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
 import { decide, type HookInput } from "../src/gate.js";
 import { parseQuality } from "../src/quality.js";
-import { ANALYSIS_MD, MAIN_SPEC, QUALITY_YAML, REQ, tempProject, write } from "./fixtures.js";
+import { ANALYSIS_MD, TOKENS_YAML, MAIN_SPEC, QUALITY_YAML, REQ, tempProject, write } from "./fixtures.js";
 
 const ID = "2026-11-08-booking";
 const SCENARIO = "booking/reschedule-appointment/reschedule-appointment-works";
@@ -39,7 +39,7 @@ const TASKS = `tasks:
     title: Reschedule an appointment
     role: fullstack-engineer
     scenarios: [${SCENARIO}]
-    touches: ["app/**", "tests/**"]
+    touches: ["lib/**", "tests/**"]
     verify: ['node -e "process.exit(0)"']
     status: pending
 `;
@@ -51,6 +51,7 @@ function project(quality = Q()): string {
   cli(root, "change", "new", ID);
   const c = `.aidw/changes/${ID}`;
   write(root, `${c}/analysis.md`, ANALYSIS_MD);
+  write(root, ".aidw/design/tokens.yaml", TOKENS_YAML);
   write(root, `${c}/tasks.yaml`, TASKS);
   write(root, `${c}/quality.yaml`, quality);
   write(root, `${c}/specs/booking/spec.md`, `## ADDED Requirements\n\n${REQ("Reschedule appointment")}`);

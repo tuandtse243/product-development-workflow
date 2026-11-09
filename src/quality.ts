@@ -160,6 +160,8 @@ export function grantedResources(p: Paths, ids: string[], openStates: ReadonlySe
 export interface TestCase {
   name: string;
   status: "pass" | "fail" | "skipped";
+  /** failure message (first lines), for failing cases only */
+  message?: string;
 }
 
 export interface LayerResult {
@@ -227,7 +229,11 @@ const MAX_TESTS = 10000;
 
 function xmlAttr(attrs: string, name: string): string {
   const m = attrs.match(new RegExp(`\\b${name}\\s*=\\s*"([^"]*)"`)) ?? attrs.match(new RegExp(`\\b${name}\\s*=\\s*'([^']*)'`));
-  return (m?.[1] ?? "")
+  return decodeXml(m?.[1] ?? "");
+}
+
+function decodeXml(text: string): string {
+  return text
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'")
     .replace(/&lt;/g, "<")
@@ -244,7 +250,13 @@ export function parseJunit(xml: string): TestCase[] {
     const body = m[2] ?? "";
     const name = [xmlAttr(attrs, "classname"), xmlAttr(attrs, "name")].filter(Boolean).join(" > ");
     const status = /<(failure|error)\b/.test(body) ? "fail" : /<skipped\b/.test(body) ? "skipped" : "pass";
-    out.push({ name, status });
+    const tc: TestCase = { name, status };
+    if (status === "fail") {
+      const f = /<(?:failure|error)\b((?:[^>"']|"[^"]*"|'[^']*')*?)(?:\/>|>([\s\S]*?)<\/(?:failure|error)>)/.exec(body);
+      const text = `${xmlAttr(f?.[1] ?? "", "message")}\n${decodeXml((f?.[2] ?? "").replace(/<!\[CDATA\[|\]\]>/g, ""))}`.trim();
+      if (text) tc.message = text.replace(/\x1b\[[0-9;]*m/g, "").split("\n").slice(0, 12).join("\n").slice(0, 1200);
+    }
+    out.push(tc);
     if (out.length >= MAX_TESTS) break;
   }
   return out;
@@ -343,8 +355,15 @@ export function verify(
   const tf = loadTasks(p, id);
   const rounds = tf.tasks.filter((t) => t.origin === "quality" && t.layer === failed.name).length;
   const bad = failedRun(summary.layers[failed.name]?.runs ?? []);
+  const failing = (summary.layers[failed.name]?.tests ?? []).filter((t) => t.status === "fail");
+  const cases = failing.length
+    ? `Failing tests (from the JUnit report):\n${failing
+        .slice(0, 10)
+        .map((t) => `- ${t.name}${t.message ? `\n${t.message.replace(/^/gm, "    ")}` : ""}`)
+        .join("\n")}${failing.length > 10 ? `\n- ... and ${failing.length - 10} more` : ""}\n\nOutput tail:\n`
+    : "";
   const problem = bad
-    ? `Quality layer "${failed.name}" failed: \`${bad.command}\`${bad.timedOut ? " timed out" : ` exited ${bad.exit}`}.\n\n${bad.tail}`
+    ? `Quality layer "${failed.name}" failed: \`${bad.command}\`${bad.timedOut ? " timed out" : ` exited ${bad.exit}`}.\n\n${cases}${bad.tail}`
     : `Quality layer "${failed.name}" did not complete.`;
   if (rounds >= config.maxFixRounds) {
     transition(p, id, "escalated", { reason: `quality layer "${failed.name}" still failing after ${rounds} fix round(s)` });

@@ -9,7 +9,8 @@ import { transition } from "./ops.js";
 import { findProject, pathsFor } from "./project.js";
 
 export function runStopFailure(stdin: string, env: NodeJS.ProcessEnv): string[] {
-  let input: { cwd?: string; error?: unknown; error_type?: unknown } = {};
+  // Claude Code 2.1.x sends { ...common, hook_event_name: "StopFailure", error, error_details, last_assistant_message }.
+  let input: { cwd?: string; error?: unknown; error_details?: unknown; error_type?: unknown } = {};
   try {
     input = JSON.parse(stdin) as typeof input;
   } catch {
@@ -18,7 +19,8 @@ export function runStopFailure(stdin: string, env: NodeJS.ProcessEnv): string[] 
   const project = findProject({ cwd: input.cwd ?? process.cwd(), env });
   if (!project) return [];
   const p = pathsFor(project);
-  const reason = String(input.error ?? input.error_type ?? "stop_failure").slice(0, 200);
+  const details = typeof input.error_details === "string" && input.error_details.trim() ? `: ${input.error_details.trim()}` : "";
+  const reason = `${String(input.error ?? input.error_type ?? "stop_failure")}${details}`.slice(0, 200);
   const paused: string[] = [];
   for (const id of listChangeIds(p)) {
     try {

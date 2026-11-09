@@ -12,11 +12,14 @@ import { capabilityOf, readText, rel, walkFiles, type Paths } from "./project.js
 import { applyDelta } from "./spec/merge.js";
 import { parseDelta, parseSpec, sections, slugify } from "./spec/parse.js";
 import { parseQuality } from "./quality.js";
-import { parseTasks } from "./tasks.js";
+import { loadTokens, tokensFile } from "./design.js";
+import { touchesUi } from "./skills.js";
+import { parseTasks, type Task } from "./tasks.js";
 
 /** Sections every Analysis package must contain (headings are matched case-insensitively). */
 export const ANALYSIS_SECTIONS = [
   "Summary",
+  "Decisions to honor",
   "Requirements and scope",
   "Domain",
   "Stack",
@@ -31,6 +34,20 @@ export const ANALYSIS_SECTIONS = [
 ] as const;
 
 export const PLACEHOLDER = "TODO(aidw)";
+
+/** `- D1: ...` bullets of "## Decisions to honor": concrete approved choices the code must keep. */
+const DECISION = /^\s*[-*]\s+\**(D\d+)\**\s*:\s*(\S.*)$/;
+
+/** The approved decisions every implementer and reviewer must honor (empty when the section says None). */
+export function decisionsToHonor(analysis: string): string[] {
+  const s = sections(analysis).find((x) => x.name.toLowerCase() === "decisions to honor");
+  if (!s) return [];
+  return s.body
+    .split(/\r?\n/)
+    .map((l) => DECISION.exec(l))
+    .filter((m): m is RegExpExecArray => m !== null)
+    .map((m) => `${m[1]}: ${(m[2] as string).trim()}`);
+}
 export const STACK_SOURCES = ["client", "ai", "fallback"] as const;
 export const DESIGN_MODES = ["existing", "claude_design", "ai_design", "hybrid"] as const;
 
@@ -129,6 +146,18 @@ function checkAnalysisDoc(text: string, file: string, d: Diags): void {
   if (design && !new RegExp(`^Mode:\\s*(${DESIGN_MODES.join("|")})\\b`, "im").test(design.body)) {
     d.error(file, `"## Design" must declare "Mode: ${DESIGN_MODES.join(" | ")}"`, design.line);
   }
+  const honor = byName.get("decisions to honor");
+  if (honor && honor.body && !/^\s*none\b/im.test(honor.body)) {
+    const bullets = honor.body.split(/\r?\n/).filter((l) => /^\s*[-*]\s+\S/.test(l));
+    const ids = new Set<string>();
+    for (const l of bullets) {
+      const m = DECISION.exec(l);
+      if (!m) d.error(file, `"## Decisions to honor": "${l.trim().slice(0, 60)}" must be "- D<n>: <decision>"`, honor.line);
+      else if (ids.has(m[1] as string)) d.error(file, `"## Decisions to honor": duplicate ${m[1]}`, honor.line);
+      else ids.add(m[1] as string);
+    }
+    if (!bullets.length) d.error(file, '"## Decisions to honor" must list "- D<n>: <decision>" bullets, or say "None"', honor.line);
+  }
   const perms = byName.get("permissions");
   if (perms && !/^\s*[-*]\s+\S/m.test(perms.body) && !/^\s*none\b/im.test(perms.body)) {
     d.error(file, '"## Permissions" must list each tier-2 resource as a bullet, or say "None"', perms.line);
@@ -168,6 +197,14 @@ export function analyzeChange(p: Paths, id: string): Diags {
   }
   const { tasks, error } = parseTasks(tasksText);
   if (error) return d; // structural errors are reported by validate
+
+  // UI work is reviewed against machine-readable design tokens, so a UI plan needs them before approval.
+  const tokens = loadTokens(p);
+  d.add(tokens.diags);
+  const ui = tasks.filter((t: Task) => touchesUi(t)).map((t) => t.id);
+  if (ui.length && !tokens.exists) {
+    d.error(rel(p, tokensFile(p)), `missing: task(s) ${ui.join(", ")} change UI, so the design needs tokens with use rules (see /aidw:start step 5)`);
+  }
 
   const { ids, changed } = idsAfterChange(p, id);
   const coveredReqs = new Set<string>();

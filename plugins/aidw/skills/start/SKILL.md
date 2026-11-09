@@ -112,14 +112,21 @@ Run `aidw validate <id>` and fix every error.
 ## 5. Design decision (Q3)
 
 Detect design assets: Figma links, screenshots, an existing design system, brand guides. Then choose the
-mode with the user:
+mode with the user. Read `$(aidw plugin-path profiles/design-tokens.md)` for how each mode produces tokens.
 
-- `existing`: assets exist. Collect them into `.aidw/design/` (Figma via the Figma MCP tools, screenshots, notes).
+- `existing`: assets exist. Collect them into `.aidw/design/` (Figma via the Figma MCP tools, screenshots, notes)
+  and extract the tokens from them (Figma variables, the brand guide, the live site's CSS).
 - `claude_design`: the user designs in Claude Design. Ask them to export it ("Send to local coding agent")
-  and save the bundle under `.aidw/design/`. Wait for it; this happens before approval.
-- `ai_design`: write `.aidw/design/direction.md`: personality, color tokens, typography, spacing, key layouts,
-  references. The user approves the look at the gate.
-- `hybrid`: say which parts follow references and which parts AI designs.
+  and save the bundle under `.aidw/design/`. Wait for it; this happens before approval. Take the tokens from the
+  bundle's CSS custom properties / theme.
+- `ai_design`: write `.aidw/design/direction.md`: personality, typography, spacing, key layouts, references,
+  and the tokens. The user approves the look at the gate.
+- `hybrid`: say which parts follow references and which parts AI designs; tokens cover both.
+
+**Every mode ends with `.aidw/design/tokens.yaml`** whenever the plan has UI work (`aidw analyze` refuses the
+package without it). Each token has a `use` rule saying where it must appear ("accent: Focus mode label, start
+button, progress ring"). The `use` rules are what reviewers check on screenshots, so make them concrete. Show
+the user the token table (name, value, use) as part of the Design discussion.
 
 ## 6. Architecture and stack
 
@@ -169,13 +176,26 @@ Read `$(aidw plugin-path profiles/quality-layers.md)` and `$(aidw plugin-path po
   performance later), scaled to the project's risk (Q5: comprehensive by default). Justify any dropped layer.
 - `## Deploy strategy`: none | local | preview, the provider, the preview environment variables and where their
   values come from. Production is never automatic: it is tier 3 and asks.
+- **Environment preflight.** The layers run unattended in this Claude Code session, under its sandbox, so check
+  now that what they need works here: the package manager and runners (`<pm> --version`, `npx vitest --version`,
+  `npx playwright --version`), and for e2e whether browsers are already installed (Playwright's cache, e.g.
+  `~/Library/Caches/ms-playwright`). Claude Code's sandbox can block downloading and launching browsers. If they
+  are missing, ask the user to run `npx playwright install chromium` in their own terminal, and to let the test
+  runner use the browser (sandbox settings) or to choose another browser setup. Settle every gap with the user
+  before approval and record it under the Summary's risks: a layer that cannot run here fails in verify and
+  escalates.
 - `## Permissions`: one bullet per tier-2 resource, starting with its key, e.g.
   ``- `vercel-preview`: preview deploy of the demo, deleted after handoff``, or `None`. `aidw analyze` checks
   that every key in quality.yaml is named here.
 
 ## 9. Analyze and present
 
-1. Complete every section of `.aidw/changes/<id>/analysis.md`. Replace every `TODO(aidw)`. The `## Summary`
+1. Complete every section of `.aidw/changes/<id>/analysis.md`. Replace every `TODO(aidw)`.
+   `## Decisions to honor` lists, as `- D1: <decision>`, every concrete choice the code must keep and a reviewer
+   can check: names and keys (storage keys, routes, env var names), formats, tools and package manager,
+   libraries, conventions, limits. Take them from the discovery answers, the stack, the architecture and the
+   design. Implementers may not deviate from them without escalating, so be precise and include only real
+   decisions. The `## Summary`
    must fit one page: goal, scope, the key decisions, and the risks and assumptions that need attention.
 2. Run `aidw analyze <id>` and `aidw validate <id>`. Fix every error and re-run until both are clean.
 3. `aidw transition <id> awaiting_approval` (it re-runs both checks).

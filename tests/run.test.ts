@@ -9,7 +9,7 @@ import { decide, type HookInput } from "../src/gate.js";
 import { globToRegExp, matchesAny } from "../src/glob.js";
 import { findScenarioTests } from "../src/run.js";
 import { selectSkills } from "../src/skills.js";
-import { ANALYSIS_MD, MAIN_SPEC, QUALITY_YAML, REQ, tempProject, write } from "./fixtures.js";
+import { ANALYSIS_MD, TOKENS_YAML, MAIN_SPEC, QUALITY_YAML, REQ, tempProject, write } from "./fixtures.js";
 
 const ID = "2026-11-08-booking";
 const SCENARIO = "booking/reschedule-appointment/reschedule-appointment-works";
@@ -37,6 +37,8 @@ const RUN_TASKS = (t2Verify = OK) => `tasks:
 `;
 
 function cli(root: string, ...argv: string[]) {
+  // UI tasks need a fresh screenshot at checkpoint (design compliance); these flow tests always provide one.
+  if (argv[0] === "checkpoint" && argv[1]) write(root, `.aidw/run/shots/${ID}/${argv[1]}/page.png`, "png");
   let out = "";
   let err = "";
   const code = run([...argv, "--root", root], {}, root, { out: (s) => (out += s), err: (s) => (err += s) });
@@ -64,6 +66,8 @@ export function executingProject(opts: { git?: boolean; t2Verify?: string; quali
   expect(cli(root, "change", "new", ID, "--title", "Booking").code).toBe(0);
   const c = `.aidw/changes/${ID}`;
   write(root, `${c}/analysis.md`, ANALYSIS_MD);
+  write(root, ".aidw/design/tokens.yaml", TOKENS_YAML);
+  write(root, "app/globals.css", ":root { --accent: #e5533d; --surface: #faf5ec; font-family: Inter; }\n.dark { --accent: #ff7a66; }\n");
   write(root, `${c}/tasks.yaml`, RUN_TASKS(opts.t2Verify));
   write(root, `${c}/quality.yaml`, opts.quality ?? QUALITY_YAML);
   write(root, `${c}/specs/booking/spec.md`, `## ADDED Requirements\n\n${REQ("Reschedule appointment")}`);

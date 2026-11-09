@@ -39,6 +39,10 @@ max_fix_rounds: 3               # fix tasks per failing layer before escalating 
   passed", and the quality report says the evidence is presence-only. Runners: vitest
   `--reporter=junit --outputFile.junit=<file>`, Playwright `reporter: [["junit", { outputFile: "<file>" }]]`,
   `node --test --test-reporter=junit --test-reporter-destination=<file>`, Jest `jest-junit`.
+- **Runs inside Claude Code's sandbox.** Layers, checkpoints and verify run through the Bash tool. The sandbox
+  may deny writing outside the project (e.g. `playwright install` into `~/Library/Caches`) and launching
+  browsers. Install browsers once in a normal terminal, and settle how e2e launches a browser during the
+  Analysis (`/aidw:start` step 8 preflight), never with a `setup` step that only fails after approval.
 - **E2E covers the scenarios.** Each scenario id appears in a test name (the checkpoint enforces that per
   task); the e2e layer then proves the main flows pass together on the built app.
 - **Deploy** `command` must be a recognized preview deploy (Vercel or Netlify draft), and its tier-2 key must

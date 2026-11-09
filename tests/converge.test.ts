@@ -85,7 +85,7 @@ describe("JUnit parsing", () => {
     );
     expect(parseJunit(xml)).toEqual([
       { name: `e2e/book.spec.ts > Booking > ${S1}: moves it & frees "slot"`, status: "pass" },
-      { name: `unit > ${S2}: joins`, status: "fail" },
+      { name: `unit > ${S2}: joins`, status: "fail", message: "expected 1\nstack" },
       { name: "a > b", status: "skipped" },
     ]);
   });
@@ -164,5 +164,18 @@ describe("converge with JUnit evidence", () => {
     for (const l of Object.values(summary.layers) as { at: string }[]) l.at = "2000-01-01T00:00:00.000Z";
     write(root, `.aidw/changes/${ID}/evidence/quality/summary.json`, JSON.stringify(summary));
     expect(cli(root, "converge").err).toMatch(/quality layers not passing on the current code: code, unit, e2e/);
+  });
+});
+
+describe("JUnit failure messages", () => {
+  it("keeps the first lines of a failing case's message, without ANSI codes", () => {
+    const xml = junit(
+      `<testcase classname="e2e/flow.spec.ts" name="dark theme"><failure message="expect(received).toBe(expected)" type="Error"><![CDATA[\u001b[31mExpected: rgb(28, 24, 22)\u001b[39m
+Received: rgb(250, 245, 236)]]></failure></testcase><testcase name="ok"/>`,
+    );
+    const [bad, good] = parseJunit(xml);
+    expect(bad?.status).toBe("fail");
+    expect(bad?.message).toBe("expect(received).toBe(expected)\nExpected: rgb(28, 24, 22)\nReceived: rgb(250, 245, 236)");
+    expect(good).toEqual({ name: "ok", status: "pass" });
   });
 });

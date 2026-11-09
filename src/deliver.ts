@@ -190,6 +190,41 @@ function needsScreenshots(tasks: Task[]): boolean {
 }
 
 /** Checklist of blueprint section 14. Errors block archive. */
+const SCRIPT_CALL = /\b(npm|pnpm|yarn|bun)\s+(?:run\s+)?([a-z0-9][\w:.-]*)/gi;
+/** Package-manager subcommands that are not scripts (so `pnpm install` is never reported). */
+const PM_BUILTINS = new Set(
+  "install i add remove rm uninstall update up upgrade ci init create exec dlx x link unlink publish pack audit outdated why list ls config cache info view login logout version help store prune rebuild dedupe import patch patch-commit env setup global bin root run test start".split(" "),
+);
+
+/**
+ * Commands in the project's README that call package scripts which do not exist, e.g. a README still saying
+ * `pnpm e2e` after the script was renamed. `npm test` / `npm start` count as the test / start scripts.
+ */
+export function staleReadmeCommands(project: string): string[] {
+  const readme = readText(join(project, "README.md"));
+  const pkgText = readText(join(project, "package.json"));
+  if (readme === null || pkgText === null) return [];
+  let scripts: Record<string, unknown> = {};
+  try {
+    scripts = ((JSON.parse(pkgText) as { scripts?: Record<string, unknown> }).scripts ?? {}) as Record<string, unknown>;
+  } catch {
+    return [];
+  }
+  const out = new Set<string>();
+  for (const m of readme.matchAll(SCRIPT_CALL)) {
+    const pm = (m[1] as string).toLowerCase();
+    const name = m[2] as string;
+    const explicitRun = /\srun\s/.test(m[0]);
+    if (!explicitRun && (name === "test" || name === "start")) {
+      if (!(name in scripts)) out.add(m[0]);
+      continue;
+    }
+    if (!explicitRun && (pm === "npm" || PM_BUILTINS.has(name))) continue; // `npm ci`, `pnpm install`, ...
+    if (!(name in scripts)) out.add(m[0]);
+  }
+  return [...out];
+}
+
 export function checkDelivery(p: Paths, id: string): Diags {
   const change = loadChange(p, id);
   const d = new Diags();
@@ -218,6 +253,9 @@ export function checkDelivery(p: Paths, id: string): Diags {
     d.error(where("screenshots/"), "no screenshots (png, jpg, webp) of the main flows; this change has UI tasks");
   }
   if (!lastConverge(change)?.ok) d.error(where("quality-report.md"), "converge has not passed");
+  for (const c of staleReadmeCommands(p.project)) {
+    d.error("README.md", `\`${c}\` calls a script that package.json does not define; update the README to the commands that work`);
+  }
   return d;
 }
 
