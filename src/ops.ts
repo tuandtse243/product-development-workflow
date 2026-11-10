@@ -308,11 +308,11 @@ export function transition(p: Paths, id: string, to: string, opts: { reason?: st
 
 /**
  * Commits pending changes under .aidw/ plus the delivery files the gate lets in after delivery (README.md,
- * .env.example) and nothing else. Returns the commit, or null outside git or when nothing changed.
+ * .env.example, and .gitignore, which deploy CLIs edit, e.g. `.vercel`) and nothing else. Returns the commit, or null outside git or when nothing changed.
  */
 export function commitAidw(p: Paths, message: string, opts: { delivery?: boolean } = {}): string | null {
   if (!isGitRepo(p.project)) return null;
-  const paths = [".aidw", ...(opts.delivery ? ["README.md", ".env.example"].filter((f) => existsSync(join(p.project, f))) : [])];
+  const paths = [".aidw", ...(opts.delivery ? ["README.md", ".env.example", ".gitignore"].filter((f) => existsSync(join(p.project, f))) : [])];
   if (!git(p.project, ["add", "--", ...paths]).ok) return null;
   if (git(p.project, ["diff", "--cached", "--quiet", "--", ...paths]).ok) return null;
   return git(p.project, ["commit", "-q", "-m", message, "--", ...paths]).ok ? headCommit(p.project) : null;

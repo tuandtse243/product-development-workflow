@@ -124,3 +124,20 @@ thường (`npx playwright install chromium`). Lần này kiểm thêm:
 | 14 | Reviewer mở ảnh và trả `fix` khi thấy lệch token hoặc lệch quyết định | Evidence `reviews[].notes` |
 | 15 | README cuối cùng chỉ ghi lệnh thật sự chạy được | `aidw deliver --check` sạch |
 | 16 | Vercel preview thật và smoke | URL preview |
+
+**Kết quả lần 2 và các sửa đổi:** xem blueprint §29 và D-27.
+
+## Mẹo khi chạy thử
+
+- Tạo alias để mở lại session vẫn còn plugin và log hook (lần 2 bị mất `/aidw:approve` sau một lần `/exit`):
+
+  ```bash
+  alias aidwc='AIDW_HOOK_LOG=$HOME/$(basename "$PWD")-hooks.jsonl claude --plugin-dir ~/Desktop/Learning/product-development-workflow/plugins/aidw'
+  ```
+
+- E2E: mở Chrome riêng cho test trước khi `/aidw:run`, và để nó chạy suốt phiên:
+
+  ```bash
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --remote-debugging-port=9222 --user-data-dir="$HOME/.aidw-chrome" --no-first-run about:blank
+  ```
+

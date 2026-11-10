@@ -26,6 +26,7 @@ import {
   SHELL_CHAINING,
   TIER2_COMMANDS,
   WRITE_COMMANDS,
+  maskQuotedAngles,
 } from "./policy.js";
 import { grantedResources } from "./quality.js";
 
@@ -105,12 +106,15 @@ const deny = (reason: string): Decision => ({ decision: "deny", reason: `AIDW: $
 const ask = (reason: string): Decision => ({ decision: "ask", reason: `AIDW: ${reason}` });
 const allow = (reason: string): Decision => ({ decision: "allow", reason: `AIDW: ${reason}` });
 
-function closedReason(st: GateState): string {
+export function closedReason(st: GateState): string {
   if (st.drift.length) {
     return `approval drift in ${st.drift.join(", ")}: the approved Analysis package changed. Escalate and re-approve before writing project files.`;
   }
   if (st.delivered) {
     return `the change is delivered (${st.summary}): only .aidw/, .env.example and README.md may be written. Write temporary output under $TMPDIR.`;
+  }
+  if (/=(?:escalated|paused)\b/.test(st.summary)) {
+    return `the run is stopped (${st.summary}): project files stay frozen until the user decides how to continue (/aidw:status). Only .aidw/ may be written.`;
   }
   return `Analysis is not approved yet (${st.summary}). Only .aidw/ may be written before approval.`;
 }
@@ -186,7 +190,7 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
       return deny(`the ${role} does not commit; the orchestrator commits each task after review`);
     }
     if (AIDW_COMMAND.test(cmd) && !SHELL_CHAINING.test(cmd)) return null;
-    const writes = firstMatch(WRITE_COMMANDS, cmd);
+    const writes = firstMatch(WRITE_COMMANDS, maskQuotedAngles(cmd));
     if (writes) {
       if (role === "reviewer") return deny(`the reviewer is read-only (this command ${writes.why})`);
       const st = gateState(p);

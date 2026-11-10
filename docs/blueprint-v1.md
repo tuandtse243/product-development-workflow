@@ -844,3 +844,55 @@ UI không theo direction, code lệch quyết định trong Analysis, README cũ
 
 Đây là mục tiêu của lần chạy thử thứ hai.
 
+## 29. Lần chạy thử 2 và các sửa đổi (2026-11-10)
+
+**Kết quả** (`aidw-trial-2`, habit tracker, ai_design, Vercel preview). 8 task đều qua review, mỗi task một commit.
+Verify đạt cả 4 tầng, converge đạt 33/33 kịch bản. Thời gian chạy khoảng 55 phút (09:58 → 10:51).
+Cuối cùng dừng ở `escalated` vì smoke check của deploy fail.
+
+| # | Tiêu chí | Kết quả |
+|---|---|---|
+| 11 | Decisions to honor và tokens trước approve | Đạt. Reviewer T01 bắt được lệch D22 (JUnit) và trả `fix` |
+| 12 | Preflight bắt lỗi môi trường trước approve | Đạt một phần. Bắt được việc sandbox chặn Chromium, nhưng mất khoảng 30 phút thử. Người dùng chốt dùng Chrome qua CDP |
+| 13 | Implementer chụp ảnh | Đạt. Mọi task UI đều có ảnh, nhưng tới 12–20 ảnh mỗi task |
+| 14 | Reviewer mở ảnh | Đạt một phần. Mỗi lần review chỉ mở 2–3 ảnh. UI đúng token |
+| 15 | README | Chưa tới bước deliver |
+| 16 | Vercel preview | Fail. Lần deploy đầu bị đẩy lên production. aidw lấy URL alias (404). Smoke bằng curl thường thì vướng Deployment Protection |
+
+**Lỗi và cách sửa (D-27):**
+- Gate chặn lệnh probe có `'data:text/html,<p>ok</p>'`, vì coi `>` trong dấu nháy là redirect. Sửa: thêm `maskQuotedAngles`.
+- T01 dừng chờ người dùng `kill`: server do subagent mở để chụp ảnh vẫn chạy và giữ cổng e2e, subagent không kill được.
+  Sửa: brief và agent bắt buộc dừng mọi process đã tự mở, và chụp ảnh qua `webServer` của Playwright.
+- Lần thử T01 thứ 2 fail mà không in lý do, vì không có ảnh mới. Implementer tưởng ảnh cũ vẫn dùng được.
+  Sửa: checkpoint in `design:` và `PROBLEM ...`. Brief ghi rõ mỗi lần thử phải chụp lại ảnh, tối đa 6 ảnh.
+- Deploy: URL lấy từ `url` trong JSON của Vercel, bỏ qua các dòng alias. Profile dùng
+  `vercel deploy --yes --environment=preview`, và smoke bằng `vercel curl`.
+  `--environment/--target production` được tính là tier 3.
+- Backstop báo `.gitignore` (dòng `.vercel` do Vercel CLI thêm) và còn nói sai là "chưa approve".
+  Sửa: deploy ghi baseline, commit archive gồm `.gitignore`, và lý do gate đóng phản ánh đúng `escalated`/`paused`.
+- Preflight e2e mặc định dùng Chrome qua CDP: kiểm `127.0.0.1:9222` từ trong session. Profile có fixture mẫu.
+- Ngoài aidw:
+  - plugin context-mode vẫn sửa prompt của mọi subagent, tốn thêm một lượt gọi mỗi lần;
+  - mở lại `claude` mà không có `--plugin-dir` thì mất `/aidw:*` và mất log hook.
+    Hướng dẫn chạy thử nay dùng alias.
+
+**Hoàn tất lần chạy 2** (2026-11-10). Agent làm từ chỗ `escalated`, người dùng chỉ tự approve lại:
+- escalated → analyzing. Sửa phần deploy trong `quality.yaml` và `analysis.md` (D25, R4).
+- Người dùng approve lại. Agent bị chặn tự duyệt (*Self-Approval*), đúng như mong muốn.
+- Verify: các tầng đã đạt trên cùng commit. Converge 33/33.
+- Deploy lần đầu fail vì Vercel CLI cần làm mới token, mà sandbox chặn ghi file auth (`"err" is out of range`).
+  Người dùng chạy `vercel whoami` ngoài sandbox, sau đó deploy preview đạt và smoke `vercel curl` đạt.
+- Delivered → deliver → archive (`5fada47`). Tiêu chí 15 (README sạch) và 16 (Vercel preview) đều đạt.
+
+**Lỗi tìm thêm trong lúc hoàn tất, và cách sửa:**
+- `aidw deploy` giải thích các lỗi deploy đã biết (`deployHint`: token Vercel, chưa login). Skill run dặn
+  giữ change ở `deploying` và chờ người dùng, thay vì escalate.
+- Verify in tầng đã đạt trên commit hiện tại là "skipped", trông như chưa chạy. Giờ in là `ok (passed earlier on this commit)`.
+- Orchestrator ghi review `pass` không kèm notes, nên mất toàn bộ nhận xét non-blocking của 8 reviewer.
+  Quality report vì thế ghi "None recorded". Sửa: skill run luôn ghi reply bằng `--notes-file`, CLI nhắc khi
+  pass mà không có notes. Lần này đã khôi phục các nhận xét từ transcript vào handoff.
+- `aidw deliver` tự lấy ảnh đã review (2 ảnh mỗi task UI) vào `delivery/screenshots/`, nên không phải mở
+  trình duyệt trong sandbox. `deliver --check` cảnh báo khi project không có README.
+
+Test: 102 pass. Có thêm bộ `tests/trial2.test.ts`.
+

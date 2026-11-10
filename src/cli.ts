@@ -298,6 +298,8 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           ...Object.entries(r.scenarios).map(([s, locs]) => `  ${locs.length ? "ok     " : "MISSING"} ${s}${locs.length ? `  ${locs[0]}` : ""}`),
           ...r.verify.map((v) => `  ${v.exit === 0 ? "ok     " : "FAILED "} ${v.command}  (${Math.round(v.ms / 1000)}s${v.timedOut ? ", timed out" : ""})`),
           ...(r.outside_touches.length ? [`  outside touches: ${r.outside_touches.join(", ")}`] : []),
+          ...(r.design ? [`  design: ${r.design.screenshots.length} fresh screenshot(s), ${r.design.hardcoded_colors.length} stray color(s)`] : []),
+          ...r.problems.map((x) => `  PROBLEM ${x}`),
         ];
         const failed = r.verify.find((v) => v.exit !== 0);
         emit({ change: id, ...r }, `${lines.join("\n")}\n${failed ? `\n--- ${failed.command} (tail)\n${failed.tail}\n` : ""}`);
@@ -316,8 +318,8 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         });
         const lines = r.layers.map((l) => {
           const bad = l.runs.find((x) => x.exit !== 0);
-          const mark = l.status === "pass" ? "ok     " : l.status === "fail" ? "FAILED " : "skipped";
-          return `  ${mark} ${l.name}${bad ? `  (${bad.command}${bad.timedOut ? ", timed out" : `, exit ${bad.exit}`})` : ""}`;
+          const mark = l.status === "pass" ? "ok     " : l.status === "fail" ? "FAILED " : l.reused ? "ok     " : "skipped";
+          return `  ${mark} ${l.name}${l.reused ? "  (passed earlier on this commit; --fresh reruns it)" : ""}${bad ? `  (${bad.command}${bad.timedOut ? ", timed out" : `, exit ${bad.exit}`})` : ""}`;
         });
         const failed = r.layers.find((l) => l.status === "fail")?.runs.find((x) => x.exit !== 0);
         emit(
@@ -374,7 +376,11 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const r = recordReview(p, id, taskId, verdict, notes, { commit: args.flags["no-commit"] !== true });
         emit(
           { ok: true, change: id, ...r },
-          `${r.task}: review ${r.verdict} -> ${r.status}${r.commit ? ` (commit ${r.commit.slice(0, 8)})` : ""}${r.warning ? `\n  warning: ${r.warning}` : ""}\n`,
+          `${r.task}: review ${r.verdict} -> ${r.status}${r.commit ? ` (commit ${r.commit.slice(0, 8)})` : ""}${r.warning ? `\n  warning: ${r.warning}` : ""}${
+            verdict === "pass" && !notes.trim()
+              ? "\n  note: no reviewer reply recorded; pass it with --notes-file so its non-blocking remarks reach the handoff"
+              : ""
+          }\n`,
         );
         return 0;
       }

@@ -7,11 +7,12 @@
  * (handoff.md) and captures screenshots, then `aidw deliver --check` enforces the checklist.
  * Archive refuses a change whose delivery package does not pass.
  */
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { PLACEHOLDER } from "./analyze.js";
 import { loadChange, stateOf, type Change } from "./change.js";
 import { lastConverge } from "./converge.js";
+import { shotsDir } from "./design.js";
 import { Diags } from "./diag.js";
 import { git, isGitRepo } from "./git.js";
 import { OpError } from "./ops.js";
@@ -185,6 +186,32 @@ function screenshots(change: Change): string[] {
   return existsSync(dir) ? readdirSync(dir).filter((f) => IMAGE.test(f)).sort() : [];
 }
 
+/**
+ * Seeds an empty delivery/screenshots/ with the screenshots the reviewers judged: per UI task, its two newest
+ * PNGs, desktop and light ones first. Saves a browser run in the sandbox; the agent may still replace them.
+ */
+function seedScreenshots(p: Paths, id: string, change: Change, tasks: Task[]): string[] {
+  const target = join(deliveryDir(change), "screenshots");
+  if (screenshots(change).length) return [];
+  const copied: string[] = [];
+  const rank = (f: string) => (/desktop/i.test(f) ? 0 : 2) + (/dark/i.test(f) ? 1 : 0);
+  for (const t of tasks.filter((x) => touchesUi(x) && statusOf(x) === "done")) {
+    const dir = shotsDir(p, id, String(t.id));
+    if (!existsSync(dir)) continue;
+    const files = readdirSync(dir)
+      .filter((f) => /\.png$/i.test(f))
+      .map((f) => ({ f, at: statSync(join(dir, f)).mtimeMs }))
+      .sort((a, b) => rank(a.f) - rank(b.f) || b.at - a.at)
+      .slice(0, 2);
+    for (const { f } of files) {
+      const name = `${String(copied.length + 1).padStart(2, "0")}-${String(t.id)}-${f}`;
+      copyFileSync(join(dir, f), join(target, name));
+      copied.push(name);
+    }
+  }
+  return copied;
+}
+
 function needsScreenshots(tasks: Task[]): boolean {
   return tasks.some((t) => touchesUi(t));
 }
@@ -253,6 +280,7 @@ export function checkDelivery(p: Paths, id: string): Diags {
     d.error(where("screenshots/"), "no screenshots (png, jpg, webp) of the main flows; this change has UI tasks");
   }
   if (!lastConverge(change)?.ok) d.error(where("quality-report.md"), "converge has not passed");
+  if (!existsSync(join(p.project, "README.md"))) d.warn("README.md", "the project has no README: write one (what it is, run locally, tests, preview URL)");
   for (const c of staleReadmeCommands(p.project)) {
     d.error("README.md", `\`${c}\` calls a script that package.json does not define; update the README to the commands that work`);
   }
@@ -278,6 +306,7 @@ export function deliver(p: Paths, id: string, opts: { check?: boolean } = {}): D
   if (!opts.check) {
     const tasks = loadTasks(p, id).tasks;
     mkdirSync(join(dir, "screenshots"), { recursive: true });
+    for (const f of seedScreenshots(p, id, change, tasks)) written.push(rel(p, join(dir, "screenshots", f)));
     const write = (name: string, text: string) => {
       writeFileSync(join(dir, name), text);
       written.push(rel(p, join(dir, name)));

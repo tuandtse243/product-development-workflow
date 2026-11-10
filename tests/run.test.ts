@@ -365,6 +365,7 @@ describe("gate for subagents", () => {
     const h = (command: string): HookInput => ({ hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command }, cwd: fresh });
     expect(decide(h("aidw status && echo x > src/a.ts"), {})?.decision).toBe("deny");
     expect(decide(h("aidw status --json | head -5"), {})).toBeNull();
-    expect(decide(h('aidw transition x paused --reason "a > b"'), {})?.decision).toBe("deny");
+    expect(decide(h('aidw transition x paused --reason "a > b"'), {})).toBeNull(); // quoted: not a redirect
+    expect(decide(h('aidw transition x paused --reason "a" > src/a.ts'), {})?.decision).toBe("deny");
   });
 });

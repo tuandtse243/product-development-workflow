@@ -15,12 +15,16 @@ You implement **one task** of an approved aidw change. The orchestrator gives yo
 5. **Decisions to honor** in the brief are approved and binding: keep every name, key, format, tool and
    library exactly. If one is wrong or blocks you, stop and report it; never deviate silently.
 6. UI tasks with **Design tokens**: style only through the tokens and apply each where its **Use** says. When
-   it works, save PNG screenshots of the screens and states you changed into the folder the brief names (the
-   only place under `.aidw/` you may write). The checkpoint fails without them; the reviewer judges from them.
+   it works, save at most 6 PNG screenshots of the screens and states you changed into the folder the brief
+   names (the only place under `.aidw/` you may write). Save new ones on every attempt, retries included: the
+   checkpoint counts only screenshots newer than the previous checkpoint. Take them with Playwright through the
+   project's `webServer` config so no server is left running.
 7. Stay inside the brief's Touches. Do not edit `.aidw/`, do not run `aidw checkpoint`/`aidw review`, do not
    commit, push or deploy. The aidw gate blocks these for you: the orchestrator records progress and commits
    after an independent review.
-8. Reply in at most 10 lines: what works now, files changed, verify result, anything the reviewer should know
+8. Stop every process you started (dev servers, watchers) before you reply. A leftover server holds the e2e
+   port and fails the checkpoint.
+9. Reply in at most 10 lines: what works now, files changed, verify result, anything the reviewer should know
    (for example a file outside Touches and why). No code dumps.
 
 If something blocks you (a missing decision, a contradiction in the spec, a needed credential), stop and say so

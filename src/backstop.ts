@@ -9,7 +9,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { gateState } from "./gate.js";
+import { closedReason, gateState } from "./gate.js";
 import { AIDW_DIR, findProject, pathsFor, type Paths } from "./project.js";
 
 export interface StopInput {
@@ -79,7 +79,8 @@ export function runBackstop(stdin: string, env: NodeJS.ProcessEnv, dirtyProvider
   const project = findProject({ cwd: input.cwd ?? process.cwd(), env });
   if (!project) return "";
   const p = pathsFor(project);
-  if (gateState(p).open) return ""; // in-scope checks against task `touches` arrive with the orchestrator (S3)
+  const st = gateState(p);
+  if (st.open) return ""; // in-scope checks against task `touches` arrive with the orchestrator (S3)
 
   const dirty = dirtyProvider(project);
   if (!dirty) return "";
@@ -89,10 +90,10 @@ export function runBackstop(stdin: string, env: NodeJS.ProcessEnv, dirtyProvider
   const list = unexpected.slice(0, 20).map((f) => `  - ${f}`).join("\n");
   const more = unexpected.length > 20 ? `\n  ... and ${unexpected.length - 20} more` : "";
   const reason =
-    `AIDW backstop: the Analysis is not approved, yet these files outside ${AIDW_DIR}/ changed since the change was created:\n${list}${more}\n` +
+    `AIDW backstop: ${closedReason(st)} Yet these files outside ${AIDW_DIR}/ changed and are not explained by an aidw step:\n${list}${more}\n` +
     "Do not delete or revert anything yourself: some of these may be the user's own edits. " +
     "Tell the user which of these you created or modified in this session and ask how to proceed. " +
-    "Until approval, write only inside .aidw/.";
+    "While the gate is closed, write only inside .aidw/.";
   if (input.stop_hook_active) {
     // Already blocked once this turn: surface it without looping.
     return JSON.stringify({ systemMessage: reason });

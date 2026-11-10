@@ -45,7 +45,9 @@ quality report.
 
 ## 3. Screenshots (UI changes)
 
-Capture the main flows (one image per key screen, desktop width; add mobile for the most important one):
+`aidw deliver` seeds `screenshots/` with the reviewed task screenshots (two per UI task). Look at them: if they
+cover the main flows, keep them. Otherwise capture the missing flows yourself (one image per key screen, desktop
+width; add mobile for the most important one):
 
 1. Write a small Playwright script under `.aidw/run/` (it resolves `playwright` from the project's
    `node_modules`). Target the preview URL from the quality report, or start the app locally the way
@@ -58,7 +60,8 @@ Capture the main flows (one image per key screen, desktop width; add mobile for 
 1. `aidw deliver --change <id>` again (regenerates README with the screenshots), then
    `aidw deliver --check --change <id>`. Fix every item it reports. It also checks the **project's** README:
    every `npm run` / `pnpm <script>` it names must exist in package.json. Update the project README so its
-   setup and test commands are the ones that work now (the handoff's Run locally section).
+   setup and test commands are the ones that work now (the handoff's Run locally section). If the project has
+   no README, write one: what it is, Run locally, tests, the preview URL.
 2. If the client asked for documentation in the repository (see intake), copy `handoff.md` to `docs/` only
    when the user confirms: after delivery, project writes outside `.env.example` need them.
 3. `aidw archive <id>`: merges the delta specs into `.aidw/specs/`, moves the change to `.aidw/archive/` and

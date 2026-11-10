@@ -337,6 +337,8 @@ export const shellRunner: CommandRunner = (command, cwd, timeoutMs, env) => {
 export interface CheckpointResult extends CheckpointRecord {
   task: string;
   status: "review" | "failed";
+  /** why the checkpoint failed, one line each (empty when it passed) */
+  problems: string[];
   evidence: string;
 }
 
@@ -403,7 +405,7 @@ export function checkpoint(
   setField(tf, i, "evidence", evidenceRel(taskId));
   setField(tf, i, "notes", ok ? null : `checkpoint: ${problems.join("; ")}`);
   saveTasks(tf);
-  return { ...record, task: taskId, status: ok ? "review" : "failed", evidence: rel(p, join(tf.change.dir, evidenceRel(taskId))) };
+  return { ...record, task: taskId, status: ok ? "review" : "failed", problems, evidence: rel(p, join(tf.change.dir, evidenceRel(taskId))) };
 }
 
 // ---------------------------------------------------------------- review
@@ -573,13 +575,15 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
       "- Do not edit anything under `.aidw/`, do not run `aidw checkpoint`/`aidw review`, and do not commit, push or deploy: the orchestrator records progress and commits after an independent review.",
       "- Test first. For every scenario, write a test whose name contains the scenario id verbatim, e.g. `test(\"booking/cancel-appointment/cancel-upcoming: cancels and frees the slot\")`, asserting the THEN outcome. `aidw checkpoint` looks for these ids in test files.",
       "- Run every **Verify** command yourself and make it pass before reporting.",
+      "- Stop every process you start (dev servers, watchers) before you report; the checkpoint reruns everything on a clean machine state.",
       ...(decisions.length
         ? ["- **Decisions to honor** are approved and binding. If one is wrong or blocks the task, stop and report it as a blocker; never deviate silently (not even a key name or a tool)."]
         : []),
       ...(tokens.length
         ? [
             "- **Design**: style through the tokens below (CSS variables or theme), never hard-coded colors, and apply each token where its **Use** says.",
-            `- **Screenshots**: when it works, save PNG screenshots of every screen and state this task changes (desktop and mobile width; dark theme too if tokens have dark values) into \`${shots}\` (create it; e.g. a short Playwright script against the running app). The checkpoint requires at least one fresh screenshot; the reviewer judges the design from them.`,
+            `- **Screenshots**: when it works, save at most 6 PNG screenshots of the screens and states this task changes into \`${shots}\` (create it): the most telling states, at desktop and mobile width, dark theme too if tokens have dark values. The reviewer opens every one. **Every attempt, retries included, saves new ones**: the checkpoint counts only PNGs written after the previous checkpoint, even when the UI did not change.`,
+            "- Take screenshots with Playwright through the project's `webServer` config (it starts and stops the app), e.g. a spec run on its own with `npx playwright test <file>`. If you start a server yourself, stop it before you report: a leftover server holds the e2e port and fails the checkpoint.",
           ]
         : []),
       "- Report in at most 10 lines: what works now, files changed, verify result, anything the reviewer should know (e.g. files outside Touches and why).",

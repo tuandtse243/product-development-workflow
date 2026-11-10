@@ -8078,38 +8078,8 @@ var import_node_fs10 = require("node:fs");
 var import_node_path11 = require("node:path");
 var import_yaml5 = __toESM(require_dist(), 1);
 
-// src/git.ts
-var import_node_child_process = require("node:child_process");
-function git(cwd, args) {
-  const r = (0, import_node_child_process.spawnSync)("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024 });
-  return { ok: r.status === 0, out: (r.stdout ?? "").trim(), err: (r.stderr ?? "").trim() || (r.error?.message ?? "") };
-}
-function isGitRepo(cwd) {
-  return git(cwd, ["rev-parse", "--is-inside-work-tree"]).out === "true";
-}
-function headCommit(cwd) {
-  const r = git(cwd, ["rev-parse", "--verify", "-q", "HEAD"]);
-  return r.ok && r.out ? r.out : null;
-}
-function changedSince(cwd, base) {
-  if (!isGitRepo(cwd)) return null;
-  const files = /* @__PURE__ */ new Set();
-  const diff = base ? git(cwd, ["diff", "--name-only", base]) : git(cwd, ["diff", "--name-only", "--cached"]);
-  if (!diff.ok) return null;
-  for (const f of diff.out.split("\n")) if (f) files.add(f);
-  if (!base) {
-    for (const f of git(cwd, ["diff", "--name-only"]).out.split("\n")) if (f) files.add(f);
-  }
-  for (const f of git(cwd, ["ls-files", "--others", "--exclude-standard"]).out.split("\n")) if (f) files.add(f);
-  return [...files].sort();
-}
-
-// src/ops.ts
-var import_node_fs9 = require("node:fs");
-var import_node_path10 = require("node:path");
-
 // src/backstop.ts
-var import_node_child_process2 = require("node:child_process");
+var import_node_child_process = require("node:child_process");
 var import_node_fs4 = require("node:fs");
 var import_node_path5 = require("node:path");
 
@@ -8135,7 +8105,7 @@ var FORBIDDEN_COMMANDS = [
 var RUNNER = String.raw`(?:(?:npx|bunx|pnpm\s+(?:dlx|exec)|yarn\s+(?:dlx|exec)|npm\s+exec(?:\s+--)?)\s+(?:--?[\w-]+\s+)*)?`;
 var ASK_COMMANDS = [
   { re: /\bgit\s+push\b/, why: "pushes to a remote repository" },
-  { re: cmd(String.raw`${RUNNER}vercel\b[^|;&]*(?:--prod\b|\bpromote\b|\bdomains?\b|\balias\b|\bremove\b|\brm\b)`), why: "changes Vercel production, domains or deletes deployments" },
+  { re: cmd(String.raw`${RUNNER}vercel\b[^|;&]*(?:--prod\b|--(?:environment|target)(?:=|\s+)production\b|\bpromote\b|\bdomains?\b|\balias\b|\bremove\b|\brm\b)`), why: "changes Vercel production, domains or deletes deployments" },
   { re: cmd(String.raw`${RUNNER}netlify\s+deploy\b[^|;&]*--prod\b`), why: "deploys Netlify production" },
   { re: /\b(railway\s+up|fly\s+deploy|flyctl\s+deploy)\b/, why: "deploys to a hosting provider" },
   { re: /\bsupabase\s+(db\s+reset\s+[^|;&]*--linked|projects\s+(create|delete)|orgs\s+create)\b/, why: "creates, deletes or resets a remote Supabase project" },
@@ -8173,6 +8143,25 @@ var WRITE_COMMANDS = [
   { re: cmd(String.raw`(?:npm|pnpm|yarn|bun)\s+(?:i|install|add|create|init|dlx)\b|npx\s+(?:create-|degit|shadcn)`), why: "installs or scaffolds packages" },
   { re: cmd(String.raw`git\s+(?:clone|checkout\s+-b|switch\s+-c|apply|am|stash\s+pop|reset\s+--hard)\b`), why: "changes the working tree" }
 ];
+function maskQuotedAngles(command) {
+  let out = "";
+  let quote = null;
+  for (let i = 0; i < command.length; i++) {
+    const c = command[i];
+    if (quote) {
+      if (c === "\\" && quote === '"' && i + 1 < command.length) {
+        out += c + command[++i];
+        continue;
+      }
+      if (c === quote) quote = null;
+      out += c === "<" || c === ">" ? "_" : c;
+    } else {
+      if (c === "'" || c === '"') quote = c;
+      out += c;
+    }
+  }
+  return out;
+}
 function firstMatch(rules, text) {
   return rules.find((r) => r.re.test(text));
 }
@@ -8233,6 +8222,9 @@ function closedReason(st) {
   }
   if (st.delivered) {
     return `the change is delivered (${st.summary}): only .aidw/, .env.example and README.md may be written. Write temporary output under $TMPDIR.`;
+  }
+  if (/=(?:escalated|paused)\b/.test(st.summary)) {
+    return `the run is stopped (${st.summary}): project files stay frozen until the user decides how to continue (/aidw:status). Only .aidw/ may be written.`;
   }
   return `Analysis is not approved yet (${st.summary}). Only .aidw/ may be written before approval.`;
 }
@@ -8301,7 +8293,7 @@ function decide(input, env) {
       return deny(`the ${role} does not commit; the orchestrator commits each task after review`);
     }
     if (AIDW_COMMAND.test(cmd2) && !SHELL_CHAINING.test(cmd2)) return null;
-    const writes = firstMatch(WRITE_COMMANDS, cmd2);
+    const writes = firstMatch(WRITE_COMMANDS, maskQuotedAngles(cmd2));
     if (writes) {
       if (role === "reviewer") return deny(`the reviewer is read-only (this command ${writes.why})`);
       const st = gateState(p);
@@ -8335,7 +8327,7 @@ function runGate(stdin, env) {
 // src/backstop.ts
 function gitDirtyPaths(project) {
   try {
-    const out = (0, import_node_child_process2.execFileSync)("git", ["status", "--porcelain=v1", "-z", "--untracked-files=all"], {
+    const out = (0, import_node_child_process.execFileSync)("git", ["status", "--porcelain=v1", "-z", "--untracked-files=all"], {
       cwd: project,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"]
@@ -8387,7 +8379,8 @@ function runBackstop(stdin, env, dirtyProvider = gitDirtyPaths) {
   const project = findProject({ cwd: input.cwd ?? process.cwd(), env });
   if (!project) return "";
   const p = pathsFor(project);
-  if (gateState(p).open) return "";
+  const st = gateState(p);
+  if (st.open) return "";
   const dirty = dirtyProvider(project);
   if (!dirty) return "";
   const unexpected = unexpectedChanges(dirty, readBaseline(p));
@@ -8395,14 +8388,44 @@ function runBackstop(stdin, env, dirtyProvider = gitDirtyPaths) {
   const list3 = unexpected.slice(0, 20).map((f) => `  - ${f}`).join("\n");
   const more = unexpected.length > 20 ? `
   ... and ${unexpected.length - 20} more` : "";
-  const reason = `AIDW backstop: the Analysis is not approved, yet these files outside ${AIDW_DIR}/ changed since the change was created:
+  const reason = `AIDW backstop: ${closedReason(st)} Yet these files outside ${AIDW_DIR}/ changed and are not explained by an aidw step:
 ${list3}${more}
-Do not delete or revert anything yourself: some of these may be the user's own edits. Tell the user which of these you created or modified in this session and ask how to proceed. Until approval, write only inside .aidw/.`;
+Do not delete or revert anything yourself: some of these may be the user's own edits. Tell the user which of these you created or modified in this session and ask how to proceed. While the gate is closed, write only inside .aidw/.`;
   if (input.stop_hook_active) {
     return JSON.stringify({ systemMessage: reason });
   }
   return JSON.stringify({ decision: "block", reason });
 }
+
+// src/git.ts
+var import_node_child_process2 = require("node:child_process");
+function git(cwd, args) {
+  const r = (0, import_node_child_process2.spawnSync)("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024 });
+  return { ok: r.status === 0, out: (r.stdout ?? "").trim(), err: (r.stderr ?? "").trim() || (r.error?.message ?? "") };
+}
+function isGitRepo(cwd) {
+  return git(cwd, ["rev-parse", "--is-inside-work-tree"]).out === "true";
+}
+function headCommit(cwd) {
+  const r = git(cwd, ["rev-parse", "--verify", "-q", "HEAD"]);
+  return r.ok && r.out ? r.out : null;
+}
+function changedSince(cwd, base) {
+  if (!isGitRepo(cwd)) return null;
+  const files = /* @__PURE__ */ new Set();
+  const diff = base ? git(cwd, ["diff", "--name-only", base]) : git(cwd, ["diff", "--name-only", "--cached"]);
+  if (!diff.ok) return null;
+  for (const f of diff.out.split("\n")) if (f) files.add(f);
+  if (!base) {
+    for (const f of git(cwd, ["diff", "--name-only"]).out.split("\n")) if (f) files.add(f);
+  }
+  for (const f of git(cwd, ["ls-files", "--others", "--exclude-standard"]).out.split("\n")) if (f) files.add(f);
+  return [...files].sort();
+}
+
+// src/ops.ts
+var import_node_fs9 = require("node:fs");
+var import_node_path10 = require("node:path");
 
 // src/deliver.ts
 var import_node_fs8 = require("node:fs");
@@ -8919,7 +8942,7 @@ function checkpoint(p, id, taskId, opts = {}) {
   setField(tf, i, "evidence", evidenceRel(taskId));
   setField(tf, i, "notes", ok ? null : `checkpoint: ${problems.join("; ")}`);
   saveTasks(tf);
-  return { ...record, task: taskId, status: ok ? "review" : "failed", evidence: rel(p, (0, import_node_path7.join)(tf.change.dir, evidenceRel(taskId))) };
+  return { ...record, task: taskId, status: ok ? "review" : "failed", problems, evidence: rel(p, (0, import_node_path7.join)(tf.change.dir, evidenceRel(taskId))) };
 }
 function recordReview(p, id, taskId, verdict, notes, opts = {}) {
   const tf = loadTasks(p, id);
@@ -9046,10 +9069,12 @@ ${req.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`;
       "- Do not edit anything under `.aidw/`, do not run `aidw checkpoint`/`aidw review`, and do not commit, push or deploy: the orchestrator records progress and commits after an independent review.",
       '- Test first. For every scenario, write a test whose name contains the scenario id verbatim, e.g. `test("booking/cancel-appointment/cancel-upcoming: cancels and frees the slot")`, asserting the THEN outcome. `aidw checkpoint` looks for these ids in test files.',
       "- Run every **Verify** command yourself and make it pass before reporting.",
+      "- Stop every process you start (dev servers, watchers) before you report; the checkpoint reruns everything on a clean machine state.",
       ...decisions.length ? ["- **Decisions to honor** are approved and binding. If one is wrong or blocks the task, stop and report it as a blocker; never deviate silently (not even a key name or a tool)."] : [],
       ...tokens.length ? [
         "- **Design**: style through the tokens below (CSS variables or theme), never hard-coded colors, and apply each token where its **Use** says.",
-        `- **Screenshots**: when it works, save PNG screenshots of every screen and state this task changes (desktop and mobile width; dark theme too if tokens have dark values) into \`${shots}\` (create it; e.g. a short Playwright script against the running app). The checkpoint requires at least one fresh screenshot; the reviewer judges the design from them.`
+        `- **Screenshots**: when it works, save at most 6 PNG screenshots of the screens and states this task changes into \`${shots}\` (create it): the most telling states, at desktop and mobile width, dark theme too if tokens have dark values. The reviewer opens every one. **Every attempt, retries included, saves new ones**: the checkpoint counts only PNGs written after the previous checkpoint, even when the UI did not change.`,
+        "- Take screenshots with Playwright through the project's `webServer` config (it starts and stops the app), e.g. a spec run on its own with `npx playwright test <file>`. If you start a server yourself, stop it before you report: a leftover server holds the e2e port and fails the checkpoint."
       ] : [],
       "- Report in at most 10 lines: what works now, files changed, verify result, anything the reviewer should know (e.g. files outside Touches and why).",
       "",
@@ -9370,6 +9395,23 @@ function screenshots(change) {
   const dir = (0, import_node_path9.join)(deliveryDir(change), "screenshots");
   return (0, import_node_fs8.existsSync)(dir) ? (0, import_node_fs8.readdirSync)(dir).filter((f) => IMAGE2.test(f)).sort() : [];
 }
+function seedScreenshots(p, id, change, tasks) {
+  const target = (0, import_node_path9.join)(deliveryDir(change), "screenshots");
+  if (screenshots(change).length) return [];
+  const copied = [];
+  const rank = (f) => (/desktop/i.test(f) ? 0 : 2) + (/dark/i.test(f) ? 1 : 0);
+  for (const t of tasks.filter((x) => touchesUi(x) && statusOf2(x) === "done")) {
+    const dir = shotsDir(p, id, String(t.id));
+    if (!(0, import_node_fs8.existsSync)(dir)) continue;
+    const files = (0, import_node_fs8.readdirSync)(dir).filter((f) => /\.png$/i.test(f)).map((f) => ({ f, at: (0, import_node_fs8.statSync)((0, import_node_path9.join)(dir, f)).mtimeMs })).sort((a, b) => rank(a.f) - rank(b.f) || b.at - a.at).slice(0, 2);
+    for (const { f } of files) {
+      const name = `${String(copied.length + 1).padStart(2, "0")}-${String(t.id)}-${f}`;
+      (0, import_node_fs8.copyFileSync)((0, import_node_path9.join)(dir, f), (0, import_node_path9.join)(target, name));
+      copied.push(name);
+    }
+  }
+  return copied;
+}
 function needsScreenshots(tasks) {
   return tasks.some((t) => touchesUi(t));
 }
@@ -9429,6 +9471,7 @@ function checkDelivery(p, id) {
     d.error(where("screenshots/"), "no screenshots (png, jpg, webp) of the main flows; this change has UI tasks");
   }
   if (!lastConverge(change)?.ok) d.error(where("quality-report.md"), "converge has not passed");
+  if (!(0, import_node_fs8.existsSync)((0, import_node_path9.join)(p.project, "README.md"))) d.warn("README.md", "the project has no README: write one (what it is, run locally, tests, preview URL)");
   for (const c of staleReadmeCommands(p.project)) {
     d.error("README.md", `\`${c}\` calls a script that package.json does not define; update the README to the commands that work`);
   }
@@ -9444,6 +9487,7 @@ function deliver(p, id, opts = {}) {
   if (!opts.check) {
     const tasks = loadTasks(p, id).tasks;
     (0, import_node_fs8.mkdirSync)((0, import_node_path9.join)(dir, "screenshots"), { recursive: true });
+    for (const f of seedScreenshots(p, id, change, tasks)) written.push(rel(p, (0, import_node_path9.join)(dir, "screenshots", f)));
     const write = (name, text) => {
       (0, import_node_fs8.writeFileSync)((0, import_node_path9.join)(dir, name), text);
       written.push(rel(p, (0, import_node_path9.join)(dir, name)));
@@ -9757,7 +9801,7 @@ Quality layer and deploy evidence: .aidw/changes/${id}/evidence/`);
 }
 function commitAidw(p, message, opts = {}) {
   if (!isGitRepo(p.project)) return null;
-  const paths = [".aidw", ...opts.delivery ? ["README.md", ".env.example"].filter((f) => (0, import_node_fs9.existsSync)((0, import_node_path10.join)(p.project, f))) : []];
+  const paths = [".aidw", ...opts.delivery ? ["README.md", ".env.example", ".gitignore"].filter((f) => (0, import_node_fs9.existsSync)((0, import_node_path10.join)(p.project, f))) : []];
   if (!git(p.project, ["add", "--", ...paths]).ok) return null;
   if (git(p.project, ["diff", "--cached", "--quiet", "--", ...paths]).ok) return null;
   return git(p.project, ["commit", "-q", "-m", message, "--", ...paths]).ok ? headCommit(p.project) : null;
@@ -10059,7 +10103,8 @@ function verify(p, id, opts = {}) {
   for (const layer of config.layers) {
     const wanted = opts.layer ? layer.name === opts.layer : opts.fresh || pending.includes(layer.name);
     if (!wanted || failed) {
-      outcomes.push({ name: layer.name, status: "skipped", runs: [] });
+      const reused = !failed && !opts.layer && !pending.includes(layer.name);
+      outcomes.push({ name: layer.name, status: "skipped", runs: [], ...reused ? { reused: true } : {} });
       continue;
     }
     const runs = runCommands([...layer.setup, ...layer.run], p.project, timeoutMs, runner);
@@ -10141,6 +10186,7 @@ function qualityPassed(p, id) {
   return { ok: pending.length === 0, pending };
 }
 var URL_RE = /https:\/\/[^\s"'<>`)\]]+/g;
+var JSON_URL = /"url"\s*:\s*"(https:\/\/[^"\s]+)"/;
 var DASHBOARD_URL = /^https:\/\/(?:(?:www\.)?vercel\.com|app\.netlify\.com|supabase\.com)\//;
 function deploy(p, id, opts = {}) {
   const change = loadChange(p, id);
@@ -10157,9 +10203,10 @@ function deploy(p, id, opts = {}) {
   } else {
     const runs = runCommands([config.deploy.command], p.project, timeoutMs, runner);
     const failed = failedRun(runs);
-    const url = [...(runs[0]?.tail ?? "").matchAll(URL_RE)].map((m) => m[0]).filter((u) => !DASHBOARD_URL.test(u)).at(-1) ?? null;
+    const url = deploymentUrl(runs[0]?.tail ?? "");
+    recordBaseline(p);
     if (failed || !url) {
-      record = { ...base, runs, ok: false, skipped: false, url, error: failed ? `deploy command exited ${failed.exit}` : "no https URL in the deploy output" };
+      record = { ...base, runs, ok: false, skipped: false, url, error: failed ? `deploy command exited ${failed.exit}${deployHint(failed.tail) ? `: ${deployHint(failed.tail)}` : ""}` : "no https URL in the deploy output" };
     } else {
       const smoke = runCommands(config.deploy.smoke, p.project, timeoutMs, runner, { AIDW_DEPLOY_URL: url });
       const smokeFailed = failedRun(smoke);
@@ -10168,6 +10215,29 @@ function deploy(p, id, opts = {}) {
   }
   appendHistory(deployFile(change), record);
   return record;
+}
+var DEPLOY_HINTS = [
+  {
+    re: /"err" is out of range|persistAuthConfig|EPERM[^\n]*com\.vercel\.cli/,
+    hint: "the Vercel CLI had to refresh its login token and the sandbox blocked writing its auth file. The user runs `vercel whoami` in their own terminal (outside Claude Code), then `aidw deploy` again."
+  },
+  {
+    re: /No existing credentials found|not logged in|vercel login/i,
+    hint: "the Vercel CLI is not logged in. The user runs `vercel login` in their own terminal, then `aidw deploy` again."
+  }
+];
+function deployHint(output) {
+  return DEPLOY_HINTS.find((h) => h.re.test(output))?.hint ?? null;
+}
+function deploymentUrl(output) {
+  const json = JSON_URL.exec(output);
+  if (json) return json[1];
+  const urls = [];
+  for (const line of output.split("\n")) {
+    if (/\balias(?:ed)?\b/i.test(line)) continue;
+    for (const m of line.matchAll(URL_RE)) if (!DASHBOARD_URL.test(m[0])) urls.push(m[0]);
+  }
+  return urls.at(-1) ?? null;
 }
 function lastDeploy(change) {
   const f = deployFile(change);
@@ -10688,7 +10758,9 @@ function run(argv, env, cwd, io) {
           `${r.ok ? "PASS" : "FAIL"} ${r.task} -> ${r.status}  (evidence ${r.evidence})`,
           ...Object.entries(r.scenarios).map(([s, locs]) => `  ${locs.length ? "ok     " : "MISSING"} ${s}${locs.length ? `  ${locs[0]}` : ""}`),
           ...r.verify.map((v) => `  ${v.exit === 0 ? "ok     " : "FAILED "} ${v.command}  (${Math.round(v.ms / 1e3)}s${v.timedOut ? ", timed out" : ""})`),
-          ...r.outside_touches.length ? [`  outside touches: ${r.outside_touches.join(", ")}`] : []
+          ...r.outside_touches.length ? [`  outside touches: ${r.outside_touches.join(", ")}`] : [],
+          ...r.design ? [`  design: ${r.design.screenshots.length} fresh screenshot(s), ${r.design.hardcoded_colors.length} stray color(s)`] : [],
+          ...r.problems.map((x) => `  PROBLEM ${x}`)
         ];
         const failed = r.verify.find((v) => v.exit !== 0);
         emit({ change: id, ...r }, `${lines.join("\n")}
@@ -10710,8 +10782,8 @@ ${failed.tail}
         });
         const lines = r.layers.map((l) => {
           const bad = l.runs.find((x) => x.exit !== 0);
-          const mark = l.status === "pass" ? "ok     " : l.status === "fail" ? "FAILED " : "skipped";
-          return `  ${mark} ${l.name}${bad ? `  (${bad.command}${bad.timedOut ? ", timed out" : `, exit ${bad.exit}`})` : ""}`;
+          const mark = l.status === "pass" ? "ok     " : l.status === "fail" ? "FAILED " : l.reused ? "ok     " : "skipped";
+          return `  ${mark} ${l.name}${l.reused ? "  (passed earlier on this commit; --fresh reruns it)" : ""}${bad ? `  (${bad.command}${bad.timedOut ? ", timed out" : `, exit ${bad.exit}`})` : ""}`;
         });
         const failed = r.layers.find((l) => l.status === "fail")?.runs.find((x) => x.exit !== 0);
         emit(
@@ -10777,7 +10849,7 @@ ${[...r.runs, ...r.smoke].find((x) => x.exit !== 0)?.tail ?? r.runs[0]?.tail ?? 
         emit(
           { ok: true, change: id, ...r },
           `${r.task}: review ${r.verdict} -> ${r.status}${r.commit ? ` (commit ${r.commit.slice(0, 8)})` : ""}${r.warning ? `
-  warning: ${r.warning}` : ""}
+  warning: ${r.warning}` : ""}${verdict === "pass" && !notes.trim() ? "\n  note: no reviewer reply recorded; pass it with --notes-file so its non-blocking remarks reach the handoff" : ""}
 `
         );
         return 0;

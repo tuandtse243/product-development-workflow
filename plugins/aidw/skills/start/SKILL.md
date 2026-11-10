@@ -177,13 +177,17 @@ Read `$(aidw plugin-path profiles/quality-layers.md)` and `$(aidw plugin-path po
 - `## Deploy strategy`: none | local | preview, the provider, the preview environment variables and where their
   values come from. Production is never automatic: it is tier 3 and asks.
 - **Environment preflight.** The layers run unattended in this Claude Code session, under its sandbox, so check
-  now that what they need works here: the package manager and runners (`<pm> --version`, `npx vitest --version`,
-  `npx playwright --version`), and for e2e whether browsers are already installed (Playwright's cache, e.g.
-  `~/Library/Caches/ms-playwright`). Claude Code's sandbox can block downloading and launching browsers. If they
-  are missing, ask the user to run `npx playwright install chromium` in their own terminal, and to let the test
-  runner use the browser (sandbox settings) or to choose another browser setup. Settle every gap with the user
-  before approval and record it under the Summary's risks: a layer that cannot run here fails in verify and
-  escalates.
+  now that what they need works here: the package manager and runners (`<pm> --version`, `npx vitest --version`),
+  and the deploy CLI and its login (`vercel whoami`). Settle every gap with the user before approval and record
+  it under the Summary's risks: a layer that cannot run here fails in verify and escalates.
+- **E2E browser.** Claude Code's sandbox usually blocks launching Chromium, so the default is **Chrome over
+  CDP**: the user runs Chrome outside the sandbox with a debugging port, and Playwright connects to it (setup
+  and fixture in the quality-layers profile, "E2E browser over CDP"). Check now that this session reaches it:
+  `node -e "fetch('http://127.0.0.1:9222/json/version').then(r=>r.json()).then(j=>console.log(j.Browser))"`.
+  If it fails, give the user the Chrome command from the profile and check again. Write the CDP setup into the
+  e2e layer and a Decision to honor (`E2E connects to Chrome over CDP at E2E_CDP_URL, default
+  http://127.0.0.1:9222`). Use a launched browser instead only if the user prefers it and a real launch works
+  in this session.
 - `## Permissions`: one bullet per tier-2 resource, starting with its key, e.g.
   ``- `vercel-preview`: preview deploy of the demo, deleted after handoff``, or `None`. `aidw analyze` checks
   that every key in quality.yaml is named here.

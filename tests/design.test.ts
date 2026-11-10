@@ -162,7 +162,12 @@ describe("checkpoint and briefs for UI tasks", () => {
     const old = shot(root, "old.png");
     utimesSync(old, new Date(Date.now() - 3600_000), new Date(Date.now() - 3600_000));
     write(root, "app/globals.css", CSS);
-    expect(cli(root, "checkpoint", "T01").code).toBe(1);
+    const stale = cli(root, "checkpoint", "T01");
+    expect(stale.code).toBe(1);
+    // the text output says why, even when every verify command passed
+    expect(stale.out).toMatch(/design: 0 fresh screenshot\(s\)/);
+    expect(stale.out).toMatch(/PROBLEM no fresh screenshot in \.aidw\/run\/shots\//);
+    expect(readFileSync(cli(root, "brief", "T01").out.trim(), "utf8")).toMatch(/Every attempt, retries included, saves new ones/);
 
     cli(root, "task", "start", "T01");
     write(root, "app/(site)/book/page.tsx", 'export default () => <b style={{ color: "#00ff00" }} />;\n');

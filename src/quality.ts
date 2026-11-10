@@ -13,6 +13,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import YAML from "yaml";
 import { approvalStatus } from "./approval.js";
+import { recordBaseline } from "./backstop.js";
 import { loadChange, stateOf, type Change } from "./change.js";
 import { Diags } from "./diag.js";
 import { headCommit } from "./git.js";
@@ -282,6 +283,8 @@ export interface VerifyLayerOutcome {
   name: string;
   status: "pass" | "fail" | "skipped";
   runs: VerifyRun[];
+  /** skipped because it already passed on this commit (rerun with --fresh) */
+  reused?: boolean;
 }
 
 export interface VerifyResult {
@@ -327,7 +330,8 @@ export function verify(
   for (const layer of config.layers) {
     const wanted = opts.layer ? layer.name === opts.layer : opts.fresh || pending.includes(layer.name);
     if (!wanted || failed) {
-      outcomes.push({ name: layer.name, status: "skipped", runs: [] });
+      const reused = !failed && !opts.layer && !pending.includes(layer.name);
+      outcomes.push({ name: layer.name, status: "skipped", runs: [], ...(reused ? { reused: true } : {}) });
       continue;
     }
     const runs = runCommands([...layer.setup, ...layer.run], p.project, timeoutMs, runner);
@@ -429,6 +433,8 @@ export interface DeployRecord {
 }
 
 const URL_RE = /https:\/\/[^\s"'<>`)\]]+/g;
+/** Vercel `--format json` / JSON output: the deployment's own URL. */
+const JSON_URL = /"url"\s*:\s*"(https:\/\/[^"\s]+)"/;
 const DASHBOARD_URL = /^https:\/\/(?:(?:www\.)?vercel\.com|app\.netlify\.com|supabase\.com)\//;
 
 export function deploy(p: Paths, id: string, opts: { timeoutMs?: number; runner?: CommandRunner } = {}): DeployRecord {
@@ -447,14 +453,14 @@ export function deploy(p: Paths, id: string, opts: { timeoutMs?: number; runner?
   } else {
     const runs = runCommands([config.deploy.command], p.project, timeoutMs, runner);
     const failed = failedRun(runs);
-    // Deploy CLIs also print dashboard links ("Inspect: https://vercel.com/..."); the deployment is the last other URL.
-    const url =
-      [...(runs[0]?.tail ?? "").matchAll(URL_RE)]
-        .map((m) => m[0])
-        .filter((u) => !DASHBOARD_URL.test(u))
-        .at(-1) ?? null;
+    const url = deploymentUrl(runs[0]?.tail ?? "");
+    // The deploy CLI may touch project files (`vercel` links the project and adds `.vercel` to .gitignore).
+    // That is the approved deploy step, not the agent, so the backstop must not blame the agent for it.
+    recordBaseline(p);
     if (failed || !url) {
-      record = { ...base, runs, ok: false, skipped: false, url, error: failed ? `deploy command exited ${failed.exit}` : "no https URL in the deploy output" };
+      record = { ...base, runs, ok: false, skipped: false, url, error: failed
+          ? `deploy command exited ${failed.exit}${deployHint(failed.tail) ? `: ${deployHint(failed.tail)}` : ""}`
+          : "no https URL in the deploy output" };
     } else {
       const smoke = runCommands(config.deploy.smoke, p.project, timeoutMs, runner, { AIDW_DEPLOY_URL: url });
       const smokeFailed = failedRun(smoke);
@@ -463,6 +469,38 @@ export function deploy(p: Paths, id: string, opts: { timeoutMs?: number; runner?
   }
   appendHistory(deployFile(change), record);
   return record;
+}
+
+/**
+ * The deployment URL in a deploy CLI's output. Prefers the JSON `"url"` of the deployment, then the last URL that
+ * is neither a dashboard link ("Inspect: https://vercel.com/...") nor an alias line ("Aliased https://app.vercel.app",
+ * which may point at production or sit behind protection).
+ */
+/** Known deploy CLI failures inside Claude Code's sandbox, with what the user does about them. */
+const DEPLOY_HINTS: { re: RegExp; hint: string }[] = [
+  {
+    re: /"err" is out of range|persistAuthConfig|EPERM[^\n]*com\.vercel\.cli/,
+    hint: "the Vercel CLI had to refresh its login token and the sandbox blocked writing its auth file. The user runs `vercel whoami` in their own terminal (outside Claude Code), then `aidw deploy` again.",
+  },
+  {
+    re: /No existing credentials found|not logged in|vercel login/i,
+    hint: "the Vercel CLI is not logged in. The user runs `vercel login` in their own terminal, then `aidw deploy` again.",
+  },
+];
+
+export function deployHint(output: string): string | null {
+  return DEPLOY_HINTS.find((h) => h.re.test(output))?.hint ?? null;
+}
+
+export function deploymentUrl(output: string): string | null {
+  const json = JSON_URL.exec(output);
+  if (json) return json[1] as string;
+  const urls: string[] = [];
+  for (const line of output.split("\n")) {
+    if (/\balias(?:ed)?\b/i.test(line)) continue;
+    for (const m of line.matchAll(URL_RE)) if (!DASHBOARD_URL.test(m[0])) urls.push(m[0]);
+  }
+  return urls.at(-1) ?? null;
 }
 
 export function lastDeploy(change: Change): DeployRecord | null {

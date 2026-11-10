@@ -63,7 +63,10 @@ aidw next --change <id> --json
 1. `aidw brief <T> --change <id> --for review` prints the review brief path.
 2. Spawn the `aidw:reviewer` subagent with: `Review brief: <path>. Review the task and reply with the verdict.`
 3. Read the first line of its reply.
-   - `VERDICT: pass` -> `aidw review <T> pass --change <id>` (marks done and commits the task).
+   - `VERDICT: pass` -> write the reply verbatim to `.aidw/run/review-<T>.md`, then
+     `aidw review <T> pass --notes-file .aidw/run/review-<T>.md --change <id>` (marks done and commits the
+     task). Always pass the reply: its non-blocking remarks go into the quality report and the handoff's
+     Known issues; a pass without notes loses them.
    - `VERDICT: fix` -> write the reply verbatim to `.aidw/run/review-<T>.md`, then
      `aidw review <T> fix --notes-file .aidw/run/review-<T>.md --change <id>`. Loop: the retry brief carries
      the notes.
@@ -111,8 +114,10 @@ aidw next --change <id> --json
    `aidw deploy --change <id>`.
    - target `preview`: runs the approved deploy command and the smoke checks; prints the URL.
    - target `none` / `local`: records that nothing was deployed.
-   - `DEPLOY FAILED`: escalate with the output (usually a missing provider login or env var). Do not retry with
-     different commands: anything beyond the approved command needs the user.
+   - `DEPLOY FAILED`: if the error carries a hint (e.g. "the user runs `vercel whoami` in their own terminal"),
+     tell the user exactly that and wait: the change stays in `deploying`, and you run `aidw deploy` again when
+     they say it is done. Otherwise escalate with the output. Do not retry with different commands: anything
+     beyond the approved command needs the user.
 2. `aidw transition <id> delivered` (refused without a successful deploy record; commits `.aidw/`).
 3. Follow `$(aidw plugin-path skills/deliver/SKILL.md)`: delivery package, screenshots, check, archive.
 4. Final report to the user: tasks and commits, quality layers and fix rounds, converge result, the preview

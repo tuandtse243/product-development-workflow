@@ -42,7 +42,7 @@ const RUNNER = String.raw`(?:(?:npx|bunx|pnpm\s+(?:dlx|exec)|yarn\s+(?:dlx|exec)
 /** Tier 3: outward-facing or costly actions. Always ask. Checked before tier 2. */
 export const ASK_COMMANDS: Rule[] = [
   { re: /\bgit\s+push\b/, why: "pushes to a remote repository" },
-  { re: cmd(String.raw`${RUNNER}vercel\b[^|;&]*(?:--prod\b|\bpromote\b|\bdomains?\b|\balias\b|\bremove\b|\brm\b)`), why: "changes Vercel production, domains or deletes deployments" },
+  { re: cmd(String.raw`${RUNNER}vercel\b[^|;&]*(?:--prod\b|--(?:environment|target)(?:=|\s+)production\b|\bpromote\b|\bdomains?\b|\balias\b|\bremove\b|\brm\b)`), why: "changes Vercel production, domains or deletes deployments" },
   { re: cmd(String.raw`${RUNNER}netlify\s+deploy\b[^|;&]*--prod\b`), why: "deploys Netlify production" },
   { re: /\b(railway\s+up|fly\s+deploy|flyctl\s+deploy)\b/, why: "deploys to a hosting provider" },
   { re: /\bsupabase\s+(db\s+reset\s+[^|;&]*--linked|projects\s+(create|delete)|orgs\s+create)\b/, why: "creates, deletes or resets a remote Supabase project" },
@@ -94,6 +94,30 @@ export const WRITE_COMMANDS: Rule[] = [
   { re: cmd(String.raw`(?:npm|pnpm|yarn|bun)\s+(?:i|install|add|create|init|dlx)\b|npx\s+(?:create-|degit|shadcn)`), why: "installs or scaffolds packages" },
   { re: cmd(String.raw`git\s+(?:clone|checkout\s+-b|switch\s+-c|apply|am|stash\s+pop|reset\s+--hard)\b`), why: "changes the working tree" },
 ];
+
+/**
+ * Hides `<` and `>` inside quoted strings so an argument like `'data:text/html,<p>ok</p>'` or `"a > b"` is not read
+ * as a redirect. Redirect targets stay visible: in `> "$TMPDIR/x"` the `>` itself is outside the quotes.
+ */
+export function maskQuotedAngles(command: string): string {
+  let out = "";
+  let quote: string | null = null;
+  for (let i = 0; i < command.length; i++) {
+    const c = command[i] as string;
+    if (quote) {
+      if (c === "\\" && quote === '"' && i + 1 < command.length) {
+        out += c + (command[++i] as string);
+        continue;
+      }
+      if (c === quote) quote = null;
+      out += c === "<" || c === ">" ? "_" : c;
+    } else {
+      if (c === "'" || c === '"') quote = c;
+      out += c;
+    }
+  }
+  return out;
+}
 
 export function firstMatch<R extends Rule>(rules: R[], text: string): R | undefined {
   return rules.find((r) => r.re.test(text));
