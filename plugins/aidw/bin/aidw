@@ -94,7 +94,7 @@ var require_visit = __commonJS({
     "use strict";
     var identity = require_identity();
     var BREAK = Symbol("break visit");
-    var SKIP2 = Symbol("skip children");
+    var SKIP3 = Symbol("skip children");
     var REMOVE = Symbol("remove node");
     function visit(node, visitor) {
       const visitor_ = initVisitor(visitor);
@@ -106,7 +106,7 @@ var require_visit = __commonJS({
         visit_(null, node, visitor_, Object.freeze([]));
     }
     visit.BREAK = BREAK;
-    visit.SKIP = SKIP2;
+    visit.SKIP = SKIP3;
     visit.REMOVE = REMOVE;
     function visit_(key, node, visitor, path) {
       const ctrl = callVisitor(key, node, visitor, path);
@@ -154,7 +154,7 @@ var require_visit = __commonJS({
         await visitAsync_(null, node, visitor_, Object.freeze([]));
     }
     visitAsync.BREAK = BREAK;
-    visitAsync.SKIP = SKIP2;
+    visitAsync.SKIP = SKIP3;
     visitAsync.REMOVE = REMOVE;
     async function visitAsync_(key, node, visitor, path) {
       const ctrl = await callVisitor(key, node, visitor, path);
@@ -5535,7 +5535,7 @@ var require_cst_visit = __commonJS({
   "node_modules/yaml/dist/parse/cst-visit.js"(exports2) {
     "use strict";
     var BREAK = Symbol("break visit");
-    var SKIP2 = Symbol("skip children");
+    var SKIP3 = Symbol("skip children");
     var REMOVE = Symbol("remove item");
     function visit(cst, visitor) {
       if ("type" in cst && cst.type === "document")
@@ -5543,7 +5543,7 @@ var require_cst_visit = __commonJS({
       _visit(Object.freeze([]), cst, visitor);
     }
     visit.BREAK = BREAK;
-    visit.SKIP = SKIP2;
+    visit.SKIP = SKIP3;
     visit.REMOVE = REMOVE;
     visit.itemAtPath = (cst, path) => {
       let item = cst;
@@ -6311,15 +6311,15 @@ var require_parser = __commonJS({
     var node_process = require("process");
     var cst = require_cst();
     var lexer = require_lexer();
-    function includesToken(list3, type) {
-      for (let i = 0; i < list3.length; ++i)
-        if (list3[i].type === type)
+    function includesToken(list4, type) {
+      for (let i = 0; i < list4.length; ++i)
+        if (list4[i].type === type)
           return true;
       return false;
     }
-    function findNonEmptyIndex(list3) {
-      for (let i = 0; i < list3.length; ++i) {
-        switch (list3[i].type) {
+    function findNonEmptyIndex(list4) {
+      for (let i = 0; i < list4.length; ++i) {
+        switch (list4[i].type) {
           case "space":
           case "comment":
           case "newline":
@@ -7329,12 +7329,12 @@ __export(cli_exports, {
   run: () => run
 });
 module.exports = __toCommonJS(cli_exports);
-var import_node_fs14 = require("node:fs");
-var import_node_path15 = require("node:path");
+var import_node_fs17 = require("node:fs");
+var import_node_path18 = require("node:path");
 
 // src/analyze.ts
-var import_node_fs13 = require("node:fs");
-var import_node_path14 = require("node:path");
+var import_node_fs15 = require("node:fs");
+var import_node_path16 = require("node:path");
 
 // src/change.ts
 var import_node_fs2 = require("node:fs");
@@ -7368,12 +7368,20 @@ function findProject(opts) {
   const envDir = opts.env.CLAUDE_PROJECT_DIR;
   if (envDir && (0, import_node_fs.existsSync)((0, import_node_path.join)(envDir, AIDW_DIR))) return (0, import_node_path.resolve)(envDir);
   let dir = (0, import_node_path.resolve)(opts.cwd);
+  const wt = new RegExp(`^(.*?)[\\/]${AIDW_DIR.replace(".", "\\.")}[\\/]run[\\/]worktrees(?:[\\/]|$)`).exec(dir);
+  if (wt?.[1] && (0, import_node_fs.existsSync)((0, import_node_path.join)(wt[1], AIDW_DIR))) return wt[1];
   for (; ; ) {
     if ((0, import_node_fs.existsSync)((0, import_node_path.join)(dir, AIDW_DIR))) return dir;
     const parent = (0, import_node_path.dirname)(dir);
     if (parent === dir) return null;
     dir = parent;
   }
+}
+function projectKind(p) {
+  const text = readText(p.projectYaml);
+  if (text === null) return null;
+  const m = /^kind:\s*(greenfield|brownfield)\b/m.exec(text);
+  return m ? m[1] : null;
 }
 function rel(p, file) {
   return (0, import_node_path.relative)(p.project, file).split(import_node_path.sep).join("/");
@@ -7482,8 +7490,8 @@ function resolveChangeId(p, id) {
 }
 
 // src/check.ts
-var import_node_fs12 = require("node:fs");
-var import_node_path13 = require("node:path");
+var import_node_fs14 = require("node:fs");
+var import_node_path15 = require("node:path");
 
 // src/approval.ts
 var import_node_crypto = require("node:crypto");
@@ -7518,9 +7526,22 @@ var Diags = class {
 
 // src/tasks.ts
 var TASK_STATUSES = ["pending", "running", "review", "done", "failed", "blocked", "escalated"];
-var RUNTIME_FIELDS = ["status", "attempts", "evidence", "started_at", "finished_at", "notes", "base"];
+var RUNTIME_FIELDS = [
+  "status",
+  "attempts",
+  "evidence",
+  "started_at",
+  "finished_at",
+  "notes",
+  "base",
+  // S8 parallel waves: the task's git worktree and branch, its merge time, and the fallback to sequential
+  "worktree",
+  "branch",
+  "merged_at",
+  "sequential"
+];
 var DEFAULT_MAX_ATTEMPTS = 3;
-var ADDED_ORIGINS = ["converge", "quality"];
+var ADDED_ORIGINS = ["converge", "quality", "integration"];
 function parseTasks(text) {
   let data;
   try {
@@ -7528,9 +7549,9 @@ function parseTasks(text) {
   } catch (e) {
     return { tasks: [], error: `not valid YAML: ${e.message}` };
   }
-  const list3 = data?.tasks;
-  if (!Array.isArray(list3)) return { tasks: [], error: 'expected a top-level "tasks:" list' };
-  return { tasks: list3 };
+  const list4 = data?.tasks;
+  if (!Array.isArray(list4)) return { tasks: [], error: 'expected a top-level "tasks:" list' };
+  return { tasks: list4 };
 }
 var isStrList = (v) => Array.isArray(v) && v.every((x) => typeof x === "string");
 function validateTasksText(text, file) {
@@ -7560,6 +7581,7 @@ function validateTasksText(text, file) {
     if (t.max_attempts !== void 0 && !(Number.isInteger(t.max_attempts) && Number(t.max_attempts) >= 1)) {
       d.error(file, `${where}: "max_attempts" must be a positive integer`);
     }
+    if (t.risk !== void 0 && t.risk !== "normal" && t.risk !== "high") d.error(file, `${where}: "risk" must be normal or high`);
     if (t.status !== void 0 && !TASK_STATUSES.includes(String(t.status))) {
       d.error(file, `${where}: unknown status "${String(t.status)}" (expected ${TASK_STATUSES.join(", ")})`);
     }
@@ -7621,6 +7643,16 @@ function stableStringify(v) {
 // src/approval.ts
 var CHANGE_PACKAGE_FILES = ["intake.md", "analysis.md", "design.md", "quality.yaml"];
 var FROZEN_PROJECT_DIRS = (p) => [p.design, p.domain, p.architecture, p.requirements];
+function baseSpecFiles(p, change) {
+  const out = /* @__PURE__ */ new Set();
+  for (const f of walkFiles((0, import_node_path3.join)(change.dir, "specs"))) {
+    const cap = capabilityOf((0, import_node_path3.join)(change.dir, "specs"), f);
+    if (!cap) continue;
+    const main = (0, import_node_path3.join)(p.specs, ...cap.split("/"), "spec.md");
+    if ((0, import_node_fs3.existsSync)(main)) out.add(main);
+  }
+  return [...out];
+}
 var sha256 = (s) => (0, import_node_crypto.createHash)("sha256").update(s).digest("hex");
 var normalize = (s) => s.replace(/\r\n?/g, "\n");
 function computeApprovalHash(p, change) {
@@ -7632,6 +7664,7 @@ function computeApprovalHash(p, change) {
   };
   for (const name of CHANGE_PACKAGE_FILES) add((0, import_node_path3.join)(change.dir, name));
   for (const f of walkFiles((0, import_node_path3.join)(change.dir, "specs"))) add(f);
+  for (const f of baseSpecFiles(p, change)) add(f);
   const tasksFile = (0, import_node_path3.join)(change.dir, "tasks.yaml");
   if ((0, import_node_fs3.existsSync)(tasksFile)) add(tasksFile, canonicalTasks((0, import_node_fs3.readFileSync)(tasksFile, "utf8")));
   add(p.constitution);
@@ -8074,9 +8107,9 @@ function validateDeltaText(text, file, mainText, capability) {
 }
 
 // src/quality.ts
-var import_node_fs11 = require("node:fs");
-var import_node_path12 = require("node:path");
-var import_yaml5 = __toESM(require_dist(), 1);
+var import_node_fs13 = require("node:fs");
+var import_node_path14 = require("node:path");
+var import_yaml6 = __toESM(require_dist(), 1);
 
 // src/backstop.ts
 var import_node_child_process = require("node:child_process");
@@ -8166,9 +8199,10 @@ function firstMatch(rules, text) {
   return rules.find((r) => r.re.test(text));
 }
 var APPROVE_COMMAND = /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+approve\b/;
+var RUNNER_COMMAND = /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+run\b/;
 var AIDW_COMMAND = /^\s*["']?(?:[^\s;&|"']*\/)?aidw["']?\s/;
 var SHELL_CHAINING = /[;&|`<>]|\$\(/;
-var AIDW_STATE_COMMAND = /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+(?:task|checkpoint|review|layer-review|verify|converge|deploy|deliver|transition|approve|archive|merge|init|change|brief)\b/;
+var AIDW_STATE_COMMAND = /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+(?:task|checkpoint|review|layer-review|verify|integrate|converge|deploy|deliver|transition|approve|archive|merge|init|change|brief)\b/;
 
 // src/gate.ts
 var OPEN_STATES = /* @__PURE__ */ new Set(["approved", "executing", "verifying", "converging", "deploying"]);
@@ -8202,6 +8236,10 @@ function inside(parent, child) {
 function isFrozenPackageFile(p, file, frozen) {
   if (file === p.constitution || FROZEN_PROJECT_DIRS(p).some((d) => inside(d, file))) return frozen.length > 0;
   for (const id of frozen) {
+    try {
+      if (baseSpecFiles(p, loadChange(p, id)).includes(file)) return true;
+    } catch {
+    }
     const dir = (0, import_node_path4.join)(p.changes, id);
     if (!inside(dir, file)) continue;
     const r = (0, import_node_path4.relative)(dir, file).split(import_node_path4.sep).join("/");
@@ -8250,6 +8288,14 @@ function decide(input, env) {
     if (secret && !inside(project, file)) return deny(`writing ${secret.why} is forbidden (tier x)`);
     if (!inside(project, file)) return null;
     if (role === "reviewer") return deny("the reviewer is read-only; report issues in the verdict instead of fixing them");
+    const worktrees = (0, import_node_path4.join)(p.run, "worktrees");
+    if (inside(worktrees, file)) {
+      const parts = (0, import_node_path4.relative)(worktrees, file).split(import_node_path4.sep);
+      if (parts.length < 3) return deny("write inside a task's worktree (.aidw/run/worktrees/<change>/<task>/...)");
+      if (parts[2] === AIDW_DIR) return deny("the worktree's .aidw/ is a stale copy; aidw state lives in the main checkout and is the orchestrator's");
+      const st2 = gateState(p);
+      return st2.open ? allow("analysis approved (task worktree)") : deny(closedReason(st2));
+    }
     if (role === "implementer" && inside(p.aidw, file) && !inside((0, import_node_path4.join)(p.run, "shots"), file)) {
       return deny("implementers do not write .aidw/; the orchestrator records progress and evidence");
     }
@@ -8273,6 +8319,9 @@ function decide(input, env) {
     if (forbidden) return deny(`command ${forbidden.why}; forbidden (tier x)`);
     if (role && AIDW_STATE_COMMAND.test(cmd2)) {
       return deny(`the ${role} does not change aidw state (no self-verification); report back to the orchestrator`);
+    }
+    if (RUNNER_COMMAND.test(cmd2)) {
+      return deny("`aidw run` starts Claude Code headless in a loop; the user runs it in their own terminal, not inside a session");
     }
     if (APPROVE_COMMAND.test(cmd2)) {
       return ask("approving the Analysis package is the user's decision. Approve only if you (the user) reviewed analysis.md.");
@@ -8386,11 +8435,11 @@ function runBackstop(stdin, env, dirtyProvider = gitDirtyPaths) {
   if (!dirty) return "";
   const unexpected = unexpectedChanges(dirty, readBaseline(p));
   if (!unexpected.length) return "";
-  const list3 = unexpected.slice(0, 20).map((f) => `  - ${f}`).join("\n");
+  const list4 = unexpected.slice(0, 20).map((f) => `  - ${f}`).join("\n");
   const more = unexpected.length > 20 ? `
   ... and ${unexpected.length - 20} more` : "";
   const reason = `AIDW backstop: ${closedReason(st)} Yet these files outside ${AIDW_DIR}/ changed and are not explained by an aidw step:
-${list3}${more}
+${list4}${more}
 Do not delete or revert anything yourself: some of these may be the user's own edits. Tell the user which of these you created or modified in this session and ask how to proceed. While the gate is closed, write only inside .aidw/.`;
   if (input.stop_hook_active) {
     return JSON.stringify({ systemMessage: reason });
@@ -8425,21 +8474,21 @@ function changedSince(cwd, base) {
 }
 
 // src/ops.ts
+var import_node_fs11 = require("node:fs");
+var import_node_path12 = require("node:path");
+
+// src/deliver.ts
 var import_node_fs9 = require("node:fs");
 var import_node_path10 = require("node:path");
 
-// src/deliver.ts
+// src/converge.ts
 var import_node_fs8 = require("node:fs");
 var import_node_path9 = require("node:path");
 
-// src/converge.ts
-var import_node_fs7 = require("node:fs");
-var import_node_path8 = require("node:path");
-
 // src/run.ts
 var import_node_child_process3 = require("node:child_process");
-var import_node_fs6 = require("node:fs");
-var import_node_path7 = require("node:path");
+var import_node_fs7 = require("node:fs");
+var import_node_path8 = require("node:path");
 var import_yaml4 = __toESM(require_dist(), 1);
 
 // src/design.ts
@@ -8456,14 +8505,14 @@ function parseTokens(text, file, d) {
     d.error(file, `invalid YAML: ${e.message}`);
     return [];
   }
-  const list3 = data?.tokens;
-  if (!Array.isArray(list3) || list3.length === 0) {
+  const list4 = data?.tokens;
+  if (!Array.isArray(list4) || list4.length === 0) {
     d.error(file, "must contain a non-empty `tokens:` list");
     return [];
   }
   const out = [];
   const seen = /* @__PURE__ */ new Set();
-  list3.forEach((raw, i) => {
+  list4.forEach((raw, i) => {
     const t = raw ?? {};
     const where = `tokens[${i}]`;
     const name = typeof t.name === "string" ? t.name.trim() : "";
@@ -8650,6 +8699,10 @@ function matchesAny(globs, path) {
   return globs.some((g) => globToRegExp(g).test(path));
 }
 
+// src/parallel.ts
+var import_node_fs6 = require("node:fs");
+var import_node_path7 = require("node:path");
+
 // src/skills.ts
 var ADDY = (name) => `addy/${name}`;
 var UI_TOUCH = /(^|\/)(components?|pages|views|layouts?|styles?|ui|public)(\/|$)|\.(tsx|jsx|vue|svelte|css|scss|html)\b|(^|\/)(src\/)?app\/(?!api\/)/;
@@ -8695,12 +8748,166 @@ function selectSkills(t, kind, opts = {}) {
   return picks;
 }
 
-// src/run.ts
-var now = () => (/* @__PURE__ */ new Date()).toISOString();
+// src/parallel.ts
 var list2 = (v) => Array.isArray(v) ? v.map(String) : [];
+var statusOf = (t) => String(t.status ?? "pending");
+var now = () => (/* @__PURE__ */ new Date()).toISOString();
+var BROWSER_VERIFY2 = /\b(playwright|cypress|e2e)\b/i;
+function staticPrefix(glob) {
+  const segs = glob.trim().replace(/^\.\//, "").replace(/\/+$/, "").split("/").filter(Boolean);
+  const out = [];
+  for (const s of segs) {
+    if (/[*?{[]/.test(s)) break;
+    out.push(s);
+  }
+  return out;
+}
+function globsOverlap(a, b) {
+  const pa = staticPrefix(a);
+  const pb = staticPrefix(b);
+  for (let i = 0; i < Math.min(pa.length, pb.length); i++) if (pa[i] !== pb[i]) return false;
+  return true;
+}
+var touchesOverlap = (a, b) => a.some((x) => b.some((y) => globsOverlap(x, y)));
+var drivesBrowser = (t) => list2(t.verify).some((v) => BROWSER_VERIFY2.test(v)) || touchesUi(t);
+var mustRunAlone = (t) => t.risk === "high" || t.sequential === true || list2(t.touches).some((g) => staticPrefix(g).length === 0);
+function planWave(tasks, max) {
+  const byId = new Map(tasks.map((t) => [t.id, t]));
+  const ready = tasks.filter((t) => statusOf(t) === "pending" && list2(t.depends_on).every((d) => statusOf(byId.get(d) ?? { id: d }) === "done"));
+  const first = ready[0];
+  if (!first) return [];
+  const wave = [first];
+  if (mustRunAlone(first)) return wave;
+  for (const t of ready.slice(1)) {
+    if (wave.length >= max) break;
+    if (mustRunAlone(t)) continue;
+    if (wave.some((w) => touchesOverlap(list2(w.touches), list2(t.touches)))) continue;
+    if (drivesBrowser(t) && wave.some(drivesBrowser)) continue;
+    wave.push(t);
+  }
+  return wave;
+}
+function parallelConfig(p, change) {
+  if (!isGitRepo(p.project) || !headCommit(p.project)) return { ...DEFAULT_PARALLEL, max: 1 };
+  const text = readText(qualityFile(change));
+  if (text === null) return { ...DEFAULT_PARALLEL, max: 1 };
+  return parseQuality(text, "quality.yaml").config?.parallel ?? { ...DEFAULT_PARALLEL, max: 1 };
+}
+var worktreesRoot = (p) => (0, import_node_path7.join)(p.run, "worktrees");
+var worktreeDir = (p, id, taskId) => (0, import_node_path7.join)(worktreesRoot(p), id, taskId);
+var branchName = (id, taskId) => `aidw/${id}/${taskId}`;
+function taskDir(p, t) {
+  return typeof t.worktree === "string" && t.worktree ? (0, import_node_path7.join)(p.project, t.worktree) : p.project;
+}
+function ensureWorktree(p, id, taskId, base) {
+  const dir = worktreeDir(p, id, taskId);
+  const branch = branchName(id, taskId);
+  if ((0, import_node_fs6.existsSync)((0, import_node_path7.join)(dir, ".git"))) return { dir: rel(p, dir), branch, created: false };
+  git(p.project, ["worktree", "prune"]);
+  (0, import_node_fs6.mkdirSync)((0, import_node_path7.join)(dir, ".."), { recursive: true });
+  const hasBranch = git(p.project, ["rev-parse", "--verify", "-q", `refs/heads/${branch}`]).ok;
+  const r = hasBranch ? git(p.project, ["worktree", "add", "-q", dir, branch]) : git(p.project, ["worktree", "add", "-q", "-b", branch, dir, base]);
+  if (!r.ok) throw new OpError(`could not create the worktree for ${taskId}: ${r.err || r.out}`);
+  return { dir: rel(p, dir), branch, created: true };
+}
+function removeWorktree(p, worktree, branch) {
+  if (worktree) {
+    const dir = (0, import_node_path7.join)(p.project, worktree);
+    git(p.project, ["worktree", "remove", "--force", dir]);
+    if ((0, import_node_fs6.existsSync)(dir)) (0, import_node_fs6.rmSync)(dir, { recursive: true, force: true });
+    git(p.project, ["worktree", "prune"]);
+  }
+  if (branch) git(p.project, ["branch", "-q", "-D", branch]);
+}
+function mergeWorktree(p, t, message) {
+  const wt = taskDir(p, t);
+  const branch = String(t.branch ?? "");
+  if (!(0, import_node_fs6.existsSync)(wt) || !branch) throw new OpError(`task ${t.id} has no worktree to merge (${String(t.worktree)})`);
+  const add = git(wt, ["add", "-A", "--", ".", ":(exclude).aidw"]);
+  if (!add.ok) throw new OpError(`git add in the worktree of ${t.id} failed: ${add.err}`);
+  if (!git(wt, ["diff", "--cached", "--quiet"]).ok) {
+    const c = git(wt, ["commit", "-q", "-m", message.replace(/^([^:]+):/, "$1 (worktree):")]);
+    if (!c.ok) throw new OpError(`commit in the worktree of ${t.id} failed: ${c.err || c.out}`);
+  }
+  const m = git(p.project, ["merge", "--no-ff", "--no-commit", "-q", branch]);
+  if (m.ok) return { ok: true };
+  git(p.project, ["merge", "--abort"]);
+  const files = git(p.project, ["diff", "--name-only", "--diff-filter=U"]).out;
+  return { ok: false, conflict: (m.out || m.err || files).split("\n").slice(0, 8).join("; ") };
+}
+var integrationFile = (change) => (0, import_node_path7.join)(change.dir, "evidence", "integration.json");
+function integrationRuns(change) {
+  const f = integrationFile(change);
+  if (!(0, import_node_fs6.existsSync)(f)) return [];
+  try {
+    return JSON.parse((0, import_node_fs6.readFileSync)(f, "utf8")).runs ?? [];
+  } catch {
+    return [];
+  }
+}
+function lastPassAt(change) {
+  return integrationRuns(change).filter((r) => r.ok).at(-1)?.at ?? "";
+}
+function pendingIntegration(change, tasks) {
+  const since = lastPassAt(change);
+  return tasks.filter((t) => statusOf(t) === "done" && typeof t.merged_at === "string" && t.merged_at > since);
+}
+function integrate(p, id, deps) {
+  const change = loadChange(p, id);
+  const tf = deps.loadTasks(p, id);
+  const covered = pendingIntegration(change, tf.tasks);
+  if (!covered.length) return { ok: true, tasks: [], runs: [], summary: "nothing merged since the last integration verify" };
+  const code = deps.quality?.layers.find((l) => l.name === "code");
+  const commands = [.../* @__PURE__ */ new Set([...code ? [...code.setup, ...code.run] : [], ...covered.flatMap((t) => list2(t.verify))])];
+  const runs = [];
+  for (const command of commands) {
+    const started = Date.now();
+    const r = deps.runner(command, p.project, deps.timeoutMs ?? 30 * 60 * 1e3);
+    runs.push({ command, ms: Date.now() - started, ...r });
+    if (r.exit !== 0) break;
+  }
+  const failed = runs.find((r) => r.exit !== 0);
+  const ok = !failed && runs.length === commands.length;
+  const record = { at: now(), head: headCommit(p.project), ok, tasks: covered.map((t) => t.id), runs };
+  const history = integrationRuns(change);
+  const write = () => {
+    (0, import_node_fs6.mkdirSync)((0, import_node_path7.join)(change.dir, "evidence"), { recursive: true });
+    (0, import_node_fs6.writeFileSync)(integrationFile(change), `${JSON.stringify({ runs: [...history, record] }, null, 2)}
+`);
+  };
+  if (ok) {
+    write();
+    return { ok, tasks: record.tasks, runs, summary: `wave ${record.tasks.join(", ")} integrates: ${commands.length} command(s) pass on the merged code` };
+  }
+  const since = lastPassAt(change);
+  const failures = history.filter((r) => !r.ok && r.at > since).length + 1;
+  const max = deps.quality?.maxFixRounds ?? 3;
+  if (failures > max) {
+    write();
+    transition(p, id, "escalated", { reason: `integration verify of ${record.tasks.join(", ")} still failing after ${failures - 1} fix round(s)` });
+    return { ok: false, tasks: record.tasks, runs, escalated: true, summary: `integration verify failed; fix rounds exhausted (${failures - 1}/${max}): escalated` };
+  }
+  const n = tf.tasks.filter((t) => t.origin === "integration").length + 1;
+  const taskId = `I${String(n).padStart(2, "0")}`;
+  const problem = failed ? `Integration verify after merging ${record.tasks.join(", ")} failed: \`${failed.command}\`${failed.timedOut ? " timed out" : ` exited ${failed.exit}`}.
+Each task passed on its own; the merged code does not. Find the interaction between the tasks.
+
+${failed.tail}` : "Integration verify did not complete.";
+  tf.doc.get("tasks").add(
+    tf.doc.createNode({ id: taskId, title: `Fix the integration of ${record.tasks.join(", ")}`, role: "fullstack-engineer", origin: "integration", depends_on: [], touches: ["**"], verify: commands, problem, status: "pending" })
+  );
+  deps.save(tf);
+  record.fixTask = taskId;
+  write();
+  return { ok: false, tasks: record.tasks, runs, fixTask: taskId, summary: `integration verify failed: fix task ${taskId} added (round ${failures}/${max})` };
+}
+
+// src/run.ts
+var now2 = () => (/* @__PURE__ */ new Date()).toISOString();
+var list3 = (v) => Array.isArray(v) ? v.map(String) : [];
 function loadTasks(p, id) {
   const change = loadChange(p, id);
-  const file = (0, import_node_path7.join)(change.dir, "tasks.yaml");
+  const file = (0, import_node_path8.join)(change.dir, "tasks.yaml");
   const text = readText(file);
   if (text === null) throw new OpError(`change "${id}" has no tasks.yaml`);
   const d = validateTasksText(text, rel(p, file));
@@ -8712,7 +8919,7 @@ function saveTasksDoc(tf) {
 }
 function saveTasks(tf) {
   const text = String(tf.doc);
-  (0, import_node_fs6.writeFileSync)(tf.file, text);
+  (0, import_node_fs7.writeFileSync)(tf.file, text);
   tf.tasks = parseTasks(text).tasks;
 }
 function indexOf(tf, taskId) {
@@ -8724,7 +8931,7 @@ function setField(tf, i, key, value) {
   if (value === void 0 || value === null) tf.doc.deleteIn(["tasks", i, key]);
   else tf.doc.setIn(["tasks", i, key], value);
 }
-var statusOf = (t) => String(t.status ?? "pending");
+var statusOf2 = (t) => String(t.status ?? "pending");
 var attemptsOf = (t) => Number.isInteger(t.attempts) ? Number(t.attempts) : 0;
 var maxAttemptsOf = (t) => Number.isInteger(t.max_attempts) ? Number(t.max_attempts) : DEFAULT_MAX_ATTEMPTS;
 function requireExecuting(p, change) {
@@ -8742,38 +8949,41 @@ function nextAction(p, id) {
   requireExecuting(p, tf.change);
   const byId = new Map(tf.tasks.map((t) => [t.id, t]));
   const title = (t) => String(t.title ?? "");
-  for (const t of tf.tasks) if (statusOf(t) === "review") return { action: "review", task: t.id, title: title(t) };
-  for (const t of tf.tasks) if (statusOf(t) === "running") return { action: "implement", task: t.id, title: title(t), reason: "interrupted" };
+  for (const t of tf.tasks) if (statusOf2(t) === "review") return { action: "review", task: t.id, title: title(t) };
+  for (const t of tf.tasks) if (statusOf2(t) === "running") return { action: "implement", task: t.id, title: title(t), reason: "interrupted" };
   for (const t of tf.tasks) {
-    if (statusOf(t) === "escalated") return { action: "escalate", task: t.id, reason: `task ${t.id} is escalated: ${String(t.notes ?? "needs the user")}` };
+    if (statusOf2(t) === "escalated") return { action: "escalate", task: t.id, reason: `task ${t.id} is escalated: ${String(t.notes ?? "needs the user")}` };
   }
   for (const t of tf.tasks) {
-    if (statusOf(t) !== "failed") continue;
+    if (statusOf2(t) !== "failed") continue;
     if (attemptsOf(t) >= maxAttemptsOf(t)) {
       return { action: "escalate", task: t.id, reason: `task ${t.id} failed ${attemptsOf(t)} of ${maxAttemptsOf(t)} attempts: ${String(t.notes ?? "")}` };
     }
     return { action: "implement", task: t.id, title: title(t), reason: "retry" };
   }
-  for (const t of tf.tasks) {
-    if (statusOf(t) !== "pending") continue;
-    if (list2(t.depends_on).every((d) => statusOf(byId.get(d) ?? { id: d }) === "done")) {
-      return { action: "implement", task: t.id, title: title(t), reason: "new" };
-    }
+  const merged = pendingIntegration(tf.change, tf.tasks);
+  if (merged.length) {
+    const fix = tf.tasks.find((t) => t.origin === "integration" && statusOf2(t) === "pending");
+    if (fix) return { action: "implement", task: fix.id, title: title(fix), reason: "new" };
+    return { action: "integrate", tasks: merged.map((t) => t.id) };
   }
-  const open = tf.tasks.filter((t) => statusOf(t) !== "done");
+  const wave = planWave(tf.tasks, parallelConfig(p, tf.change).max);
+  if (wave.length >= 2) return { action: "wave", tasks: wave.map((t) => ({ task: t.id, title: title(t) })) };
+  if (wave[0]) return { action: "implement", task: wave[0].id, title: title(wave[0]), reason: "new" };
+  const open = tf.tasks.filter((t) => statusOf2(t) !== "done");
   if (open.length === 0) return { action: "complete", done: tf.tasks.length };
-  const waiting = open.map((t) => `${t.id} (${statusOf(t)}${list2(t.depends_on).length ? `, needs ${list2(t.depends_on).join(", ")}` : ""})`);
+  const waiting = open.map((t) => `${t.id} (${statusOf2(t)}${list3(t.depends_on).length ? `, needs ${list3(t.depends_on).join(", ")}` : ""})`);
   return { action: "escalate", reason: `no runnable task: ${waiting.join("; ")}` };
 }
-function startTask(p, id, taskId) {
+function startTask(p, id, taskId, opts = {}) {
   const tf = loadTasks(p, id);
   requireExecuting(p, tf.change);
   const i = indexOf(tf, taskId);
   const t = tf.tasks[i];
-  const status = statusOf(t);
+  const status = statusOf2(t);
   const byId = new Map(tf.tasks.map((x) => [x.id, x]));
   if (status === "pending") {
-    const missing = list2(t.depends_on).filter((d) => statusOf(byId.get(d) ?? { id: d }) !== "done");
+    const missing = list3(t.depends_on).filter((d) => statusOf2(byId.get(d) ?? { id: d }) !== "done");
     if (missing.length) throw new OpError(`task ${taskId} depends on unfinished task(s): ${missing.join(", ")}`);
   } else if (status !== "failed" && status !== "running") {
     throw new OpError(`task ${taskId} is "${status}"; only pending, failed or interrupted (running) tasks can start`);
@@ -8788,20 +8998,43 @@ function startTask(p, id, taskId) {
     throw new OpError(`task ${taskId} used all ${max} attempts; it is now escalated`);
   }
   const base = typeof t.base === "string" ? t.base : status === "pending" ? headCommit(p.project) : null;
+  let worktree = typeof t.worktree === "string" ? t.worktree : void 0;
+  if (opts.worktree && status === "pending" || worktree) {
+    if (!base) throw new OpError(`task ${taskId} cannot run in a worktree: the project has no commit yet`);
+    if (t.sequential === true && !worktree) throw new OpError(`task ${taskId} is marked sequential; start it without --worktree`);
+    const wt = ensureWorktree(p, id, taskId, base);
+    if (wt.created) {
+      const setup = parallelConfig(p, tf.change).setup;
+      const runner = opts.runner ?? shellRunner;
+      for (const command of setup) {
+        const r = runner(command, (0, import_node_path8.join)(p.project, wt.dir), 15 * 60 * 1e3);
+        if (r.exit !== 0) {
+          removeWorktree(p, wt.dir, wt.branch);
+          setField(tf, i, "sequential", true);
+          saveTasks(tf);
+          throw new OpError(`worktree setup \`${command}\` failed for ${taskId} (exit ${r.exit}); ${taskId} is marked sequential and runs later on the main checkout:
+${r.tail}`);
+        }
+      }
+    }
+    worktree = wt.dir;
+    setField(tf, i, "worktree", wt.dir);
+    setField(tf, i, "branch", wt.branch);
+  }
   setField(tf, i, "status", "running");
   setField(tf, i, "attempts", attempt);
-  if (!t.started_at) setField(tf, i, "started_at", now());
+  if (!t.started_at) setField(tf, i, "started_at", now2());
   if (base) setField(tf, i, "base", base);
   saveTasks(tf);
-  return { task: taskId, attempt, maxAttempts: max, base, resumed };
+  return { task: taskId, attempt, maxAttempts: max, base, resumed, ...worktree ? { worktree } : {} };
 }
 function retryTask(p, id, taskId) {
   const tf = loadTasks(p, id);
   requireExecuting(p, tf.change);
   const i = indexOf(tf, taskId);
   const t = tf.tasks[i];
-  if (statusOf(t) !== "escalated" && statusOf(t) !== "failed") {
-    throw new OpError(`task ${taskId} is "${statusOf(t)}"; only escalated or failed tasks can be retried`);
+  if (statusOf2(t) !== "escalated" && statusOf2(t) !== "failed") {
+    throw new OpError(`task ${taskId} is "${statusOf2(t)}"; only escalated or failed tasks can be retried`);
   }
   setField(tf, i, "status", "failed");
   setField(tf, i, "attempts", 0);
@@ -8815,21 +9048,21 @@ var MAX_TEST_FILE = 1024 * 1024;
 function walkProject(dir, root, out) {
   let names;
   try {
-    names = (0, import_node_fs6.readdirSync)(dir);
+    names = (0, import_node_fs7.readdirSync)(dir);
   } catch {
     return;
   }
   for (const name of names.sort()) {
     if (SKIP_DIRS.has(name)) continue;
-    const full = (0, import_node_path7.join)(dir, name);
+    const full = (0, import_node_path8.join)(dir, name);
     let st;
     try {
-      st = (0, import_node_fs6.statSync)(full);
+      st = (0, import_node_fs7.statSync)(full);
     } catch {
       continue;
     }
     if (st.isDirectory()) walkProject(full, root, out);
-    else if (st.size <= MAX_TEST_FILE) out.push((0, import_node_path7.relative)(root, full).split(import_node_path7.sep).join("/"));
+    else if (st.size <= MAX_TEST_FILE) out.push((0, import_node_path8.relative)(root, full).split(import_node_path8.sep).join("/"));
   }
 }
 function testFiles(project) {
@@ -8843,7 +9076,7 @@ function findScenarioTests(project, ids) {
   if (!ids.length) return found;
   const patterns = ids.map((s) => [s, new RegExp(`(^|[^a-z0-9/-])${s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![a-z0-9/-])`)]);
   for (const f of testFiles(project)) {
-    const lines = (0, import_node_fs6.readFileSync)((0, import_node_path7.join)(project, f), "utf8").split(/\r?\n/);
+    const lines = (0, import_node_fs7.readFileSync)((0, import_node_path8.join)(project, f), "utf8").split(/\r?\n/);
     lines.forEach((line, n) => {
       if (SKIPPED_LINE.test(line)) return;
       for (const [s, re] of patterns) if (re.test(line)) found[s]?.push(`${f}:${n + 1}`);
@@ -8855,27 +9088,28 @@ function designEvidence(p, id, t, changed, since) {
   if (!touchesUi(t)) return null;
   const { tokens, exists, diags } = loadTokens(p);
   if (!exists || diags.errors.length > 0 || tokens.length === 0) return null;
+  const dir = taskDir(p, t);
   return {
-    missing_tokens: missingTokens(p.project, tokens),
-    hardcoded_colors: hardcodedColors(p.project, changed ?? [], tokens),
+    missing_tokens: missingTokens(dir, tokens),
+    hardcoded_colors: hardcodedColors(dir, changed ?? [], tokens),
     screenshots: taskShots(p, id, t.id, since)
   };
 }
 var evidenceRel = (taskId) => `evidence/${taskId}.json`;
 function readEvidence(change, t) {
-  const file = (0, import_node_path7.join)(change.dir, evidenceRel(t.id));
-  if ((0, import_node_fs6.existsSync)(file)) {
+  const file = (0, import_node_path8.join)(change.dir, evidenceRel(t.id));
+  if ((0, import_node_fs7.existsSync)(file)) {
     try {
-      return JSON.parse((0, import_node_fs6.readFileSync)(file, "utf8"));
+      return JSON.parse((0, import_node_fs7.readFileSync)(file, "utf8"));
     } catch {
     }
   }
   return { task: t.id, title: String(t.title ?? ""), checkpoints: [], reviews: [] };
 }
 function writeEvidence(change, ev) {
-  const file = (0, import_node_path7.join)(change.dir, evidenceRel(ev.task));
-  (0, import_node_fs6.mkdirSync)((0, import_node_path7.join)(change.dir, "evidence"), { recursive: true });
-  (0, import_node_fs6.writeFileSync)(file, `${JSON.stringify(ev, null, 2)}
+  const file = (0, import_node_path8.join)(change.dir, evidenceRel(ev.task));
+  (0, import_node_fs7.mkdirSync)((0, import_node_path8.join)(change.dir, "evidence"), { recursive: true });
+  (0, import_node_fs7.writeFileSync)(file, `${JSON.stringify(ev, null, 2)}
 `);
 }
 var tailOf = (s, lines = 60) => s.split(/\r?\n/).slice(-lines).join("\n").trim();
@@ -8897,30 +9131,31 @@ function checkpoint(p, id, taskId, opts = {}) {
   requireExecuting(p, tf.change);
   const i = indexOf(tf, taskId);
   const t = tf.tasks[i];
-  if (statusOf(t) !== "running") throw new OpError(`task ${taskId} is "${statusOf(t)}"; checkpoint needs a running task (aidw task start ${taskId})`);
-  const scenarios = findScenarioTests(p.project, list2(t.scenarios));
+  if (statusOf2(t) !== "running") throw new OpError(`task ${taskId} is "${statusOf2(t)}"; checkpoint needs a running task (aidw task start ${taskId})`);
+  const dir = taskDir(p, t);
+  const scenarios = findScenarioTests(dir, list3(t.scenarios));
   const missing = Object.entries(scenarios).filter(([, locs]) => locs.length === 0).map(([s]) => s);
   const base = typeof t.base === "string" ? t.base : null;
-  const changed = changedSince(p.project, base)?.filter((f) => !f.startsWith(".aidw/")) ?? null;
-  const touches = list2(t.touches);
+  const changed = changedSince(dir, base)?.filter((f) => !f.startsWith(".aidw/")) ?? null;
+  const touches = list3(t.touches);
   const outside = changed ? changed.filter((f) => !matchesAny(touches, f)) : [];
   const runner = opts.runner ?? shellRunner;
   const timeoutMs = opts.timeoutMs ?? 15 * 60 * 1e3;
   const verify2 = [];
-  for (const command of list2(t.verify)) {
+  for (const command of list3(t.verify)) {
     const started = Date.now();
-    const r = runner(command, p.project, timeoutMs);
+    const r = runner(command, dir, timeoutMs);
     verify2.push({ command, ms: Date.now() - started, ...r });
     if (r.exit !== 0) break;
   }
-  const verifyOk = verify2.length === list2(t.verify).length && verify2.every((v) => v.exit === 0);
+  const verifyOk = verify2.length === list3(t.verify).length && verify2.every((v) => v.exit === 0);
   const previous = readEvidence(tf.change, t).checkpoints.at(-1)?.at;
   const design = designEvidence(p, id, t, changed, previous ?? (typeof t.started_at === "string" ? t.started_at : void 0));
   const designOk = !design || design.missing_tokens.length === 0 && design.screenshots.length > 0;
   const ok = verifyOk && missing.length === 0 && designOk;
   const record = {
     attempt: attemptsOf(t),
-    at: now(),
+    at: now2(),
     ok,
     base,
     scenarios,
@@ -8943,16 +9178,16 @@ function checkpoint(p, id, taskId, opts = {}) {
   setField(tf, i, "evidence", evidenceRel(taskId));
   setField(tf, i, "notes", ok ? null : `checkpoint: ${problems.join("; ")}`);
   saveTasks(tf);
-  return { ...record, task: taskId, status: ok ? "review" : "failed", problems, evidence: rel(p, (0, import_node_path7.join)(tf.change.dir, evidenceRel(taskId))) };
+  return { ...record, task: taskId, status: ok ? "review" : "failed", problems, evidence: rel(p, (0, import_node_path8.join)(tf.change.dir, evidenceRel(taskId))) };
 }
 function recordReview(p, id, taskId, verdict, notes, opts = {}) {
   const tf = loadTasks(p, id);
   requireExecuting(p, tf.change);
   const i = indexOf(tf, taskId);
   const t = tf.tasks[i];
-  if (statusOf(t) !== "review") throw new OpError(`task ${taskId} is "${statusOf(t)}"; only a checkpointed task (review) can be reviewed`);
+  if (statusOf2(t) !== "review") throw new OpError(`task ${taskId} is "${statusOf2(t)}"; only a checkpointed task (review) can be reviewed`);
   const ev = readEvidence(tf.change, t);
-  ev.reviews.push({ attempt: attemptsOf(t), at: now(), verdict, notes: notes.trim() });
+  ev.reviews.push({ attempt: attemptsOf(t), at: now2(), verdict, notes: notes.trim() });
   writeEvidence(tf.change, ev);
   if (verdict === "fix") {
     const exhausted = attemptsOf(t) >= maxAttemptsOf(t);
@@ -8961,18 +9196,42 @@ function recordReview(p, id, taskId, verdict, notes, opts = {}) {
     saveTasks(tf);
     return { task: taskId, verdict, status: exhausted ? "escalated" : "failed", commit: null };
   }
-  setField(tf, i, "status", "done");
-  setField(tf, i, "notes", null);
-  setField(tf, i, "finished_at", now());
-  saveTasks(tf);
-  if (opts.commit === false) return { task: taskId, verdict, status: "done", commit: null };
-  if (!isGitRepo(p.project)) return { task: taskId, verdict, status: "done", commit: null, warning: "not a git repository: task not committed" };
-  const add = git(p.project, ["add", "-A"]);
   const msg = `${taskId}: ${String(t.title ?? "")}
 
 aidw change ${id}, task ${taskId}. Checkpoint and review evidence: .aidw/changes/${id}/${evidenceRel(taskId)}`;
+  const inWorktree = typeof t.worktree === "string" && t.worktree !== "";
+  if (inWorktree) {
+    const m = mergeWorktree(p, t, msg);
+    if (!m.ok) {
+      removeWorktree(p, String(t.worktree), String(t.branch ?? ""));
+      for (const f of ["worktree", "branch", "base", "started_at"]) setField(tf, i, f, null);
+      setField(tf, i, "status", "pending");
+      setField(tf, i, "attempts", 0);
+      setField(tf, i, "sequential", true);
+      setField(tf, i, "notes", `merge conflict after review (${m.conflict}); dropped, reruns sequentially on the latest code`.slice(0, 500));
+      saveTasks(tf);
+      return { task: taskId, verdict, status: "pending", commit: null, conflict: m.conflict };
+    }
+    setField(tf, i, "merged_at", now2());
+    setField(tf, i, "worktree", null);
+    setField(tf, i, "branch", null);
+  }
+  setField(tf, i, "status", "done");
+  setField(tf, i, "notes", null);
+  setField(tf, i, "finished_at", now2());
+  saveTasks(tf);
+  if (opts.commit === false && !inWorktree) return { task: taskId, verdict, status: "done", commit: null };
+  if (!isGitRepo(p.project)) return { task: taskId, verdict, status: "done", commit: null, warning: "not a git repository: task not committed" };
+  const add = git(p.project, ["add", "-A"]);
   const commit = add.ok ? git(p.project, ["commit", "-q", "-m", msg]) : add;
+  if (inWorktree && commit.ok) removeWorktree(p, String(t.worktree), String(t.branch ?? ""));
   if (!commit.ok) {
+    if (inWorktree) {
+      git(p.project, ["merge", "--abort"]);
+      setField(tf, i, "worktree", t.worktree);
+      setField(tf, i, "branch", t.branch);
+      setField(tf, i, "merged_at", null);
+    }
     setField(tf, i, "status", "review");
     setField(tf, i, "finished_at", null);
     saveTasks(tf);
@@ -8980,19 +9239,26 @@ aidw change ${id}, task ${taskId}. Checkpoint and review evidence: .aidw/changes
   }
   return { task: taskId, verdict, status: "done", commit: headCommit(p.project) };
 }
+function integrateChange(p, id, opts = {}) {
+  const tf = loadTasks(p, id);
+  requireExecuting(p, tf.change);
+  const text = readText(qualityFile(tf.change));
+  const quality = text === null ? null : parseQuality(text, "quality.yaml").config;
+  return integrate(p, id, { loadTasks, save: (x) => saveTasks(x), runner: opts.runner ?? shellRunner, quality, ...opts.timeoutMs ? { timeoutMs: opts.timeoutMs } : {} });
+}
 function pointer(p, file, what) {
-  return (0, import_node_fs6.existsSync)(file) ? `- \`${rel(p, file)}\`: ${what}` : null;
+  return (0, import_node_fs7.existsSync)(file) ? `- \`${rel(p, file)}\`: ${what}` : null;
 }
 function adrPointers(p) {
   return walkFiles(p.decisions).filter((f) => f.endsWith(".md")).map((f) => {
-    const title = ((0, import_node_fs6.readFileSync)(f, "utf8").match(/^#\s+(.+)$/m)?.[1] ?? "").trim();
+    const title = ((0, import_node_fs7.readFileSync)(f, "utf8").match(/^#\s+(.+)$/m)?.[1] ?? "").trim();
     return `- \`${rel(p, f)}\`${title ? `: ${title}` : ""}`;
   });
 }
 function buildBrief(p, id, taskId, kind, vendorDir) {
   const tf = loadTasks(p, id);
   const t = tf.tasks[indexOf(tf, taskId)];
-  const status = statusOf(t);
+  const status = statusOf2(t);
   const ev = readEvidence(tf.change, t);
   const lastCheckpoint = ev.checkpoints.at(-1);
   const lastReview = ev.reviews.at(-1);
@@ -9000,33 +9266,40 @@ function buildBrief(p, id, taskId, kind, vendorDir) {
   const failedCheckpoint = !reviewIsLatest && lastCheckpoint && !lastCheckpoint.ok ? lastCheckpoint : void 0;
   const fixReview = reviewIsLatest && lastReview?.verdict === "fix" ? lastReview : void 0;
   const retry = kind === "implement" && (!!failedCheckpoint || !!fixReview);
-  const skills = selectSkills(t, kind, { retry }).map((s) => ({ ...s, path: (0, import_node_path7.join)(vendorDir, ...s.id.split("/"), "SKILL.md") }));
+  const skills = selectSkills(t, kind, { retry }).map((s) => ({ ...s, path: (0, import_node_path8.join)(vendorDir, ...s.id.split("/"), "SKILL.md") }));
   const reqs = requirementsAfterChange(p, id);
-  const scenarioIds = list2(t.scenarios);
-  const reqIds = [.../* @__PURE__ */ new Set([...list2(t.specs), ...scenarioIds.map((s) => s.split("/").slice(0, -1).join("/"))])];
+  const scenarioIds = list3(t.scenarios);
+  const reqIds = [.../* @__PURE__ */ new Set([...list3(t.specs), ...scenarioIds.map((s) => s.split("/").slice(0, -1).join("/"))])];
   const reqBlocks = reqIds.map((r) => {
     const req = reqs.get(r);
     return req ? `<!-- ${r} -->
 ${req.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`;
   });
-  const done = list2(t.depends_on).map((d) => {
+  const done = list3(t.depends_on).map((d) => {
     const dep = tf.tasks.find((x) => x.id === d);
-    return `- ${d}: ${String(dep?.title ?? "")} (${dep ? statusOf(dep) : "unknown"})`;
+    return `- ${d}: ${String(dep?.title ?? "")} (${dep ? statusOf2(dep) : "unknown"})`;
   });
   const base = typeof t.base === "string" ? t.base : null;
-  const priorWork = kind === "implement" && status === "running" && base !== null && (changedSince(p.project, base) ?? []).some((f) => !f.startsWith(".aidw/"));
+  const taskRoot = taskDir(p, t);
+  const inWorktree = taskRoot !== p.project;
+  const priorWork = kind === "implement" && status === "running" && base !== null && (changedSince(taskRoot, base) ?? []).some((f) => !f.startsWith(".aidw/"));
+  const h = (title, body2) => body2.length ? [`## ${title}`, "", ...body2, ""] : [];
+  const workdir = inWorktree ? h("Working directory (parallel wave)", [
+    `This task runs beside other tasks, in its own git worktree: \`${taskRoot}\` (branch \`${String(t.branch ?? "")}\`).`,
+    `\`cd\` there before anything else and run every command there. Paths in **Touches** are relative to it. Never edit the main checkout \`${p.project}\`, and never the worktree's own \`.aidw/\` (a stale copy).`,
+    ...kind === "implement" ? ["Dependencies resolve from the main checkout's `node_modules` (a parent folder). Do not install packages unless the task needs a new one; if it does, install inside the worktree and say so in your report."] : []
+  ]) : [];
   const pointers = [
     pointer(p, p.constitution, "engineering principles every agent follows"),
-    pointer(p, (0, import_node_path7.join)(p.domain, "model.md"), "glossary, entities, business rules"),
-    pointer(p, (0, import_node_path7.join)(p.architecture, "overview.md"), "architecture, folder structure, integrations"),
-    pointer(p, (0, import_node_path7.join)(p.requirements, `${id}.md`), "user stories and implementation/testing decisions"),
+    pointer(p, (0, import_node_path8.join)(p.domain, "model.md"), "glossary, entities, business rules"),
+    pointer(p, (0, import_node_path8.join)(p.architecture, "overview.md"), "architecture, folder structure, integrations"),
+    pointer(p, (0, import_node_path8.join)(p.requirements, `${id}.md`), "user stories and implementation/testing decisions"),
     ...touchesUi(t) ? [pointer(p, p.design, "design direction and assets (UI task)")] : []
   ].filter((x) => x !== null);
   const adrs = adrPointers(p);
-  const touches = list2(t.touches);
-  const verify2 = list2(t.verify);
-  const h = (title, body2) => body2.length ? [`## ${title}`, "", ...body2, ""] : [];
-  const decisions = decisionsToHonor(readText((0, import_node_path7.join)(tf.change.dir, "analysis.md")) ?? "");
+  const touches = list3(t.touches);
+  const verify2 = list3(t.verify);
+  const decisions = decisionsToHonor(readText((0, import_node_path8.join)(tf.change.dir, "analysis.md")) ?? "");
   const tokenInfo = touchesUi(t) ? loadTokens(p) : null;
   const tokens = tokenInfo && tokenInfo.diags.errors.length === 0 ? tokenInfo.tokens : [];
   const shots = shotsDir(p, id, taskId);
@@ -9079,6 +9352,7 @@ ${req.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`;
       ] : [],
       "- Report in at most 10 lines: what works now, files changed, verify result, anything the reviewer should know (e.g. files outside Touches and why).",
       "",
+      ...workdir,
       ...priorWork ? h("Resuming", [
         `Work from an earlier attempt or an interrupted session may already be in the working tree. Inspect it first (\`git status\`, \`git diff ${base}\`) and continue from it; do not start over.`
       ]) : [],
@@ -9087,18 +9361,19 @@ ${req.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`;
       ...shared
     ];
   } else {
-    const diff = base ? `\`git diff ${base}\` plus untracked files (\`git status --porcelain\`)` : "the files matching Touches (no base commit was recorded)";
+    const diff = base ? `${inWorktree ? `in the worktree \`${taskRoot}\`: ` : ""}\`git diff ${base}\` plus untracked files (\`git status --porcelain\`)` : "the files matching Touches (no base commit was recorded)";
     const outside = lastCheckpoint?.outside_touches ?? [];
     const design = lastCheckpoint?.design;
     body = [
       "You are an independent reviewer in a fresh context. You did not write this code. You may read files and run read-only commands (tests included); you cannot edit anything.",
       "",
+      ...workdir,
       "## What to review",
       "",
       `- The task's changes: ${diff}.`,
-      `- Checkpoint evidence: \`${rel(p, (0, import_node_path7.join)(tf.change.dir, evidenceRel(taskId)))}\` (verify output, where each scenario test lives).`,
+      `- Checkpoint evidence: \`${rel(p, (0, import_node_path8.join)(tf.change.dir, evidenceRel(taskId)))}\` (verify output, where each scenario test lives).`,
       ...outside.length ? [`- Files changed outside Touches: ${outside.map((f) => `\`${f}\``).join(", ")}. Decide whether each is justified.`] : [],
-      ...design?.screenshots.length ? [`- Screenshots (open each with Read): ${design.screenshots.map((f) => `\`${(0, import_node_path7.join)(p.project, f)}\``).join(", ")}`] : [],
+      ...design?.screenshots.length ? [`- Screenshots (open each with Read): ${design.screenshots.map((f) => `\`${(0, import_node_path8.join)(p.project, f)}\``).join(", ")}`] : [],
       ...design?.hardcoded_colors.length ? [`- Color literals that are not tokens, in changed files: ${design.hardcoded_colors.map((f) => `\`${f}\``).join(", ")}. Each needs a reason or becomes a token.`] : [],
       "",
       "## Checklist",
@@ -9120,16 +9395,16 @@ ${req.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`;
     ];
   }
   const text = [...header, ...body].join("\n").replace(/\n{3,}/g, "\n\n");
-  const dir = (0, import_node_path7.join)(p.run, "briefs", id);
-  (0, import_node_fs6.mkdirSync)(dir, { recursive: true });
-  const path = (0, import_node_path7.join)(dir, `${taskId}.${kind}.md`);
-  (0, import_node_fs6.writeFileSync)(path, text);
+  const dir = (0, import_node_path8.join)(p.run, "briefs", id);
+  (0, import_node_fs7.mkdirSync)(dir, { recursive: true });
+  const path = (0, import_node_path8.join)(dir, `${taskId}.${kind}.md`);
+  (0, import_node_fs7.writeFileSync)(path, text);
   return { kind, task: taskId, path, text, skills };
 }
 
 // src/converge.ts
-var convergeFile = (change) => (0, import_node_path8.join)(change.dir, "evidence", "converge.json");
-var now2 = () => (/* @__PURE__ */ new Date()).toISOString();
+var convergeFile = (change) => (0, import_node_path9.join)(change.dir, "evidence", "converge.json");
+var now3 = () => (/* @__PURE__ */ new Date()).toISOString();
 var idPattern = (id) => new RegExp(`(^|[^a-z0-9/-])${id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![a-z0-9/-])`);
 function fromJunit(id, tests) {
   const re = idPattern(id);
@@ -9166,7 +9441,7 @@ function scenarioResults(p, id) {
     for (const s of ids) scenarios[s] = fromJunit(s, tests);
     return { mode: "junit", scenarios };
   }
-  const files = testFiles(p.project).map((f) => ({ file: f, lines: (0, import_node_fs7.readFileSync)((0, import_node_path8.join)(p.project, f), "utf8").split(/\r?\n/) }));
+  const files = testFiles(p.project).map((f) => ({ file: f, lines: (0, import_node_fs8.readFileSync)((0, import_node_path9.join)(p.project, f), "utf8").split(/\r?\n/) }));
   for (const s of ids) scenarios[s] = fromPresence(s, files);
   return { mode: "presence", scenarios };
 }
@@ -9180,7 +9455,7 @@ function converge(p, id) {
   const gaps = Object.entries(scenarios).filter(([, r]) => r.status !== "pass").map(([s]) => s);
   const tf = loadTasks(p, id);
   const config = loadQuality(p, change);
-  const record = { at: now2(), head: headCommit(p.project), mode, ok: gaps.length === 0, scenarios, added: [], escalated: [] };
+  const record = { at: now3(), head: headCommit(p.project), mode, ok: gaps.length === 0, scenarios, added: [], escalated: [] };
   const coveredBefore = (s) => tf.tasks.some((t) => t.origin === "converge" && Array.isArray(t.scenarios) && t.scenarios.includes(s));
   record.escalated = gaps.filter(coveredBefore);
   const fresh = gaps.filter((s) => !coveredBefore(s));
@@ -9225,23 +9500,23 @@ function converge(p, id) {
 }
 function writeRecord(change, record) {
   const f = convergeFile(change);
-  (0, import_node_fs7.mkdirSync)((0, import_node_path8.join)(change.dir, "evidence"), { recursive: true });
+  (0, import_node_fs8.mkdirSync)((0, import_node_path9.join)(change.dir, "evidence"), { recursive: true });
   let runs = [];
-  if ((0, import_node_fs7.existsSync)(f)) {
+  if ((0, import_node_fs8.existsSync)(f)) {
     try {
-      runs = JSON.parse((0, import_node_fs7.readFileSync)(f, "utf8")).runs ?? [];
+      runs = JSON.parse((0, import_node_fs8.readFileSync)(f, "utf8")).runs ?? [];
     } catch {
       runs = [];
     }
   }
-  (0, import_node_fs7.writeFileSync)(f, `${JSON.stringify({ runs: [...runs, record] }, null, 2)}
+  (0, import_node_fs8.writeFileSync)(f, `${JSON.stringify({ runs: [...runs, record] }, null, 2)}
 `);
 }
 function lastConverge(change) {
   const f = convergeFile(change);
-  if (!(0, import_node_fs7.existsSync)(f)) return null;
+  if (!(0, import_node_fs8.existsSync)(f)) return null;
   try {
-    return (JSON.parse((0, import_node_fs7.readFileSync)(f, "utf8")).runs ?? []).at(-1) ?? null;
+    return (JSON.parse((0, import_node_fs8.readFileSync)(f, "utf8")).runs ?? []).at(-1) ?? null;
   } catch {
     return null;
   }
@@ -9259,7 +9534,7 @@ function convergePassed(p, id) {
 // src/deliver.ts
 var HANDOFF_SECTIONS = ["Overview", "Run locally", "Environment", "Deploy", "Usage", "Known issues", "Next steps"];
 var IMAGE2 = /\.(png|jpe?g|webp)$/i;
-var deliveryDir = (change) => (0, import_node_path9.join)(change.dir, "delivery");
+var deliveryDir = (change) => (0, import_node_path10.join)(change.dir, "delivery");
 var HANDOFF = (title) => `# Handoff: ${title}
 
 ## Overview
@@ -9290,12 +9565,12 @@ ${PLACEHOLDER}: anything that does not work or was cut, failing or skipped check
 
 ${PLACEHOLDER}: recommended follow-ups.
 `;
-var statusOf2 = (t) => String(t.status ?? "pending");
+var statusOf3 = (t) => String(t.status ?? "pending");
 function readEvidence2(change, taskId) {
-  const f = (0, import_node_path9.join)(change.dir, "evidence", `${taskId}.json`);
-  if (!(0, import_node_fs8.existsSync)(f)) return null;
+  const f = (0, import_node_path10.join)(change.dir, "evidence", `${taskId}.json`);
+  if (!(0, import_node_fs9.existsSync)(f)) return null;
   try {
-    return JSON.parse((0, import_node_fs8.readFileSync)(f, "utf8"));
+    return JSON.parse((0, import_node_fs9.readFileSync)(f, "utf8"));
   } catch {
     return null;
   }
@@ -9310,7 +9585,7 @@ function tasksMd(p, change, tasks) {
   const rows = tasks.map((t) => {
     const ev = readEvidence2(change, t.id);
     const reviews = (ev?.reviews ?? []).map((r) => r.verdict).join(", ") || "-";
-    return `| ${t.id} | ${cell(String(t.title ?? ""))} | ${String(t.origin ?? "plan")} | ${statusOf2(t)} | ${String(t.attempts ?? 0)} | ${reviews} | ${commitOf(p, t.id) || "-"} |`;
+    return `| ${t.id} | ${cell(String(t.title ?? ""))} | ${String(t.origin ?? "plan")} | ${statusOf3(t)} | ${String(t.attempts ?? 0)} | ${reviews} | ${commitOf(p, t.id) || "-"} |`;
   });
   const outside = tasks.flatMap((t) => {
     const files = readEvidence2(change, t.id)?.checkpoints.at(-1)?.outside_touches ?? [];
@@ -9319,7 +9594,7 @@ function tasksMd(p, change, tasks) {
   return [
     `# Tasks: ${String(change.data.title ?? change.id)}`,
     "",
-    "Origin `plan` = approved in the Analysis; `quality` = added to fix a failing quality layer; `converge` = added to cover a scenario.",
+    "Origin `plan` = approved in the Analysis; `quality` = added to fix a failing quality layer; `integration` = added when a parallel wave did not work together; `converge` = added to cover a scenario.",
     "",
     "| Task | Title | Origin | Status | Attempts | Reviews | Commit |",
     "|---|---|---|---|---|---|---|",
@@ -9359,7 +9634,7 @@ function qualityMd(p, change, tasks) {
   if (!fixes.length) out.push("No layer failed.");
   for (const t of fixes) {
     const first = String(t.problem ?? "").split("\n")[0] ?? "";
-    out.push(`- ${t.id} (${statusOf2(t)}, ${String(t.attempts ?? 0)} attempt(s)): ${first}`);
+    out.push(`- ${t.id} (${statusOf3(t)}, ${String(t.attempts ?? 0)} attempt(s)): ${first}`);
   }
   out.push("");
   out.push("## Scenarios (converge)", "");
@@ -9392,27 +9667,27 @@ function deployLine(d) {
 }
 function decisionsMd(p) {
   const adrs = walkFiles(p.decisions).filter((f) => f.endsWith(".md")).map((f) => {
-    const title = ((0, import_node_fs8.readFileSync)(f, "utf8").match(/^#\s+(.+)$/m)?.[1] ?? "").trim();
+    const title = ((0, import_node_fs9.readFileSync)(f, "utf8").match(/^#\s+(.+)$/m)?.[1] ?? "").trim();
     return `- \`${rel(p, f)}\`${title ? `: ${title}` : ""}`;
   });
   return ["# Decisions", "", "Architecture decision records of the project (see also `## Architecture` in the Analysis).", "", ...adrs.length ? adrs : ["No ADRs."], ""].join("\n");
 }
 function screenshots(change) {
-  const dir = (0, import_node_path9.join)(deliveryDir(change), "screenshots");
-  return (0, import_node_fs8.existsSync)(dir) ? (0, import_node_fs8.readdirSync)(dir).filter((f) => IMAGE2.test(f)).sort() : [];
+  const dir = (0, import_node_path10.join)(deliveryDir(change), "screenshots");
+  return (0, import_node_fs9.existsSync)(dir) ? (0, import_node_fs9.readdirSync)(dir).filter((f) => IMAGE2.test(f)).sort() : [];
 }
 function seedScreenshots(p, id, change, tasks) {
-  const target = (0, import_node_path9.join)(deliveryDir(change), "screenshots");
+  const target = (0, import_node_path10.join)(deliveryDir(change), "screenshots");
   if (screenshots(change).length) return [];
   const copied = [];
   const rank = (f) => (/desktop/i.test(f) ? 0 : 2) + (/dark/i.test(f) ? 1 : 0);
-  for (const t of tasks.filter((x) => touchesUi(x) && statusOf2(x) === "done")) {
+  for (const t of tasks.filter((x) => touchesUi(x) && statusOf3(x) === "done")) {
     const dir = shotsDir(p, id, String(t.id));
-    if (!(0, import_node_fs8.existsSync)(dir)) continue;
-    const files = (0, import_node_fs8.readdirSync)(dir).filter((f) => /\.png$/i.test(f)).map((f) => ({ f, at: (0, import_node_fs8.statSync)((0, import_node_path9.join)(dir, f)).mtimeMs })).sort((a, b) => rank(a.f) - rank(b.f) || b.at - a.at).slice(0, 2);
+    if (!(0, import_node_fs9.existsSync)(dir)) continue;
+    const files = (0, import_node_fs9.readdirSync)(dir).filter((f) => /\.png$/i.test(f)).map((f) => ({ f, at: (0, import_node_fs9.statSync)((0, import_node_path10.join)(dir, f)).mtimeMs })).sort((a, b) => rank(a.f) - rank(b.f) || b.at - a.at).slice(0, 2);
     for (const { f } of files) {
       const name = `${String(copied.length + 1).padStart(2, "0")}-${String(t.id)}-${f}`;
-      (0, import_node_fs8.copyFileSync)((0, import_node_path9.join)(dir, f), (0, import_node_path9.join)(target, name));
+      (0, import_node_fs9.copyFileSync)((0, import_node_path10.join)(dir, f), (0, import_node_path10.join)(target, name));
       copied.push(name);
     }
   }
@@ -9426,8 +9701,8 @@ var PM_BUILTINS = new Set(
   "install i add remove rm uninstall update up upgrade ci init create exec dlx x link unlink publish pack audit outdated why list ls config cache info view login logout version help store prune rebuild dedupe import patch patch-commit env setup global bin root run test start".split(" ")
 );
 function staleReadmeCommands(project) {
-  const readme = readText((0, import_node_path9.join)(project, "README.md"));
-  const pkgText = readText((0, import_node_path9.join)(project, "package.json"));
+  const readme = readText((0, import_node_path10.join)(project, "README.md"));
+  const pkgText = readText((0, import_node_path10.join)(project, "package.json"));
   if (readme === null || pkgText === null) return [];
   let scripts = {};
   try {
@@ -9453,11 +9728,11 @@ function checkDelivery(p, id) {
   const change = loadChange(p, id);
   const d = new Diags();
   const dir = deliveryDir(change);
-  const where = (f) => rel(p, (0, import_node_path9.join)(dir, f));
+  const where = (f) => rel(p, (0, import_node_path10.join)(dir, f));
   for (const f of ["README.md", "quality-report.md", "tasks.md", "decisions.md", "handoff.md"]) {
-    if (!(0, import_node_fs8.existsSync)((0, import_node_path9.join)(dir, f))) d.error(where(f), "missing; run `aidw deliver`");
+    if (!(0, import_node_fs9.existsSync)((0, import_node_path10.join)(dir, f))) d.error(where(f), "missing; run `aidw deliver`");
   }
-  const handoff = readText((0, import_node_path9.join)(dir, "handoff.md"));
+  const handoff = readText((0, import_node_path10.join)(dir, "handoff.md"));
   if (handoff !== null) {
     const secs = sections(handoff);
     for (const name of HANDOFF_SECTIONS) {
@@ -9469,15 +9744,15 @@ function checkDelivery(p, id) {
       if (l.includes(PLACEHOLDER)) d.error(where("handoff.md"), `unresolved ${PLACEHOLDER} placeholder`, i + 1);
     });
     const env = secs.find((x) => x.name.toLowerCase() === "environment");
-    if (env && !env.body.includes(PLACEHOLDER) && !/^\s*none\b/im.test(env.body) && !(0, import_node_fs8.existsSync)((0, import_node_path9.join)(p.project, ".env.example"))) {
-      d.error(rel(p, (0, import_node_path9.join)(p.project, ".env.example")), 'missing: the handoff lists environment variables, so ship a .env.example (or write "None" under ## Environment)');
+    if (env && !env.body.includes(PLACEHOLDER) && !/^\s*none\b/im.test(env.body) && !(0, import_node_fs9.existsSync)((0, import_node_path10.join)(p.project, ".env.example"))) {
+      d.error(rel(p, (0, import_node_path10.join)(p.project, ".env.example")), 'missing: the handoff lists environment variables, so ship a .env.example (or write "None" under ## Environment)');
     }
   }
   if (needsScreenshots(loadTasks(p, id).tasks) && screenshots(change).length === 0) {
     d.error(where("screenshots/"), "no screenshots (png, jpg, webp) of the main flows; this change has UI tasks");
   }
   if (!lastConverge(change)?.ok) d.error(where("quality-report.md"), "converge has not passed");
-  if (!(0, import_node_fs8.existsSync)((0, import_node_path9.join)(p.project, "README.md"))) d.warn("README.md", "the project has no README: write one (what it is, run locally, tests, preview URL)");
+  if (!(0, import_node_fs9.existsSync)((0, import_node_path10.join)(p.project, "README.md"))) d.warn("README.md", "the project has no README: write one (what it is, run locally, tests, preview URL)");
   for (const c of staleReadmeCommands(p.project)) {
     d.error("README.md", `\`${c}\` calls a script that package.json does not define; update the README to the commands that work`);
   }
@@ -9492,17 +9767,17 @@ function deliver(p, id, opts = {}) {
   let createdHandoff = false;
   if (!opts.check) {
     const tasks = loadTasks(p, id).tasks;
-    (0, import_node_fs8.mkdirSync)((0, import_node_path9.join)(dir, "screenshots"), { recursive: true });
-    for (const f of seedScreenshots(p, id, change, tasks)) written.push(rel(p, (0, import_node_path9.join)(dir, "screenshots", f)));
+    (0, import_node_fs9.mkdirSync)((0, import_node_path10.join)(dir, "screenshots"), { recursive: true });
+    for (const f of seedScreenshots(p, id, change, tasks)) written.push(rel(p, (0, import_node_path10.join)(dir, "screenshots", f)));
     const write = (name, text) => {
-      (0, import_node_fs8.writeFileSync)((0, import_node_path9.join)(dir, name), text);
-      written.push(rel(p, (0, import_node_path9.join)(dir, name)));
+      (0, import_node_fs9.writeFileSync)((0, import_node_path10.join)(dir, name), text);
+      written.push(rel(p, (0, import_node_path10.join)(dir, name)));
     };
     write("quality-report.md", qualityMd(p, change, tasks));
     write("tasks.md", tasksMd(p, change, tasks));
     write("decisions.md", decisionsMd(p));
-    if (!(0, import_node_fs8.existsSync)((0, import_node_path9.join)(dir, "handoff.md"))) {
-      (0, import_node_fs8.writeFileSync)((0, import_node_path9.join)(dir, "handoff.md"), HANDOFF(String(change.data.title ?? id)));
+    if (!(0, import_node_fs9.existsSync)((0, import_node_path10.join)(dir, "handoff.md"))) {
+      (0, import_node_fs9.writeFileSync)((0, import_node_path10.join)(dir, "handoff.md"), HANDOFF(String(change.data.title ?? id)));
       createdHandoff = true;
     }
     write("README.md", readmeMd(p, change, tasks));
@@ -9512,11 +9787,11 @@ function deliver(p, id, opts = {}) {
 function readmeMd(p, change, tasks) {
   const deploy2 = lastDeploy(change);
   const shots = screenshots(change);
-  const done = tasks.filter((t) => statusOf2(t) === "done").length;
+  const done = tasks.filter((t) => statusOf3(t) === "done").length;
   const summary = readSummary(change);
   const layers = Object.entries(summary.layers).map(([n, r]) => `${n} ${r.status}`).join(", ") || "none";
   const conv = lastConverge(change);
-  const env = (0, import_node_fs8.existsSync)((0, import_node_path9.join)(p.project, ".env.example"));
+  const env = (0, import_node_fs9.existsSync)((0, import_node_path10.join)(p.project, ".env.example"));
   return [
     `# Delivery: ${String(change.data.title ?? change.id)}`,
     "",
@@ -9546,6 +9821,8 @@ function transitionGuard(p, id, target) {
   if (target === "verifying") {
     const open = loadTasks(p, id).tasks.filter((t) => String(t.status ?? "pending") !== "done");
     if (open.length) return `"verifying" needs every task done; open: ${open.map((t) => `${t.id} (${String(t.status ?? "pending")})`).join(", ")}`;
+    const merged = pendingIntegration(loadChange(p, id), loadTasks(p, id).tasks);
+    if (merged.length) return `"verifying" needs the last wave integrated: run \`aidw integrate\` (merged: ${merged.map((t) => t.id).join(", ")})`;
   }
   if (target === "converging") {
     const q = qualityPassed(p, id);
@@ -9565,14 +9842,184 @@ function transitionGuard(p, id, target) {
 // src/version.ts
 var VERSION = "0.1.0";
 
+// src/detect.ts
+var import_node_fs10 = require("node:fs");
+var import_node_path11 = require("node:path");
+var SKIP2 = /* @__PURE__ */ new Set(["node_modules", ".git", ".aidw", ".next", ".nuxt", ".svelte-kit", ".turbo", ".vercel", ".output", "dist", "build", "out", "coverage", "vendor", "venv", ".venv", "__pycache__", "target"]);
+var CODE = /\.(tsx?|jsx?|mjs|cjs|vue|svelte|astro|py|go|rb|java|kt|rs|php|cs|swift)$/;
+var MAX_WALK = 2e4;
+function countCode(dir, budget = { left: MAX_WALK }) {
+  let n = 0;
+  let names;
+  try {
+    names = (0, import_node_fs10.readdirSync)(dir);
+  } catch {
+    return 0;
+  }
+  for (const name of names) {
+    if (budget.left-- <= 0) break;
+    if (SKIP2.has(name) || name.startsWith(".")) continue;
+    const full = (0, import_node_path11.join)(dir, name);
+    let st;
+    try {
+      st = (0, import_node_fs10.statSync)(full);
+    } catch {
+      continue;
+    }
+    if (st.isDirectory()) n += countCode(full, budget);
+    else if (CODE.test(name)) n++;
+  }
+  return n;
+}
+var DEPS = [
+  { dep: /^next$/, role: "framework", name: "Next.js" },
+  { dep: /^nuxt$/, role: "framework", name: "Nuxt" },
+  { dep: /^@sveltejs\/kit$/, role: "framework", name: "SvelteKit" },
+  { dep: /^astro$/, role: "framework", name: "Astro" },
+  { dep: /^@remix-run\/react$|^react-router$/, role: "framework", name: "React Router / Remix" },
+  { dep: /^@nestjs\/core$/, role: "framework", name: "NestJS" },
+  { dep: /^express$/, role: "server", name: "Express" },
+  { dep: /^fastify$/, role: "server", name: "Fastify" },
+  { dep: /^hono$/, role: "server", name: "Hono" },
+  { dep: /^vite$/, role: "bundler", name: "Vite" },
+  { dep: /^react$/, role: "ui", name: "React" },
+  { dep: /^vue$/, role: "ui", name: "Vue" },
+  { dep: /^svelte$/, role: "ui", name: "Svelte" },
+  { dep: /^solid-js$/, role: "ui", name: "Solid" },
+  { dep: /^tailwindcss$/, role: "styling", name: "Tailwind CSS" },
+  { dep: /^styled-components$/, role: "styling", name: "styled-components" },
+  { dep: /^@emotion\/react$/, role: "styling", name: "Emotion" },
+  { dep: /^sass$/, role: "styling", name: "Sass" },
+  { dep: /^@mui\/material$/, role: "components", name: "MUI" },
+  { dep: /^@chakra-ui\/react$/, role: "components", name: "Chakra UI" },
+  { dep: /^antd$/, role: "components", name: "Ant Design" },
+  { dep: /^@radix-ui\//, role: "components", name: "Radix UI" },
+  { dep: /^prisma$|^@prisma\/client$/, role: "orm", name: "Prisma" },
+  { dep: /^drizzle-orm$/, role: "orm", name: "Drizzle" },
+  { dep: /^typeorm$/, role: "orm", name: "TypeORM" },
+  { dep: /^mongoose$/, role: "orm", name: "Mongoose" },
+  { dep: /^sequelize$/, role: "orm", name: "Sequelize" },
+  { dep: /^@supabase\/supabase-js$/, role: "database", name: "Supabase" },
+  { dep: /^pg$|^postgres$/, role: "database", name: "PostgreSQL" },
+  { dep: /^mysql2$/, role: "database", name: "MySQL" },
+  { dep: /^mongodb$/, role: "database", name: "MongoDB" },
+  { dep: /^better-sqlite3$|^@libsql\/client$/, role: "database", name: "SQLite" },
+  { dep: /^firebase$|^firebase-admin$/, role: "database", name: "Firebase" },
+  { dep: /^next-auth$|^@auth\/core$/, role: "auth", name: "Auth.js" },
+  { dep: /^@clerk\//, role: "auth", name: "Clerk" },
+  { dep: /^better-auth$/, role: "auth", name: "Better Auth" },
+  { dep: /^@supabase\/ssr$/, role: "auth", name: "Supabase Auth" },
+  { dep: /^vitest$/, role: "unit tests", name: "Vitest" },
+  { dep: /^jest$/, role: "unit tests", name: "Jest" },
+  { dep: /^@playwright\/test$/, role: "e2e tests", name: "Playwright" },
+  { dep: /^cypress$/, role: "e2e tests", name: "Cypress" }
+];
+var FILES = [
+  { file: "vercel.json", role: "deploy", name: "Vercel" },
+  { file: ".vercel", role: "deploy", name: "Vercel" },
+  { file: "netlify.toml", role: "deploy", name: "Netlify" },
+  { file: "fly.toml", role: "deploy", name: "Fly.io" },
+  { file: "railway.json", role: "deploy", name: "Railway" },
+  { file: "railway.toml", role: "deploy", name: "Railway" },
+  { file: "wrangler.toml", role: "deploy", name: "Cloudflare" },
+  { file: "Dockerfile", role: "container", name: "Docker" },
+  { file: "components.json", role: "components", name: "shadcn/ui" },
+  { file: "supabase/config.toml", role: "database", name: "Supabase" }
+];
+var LANG_FILES = [
+  { file: "tsconfig.json", lang: "TypeScript" },
+  { file: "pyproject.toml", lang: "Python" },
+  { file: "requirements.txt", lang: "Python" },
+  { file: "go.mod", lang: "Go" },
+  { file: "Gemfile", lang: "Ruby" },
+  { file: "composer.json", lang: "PHP" },
+  { file: "Cargo.toml", lang: "Rust" },
+  { file: "pom.xml", lang: "Java" }
+];
+function packageManager(dir, pkg) {
+  const field = typeof pkg?.packageManager === "string" ? pkg.packageManager.split("@")[0] : "";
+  if (field === "pnpm" || field === "npm" || field === "yarn" || field === "bun") return field;
+  if ((0, import_node_fs10.existsSync)((0, import_node_path11.join)(dir, "pnpm-lock.yaml"))) return "pnpm";
+  if ((0, import_node_fs10.existsSync)((0, import_node_path11.join)(dir, "yarn.lock"))) return "yarn";
+  if ((0, import_node_fs10.existsSync)((0, import_node_path11.join)(dir, "bun.lockb")) || (0, import_node_fs10.existsSync)((0, import_node_path11.join)(dir, "bun.lock"))) return "bun";
+  if ((0, import_node_fs10.existsSync)((0, import_node_path11.join)(dir, "package-lock.json")) || pkg) return "npm";
+  return null;
+}
+function pmCommands(pm) {
+  switch (pm) {
+    case "pnpm":
+      return { script: (s) => `pnpm ${s}`, exec: (b) => `pnpm exec ${b}` };
+    case "yarn":
+      return { script: (s) => `yarn ${s}`, exec: (b) => `yarn ${b}` };
+    case "bun":
+      return { script: (s) => `bun run ${s}`, exec: (b) => `bunx ${b}` };
+    default:
+      return { script: (s) => s === "test" ? "npm test" : `npm run ${s}`, exec: (b) => `npx ${b}` };
+  }
+}
+function detectProject(dir) {
+  let pkg = null;
+  const pkgFile = (0, import_node_path11.join)(dir, "package.json");
+  if ((0, import_node_fs10.existsSync)(pkgFile)) {
+    try {
+      pkg = JSON.parse((0, import_node_fs10.readFileSync)(pkgFile, "utf8"));
+    } catch {
+      pkg = {};
+    }
+  }
+  const deps = { ...pkg?.dependencies ?? {}, ...pkg?.devDependencies ?? {} };
+  const depNames = Object.keys(deps);
+  const scripts = pkg?.scripts ?? {};
+  const codeFiles = countCode(dir);
+  const stack = {};
+  for (const { dep, role, name } of DEPS) {
+    const hit = depNames.find((d) => dep.test(d));
+    if (!hit || stack[role]) continue;
+    const version = String(deps[hit] ?? "").replace(/^[\^~>=<\s]+/, "").split(" ")[0];
+    stack[role] = version && /^\d/.test(version) ? `${name} ${version}` : name;
+  }
+  for (const { file, role, name } of FILES) if (!stack[role] && (0, import_node_fs10.existsSync)((0, import_node_path11.join)(dir, file))) stack[role] = name;
+  const languages = /* @__PURE__ */ new Set();
+  if (pkg) languages.add(depNames.includes("typescript") || (0, import_node_fs10.existsSync)((0, import_node_path11.join)(dir, "tsconfig.json")) ? "TypeScript" : "JavaScript");
+  for (const { file, lang } of LANG_FILES) if ((0, import_node_fs10.existsSync)((0, import_node_path11.join)(dir, file))) languages.add(lang);
+  const pm = packageManager(dir, pkg);
+  const signals = [];
+  if (depNames.length) signals.push(`package.json with ${depNames.length} dependencies`);
+  if (codeFiles) signals.push(`${codeFiles} code file(s) outside dependencies and build output`);
+  const commits = isGitRepo(dir) ? Number(git(dir, ["rev-list", "--count", "HEAD"]).out) || 0 : 0;
+  if (commits > 1) signals.push(`git history: ${commits} commits`);
+  for (const l of languages) if (l !== "TypeScript" && l !== "JavaScript") signals.push(`${l} project files`);
+  const kind = depNames.length > 0 || codeFiles > 0 ? "brownfield" : "greenfield";
+  const layers = [];
+  if (pm) {
+    const c = pmCommands(pm);
+    const has = (s) => typeof scripts[s] === "string";
+    const first = (...names) => names.find(has);
+    const code = [
+      ...has("lint") ? [c.script("lint")] : [],
+      ...first("typecheck", "type-check", "tsc") ? [c.script(first("typecheck", "type-check", "tsc"))] : languages.has("TypeScript") ? [c.exec("tsc --noEmit")] : [],
+      ...has("build") ? [c.script("build")] : []
+    ];
+    if (code.length) layers.push({ name: "code", run: code });
+    const unit = first("test:unit", "test");
+    if (unit && !/no test specified/.test(scripts[unit] ?? "")) layers.push({ name: "unit", run: [c.script(unit)] });
+    const e2e = first("test:e2e", "e2e");
+    if (e2e) layers.push({ name: "e2e", run: [c.script(e2e)] });
+    else if (stack["e2e tests"]?.startsWith("Playwright")) layers.push({ name: "e2e", run: [c.exec("playwright test")] });
+    else if (stack["e2e tests"]?.startsWith("Cypress")) layers.push({ name: "e2e", run: [c.exec("cypress run")] });
+  }
+  return { kind, signals, packageManager: pm, languages: [...languages], stack, scripts, layers, codeFiles };
+}
+
 // src/ops.ts
+var import_yaml5 = __toESM(require_dist(), 1);
 var OpError = class extends Error {
   constructor(message, diags) {
     super(message);
     this.diags = diags;
   }
 };
-var now3 = () => (/* @__PURE__ */ new Date()).toISOString();
+var now4 = () => (/* @__PURE__ */ new Date()).toISOString();
 var RESUMABLE = Object.keys(TRANSITIONS).filter((s) => TRANSITIONS[s].includes("paused"));
 var PROJECT_YAML = (name) => `# aidw project configuration
 schema: 1
@@ -9601,24 +10048,79 @@ It is part of the approved Analysis package: changing it after approval is drift
 - <stack profile, coding standards, folder conventions>
 `;
 var SKELETON_DIRS = ["requirements", "specs", "domain", "architecture", "decisions", "design", "changes", "archive", "run"];
+function projectYaml(name, det) {
+  const base = PROJECT_YAML(name).replace("schema: 1\n", `schema: 1
+kind: ${det.kind} # greenfield | brownfield (aidw detect)
+`);
+  if (det.kind === "greenfield") return base;
+  const doc = import_yaml5.default.parseDocument(base);
+  doc.setIn(["stack", "source"], "client");
+  doc.setIn(["stack", "items"], doc.createNode(det.stack));
+  doc.setIn(["stack", "reason"], "existing project: aidw keeps the stack it finds and does not migrate it (Q9)");
+  doc.set(
+    "detected",
+    doc.createNode({
+      package_manager: det.packageManager,
+      languages: det.languages,
+      signals: det.signals,
+      suggested_layers: Object.fromEntries(det.layers.map((l) => [l.name, l.run]))
+    })
+  );
+  return String(doc);
+}
 function initProject(projectDir) {
   const p = pathsFor(projectDir);
-  if ((0, import_node_fs9.existsSync)(p.aidw)) throw new OpError(`${rel(p, p.aidw)}/ already exists; refusing to overwrite`);
+  if ((0, import_node_fs11.existsSync)(p.aidw)) throw new OpError(`${rel(p, p.aidw)}/ already exists; refusing to overwrite`);
+  const detection = detectProject(projectDir);
   const created = [];
   const write = (file, content) => {
-    (0, import_node_fs9.mkdirSync)((0, import_node_path10.dirname)(file), { recursive: true });
-    (0, import_node_fs9.writeFileSync)(file, content);
+    (0, import_node_fs11.mkdirSync)((0, import_node_path12.dirname)(file), { recursive: true });
+    (0, import_node_fs11.writeFileSync)(file, content);
     created.push(rel(p, file));
   };
-  write(p.projectYaml, PROJECT_YAML((0, import_node_path10.basename)(projectDir)));
+  write(p.projectYaml, projectYaml((0, import_node_path12.basename)(projectDir), detection));
   write(p.constitution, CONSTITUTION);
-  write((0, import_node_path10.join)(p.aidw, ".gitignore"), "run/\n");
+  write((0, import_node_path12.join)(p.aidw, ".gitignore"), "run/\n");
   for (const d of SKELETON_DIRS) {
-    const keep = (0, import_node_path10.join)(p.aidw, d, ".gitkeep");
+    const keep = (0, import_node_path12.join)(p.aidw, d, ".gitkeep");
     if (d !== "run") write(keep, "");
-    else (0, import_node_fs9.mkdirSync)((0, import_node_path10.join)(p.aidw, d), { recursive: true });
+    else (0, import_node_fs11.mkdirSync)((0, import_node_path12.join)(p.aidw, d), { recursive: true });
   }
-  return { created, paths: p };
+  return { created, paths: p, detection };
+}
+var PRE_APPROVAL = /* @__PURE__ */ new Set(["draft", "intake", "analyzing"]);
+function createBaseline(p, id, capability) {
+  if (!capability.split("/").every((s) => KEBAB_SEGMENT.test(s))) throw new OpError(`capability "${capability}" must be kebab-case segments (e.g. billing or billing/invoices)`);
+  const change = loadChange(p, id);
+  const state = String(change.data.state);
+  if (!PRE_APPROVAL.has(state)) throw new OpError(`change "${id}" is "${state}"; baseline specs are written during the Analysis (draft, intake, analyzing)`);
+  const file = (0, import_node_path12.join)(p.specs, ...capability.split("/"), "spec.md");
+  if ((0, import_node_fs11.existsSync)(file)) throw new OpError(`${rel(p, file)} already exists; a capability gets its baseline once`);
+  const head = headCommit(p.project);
+  const title = capability.split("/").at(-1).split("-").map((w) => w[0].toUpperCase() + w.slice(1)).join(" ");
+  (0, import_node_fs11.mkdirSync)((0, import_node_path12.dirname)(file), { recursive: true });
+  (0, import_node_fs11.writeFileSync)(
+    file,
+    `# ${title}
+
+<!-- aidw:baseline: current behavior of the existing code${head ? ` at ${head.slice(0, 12)}` : ""}, written for change ${id}.
+Describe what the code does TODAY (read the code and its tests), not what it should do. Changes go in the change's delta specs. -->
+
+## Purpose
+
+${PLACEHOLDER}: what this capability does today, in one or two sentences.
+
+## Requirements
+
+### Requirement: ${PLACEHOLDER} one current behavior
+The system SHALL ${PLACEHOLDER}.
+
+#### Scenario: ${PLACEHOLDER} observed case
+- **WHEN** ${PLACEHOLDER}
+- **THEN** ${PLACEHOLDER}
+`
+  );
+  return file;
 }
 var INPUT_TYPES = ["idea", "prd", "upwork_jd", "client_request", "codebase"];
 var INTAKE = (title) => `# Intake: ${title}
@@ -9642,18 +10144,18 @@ function newChange(p, id, opts) {
     throw new OpError(`unknown input type "${opts.inputType}" (expected ${INPUT_TYPES.join(", ")})`);
   }
   const dir = changeDir(p, id);
-  if ((0, import_node_fs9.existsSync)(dir)) throw new OpError(`change "${id}" already exists`);
+  if ((0, import_node_fs11.existsSync)(dir)) throw new OpError(`change "${id}" already exists`);
   const title = opts.title ?? id;
-  (0, import_node_fs9.mkdirSync)((0, import_node_path10.join)(dir, "specs"), { recursive: true });
-  (0, import_node_fs9.writeFileSync)(
-    (0, import_node_path10.join)(dir, "change.yaml"),
+  (0, import_node_fs11.mkdirSync)((0, import_node_path12.join)(dir, "specs"), { recursive: true });
+  (0, import_node_fs11.writeFileSync)(
+    (0, import_node_path12.join)(dir, "change.yaml"),
     [
       "schema: 1",
       `id: ${id}`,
       `title: ${JSON.stringify(title)}`,
       `input_type: ${opts.inputType ?? "null"}`,
       "state: draft",
-      `created_at: ${now3()}`,
+      `created_at: ${now4()}`,
       "skip_specs: false",
       "approval: null",
       "run:",
@@ -9661,12 +10163,12 @@ function newChange(p, id, opts) {
       ""
     ].join("\n")
   );
-  (0, import_node_fs9.writeFileSync)((0, import_node_path10.join)(dir, "intake.md"), INTAKE(title));
-  (0, import_node_fs9.writeFileSync)((0, import_node_path10.join)(dir, "analysis.md"), ANALYSIS(title));
+  (0, import_node_fs11.writeFileSync)((0, import_node_path12.join)(dir, "intake.md"), INTAKE(title));
+  (0, import_node_fs11.writeFileSync)((0, import_node_path12.join)(dir, "analysis.md"), ANALYSIS(title, projectKind(p) === "brownfield"));
   recordBaseline(p);
   return dir;
 }
-var ANALYSIS = (title) => `# Analysis: ${title}
+var ANALYSIS = (title, brownfield = false) => `# Analysis: ${title}
 
 ## Summary
 
@@ -9681,7 +10183,13 @@ Write "None" only if there are none.
 ## Requirements and scope
 
 ${PLACEHOLDER}: in scope, out of scope, assumptions. Link .aidw/requirements/<change>.md.
+${brownfield ? `
+## Existing system
 
+${PLACEHOLDER}: brownfield assessment. What exists (stack from project.yaml, structure, main flows), conventions
+the change follows, the health baseline (which existing checks pass or fail today), the capabilities this change
+touches and their baseline specs (aidw baseline <capability>), and what must not change.
+` : ""}
 ## Domain
 
 ${PLACEHOLDER}: key entities and business rules. Link .aidw/domain/model.md.
@@ -9744,7 +10252,7 @@ function approve(p, id) {
   const d = readinessCheck(p, id);
   if (d.errors.length) throw new OpError(`change "${id}" has validation errors; fix them before approving`, d);
   const { hash, files } = computeApprovalHash(p, change);
-  change.doc.set("approval", change.doc.createNode({ hash, at: now3(), by: "user" }));
+  change.doc.set("approval", change.doc.createNode({ hash, at: now4(), by: "user" }));
   change.doc.set("state", "approved");
   saveChange(change);
   return { hash, files };
@@ -9788,7 +10296,7 @@ function transition(p, id, to, opts) {
     if (d.errors.length) throw new OpError("Analysis package is not ready for approval", d);
   }
   if (target === "paused") {
-    change.doc.setIn(["run", "paused"], change.doc.createNode({ from, reason: opts.reason ?? "unspecified", at: now3() }));
+    change.doc.setIn(["run", "paused"], change.doc.createNode({ from, reason: opts.reason ?? "unspecified", at: now4() }));
   } else if (from === "paused") {
     change.doc.setIn(["run", "paused"], null);
   }
@@ -9807,7 +10315,7 @@ Quality layer and deploy evidence: .aidw/changes/${id}/evidence/`);
 }
 function commitAidw(p, message, opts = {}) {
   if (!isGitRepo(p.project)) return null;
-  const paths = [".aidw", ...opts.delivery ? ["README.md", ".env.example", ".gitignore"].filter((f) => (0, import_node_fs9.existsSync)((0, import_node_path10.join)(p.project, f))) : []];
+  const paths = [".aidw", ...opts.delivery ? ["README.md", ".env.example", ".gitignore"].filter((f) => (0, import_node_fs11.existsSync)((0, import_node_path12.join)(p.project, f))) : []];
   if (!git(p.project, ["add", "--", ...paths]).ok) return null;
   if (git(p.project, ["diff", "--cached", "--quiet", "--", ...paths]).ok) return null;
   return git(p.project, ["commit", "-q", "-m", message, "--", ...paths]).ok ? headCommit(p.project) : null;
@@ -9818,7 +10326,7 @@ function planMerge(p, id) {
   const files = deltaFiles(p, change, d);
   const results = [];
   for (const df of files) {
-    const r = applyDelta(readText(df.mainFile), (0, import_node_fs9.readFileSync)(df.file, "utf8"), df.capability);
+    const r = applyDelta(readText(df.mainFile), (0, import_node_fs11.readFileSync)(df.file, "utf8"), df.capability);
     if (!r.ok || !r.text) {
       for (const e of r.errors) d.error(rel(p, df.file), e);
       continue;
@@ -9830,8 +10338,8 @@ function planMerge(p, id) {
 }
 function writeMerge(merges) {
   for (const m of merges) {
-    (0, import_node_fs9.mkdirSync)((0, import_node_path10.dirname)(m.file), { recursive: true });
-    (0, import_node_fs9.writeFileSync)(m.file, m.text);
+    (0, import_node_fs11.mkdirSync)((0, import_node_path12.dirname)(m.file), { recursive: true });
+    (0, import_node_fs11.writeFileSync)(m.file, m.text);
   }
 }
 function archiveChange(p, id) {
@@ -9844,16 +10352,16 @@ function archiveChange(p, id) {
   const delivery = checkDelivery(p, id);
   if (delivery.errors.length) throw new OpError(`the delivery package of "${id}" is incomplete; run \`aidw deliver\` and complete it`, delivery);
   const merges = planMerge(p, id);
-  const date = now3().slice(0, 10);
+  const date = now4().slice(0, 10);
   const name = /^\d{4}-\d{2}-\d{2}-/.test(id) ? id : `${date}-${id}`;
-  const target = (0, import_node_path10.join)(p.archive, name);
-  if ((0, import_node_fs9.existsSync)(target)) throw new OpError(`archive target ${rel(p, target)} already exists`);
+  const target = (0, import_node_path12.join)(p.archive, name);
+  if ((0, import_node_fs11.existsSync)(target)) throw new OpError(`archive target ${rel(p, target)} already exists`);
   writeMerge(merges);
   change.doc.set("state", "archived");
-  change.doc.set("archived_at", now3());
+  change.doc.set("archived_at", now4());
   saveChange(change);
-  (0, import_node_fs9.mkdirSync)(p.archive, { recursive: true });
-  (0, import_node_fs9.renameSync)(change.dir, target);
+  (0, import_node_fs11.mkdirSync)(p.archive, { recursive: true });
+  (0, import_node_fs11.renameSync)(change.dir, target);
   const commit = commitAidw(p, `aidw: archive ${id}
 
 Delta specs merged into .aidw/specs; change moved to ${rel(p, target)}.`, { delivery: true });
@@ -9865,22 +10373,22 @@ function projectStatus(p, only) {
   for (const f of walkFiles(p.specs)) {
     if (!capabilityOf(p.specs, f)) continue;
     capabilities++;
-    requirements += parseSpec((0, import_node_fs9.readFileSync)(f, "utf8")).requirements.length;
+    requirements += parseSpec((0, import_node_fs11.readFileSync)(f, "utf8")).requirements.length;
   }
   const ids = only ? [only] : listChangeIds(p);
   const changes = ids.map((id) => {
     try {
       const c = loadChange(p, id);
-      const tasksText = readText((0, import_node_path10.join)(c.dir, "tasks.yaml"));
+      const tasksText = readText((0, import_node_path12.join)(c.dir, "tasks.yaml"));
       let tasks = null;
       if (tasksText !== null) {
         const byStatus = {};
-        const list3 = parseTasks(tasksText).tasks;
-        for (const t of list3) {
+        const list4 = parseTasks(tasksText).tasks;
+        for (const t of list4) {
           const s = String(t?.status ?? "pending");
           byStatus[s] = (byStatus[s] ?? 0) + 1;
         }
-        tasks = { total: list3.length, done: byStatus.done ?? 0, byStatus };
+        tasks = { total: list4.length, done: byStatus.done ?? 0, byStatus };
       }
       const paused = c.data.run?.paused ?? null;
       return {
@@ -9906,8 +10414,8 @@ function assertProject(p) {
 }
 
 // src/layers.ts
-var import_node_fs10 = require("node:fs");
-var import_node_path11 = require("node:path");
+var import_node_fs12 = require("node:fs");
+var import_node_path13 = require("node:path");
 var SKILLS = {
   ui: [
     { id: "addy/frontend-ui-engineering", reason: "UI quality bar: hierarchy, states, responsive, consistency" },
@@ -9925,7 +10433,7 @@ function resolveGlob(project, glob) {
   const segs = glob.split("/");
   const firstWild = segs.findIndex((s) => /[*?{]/.test(s));
   const prefix = firstWild < 0 ? segs.slice(0, -1) : segs.slice(0, firstWild);
-  const dir = (0, import_node_path11.join)(project, ...prefix);
+  const dir = (0, import_node_path13.join)(project, ...prefix);
   return walkFiles(dir).map((f) => rel({ project }, f)).filter((f) => matchesAny([glob], f));
 }
 function layerArtifacts(p, layer) {
@@ -9934,14 +10442,14 @@ function layerArtifacts(p, layer) {
   return [...out].sort().slice(0, MAX_ARTIFACTS);
 }
 function taskShots2(p, id) {
-  return walkFiles((0, import_node_path11.join)(p.run, "shots", id)).filter((f) => IMAGE3.test(f)).map((f) => rel(p, f)).sort().slice(-MAX_SHOTS);
+  return walkFiles((0, import_node_path13.join)(p.run, "shots", id)).filter((f) => IMAGE3.test(f)).map((f) => rel(p, f)).sort().slice(-MAX_SHOTS);
 }
 function changeBase(tasks) {
   const bases = tasks.filter((t) => typeof t.base === "string" && typeof t.started_at === "string").sort((a, b) => String(a.started_at).localeCompare(String(b.started_at)));
   return bases.length ? String(bases[0]?.base) : null;
 }
 function pointer2(p, file, what) {
-  return (0, import_node_fs10.existsSync)(file) ? `- \`${rel(p, file)}\`: ${what}` : null;
+  return (0, import_node_fs12.existsSync)(file) ? `- \`${rel(p, file)}\`: ${what}` : null;
 }
 function buildLayerBrief(p, id, layer, runs, vendorDir) {
   const kind = layer.review;
@@ -9949,20 +10457,20 @@ function buildLayerBrief(p, id, layer, runs, vendorDir) {
   const tasks = loadTasks(p, id).tasks;
   const artifacts = layerArtifacts(p, layer);
   const shots = kind === "ui" ? taskShots2(p, id) : [];
-  const decisions = decisionsToHonor(readText((0, import_node_path11.join)(change.dir, "analysis.md")) ?? "");
+  const decisions = decisionsToHonor(readText((0, import_node_path13.join)(change.dir, "analysis.md")) ?? "");
   const tokenInfo = kind === "ui" ? loadTokens(p) : null;
   const tokens = tokenInfo && tokenInfo.diags.errors.length === 0 ? tokenInfo.tokens : [];
   const base = changeBase(tasks);
   const uiTasks = tasks.filter((t) => touchesUi(t) && String(t.status) === "done");
   const h = (title, body2) => body2.length ? [`## ${title}`, "", ...body2, ""] : [];
-  const skills = SKILLS[kind].map((s) => `- \`${vendorDir ? (0, import_node_path11.join)(vendorDir, ...s.id.split("/"), "SKILL.md") : `aidw vendor-path ${s.id}`}\`: ${s.reason}`);
+  const skills = SKILLS[kind].map((s) => `- \`${vendorDir ? (0, import_node_path13.join)(vendorDir, ...s.id.split("/"), "SKILL.md") : `aidw vendor-path ${s.id}`}\`: ${s.reason}`);
   const outputs = runs.flatMap((r) => [`\`${r.command}\` (exit ${r.exit ?? "?"}, ${Math.round(r.ms / 1e3)}s):`, "", "```", r.tail.split("\n").slice(-40).join("\n"), "```", ""]);
   const pointers = [
     pointer2(p, p.constitution, "engineering principles every agent follows"),
-    pointer2(p, (0, import_node_path11.join)(p.architecture, "overview.md"), "architecture, folder structure, integrations"),
-    pointer2(p, (0, import_node_path11.join)(p.requirements, `${id}.md`), "user stories and implementation/testing decisions"),
+    pointer2(p, (0, import_node_path13.join)(p.architecture, "overview.md"), "architecture, folder structure, integrations"),
+    pointer2(p, (0, import_node_path13.join)(p.requirements, `${id}.md`), "user stories and implementation/testing decisions"),
     ...kind === "ui" ? [pointer2(p, p.design, "design direction and assets (direction.md first)")] : [],
-    pointer2(p, (0, import_node_path11.join)(change.dir, "analysis.md"), "the approved Analysis (scope, decisions, quality profile)")
+    pointer2(p, (0, import_node_path13.join)(change.dir, "analysis.md"), "the approved Analysis (scope, decisions, quality profile)")
   ].filter((x) => x !== null);
   const header = [
     `# Layer review brief: ${layer.name} (${kind} review) - ${String(change.data.title ?? id)}`,
@@ -9975,8 +10483,8 @@ function buildLayerBrief(p, id, layer, runs, vendorDir) {
   ];
   const scope = [
     base ? `- Code: \`git diff ${base}\` plus untracked files (\`git status --porcelain\`); \`git diff --name-only ${base}\` lists the files.` : "- Code: the whole project (no base commit was recorded).",
-    ...artifacts.length ? [`- Artifacts of this layer (open **every** one with Read):`, ...artifacts.map((f) => `  - \`${(0, import_node_path11.join)(p.project, f)}\``)] : layer.artifacts.length ? [`- No file matched the layer's artifact globs (${layer.artifacts.map((g) => `\`${g}\``).join(", ")}): say so in your verdict; it is a blocking problem for a UI layer.`] : [],
-    ...shots.length ? [`- Per-task screenshots (already reviewed per task; use them to spot inconsistency between screens):`, ...shots.map((f) => `  - \`${(0, import_node_path11.join)(p.project, f)}\``)] : [],
+    ...artifacts.length ? [`- Artifacts of this layer (open **every** one with Read):`, ...artifacts.map((f) => `  - \`${(0, import_node_path13.join)(p.project, f)}\``)] : layer.artifacts.length ? [`- No file matched the layer's artifact globs (${layer.artifacts.map((g) => `\`${g}\``).join(", ")}): say so in your verdict; it is a blocking problem for a UI layer.`] : [],
+    ...shots.length ? [`- Per-task screenshots (already reviewed per task; use them to spot inconsistency between screens):`, ...shots.map((f) => `  - \`${(0, import_node_path13.join)(p.project, f)}\``)] : [],
     ...uiTasks.length ? [`- UI tasks in this change: ${uiTasks.map((t) => `${t.id} (${String(t.title ?? "")})`).join(", ")}.`] : []
   ];
   const checklist = kind === "ui" ? [
@@ -10015,10 +10523,10 @@ function buildLayerBrief(p, id, layer, runs, vendorDir) {
     ...h("Skills (read each SKILL.md and apply it)", skills)
   ];
   const text = [...header, ...body].join("\n").replace(/\n{3,}/g, "\n\n");
-  const dir = (0, import_node_path11.join)(p.run, "briefs", id);
-  (0, import_node_fs10.mkdirSync)(dir, { recursive: true });
-  const path = (0, import_node_path11.join)(dir, `${layer.name}.layer-review.md`);
-  (0, import_node_fs10.writeFileSync)(path, text);
+  const dir = (0, import_node_path13.join)(p.run, "briefs", id);
+  (0, import_node_fs12.mkdirSync)(dir, { recursive: true });
+  const path = (0, import_node_path13.join)(dir, `${layer.name}.layer-review.md`);
+  (0, import_node_fs12.writeFileSync)(path, text);
   return { layer: layer.name, kind, path, text, artifacts };
 }
 
@@ -10028,15 +10536,16 @@ var DEFAULT_MAX_FIX_ROUNDS = 3;
 var EXPECTED_LAYERS = ["code", "unit", "e2e"];
 var RECOMMENDED_LAYERS = ["ui-ux", "a11y", "security", "performance"];
 var REVIEW_KINDS = ["ui", "security"];
+var DEFAULT_PARALLEL = { max: 3, setup: [] };
 var isStrList2 = (v) => Array.isArray(v) && v.every((x) => typeof x === "string" && x.trim() !== "");
 var isProjectRelative = (r) => !r.startsWith("/") && !r.split("/").includes("..");
 var LAYER_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-var qualityFile = (change) => (0, import_node_path12.join)(change.dir, "quality.yaml");
+var qualityFile = (change) => (0, import_node_path14.join)(change.dir, "quality.yaml");
 function parseQuality(text, file) {
   const d = new Diags();
   let data;
   try {
-    data = import_yaml5.default.parse(text) ?? {};
+    data = import_yaml6.default.parse(text) ?? {};
   } catch (e) {
     d.error(file, `not valid YAML: ${e.message}`);
     return { config: null, diags: d };
@@ -10105,13 +10614,21 @@ function parseQuality(text, file) {
   }
   const max = data.max_fix_rounds ?? DEFAULT_MAX_FIX_ROUNDS;
   if (!(Number.isInteger(max) && Number(max) >= 1)) d.error(file, '"max_fix_rounds" must be a positive integer');
+  const par = data.parallel ?? {};
+  if (data.parallel !== void 0 && (typeof data.parallel !== "object" || data.parallel === null || Array.isArray(data.parallel))) {
+    d.error(file, '"parallel" must be a mapping with "max" and optional "setup"');
+  }
+  const parMax = par.max ?? DEFAULT_PARALLEL.max;
+  if (!(Number.isInteger(parMax) && Number(parMax) >= 1 && Number(parMax) <= 10)) d.error(file, '"parallel.max" must be an integer from 1 to 10');
+  if (par.setup !== void 0 && !isStrList2(par.setup)) d.error(file, '"parallel.setup" must be a list of commands');
   if (d.errors.length) return { config: null, diags: d };
   return {
     config: {
       layers,
       deploy: { target, command, smoke: isStrList2(dep.smoke) ? dep.smoke : [] },
       permissions,
-      maxFixRounds: Number(max)
+      maxFixRounds: Number(max),
+      parallel: { max: Number(parMax), setup: isStrList2(par.setup) ? par.setup : [] }
     },
     diags: d
   };
@@ -10139,27 +10656,27 @@ function grantedResources(p, ids, openStates) {
   }
   return out;
 }
-var qualityDir = (change) => (0, import_node_path12.join)(change.dir, "evidence", "quality");
-var summaryFile = (change) => (0, import_node_path12.join)(qualityDir(change), "summary.json");
-var deployFile = (change) => (0, import_node_path12.join)(change.dir, "evidence", "deploy.json");
-var now4 = () => (/* @__PURE__ */ new Date()).toISOString();
+var qualityDir = (change) => (0, import_node_path14.join)(change.dir, "evidence", "quality");
+var summaryFile = (change) => (0, import_node_path14.join)(qualityDir(change), "summary.json");
+var deployFile = (change) => (0, import_node_path14.join)(change.dir, "evidence", "deploy.json");
+var now5 = () => (/* @__PURE__ */ new Date()).toISOString();
 function recordLayerResult(change, summary, name, result) {
   summary.layers[name] = result;
   writeJson(summaryFile(change), summary);
-  appendHistory((0, import_node_path12.join)(qualityDir(change), `${name}.json`), result);
+  appendHistory((0, import_node_path14.join)(qualityDir(change), `${name}.json`), result);
 }
 function readSummary(change) {
   const f = summaryFile(change);
-  if (!(0, import_node_fs11.existsSync)(f)) return { layers: {} };
+  if (!(0, import_node_fs13.existsSync)(f)) return { layers: {} };
   try {
-    return JSON.parse((0, import_node_fs11.readFileSync)(f, "utf8"));
+    return JSON.parse((0, import_node_fs13.readFileSync)(f, "utf8"));
   } catch {
     return { layers: {} };
   }
 }
 function writeJson(file, data) {
-  (0, import_node_fs11.mkdirSync)((0, import_node_path12.join)(file, ".."), { recursive: true });
-  (0, import_node_fs11.writeFileSync)(file, `${JSON.stringify(data, null, 2)}
+  (0, import_node_fs13.mkdirSync)((0, import_node_path14.join)(file, ".."), { recursive: true });
+  (0, import_node_fs13.writeFileSync)(file, `${JSON.stringify(data, null, 2)}
 `);
 }
 function codeChangedAt(tasks) {
@@ -10211,12 +10728,12 @@ function readJunit(project, reports) {
   const tests = [];
   const missing = [];
   for (const r of reports) {
-    const f = (0, import_node_path12.join)(project, ...r.split("/"));
-    if (!(0, import_node_fs11.existsSync)(f)) {
+    const f = (0, import_node_path14.join)(project, ...r.split("/"));
+    if (!(0, import_node_fs13.existsSync)(f)) {
       missing.push(r);
       continue;
     }
-    tests.push(...parseJunit((0, import_node_fs11.readFileSync)(f, "utf8")));
+    tests.push(...parseJunit((0, import_node_fs13.readFileSync)(f, "utf8")));
   }
   return { tests, missing };
 }
@@ -10268,7 +10785,7 @@ function verify(p, id, opts = {}) {
     }
     const runs = runCommands([...layer.setup, ...layer.run], p.project, timeoutMs, runner);
     const ok = runs.length === layer.setup.length + layer.run.length && !failedRun(runs);
-    const result = { status: ok ? "pass" : "fail", at: now4(), head, runs };
+    const result = { status: ok ? "pass" : "fail", at: now5(), head, runs };
     if (layer.reports.length) {
       const { tests, missing } = readJunit(p.project, layer.reports);
       result.tests = tests;
@@ -10345,7 +10862,7 @@ function recordLayerReview(p, id, name, verdict, notes) {
     throw new OpError(`layer "${name}" is not awaiting review on the current code; run \`aidw verify\` first`);
   }
   if (verdict === "fix" && !notes.trim()) throw new OpError("a fix verdict needs the reviewer's notes");
-  const review = { verdict, notes: notes.trim(), at: now4() };
+  const review = { verdict, notes: notes.trim(), at: now5() };
   recordLayerResult(change, summary, name, { ...prev, status: verdict === "pass" ? "pass" : "fail", at: review.at, review });
   if (verdict === "pass") {
     const left = pendingLayers(p, id).pending;
@@ -10358,9 +10875,9 @@ ${review.notes}`;
 }
 function appendHistory(file, entry) {
   let history = [];
-  if ((0, import_node_fs11.existsSync)(file)) {
+  if ((0, import_node_fs13.existsSync)(file)) {
     try {
-      const data = JSON.parse((0, import_node_fs11.readFileSync)(file, "utf8"));
+      const data = JSON.parse((0, import_node_fs13.readFileSync)(file, "utf8"));
       history = Array.isArray(data.runs) ? data.runs : [];
     } catch {
       history = [];
@@ -10383,7 +10900,7 @@ function deploy(p, id, opts = {}) {
   const runner = opts.runner ?? shellRunner;
   const timeoutMs = opts.timeoutMs ?? 20 * 60 * 1e3;
   const head = headCommit(p.project);
-  const base = { at: now4(), target: config.deploy.target, head, runs: [], smoke: [] };
+  const base = { at: now5(), target: config.deploy.target, head, runs: [], smoke: [] };
   let record;
   if (config.deploy.target !== "preview" || !config.deploy.command) {
     record = { ...base, ok: true, skipped: true, url: null };
@@ -10428,9 +10945,9 @@ function deploymentUrl(output) {
 }
 function lastDeploy(change) {
   const f = deployFile(change);
-  if (!(0, import_node_fs11.existsSync)(f)) return null;
+  if (!(0, import_node_fs13.existsSync)(f)) return null;
   try {
-    const runs = JSON.parse((0, import_node_fs11.readFileSync)(f, "utf8")).runs ?? [];
+    const runs = JSON.parse((0, import_node_fs13.readFileSync)(f, "utf8")).runs ?? [];
     return runs.at(-1) ?? null;
   } catch {
     return null;
@@ -10439,7 +10956,7 @@ function lastDeploy(change) {
 
 // src/check.ts
 function deltaFiles(p, change, d) {
-  const specsDir = (0, import_node_path13.join)(change.dir, "specs");
+  const specsDir = (0, import_node_path15.join)(change.dir, "specs");
   const out = [];
   for (const f of walkFiles(specsDir)) {
     const cap = capabilityOf(specsDir, f);
@@ -10451,7 +10968,7 @@ function deltaFiles(p, change, d) {
     }
     const bad = cap.split("/").find((s) => !KEBAB_SEGMENT.test(s));
     if (bad) d.error(rel(p, f), `capability path segment "${bad}" must be kebab-case`);
-    out.push({ capability: cap, file: f, mainFile: (0, import_node_path13.join)(p.specs, ...cap.split("/"), "spec.md") });
+    out.push({ capability: cap, file: f, mainFile: (0, import_node_path15.join)(p.specs, ...cap.split("/"), "spec.md") });
   }
   return out;
 }
@@ -10463,7 +10980,7 @@ function checkSpecs(p) {
       if (f.endsWith(".md")) d.warn(rel(p, f), "not a spec: specs must be named specs/<capability>/spec.md");
       continue;
     }
-    d.add(validateSpecText((0, import_node_fs12.readFileSync)(f, "utf8"), rel(p, f)));
+    d.add(validateSpecText((0, import_node_fs14.readFileSync)(f, "utf8"), rel(p, f)));
   }
   return d;
 }
@@ -10473,7 +10990,7 @@ function checkChange(p, id, opts = {}) {
   try {
     change = loadChange(p, id);
   } catch (e) {
-    d.error(rel(p, (0, import_node_path13.join)(p.changes, id)), e.message);
+    d.error(rel(p, (0, import_node_path15.join)(p.changes, id)), e.message);
     return d;
   }
   const meta = rel(p, change.file);
@@ -10486,15 +11003,15 @@ function checkChange(p, id, opts = {}) {
   }
   const deltas = deltaFiles(p, change, d);
   for (const df of deltas) {
-    d.add(validateDeltaText((0, import_node_fs12.readFileSync)(df.file, "utf8"), rel(p, df.file), readText(df.mainFile), df.capability));
+    d.add(validateDeltaText((0, import_node_fs14.readFileSync)(df.file, "utf8"), rel(p, df.file), readText(df.mainFile), df.capability));
   }
-  const tasksFile = (0, import_node_path13.join)(change.dir, "tasks.yaml");
-  if ((0, import_node_fs12.existsSync)(tasksFile)) d.add(validateTasksText((0, import_node_fs12.readFileSync)(tasksFile, "utf8"), rel(p, tasksFile)));
-  const qFile = (0, import_node_path13.join)(change.dir, "quality.yaml");
-  if ((0, import_node_fs12.existsSync)(qFile)) d.add(parseQuality((0, import_node_fs12.readFileSync)(qFile, "utf8"), rel(p, qFile)).diags);
+  const tasksFile = (0, import_node_path15.join)(change.dir, "tasks.yaml");
+  if ((0, import_node_fs14.existsSync)(tasksFile)) d.add(validateTasksText((0, import_node_fs14.readFileSync)(tasksFile, "utf8"), rel(p, tasksFile)));
+  const qFile = (0, import_node_path15.join)(change.dir, "quality.yaml");
+  if ((0, import_node_fs14.existsSync)(qFile)) d.add(parseQuality((0, import_node_fs14.readFileSync)(qFile, "utf8"), rel(p, qFile)).diags);
   if (NEEDS_ANALYSIS.has(state)) {
     for (const name of ["intake.md", "analysis.md", "tasks.yaml", "quality.yaml"]) {
-      if (!(0, import_node_fs12.existsSync)((0, import_node_path13.join)(change.dir, name))) d.error(meta, `state "${state}" requires ${name}`);
+      if (!(0, import_node_fs14.existsSync)((0, import_node_path15.join)(change.dir, name))) d.error(meta, `state "${state}" requires ${name}`);
     }
     if (deltas.length === 0 && change.data.skip_specs !== true) {
       d.error(meta, `state "${state}" requires at least one delta spec, or skip_specs: true when no behavior changes`);
@@ -10547,7 +11064,7 @@ function mainSpecIds(p) {
   const ids = { requirements: /* @__PURE__ */ new Set(), scenarios: /* @__PURE__ */ new Set() };
   for (const f of walkFiles(p.specs)) {
     const cap = capabilityOf(p.specs, f);
-    if (cap) indexSpec(cap, (0, import_node_fs13.readFileSync)(f, "utf8"), ids);
+    if (cap) indexSpec(cap, (0, import_node_fs15.readFileSync)(f, "utf8"), ids);
   }
   return ids;
 }
@@ -10573,10 +11090,10 @@ function specsAfterChange(p, id) {
   const touched = new Set(files.map((d) => d.capability));
   for (const f of walkFiles(p.specs)) {
     const cap = capabilityOf(p.specs, f);
-    if (cap && !touched.has(cap)) specs.set(cap, (0, import_node_fs13.readFileSync)(f, "utf8"));
+    if (cap && !touched.has(cap)) specs.set(cap, (0, import_node_fs15.readFileSync)(f, "utf8"));
   }
   for (const df of files) {
-    const deltaText = (0, import_node_fs13.readFileSync)(df.file, "utf8");
+    const deltaText = (0, import_node_fs15.readFileSync)(df.file, "utf8");
     deltas.set(df.capability, deltaText);
     const merged = applyDelta(readText(df.mainFile), deltaText, df.capability);
     specs.set(df.capability, merged.ok && merged.text ? merged.text : readText(df.mainFile) ?? "");
@@ -10631,11 +11148,24 @@ function checkAnalysisDoc(text, file, d) {
 function analyzeChange(p, id) {
   const d = new Diags();
   const change = loadChange(p, id);
-  const analysisFile = (0, import_node_path14.join)(change.dir, "analysis.md");
+  const analysisFile = (0, import_node_path16.join)(change.dir, "analysis.md");
   const analysis = readText(analysisFile);
   if (analysis === null) d.error(rel(p, analysisFile), "analysis.md is missing");
-  else checkAnalysisDoc(analysis, rel(p, analysisFile), d);
-  const qText = readText((0, import_node_path14.join)(change.dir, "quality.yaml"));
+  else {
+    checkAnalysisDoc(analysis, rel(p, analysisFile), d);
+    if (projectKind(p) === "brownfield") {
+      const existing = sections(analysis).find((s) => s.name.toLowerCase() === "existing system");
+      if (!existing) d.error(rel(p, analysisFile), 'brownfield project: missing section "## Existing system" (assessment of the current code)');
+      else if (!existing.body) d.error(rel(p, analysisFile), 'section "## Existing system" is empty', existing.line);
+    }
+  }
+  for (const f of walkFiles(p.specs)) {
+    if (!f.endsWith(".md")) continue;
+    (0, import_node_fs15.readFileSync)(f, "utf8").split(/\r?\n/).forEach((l, i) => {
+      if (l.includes(PLACEHOLDER)) d.error(rel(p, f), `unfinished baseline spec: unresolved ${PLACEHOLDER} placeholder`, i + 1);
+    });
+  }
+  const qText = readText((0, import_node_path16.join)(change.dir, "quality.yaml"));
   const quality = qText === null ? null : parseQuality(qText, "quality.yaml").config;
   if (quality && analysis !== null) {
     const perms = sections(analysis).find((s) => s.name.toLowerCase() === "permissions");
@@ -10648,7 +11178,7 @@ function analyzeChange(p, id) {
       d.warn(rel(p, analysisFile), '"## Permissions" lists resources but quality.yaml requests none; add their keys to quality.yaml permissions or write "None"', perms.line);
     }
   }
-  const tasksFile = (0, import_node_path14.join)(change.dir, "tasks.yaml");
+  const tasksFile = (0, import_node_path16.join)(change.dir, "tasks.yaml");
   const tasksText = readText(tasksFile);
   if (tasksText === null) {
     d.error(rel(p, tasksFile), "tasks.yaml is missing");
@@ -10714,12 +11244,170 @@ function runStopFailure(stdin, env) {
   return paused;
 }
 
+// src/runner.ts
+var import_node_child_process4 = require("node:child_process");
+var import_node_crypto2 = require("node:crypto");
+var import_node_fs16 = require("node:fs");
+var import_node_path17 = require("node:path");
+var MINUTE = 6e4;
+var BACKOFF_MINUTES = [5, 10, 20, 40, 60];
+var LIMIT_TEXT = /rate[ _-]?limit|usage limit|quota|overloaded|\b429\b|\b529\b|limit (?:will )?reset/i;
+var DRIVABLE = /* @__PURE__ */ new Set(["approved", "executing", "verifying", "converging", "deploying", "delivered", "paused"]);
+var sleepSync = (ms) => {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+};
+var UNIT = { ms: 1, s: 1e3, sec: 1e3, second: 1e3, seconds: 1e3, m: MINUTE, min: MINUTE, minute: MINUTE, minutes: MINUTE, h: 60 * MINUTE, hour: 60 * MINUTE, hours: 60 * MINUTE };
+function waitMs(reason, attempt, now6 = /* @__PURE__ */ new Date()) {
+  const margin = MINUTE;
+  const rel2 = /(?:retry[- ]after|try again in|again in|resets? in|wait)\D{0,4}(\d+(?:\.\d+)?)\s*(ms|s|sec|seconds?|m|min|minutes?|h|hours?)\b/i.exec(reason);
+  if (rel2) {
+    const unit = UNIT[rel2[2].toLowerCase()] ?? 1e3;
+    return { ms: Math.round(Number(rel2[1]) * unit) + margin, why: `the error says ${rel2[0].trim()}` };
+  }
+  const epoch = /reset\w*\D{0,20}(1\d{9})\b/i.exec(reason);
+  if (epoch) {
+    const ms = Number(epoch[1]) * 1e3 - now6.getTime();
+    if (ms > 0) return { ms: ms + margin, why: `the limit resets at ${new Date(Number(epoch[1]) * 1e3).toISOString()}` };
+  }
+  const clock = /resets?\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/i.exec(reason);
+  if (clock && (clock[2] !== void 0 || clock[3] !== void 0)) {
+    let h = Number(clock[1]);
+    const m = Number(clock[2] ?? 0);
+    const ap = clock[3]?.toLowerCase();
+    if (ap === "pm" && h < 12) h += 12;
+    if (ap === "am" && h === 12) h = 0;
+    if (h < 24 && m < 60) {
+      const at = new Date(now6);
+      at.setHours(h, m, 0, 0);
+      if (at.getTime() <= now6.getTime()) at.setDate(at.getDate() + 1);
+      return { ms: at.getTime() - now6.getTime() + margin, why: `the limit resets at ${at.toLocaleTimeString()}` };
+    }
+  }
+  const minutes = BACKOFF_MINUTES[Math.min(attempt, BACKOFF_MINUTES.length - 1)];
+  return { ms: minutes * MINUTE, why: `no reset time given: backoff ${minutes} min` };
+}
+function archived(p, id) {
+  return !listChangeIds(p).includes(id) && (0, import_node_fs16.existsSync)(p.archive) && readdirNames(p.archive).some((n) => n.endsWith(id));
+}
+function readdirNames(dir) {
+  try {
+    return (0, import_node_fs16.readdirSync)(dir);
+  } catch {
+    return [];
+  }
+}
+var ISO_TIME = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z/g;
+function fingerprint(p, id) {
+  if (archived(p, id)) return "archived";
+  try {
+    const c = loadChange(p, id);
+    const parts = [String(c.data.state)];
+    for (const f of ["tasks.yaml", "evidence/quality/summary.json", "evidence/converge.json", "evidence/deploy.json", "evidence/integration.json"]) {
+      const file = (0, import_node_path17.join)(c.dir, f);
+      parts.push((0, import_node_fs16.existsSync)(file) ? (0, import_node_crypto2.createHash)("sha1").update((0, import_node_fs16.readFileSync)(file, "utf8").replace(ISO_TIME, "")).digest("hex").slice(0, 12) : "-");
+    }
+    return parts.join("|");
+  } catch {
+    return "?";
+  }
+}
+function runLoop(p, id, opts = {}) {
+  const claude = opts.claude ?? "claude";
+  const mode = opts.permissionMode ?? "auto";
+  const maxRuns = opts.maxRuns ?? 20;
+  const sleep = opts.sleep ?? sleepSync;
+  const log = opts.log ?? (() => {
+  });
+  const now6 = opts.now ?? (() => /* @__PURE__ */ new Date());
+  const logFile = (0, import_node_path17.join)(p.run, "runner.log");
+  (0, import_node_fs16.mkdirSync)(p.run, { recursive: true });
+  const record = (line) => {
+    log(line);
+    (0, import_node_fs16.appendFileSync)(logFile, `${now6().toISOString()} ${line}
+`);
+  };
+  let runs = 0;
+  let waits = 0;
+  let backoff = 0;
+  let idle = 0;
+  let last = fingerprint(p, id);
+  const result = (outcome, state, message) => {
+    record(`stop: ${outcome}: ${message}`);
+    return { outcome, runs, waits, state, message };
+  };
+  for (; ; ) {
+    if (archived(p, id)) return result("archived", "archived", `change ${id} is archived; the delivery package is in .aidw/archive/`);
+    const change = loadChange(p, id);
+    const state = stateOf(change) ?? String(change.data.state);
+    if (state === "escalated") return result("escalated", state, "the change is escalated and needs your decision: open Claude Code and run /aidw:status");
+    if (!DRIVABLE.has(state)) return result("needs_user", state, `state "${state}" needs you (approval or analysis); the runner continues only approved work`);
+    if (state === "paused") {
+      const reason = String(change.data.run?.paused?.reason ?? "");
+      const w = waitMs(reason, backoff++, now6());
+      waits++;
+      record(`paused (${reason || "no reason"}): waiting ${Math.round(w.ms / MINUTE)} min, ${w.why}`);
+      sleep(w.ms);
+    }
+    if (runs >= maxRuns) return result("max_runs", state, `${runs} sessions ran; raise --max-runs to continue`);
+    const prompt = state === "delivered" ? `/aidw:deliver ${id}` : `/aidw:resume ${id}`;
+    const args = ["-p", prompt, "--permission-mode", mode, ...opts.extraArgs ?? []];
+    record(`session ${runs + 1}: ${claude} ${args.map((a) => /\s/.test(a) ? JSON.stringify(a) : a).join(" ")}`);
+    const r = (0, import_node_child_process4.spawnSync)(claude, args, {
+      cwd: p.project,
+      encoding: "utf8",
+      env: { ...process.env, ...opts.env ?? {}, AIDW_RUNNER: "1" },
+      timeout: opts.sessionTimeoutMs ?? 6 * 60 * MINUTE,
+      maxBuffer: 64 * 1024 * 1024
+    });
+    runs++;
+    const output = `${r.stdout ?? ""}
+${r.stderr ?? ""}`.trim();
+    const tail = output.split("\n").slice(-8).join("\n");
+    record(`session ${runs} ended: exit ${r.status ?? r.error?.message ?? "?"}${tail ? `
+${tail.replace(/^/gm, "  | ")}` : ""}`);
+    if (r.error && r.error.code === "ENOENT") {
+      return result("claude_failed", state, `cannot run "${claude}": install Claude Code or pass --claude <path>`);
+    }
+    const after = loadChangeState(p, id);
+    if (after !== "paused" && r.status !== 0 && LIMIT_TEXT.test(output)) {
+      const w = waitMs(output, backoff++, now6());
+      waits++;
+      record(`limit in the output: waiting ${Math.round(w.ms / MINUTE)} min, ${w.why}`);
+      sleep(w.ms);
+      continue;
+    }
+    const fp = fingerprint(p, id);
+    if (after === "paused") {
+      last = fp;
+      continue;
+    }
+    if (fp === last) {
+      idle++;
+      if (idle >= 2) return result("no_progress", after, `two sessions in a row changed nothing (state ${after}); see .aidw/run/runner.log and run /aidw:status`);
+    } else {
+      idle = 0;
+      backoff = 0;
+    }
+    last = fp;
+  }
+}
+function loadChangeState(p, id) {
+  if (archived(p, id)) return "archived";
+  try {
+    return String(loadChange(p, id).data.state);
+  } catch {
+    return "?";
+  }
+}
+
 // src/cli.ts
 var HELP = `aidw ${VERSION} - deterministic core of the AI Fullstack Autonomous Development Workflow
 
 Usage: aidw <command> [args] [--json] [--root <dir>]
 
-  init                                   create .aidw/ in the current directory (or --root)
+  init                                   create .aidw/ in the current directory (or --root); detects brownfield
+  detect                                 what the existing code uses (stack, package manager, suggested layers)
+  baseline <capability> [--change <id>]  brownfield: skeleton spec of a capability's current behavior
   change new <id> [--title T] [--input-type ${INPUT_TYPES.join("|")}]
   status [<id>]                          project and change status
   validate [<id>] [--strict]             validate specs and changes (all when no id)
@@ -10735,7 +11423,14 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
 
 Execution (state executing; add --change <id> when several changes are active):
   next                                   what the orchestrator does next (implement | review | escalate | complete)
-  task start <task>                      mark a task running (counts attempts, records the base commit)
+  task start <task> [--worktree]         mark a task running (counts attempts, records the base commit);
+                                         --worktree: a wave task in its own git worktree
+  integrate                              after a wave: verify the merged code; a failure adds a fix task
+
+Unattended (in your own terminal, not inside Claude Code):
+  run [<id>] [--permission-mode M] [--max-runs N] [--claude BIN] [-- <claude args>]
+                                         loop \`claude -p "/aidw:resume <id>"\` until archived; waits out usage
+                                         limits (stated reset time or 5-60 min backoff); stops on escalation
   task retry <task>                      user-granted fresh attempt budget for an escalated/failed task
   brief <task> [--for implement|review]  write the context packet for a fresh subagent; prints its path
   skills <task> [--for implement|review] vendored skills selected for the task
@@ -10761,7 +11456,7 @@ Hooks:
 States: ${STATES.join(", ")}
 Exit codes: 0 ok, 1 failed check or refused operation, 2 usage error
 `;
-var VALUE_FLAGS = /* @__PURE__ */ new Set(["root", "title", "input-type", "reason", "change", "for", "notes", "notes-file", "timeout", "layer"]);
+var VALUE_FLAGS = /* @__PURE__ */ new Set(["root", "title", "input-type", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude"]);
 function parseArgs(argv) {
   const pos = [];
   const flags = {};
@@ -10787,19 +11482,19 @@ var UsageError = class extends Error {
 };
 function pluginRoot(env) {
   if (env.AIDW_PLUGIN_ROOT) return env.AIDW_PLUGIN_ROOT;
-  if (typeof __dirname !== "undefined") return (0, import_node_path15.join)(__dirname, "..");
+  if (typeof __dirname !== "undefined") return (0, import_node_path18.join)(__dirname, "..");
   if (env.CLAUDE_PLUGIN_ROOT) return env.CLAUDE_PLUGIN_ROOT;
-  return (0, import_node_path15.join)(process.cwd(), "plugins", "aidw");
+  return (0, import_node_path18.join)(process.cwd(), "plugins", "aidw");
 }
 function addBinToPath(env) {
   const file = env.CLAUDE_ENV_FILE;
   if (!file) return false;
-  const bin = (0, import_node_path15.join)(pluginRoot(env), "bin");
+  const bin = (0, import_node_path18.join)(pluginRoot(env), "bin");
   if (bin.includes("'")) return false;
   const line = `export PATH="$PATH":'${bin}'`;
-  const current = (0, import_node_fs14.existsSync)(file) ? (0, import_node_fs14.readFileSync)(file, "utf8") : "";
+  const current = (0, import_node_fs17.existsSync)(file) ? (0, import_node_fs17.readFileSync)(file, "utf8") : "";
   if (current.split("\n").includes(line)) return false;
-  (0, import_node_fs14.appendFileSync)(file, `${current && !current.endsWith("\n") ? "\n" : ""}${line}
+  (0, import_node_fs17.appendFileSync)(file, `${current && !current.endsWith("\n") ? "\n" : ""}${line}
 `);
   return true;
 }
@@ -10812,7 +11507,7 @@ function logHook(env, hook, input, output) {
       parsed = JSON.parse(input);
     } catch {
     }
-    (0, import_node_fs14.appendFileSync)(file, `${JSON.stringify({ at: (/* @__PURE__ */ new Date()).toISOString(), hook, input: parsed, output: output || null })}
+    (0, import_node_fs17.appendFileSync)(file, `${JSON.stringify({ at: (/* @__PURE__ */ new Date()).toISOString(), hook, input: parsed, output: output || null })}
 `);
   } catch {
   }
@@ -10826,6 +11521,9 @@ function str(v) {
 }
 function run(argv, env, cwd, io) {
   let args;
+  const dashdash = argv.indexOf("--");
+  const passthrough = dashdash >= 0 ? argv.slice(dashdash + 1) : [];
+  if (dashdash >= 0) argv = argv.slice(0, dashdash);
   try {
     args = parseArgs(argv);
   } catch (e) {
@@ -10898,6 +11596,8 @@ function run(argv, env, cwd, io) {
         const text = n.action === "implement" ? `implement ${n.task} (${n.reason}): ${n.title}
 ` : n.action === "review" ? `review ${n.task}: ${n.title}
 ` : n.action === "escalate" ? `escalate: ${n.reason}
+` : n.action === "wave" ? `wave of ${n.tasks.length}: ${n.tasks.map((x) => `${x.task} (${x.title})`).join(", ")}
+` : n.action === "integrate" ? `integrate ${n.tasks.join(", ")}: run \`aidw integrate\` on the merged code
 ` : `complete: all ${n.done} task(s) done
 `;
         emit({ change: id, ...n }, text);
@@ -10913,10 +11613,10 @@ function run(argv, env, cwd, io) {
 `);
           return 0;
         }
-        const r = startTask(p, id, need(rest[1], "task id"));
+        const r = startTask(p, id, need(rest[1], "task id"), { worktree: args.flags.worktree === true });
         emit(
           { ok: true, change: id, ...r },
-          `${r.task} running: attempt ${r.attempt} of ${r.maxAttempts}${r.resumed ? " (resumed)" : ""}${r.base ? `, base ${r.base.slice(0, 8)}` : ""}
+          `${r.task} running: attempt ${r.attempt} of ${r.maxAttempts}${r.resumed ? " (resumed)" : ""}${r.base ? `, base ${r.base.slice(0, 8)}` : ""}${r.worktree ? `, worktree ${r.worktree}` : ""}
 `
         );
         return 0;
@@ -10928,7 +11628,7 @@ function run(argv, env, cwd, io) {
         const taskId = need(rest[0], "task id");
         const kind = str(args.flags.for) ?? "implement";
         if (kind !== "implement" && kind !== "review") throw new UsageError('--for must be "implement" or "review"');
-        const b = buildBrief(p, id, taskId, kind, (0, import_node_path15.join)(pluginRoot(env), "vendor"));
+        const b = buildBrief(p, id, taskId, kind, (0, import_node_path18.join)(pluginRoot(env), "vendor"));
         if (cmd2 === "skills") {
           emit({ change: id, task: taskId, for: kind, skills: b.skills }, b.skills.map((s) => `${s.path}  # ${s.reason}
 `).join(""));
@@ -10969,7 +11669,7 @@ ${failed.tail}
           ...str(args.flags.layer) ? { layer: str(args.flags.layer) } : {},
           fresh: args.flags.fresh === true,
           ...timeout ? { timeoutMs: Number(timeout) * 1e3 } : {},
-          vendorDir: (0, import_node_path15.join)(pluginRoot(env), "vendor")
+          vendorDir: (0, import_node_path18.join)(pluginRoot(env), "vendor")
         });
         const lines = r.layers.map((l) => {
           const bad = l.runs.find((x) => x.exit !== 0);
@@ -11000,7 +11700,7 @@ ${failed.tail}
         const verdict = need(rest[1], "verdict (pass|fix)");
         if (verdict !== "pass" && verdict !== "fix") throw new UsageError('verdict must be "pass" or "fix"');
         const notesFile = str(args.flags["notes-file"]);
-        const notes = notesFile ? (0, import_node_fs14.readFileSync)(notesFile, "utf8") : str(args.flags.notes) ?? "";
+        const notes = notesFile ? (0, import_node_fs17.readFileSync)(notesFile, "utf8") : str(args.flags.notes) ?? "";
         if (verdict === "fix" && !notes.trim()) throw new UsageError("a fix verdict needs --notes or --notes-file");
         const r = recordLayerReview(p, id, layer, verdict, notes);
         emit(
@@ -11009,6 +11709,44 @@ ${failed.tail}
 `
         );
         return r.escalated ? 1 : 0;
+      }
+      case "run": {
+        if (env.CLAUDECODE === "1" && env.AIDW_RUNNER !== "1") {
+          throw new OpError("`aidw run` starts Claude Code headless in a loop; run it in your own terminal, outside a Claude Code session");
+        }
+        const p = project();
+        const id = resolveChangeId(p, rest[0]);
+        const maxRuns = str(args.flags["max-runs"]);
+        if (maxRuns !== void 0 && !(Number.isInteger(Number(maxRuns)) && Number(maxRuns) >= 1)) throw new UsageError("--max-runs must be a positive integer");
+        const r = runLoop(p, id, {
+          ...str(args.flags.claude) ? { claude: str(args.flags.claude) } : {},
+          ...str(args.flags["permission-mode"]) ? { permissionMode: str(args.flags["permission-mode"]) } : {},
+          ...maxRuns ? { maxRuns: Number(maxRuns) } : {},
+          extraArgs: passthrough,
+          env,
+          log: json ? () => {
+          } : (line) => io.out(`[aidw run] ${line}
+`)
+        });
+        emit({ change: id, ...r }, `${r.outcome === "archived" ? "DONE" : "STOPPED"} (${r.outcome}) after ${r.runs} session(s), ${r.waits} wait(s): ${r.message}
+`);
+        return r.outcome === "archived" ? 0 : r.outcome === "escalated" || r.outcome === "needs_user" ? 2 : 1;
+      }
+      case "integrate": {
+        const p = project();
+        const id = resolveChangeId(p, str(args.flags.change) ?? rest[0]);
+        const r = integrateChange(p, id);
+        const failed = r.runs.find((x) => x.exit !== 0);
+        emit(
+          { change: id, ...r },
+          `${r.ok ? "PASS" : "FAIL"}: ${r.summary}
+${r.runs.map((x) => `  ${x.exit === 0 ? "ok     " : "FAILED "} ${x.command}`).join("\n")}
+${failed ? `
+--- ${failed.command} (tail)
+${failed.tail}
+` : ""}`
+        );
+        return r.ok ? 0 : 1;
       }
       case "converge": {
         const p = project();
@@ -11056,7 +11794,7 @@ ${[...r.runs, ...r.smoke].find((x) => x.exit !== 0)?.tail ?? r.runs[0]?.tail ?? 
         const verdict = need(rest[1], "verdict (pass|fix)");
         if (verdict !== "pass" && verdict !== "fix") throw new UsageError('verdict must be "pass" or "fix"');
         const notesFile = str(args.flags["notes-file"]);
-        const notes = notesFile ? (0, import_node_fs14.readFileSync)(notesFile, "utf8") : str(args.flags.notes) ?? "";
+        const notes = notesFile ? (0, import_node_fs17.readFileSync)(notesFile, "utf8") : str(args.flags.notes) ?? "";
         if (verdict === "fix" && !notes.trim()) throw new UsageError("a fix verdict needs --notes or --notes-file");
         const r = recordReview(p, id, taskId, verdict, notes, { commit: args.flags["no-commit"] !== true });
         emit(
@@ -11070,8 +11808,8 @@ ${[...r.runs, ...r.smoke].find((x) => x.exit !== 0)?.tail ?? r.runs[0]?.tail ?? 
       case "vendor-path": {
         const ref = need(rest[0], "<upstream>/<skill>");
         if (!/^[a-z0-9-]+\/[a-z0-9-]+$/.test(ref)) throw new UsageError(`invalid vendored skill "${ref}"`);
-        const file = (0, import_node_path15.join)(pluginRoot(env), "vendor", ...ref.split("/"), "SKILL.md");
-        if (!(0, import_node_fs14.existsSync)(file)) throw new OpError(`vendored skill "${ref}" not found at ${file}`);
+        const file = (0, import_node_path18.join)(pluginRoot(env), "vendor", ...ref.split("/"), "SKILL.md");
+        if (!(0, import_node_fs17.existsSync)(file)) throw new OpError(`vendored skill "${ref}" not found at ${file}`);
         emit({ path: file }, `${file}
 `);
         return 0;
@@ -11081,8 +11819,8 @@ ${[...r.runs, ...r.smoke].find((x) => x.exit !== 0)?.tail ?? r.runs[0]?.tail ?? 
         if (!/^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/.test(ref) || ref.split("/").includes("..")) {
           throw new UsageError(`invalid plugin path "${ref}"`);
         }
-        const file = (0, import_node_path15.join)(pluginRoot(env), ...ref.split("/"));
-        if (!(0, import_node_fs14.existsSync)(file)) throw new OpError(`"${ref}" not found in the plugin (${file})`);
+        const file = (0, import_node_path18.join)(pluginRoot(env), ...ref.split("/"));
+        if (!(0, import_node_fs17.existsSync)(file)) throw new OpError(`"${ref}" not found in the plugin (${file})`);
         emit({ path: file }, `${file}
 `);
         return 0;
@@ -11125,8 +11863,35 @@ ${[...r.runs, ...r.smoke].find((x) => x.exit !== 0)?.tail ?? r.runs[0]?.tail ?? 
       }
       case "init": {
         const dir = str(args.flags.root) ?? cwd;
-        const { created } = initProject(dir);
-        emit({ ok: true, created }, `initialized .aidw/ (${created.length} files)
+        const { created, detection: d } = initProject(dir);
+        emit(
+          { ok: true, created, detection: d },
+          `initialized .aidw/ (${created.length} files): ${d.kind}
+${d.kind === "brownfield" ? `${d.signals.map((s) => `  signal  ${s}
+`).join("")}${Object.entries(d.stack).map(([k, v]) => `  stack   ${k}: ${v}
+`).join("")}  (recorded in .aidw/project.yaml; the existing stack is kept)
+` : ""}`
+        );
+        return 0;
+      }
+      case "detect": {
+        const dir = findProject({ root: str(args.flags.root), cwd, env }) ?? str(args.flags.root) ?? cwd;
+        const d = detectProject(dir);
+        const text = [
+          `${d.kind}${d.packageManager ? ` (${d.packageManager})` : ""}${d.languages.length ? `, ${d.languages.join(", ")}` : ""}`,
+          ...d.signals.map((s) => `  signal  ${s}`),
+          ...Object.entries(d.stack).map(([k, v]) => `  stack   ${k}: ${v}`),
+          ...d.layers.map((l) => `  layer   ${l.name}: ${l.run.join(" && ")}`)
+        ];
+        emit(d, `${text.join("\n")}
+`);
+        return 0;
+      }
+      case "baseline": {
+        const p = project();
+        const id = resolveChangeId(p, str(args.flags.change));
+        const file = createBaseline(p, id, need(rest[0], "capability"));
+        emit({ ok: true, change: id, file: rel(p, file) }, `wrote baseline skeleton ${rel(p, file)}: describe the current behavior, then aidw analyze ${id}
 `);
         return 0;
       }
@@ -11280,7 +12045,7 @@ if (typeof require !== "undefined" && require.main === module) {
     err: (s) => process.stderr.write(s),
     stdin: () => {
       try {
-        return (0, import_node_fs14.readFileSync)(0, "utf8");
+        return (0, import_node_fs17.readFileSync)(0, "utf8");
       } catch {
         return "";
       }

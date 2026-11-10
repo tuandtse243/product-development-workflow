@@ -9,7 +9,20 @@ import { Diags } from "./diag.js";
 export const TASK_STATUSES = ["pending", "running", "review", "done", "failed", "blocked", "escalated"] as const;
 
 /** Fields the orchestrator updates during execution; excluded from the approval hash. */
-export const RUNTIME_FIELDS = ["status", "attempts", "evidence", "started_at", "finished_at", "notes", "base"] as const;
+export const RUNTIME_FIELDS = [
+  "status",
+  "attempts",
+  "evidence",
+  "started_at",
+  "finished_at",
+  "notes",
+  "base",
+  // S8 parallel waves: the task's git worktree and branch, its merge time, and the fallback to sequential
+  "worktree",
+  "branch",
+  "merged_at",
+  "sequential",
+] as const;
 
 export const DEFAULT_MAX_ATTEMPTS = 3;
 
@@ -18,7 +31,7 @@ export const DEFAULT_MAX_ATTEMPTS = 3;
  * part of the approved plan, so they are excluded from the approval hash; their verify commands come
  * from approved sources (quality.yaml layers, spec scenarios).
  */
-export const ADDED_ORIGINS: readonly string[] = ["converge", "quality"];
+export const ADDED_ORIGINS: readonly string[] = ["converge", "quality", "integration"];
 
 export interface Task {
   id: string;
@@ -75,6 +88,7 @@ export function validateTasksText(text: string, file: string): Diags {
     if (t.max_attempts !== undefined && !(Number.isInteger(t.max_attempts) && Number(t.max_attempts) >= 1)) {
       d.error(file, `${where}: "max_attempts" must be a positive integer`);
     }
+    if (t.risk !== undefined && t.risk !== "normal" && t.risk !== "high") d.error(file, `${where}: "risk" must be normal or high`);
     if (t.status !== undefined && !(TASK_STATUSES as readonly string[]).includes(String(t.status))) {
       d.error(file, `${where}: unknown status "${String(t.status)}" (expected ${TASK_STATUSES.join(", ")})`);
     }

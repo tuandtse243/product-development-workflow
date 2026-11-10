@@ -47,12 +47,23 @@ export function findProject(opts: { root?: string; cwd: string; env: NodeJS.Proc
   const envDir = opts.env.CLAUDE_PROJECT_DIR;
   if (envDir && existsSync(join(envDir, AIDW_DIR))) return resolve(envDir);
   let dir = resolve(opts.cwd);
+  // A wave task's worktree (S8) holds a stale checkout of .aidw/; the project is the main checkout around it.
+  const wt = new RegExp(`^(.*?)[\\/]${AIDW_DIR.replace(".", "\\.")}[\\/]run[\\/]worktrees(?:[\\/]|$)`).exec(dir);
+  if (wt?.[1] && existsSync(join(wt[1], AIDW_DIR))) return wt[1];
   for (;;) {
     if (existsSync(join(dir, AIDW_DIR))) return dir;
     const parent = dirname(dir);
     if (parent === dir) return null;
     dir = parent;
   }
+}
+
+/** greenfield | brownfield from project.yaml (written by `aidw init` from the detection), or null when unknown. */
+export function projectKind(p: Paths): "greenfield" | "brownfield" | null {
+  const text = readText(p.projectYaml);
+  if (text === null) return null;
+  const m = /^kind:\s*(greenfield|brownfield)\b/m.exec(text);
+  return m ? (m[1] as "greenfield" | "brownfield") : null;
 }
 
 /** Project-relative path with forward slashes, for stable output and hashing. */

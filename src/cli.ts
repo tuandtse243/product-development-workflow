@@ -10,6 +10,7 @@ import { Diags, type Diagnostic } from "./diag.js";
 import {
   approve,
   archiveChange,
+  createBaseline,
   assertProject,
   initProject,
   INPUT_TYPES,
@@ -23,16 +24,20 @@ import {
 import { runStopFailure } from "./pause.js";
 import { findProject, pathsFor, rel, type Paths } from "./project.js";
 import { converge } from "./converge.js";
+import { detectProject } from "./detect.js";
+import { runLoop } from "./runner.js";
 import { deliver } from "./deliver.js";
 import { deploy, recordLayerReview, verify } from "./quality.js";
-import { buildBrief, checkpoint, nextAction, recordReview, retryTask, startTask } from "./run.js";
+import { buildBrief, checkpoint, integrateChange, nextAction, recordReview, retryTask, startTask } from "./run.js";
 import { VERSION } from "./version.js";
 
 const HELP = `aidw ${VERSION} - deterministic core of the AI Fullstack Autonomous Development Workflow
 
 Usage: aidw <command> [args] [--json] [--root <dir>]
 
-  init                                   create .aidw/ in the current directory (or --root)
+  init                                   create .aidw/ in the current directory (or --root); detects brownfield
+  detect                                 what the existing code uses (stack, package manager, suggested layers)
+  baseline <capability> [--change <id>]  brownfield: skeleton spec of a capability's current behavior
   change new <id> [--title T] [--input-type ${INPUT_TYPES.join("|")}]
   status [<id>]                          project and change status
   validate [<id>] [--strict]             validate specs and changes (all when no id)
@@ -48,7 +53,14 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
 
 Execution (state executing; add --change <id> when several changes are active):
   next                                   what the orchestrator does next (implement | review | escalate | complete)
-  task start <task>                      mark a task running (counts attempts, records the base commit)
+  task start <task> [--worktree]         mark a task running (counts attempts, records the base commit);
+                                         --worktree: a wave task in its own git worktree
+  integrate                              after a wave: verify the merged code; a failure adds a fix task
+
+Unattended (in your own terminal, not inside Claude Code):
+  run [<id>] [--permission-mode M] [--max-runs N] [--claude BIN] [-- <claude args>]
+                                         loop \`claude -p "/aidw:resume <id>"\` until archived; waits out usage
+                                         limits (stated reset time or 5-60 min backoff); stops on escalation
   task retry <task>                      user-granted fresh attempt budget for an escalated/failed task
   brief <task> [--for implement|review]  write the context packet for a fresh subagent; prints its path
   skills <task> [--for implement|review] vendored skills selected for the task
@@ -80,7 +92,7 @@ interface Args {
   flags: Record<string, string | true>;
 }
 
-const VALUE_FLAGS = new Set(["root", "title", "input-type", "reason", "change", "for", "notes", "notes-file", "timeout", "layer"]);
+const VALUE_FLAGS = new Set(["root", "title", "input-type", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude"]);
 
 export function parseArgs(argv: string[]): Args {
   const pos: string[] = [];
@@ -167,6 +179,10 @@ function str(v: string | true | undefined): string | undefined {
 
 export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io): number {
   let args: Args;
+  // `aidw run <id> -- <claude args>`: everything after `--` goes to claude untouched.
+  const dashdash = argv.indexOf("--");
+  const passthrough = dashdash >= 0 ? argv.slice(dashdash + 1) : [];
+  if (dashdash >= 0) argv = argv.slice(0, dashdash);
   try {
     args = parseArgs(argv);
   } catch (e) {
@@ -252,7 +268,11 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
               ? `review ${n.task}: ${n.title}\n`
               : n.action === "escalate"
                 ? `escalate: ${n.reason}\n`
-                : `complete: all ${n.done} task(s) done\n`;
+                : n.action === "wave"
+                  ? `wave of ${n.tasks.length}: ${n.tasks.map((x) => `${x.task} (${x.title})`).join(", ")}\n`
+                  : n.action === "integrate"
+                    ? `integrate ${n.tasks.join(", ")}: run \`aidw integrate\` on the merged code\n`
+                    : `complete: all ${n.done} task(s) done\n`;
         emit({ change: id, ...n }, text);
         return 0;
       }
@@ -266,10 +286,10 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           emit({ ok: true, change: id, ...r }, `${r.task}: retry granted (fresh attempt budget)\n`);
           return 0;
         }
-        const r = startTask(p, id, need(rest[1], "task id"));
+        const r = startTask(p, id, need(rest[1], "task id"), { worktree: args.flags.worktree === true });
         emit(
           { ok: true, change: id, ...r },
-          `${r.task} running: attempt ${r.attempt} of ${r.maxAttempts}${r.resumed ? " (resumed)" : ""}${r.base ? `, base ${r.base.slice(0, 8)}` : ""}\n`,
+          `${r.task} running: attempt ${r.attempt} of ${r.maxAttempts}${r.resumed ? " (resumed)" : ""}${r.base ? `, base ${r.base.slice(0, 8)}` : ""}${r.worktree ? `, worktree ${r.worktree}` : ""}\n`,
         );
         return 0;
       }
@@ -353,6 +373,38 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           }\n`,
         );
         return r.escalated ? 1 : 0;
+      }
+
+      case "run": {
+        if (env.CLAUDECODE === "1" && env.AIDW_RUNNER !== "1") {
+          throw new OpError("`aidw run` starts Claude Code headless in a loop; run it in your own terminal, outside a Claude Code session");
+        }
+        const p = project();
+        const id = resolveChangeId(p, rest[0]);
+        const maxRuns = str(args.flags["max-runs"]);
+        if (maxRuns !== undefined && !(Number.isInteger(Number(maxRuns)) && Number(maxRuns) >= 1)) throw new UsageError("--max-runs must be a positive integer");
+        const r = runLoop(p, id, {
+          ...(str(args.flags.claude) ? { claude: str(args.flags.claude) as string } : {}),
+          ...(str(args.flags["permission-mode"]) ? { permissionMode: str(args.flags["permission-mode"]) as string } : {}),
+          ...(maxRuns ? { maxRuns: Number(maxRuns) } : {}),
+          extraArgs: passthrough,
+          env,
+          log: json ? () => {} : (line) => io.out(`[aidw run] ${line}\n`),
+        });
+        emit({ change: id, ...r }, `${r.outcome === "archived" ? "DONE" : "STOPPED"} (${r.outcome}) after ${r.runs} session(s), ${r.waits} wait(s): ${r.message}\n`);
+        return r.outcome === "archived" ? 0 : r.outcome === "escalated" || r.outcome === "needs_user" ? 2 : 1;
+      }
+
+      case "integrate": {
+        const p = project();
+        const id = resolveChangeId(p, str(args.flags.change) ?? rest[0]);
+        const r = integrateChange(p, id);
+        const failed = r.runs.find((x) => x.exit !== 0);
+        emit(
+          { change: id, ...r },
+          `${r.ok ? "PASS" : "FAIL"}: ${r.summary}\n${r.runs.map((x) => `  ${x.exit === 0 ? "ok     " : "FAILED "} ${x.command}`).join("\n")}\n${failed ? `\n--- ${failed.command} (tail)\n${failed.tail}\n` : ""}`,
+        );
+        return r.ok ? 0 : 1;
       }
 
       case "converge": {
@@ -469,8 +521,36 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
 
       case "init": {
         const dir = str(args.flags.root) ?? cwd;
-        const { created } = initProject(dir);
-        emit({ ok: true, created }, `initialized .aidw/ (${created.length} files)\n`);
+        const { created, detection: d } = initProject(dir);
+        emit(
+          { ok: true, created, detection: d },
+          `initialized .aidw/ (${created.length} files): ${d.kind}\n${
+            d.kind === "brownfield"
+              ? `${d.signals.map((s) => `  signal  ${s}\n`).join("")}${Object.entries(d.stack).map(([k, v]) => `  stack   ${k}: ${v}\n`).join("")}  (recorded in .aidw/project.yaml; the existing stack is kept)\n`
+              : ""
+          }`,
+        );
+        return 0;
+      }
+
+      case "detect": {
+        const dir = findProject({ root: str(args.flags.root), cwd, env }) ?? str(args.flags.root) ?? cwd;
+        const d = detectProject(dir);
+        const text = [
+          `${d.kind}${d.packageManager ? ` (${d.packageManager})` : ""}${d.languages.length ? `, ${d.languages.join(", ")}` : ""}`,
+          ...d.signals.map((s) => `  signal  ${s}`),
+          ...Object.entries(d.stack).map(([k, v]) => `  stack   ${k}: ${v}`),
+          ...d.layers.map((l) => `  layer   ${l.name}: ${l.run.join(" && ")}`),
+        ];
+        emit(d, `${text.join("\n")}\n`);
+        return 0;
+      }
+
+      case "baseline": {
+        const p = project();
+        const id = resolveChangeId(p, str(args.flags.change));
+        const file = createBaseline(p, id, need(rest[0], "capability"));
+        emit({ ok: true, change: id, file: rel(p, file) }, `wrote baseline skeleton ${rel(p, file)}: describe the current behavior, then aidw analyze ${id}\n`);
         return 0;
       }
 

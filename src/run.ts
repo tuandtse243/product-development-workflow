@@ -22,6 +22,8 @@ import { changedSince, git, headCommit, isGitRepo } from "./git.js";
 import { matchesAny } from "./glob.js";
 import { OpError } from "./ops.js";
 import { readText, rel, walkFiles, type Paths } from "./project.js";
+import { ensureWorktree, integrate, mergeWorktree, parallelConfig, pendingIntegration, planWave, removeWorktree, taskDir, type IntegrateResult } from "./parallel.js";
+import { parseQuality, qualityFile } from "./quality.js";
 import { selectSkills, touchesUi, isSecuritySensitive, type BriefKind } from "./skills.js";
 import { DEFAULT_MAX_ATTEMPTS, parseTasks, validateTasksText, type Task } from "./tasks.js";
 
@@ -93,6 +95,8 @@ function requireExecuting(p: Paths, change: Change): void {
 
 export type NextAction =
   | { action: "implement"; task: string; title: string; reason: "new" | "retry" | "interrupted" }
+  | { action: "wave"; tasks: { task: string; title: string }[] }
+  | { action: "integrate"; tasks: string[] }
   | { action: "review"; task: string; title: string }
   | { action: "escalate"; task?: string; reason: string }
   | { action: "complete"; done: number };
@@ -116,12 +120,16 @@ export function nextAction(p: Paths, id: string): NextAction {
     }
     return { action: "implement", task: t.id, title: title(t), reason: "retry" };
   }
-  for (const t of tf.tasks) {
-    if (statusOf(t) !== "pending") continue;
-    if (list(t.depends_on).every((d) => statusOf(byId.get(d) ?? { id: d }) === "done")) {
-      return { action: "implement", task: t.id, title: title(t), reason: "new" };
-    }
+  // A finished wave is integrated (merged code verified together) before anything new starts.
+  const merged = pendingIntegration(tf.change, tf.tasks);
+  if (merged.length) {
+    const fix = tf.tasks.find((t) => t.origin === "integration" && statusOf(t) === "pending");
+    if (fix) return { action: "implement", task: fix.id, title: title(fix), reason: "new" };
+    return { action: "integrate", tasks: merged.map((t) => t.id) };
   }
+  const wave = planWave(tf.tasks, parallelConfig(p, tf.change).max);
+  if (wave.length >= 2) return { action: "wave", tasks: wave.map((t) => ({ task: t.id, title: title(t) })) };
+  if (wave[0]) return { action: "implement", task: wave[0].id, title: title(wave[0]), reason: "new" };
   const open = tf.tasks.filter((t) => statusOf(t) !== "done");
   if (open.length === 0) return { action: "complete", done: tf.tasks.length };
   const waiting = open.map((t) => `${t.id} (${statusOf(t)}${list(t.depends_on).length ? `, needs ${list(t.depends_on).join(", ")}` : ""})`);
@@ -136,9 +144,11 @@ export interface StartResult {
   maxAttempts: number;
   base: string | null;
   resumed: boolean;
+  /** project-relative worktree of a wave task (absent on the main checkout) */
+  worktree?: string;
 }
 
-export function startTask(p: Paths, id: string, taskId: string): StartResult {
+export function startTask(p: Paths, id: string, taskId: string, opts: { worktree?: boolean; runner?: CommandRunner } = {}): StartResult {
   const tf = loadTasks(p, id);
   requireExecuting(p, tf.change);
   const i = indexOf(tf, taskId);
@@ -164,12 +174,34 @@ export function startTask(p: Paths, id: string, taskId: string): StartResult {
   }
   // The base commit is fixed at the first attempt, so the reviewer sees the whole task's diff.
   const base = typeof t.base === "string" ? t.base : status === "pending" ? headCommit(p.project) : null;
+  let worktree = typeof t.worktree === "string" ? t.worktree : undefined;
+  if ((opts.worktree && status === "pending") || worktree) {
+    if (!base) throw new OpError(`task ${taskId} cannot run in a worktree: the project has no commit yet`);
+    if (t.sequential === true && !worktree) throw new OpError(`task ${taskId} is marked sequential; start it without --worktree`);
+    const wt = ensureWorktree(p, id, taskId, base);
+    if (wt.created) {
+      const setup = parallelConfig(p, tf.change).setup;
+      const runner = opts.runner ?? shellRunner;
+      for (const command of setup) {
+        const r = runner(command, join(p.project, wt.dir), 15 * 60 * 1000);
+        if (r.exit !== 0) {
+          removeWorktree(p, wt.dir, wt.branch);
+          setField(tf, i, "sequential", true);
+          saveTasks(tf);
+          throw new OpError(`worktree setup \`${command}\` failed for ${taskId} (exit ${r.exit}); ${taskId} is marked sequential and runs later on the main checkout:\n${r.tail}`);
+        }
+      }
+    }
+    worktree = wt.dir;
+    setField(tf, i, "worktree", wt.dir);
+    setField(tf, i, "branch", wt.branch);
+  }
   setField(tf, i, "status", "running");
   setField(tf, i, "attempts", attempt);
   if (!t.started_at) setField(tf, i, "started_at", now());
   if (base) setField(tf, i, "base", base);
   saveTasks(tf);
-  return { task: taskId, attempt, maxAttempts: max, base, resumed };
+  return { task: taskId, attempt, maxAttempts: max, base, resumed, ...(worktree ? { worktree } : {}) };
 }
 
 /** User-granted retry of an escalated or failed task: a fresh attempt budget, same base commit. */
@@ -276,9 +308,10 @@ function designEvidence(p: Paths, id: string, t: Task, changed: string[] | null,
   if (!touchesUi(t)) return null;
   const { tokens, exists, diags } = loadTokens(p);
   if (!exists || diags.errors.length > 0 || tokens.length === 0) return null;
+  const dir = taskDir(p, t);
   return {
-    missing_tokens: missingTokens(p.project, tokens),
-    hardcoded_colors: hardcodedColors(p.project, changed ?? [], tokens),
+    missing_tokens: missingTokens(dir, tokens),
+    hardcoded_colors: hardcodedColors(dir, changed ?? [], tokens),
     screenshots: taskShots(p, id, t.id, since),
   };
 }
@@ -354,13 +387,14 @@ export function checkpoint(
   const t = tf.tasks[i] as Task;
   if (statusOf(t) !== "running") throw new OpError(`task ${taskId} is "${statusOf(t)}"; checkpoint needs a running task (aidw task start ${taskId})`);
 
-  const scenarios = findScenarioTests(p.project, list(t.scenarios));
+  const dir = taskDir(p, t);
+  const scenarios = findScenarioTests(dir, list(t.scenarios));
   const missing = Object.entries(scenarios)
     .filter(([, locs]) => locs.length === 0)
     .map(([s]) => s);
 
   const base = typeof t.base === "string" ? t.base : null;
-  const changed = changedSince(p.project, base)?.filter((f) => !f.startsWith(".aidw/")) ?? null;
+  const changed = changedSince(dir, base)?.filter((f) => !f.startsWith(".aidw/")) ?? null;
   const touches = list(t.touches);
   const outside = changed ? changed.filter((f) => !matchesAny(touches, f)) : [];
 
@@ -369,7 +403,7 @@ export function checkpoint(
   const verify: VerifyRun[] = [];
   for (const command of list(t.verify)) {
     const started = Date.now();
-    const r = runner(command, p.project, timeoutMs);
+    const r = runner(command, dir, timeoutMs);
     verify.push({ command, ms: Date.now() - started, ...r });
     if (r.exit !== 0) break; // later commands usually depend on earlier ones passing
   }
@@ -416,6 +450,8 @@ export interface ReviewResult {
   status: string;
   commit: string | null;
   warning?: string;
+  /** wave task whose merge conflicted: dropped and back to pending, to rerun sequentially */
+  conflict?: string;
 }
 
 export function recordReview(
@@ -444,24 +480,60 @@ export function recordReview(
     return { task: taskId, verdict, status: exhausted ? "escalated" : "failed", commit: null };
   }
 
+  const msg = `${taskId}: ${String(t.title ?? "")}\n\naidw change ${id}, task ${taskId}. Checkpoint and review evidence: .aidw/changes/${id}/${evidenceRel(taskId)}`;
+  const inWorktree = typeof t.worktree === "string" && t.worktree !== "";
+  if (inWorktree) {
+    const m = mergeWorktree(p, t, msg);
+    if (!m.ok) {
+      // Blueprint 9.2: drop the branch and rerun the task sequentially on the latest code.
+      removeWorktree(p, String(t.worktree), String(t.branch ?? ""));
+      for (const f of ["worktree", "branch", "base", "started_at"]) setField(tf, i, f, null);
+      setField(tf, i, "status", "pending");
+      setField(tf, i, "attempts", 0);
+      setField(tf, i, "sequential", true);
+      setField(tf, i, "notes", `merge conflict after review (${m.conflict}); dropped, reruns sequentially on the latest code`.slice(0, 500));
+      saveTasks(tf);
+      return { task: taskId, verdict, status: "pending", commit: null, conflict: m.conflict };
+    }
+    setField(tf, i, "merged_at", now());
+    setField(tf, i, "worktree", null);
+    setField(tf, i, "branch", null);
+  }
   setField(tf, i, "status", "done");
   setField(tf, i, "notes", null);
   setField(tf, i, "finished_at", now());
   saveTasks(tf);
 
-  if (opts.commit === false) return { task: taskId, verdict, status: "done", commit: null };
+  if (opts.commit === false && !inWorktree) return { task: taskId, verdict, status: "done", commit: null };
   if (!isGitRepo(p.project)) return { task: taskId, verdict, status: "done", commit: null, warning: "not a git repository: task not committed" };
   const add = git(p.project, ["add", "-A"]);
-  const msg = `${taskId}: ${String(t.title ?? "")}\n\naidw change ${id}, task ${taskId}. Checkpoint and review evidence: .aidw/changes/${id}/${evidenceRel(taskId)}`;
   const commit = add.ok ? git(p.project, ["commit", "-q", "-m", msg]) : add;
+  if (inWorktree && commit.ok) removeWorktree(p, String(t.worktree), String(t.branch ?? ""));
   if (!commit.ok) {
     // keep the task reviewable so the commit can be retried
+    if (inWorktree) {
+      git(p.project, ["merge", "--abort"]);
+      setField(tf, i, "worktree", t.worktree);
+      setField(tf, i, "branch", t.branch);
+      setField(tf, i, "merged_at", null);
+    }
     setField(tf, i, "status", "review");
     setField(tf, i, "finished_at", null);
     saveTasks(tf);
     throw new OpError(`task ${taskId} passed review but the commit failed: ${commit.err || commit.out}`);
   }
   return { task: taskId, verdict, status: "done", commit: headCommit(p.project) };
+}
+
+// ---------------------------------------------------------------- integrate
+
+/** Integration verify after a wave (state executing): the merged code runs the wave's verify and the code layer. */
+export function integrateChange(p: Paths, id: string, opts: { runner?: CommandRunner; timeoutMs?: number } = {}): IntegrateResult {
+  const tf = loadTasks(p, id);
+  requireExecuting(p, tf.change);
+  const text = readText(qualityFile(tf.change));
+  const quality = text === null ? null : parseQuality(text, "quality.yaml").config;
+  return integrate(p, id, { loadTasks, save: (x) => saveTasks(x as TaskFile), runner: opts.runner ?? shellRunner, quality, ...(opts.timeoutMs ? { timeoutMs: opts.timeoutMs } : {}) });
 }
 
 // ---------------------------------------------------------------- brief
@@ -514,8 +586,18 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
   });
   const base = typeof t.base === "string" ? t.base : null;
   // Prior work exists after a failed attempt or an interrupted session: changes since the base commit.
+  const taskRoot = taskDir(p, t);
+  const inWorktree = taskRoot !== p.project;
   const priorWork =
-    kind === "implement" && status === "running" && base !== null && (changedSince(p.project, base) ?? []).some((f) => !f.startsWith(".aidw/"));
+    kind === "implement" && status === "running" && base !== null && (changedSince(taskRoot, base) ?? []).some((f) => !f.startsWith(".aidw/"));
+  const h = (title: string, body: string[]) => (body.length ? [`## ${title}`, "", ...body, ""] : []);
+  const workdir = inWorktree
+    ? h("Working directory (parallel wave)", [
+        `This task runs beside other tasks, in its own git worktree: \`${taskRoot}\` (branch \`${String(t.branch ?? "")}\`).`,
+        `\`cd\` there before anything else and run every command there. Paths in **Touches** are relative to it. Never edit the main checkout \`${p.project}\`, and never the worktree's own \`.aidw/\` (a stale copy).`,
+        ...(kind === "implement" ? ["Dependencies resolve from the main checkout's `node_modules` (a parent folder). Do not install packages unless the task needs a new one; if it does, install inside the worktree and say so in your report."] : []),
+      ])
+    : [];
 
   const pointers = [
     pointer(p, p.constitution, "engineering principles every agent follows"),
@@ -528,7 +610,6 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
 
   const touches = list(t.touches);
   const verify = list(t.verify);
-  const h = (title: string, body: string[]) => (body.length ? [`## ${title}`, "", ...body, ""] : []);
   const decisions = decisionsToHonor(readText(join(tf.change.dir, "analysis.md")) ?? "");
   const tokenInfo = touchesUi(t) ? loadTokens(p) : null;
   const tokens = tokenInfo && tokenInfo.diags.errors.length === 0 ? tokenInfo.tokens : [];
@@ -588,6 +669,7 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
         : []),
       "- Report in at most 10 lines: what works now, files changed, verify result, anything the reviewer should know (e.g. files outside Touches and why).",
       "",
+      ...workdir,
       ...(priorWork
         ? h("Resuming", [
             `Work from an earlier attempt or an interrupted session may already be in the working tree. Inspect it first (\`git status\`, \`git diff ${base}\`) and continue from it; do not start over.`,
@@ -598,12 +680,15 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
       ...shared,
     ];
   } else {
-    const diff = base ? `\`git diff ${base}\` plus untracked files (\`git status --porcelain\`)` : "the files matching Touches (no base commit was recorded)";
+    const diff = base
+      ? `${inWorktree ? `in the worktree \`${taskRoot}\`: ` : ""}\`git diff ${base}\` plus untracked files (\`git status --porcelain\`)`
+      : "the files matching Touches (no base commit was recorded)";
     const outside = lastCheckpoint?.outside_touches ?? [];
     const design = lastCheckpoint?.design;
     body = [
       "You are an independent reviewer in a fresh context. You did not write this code. You may read files and run read-only commands (tests included); you cannot edit anything.",
       "",
+      ...workdir,
       "## What to review",
       "",
       `- The task's changes: ${diff}.`,

@@ -16,7 +16,8 @@ loses nothing: `/aidw:resume` re-enters this loop.
 
 This is Pocock's `implement-spec` pattern (task graph, frontier, a fresh subagent per ticket, communication
 through context pointers) wrapped with aidw governance: approval gate, per-task evidence, independent review,
-commit per task. In this slice tasks run **sequentially**; parallel waves come later.
+commit per task. Tasks whose `touches` do not overlap run as a **parallel wave**, each in its own git worktree
+that aidw creates; everything else runs sequentially on the main checkout.
 
 ## Ground rules
 
@@ -72,6 +73,26 @@ aidw next --change <id> --json
      the notes.
    - No clear verdict: spawn a fresh reviewer once more; if still unclear, treat it as `fix` with its reply.
 4. Report one line to the user: `T03 done (3/8)` or `T03 needs fixes (attempt 2/3)`.
+
+**`wave <T1>, <T2>, ...`** (tasks that can run side by side):
+1. For each task: `aidw task start <T> --worktree --change <id>`. If one fails because its worktree setup
+   failed, it is marked sequential and runs later on its own; continue with the others.
+2. For each started task: `aidw brief <T> --change <id>`.
+3. Spawn one `aidw:implementer` per task **in a single message** (parallel Agent calls), each with only its
+   prompt `Task brief: <path>. Read it and implement the task.` Wait for all of them.
+4. A blocker from any implementer: finish the others, then *Escalate*.
+5. `aidw checkpoint <T>` for each task, one after the other (checkpoints run builds; never in parallel).
+6. Loop: `next` now returns `review <T>` for each checkpointed task (and retries for failed ones). When several
+   tasks wait for review, you may spawn their reviewers in one message; record each verdict as below.
+   `aidw review <T> pass` merges the task's worktree into the change branch and commits it. If the merge
+   conflicts, the output says so: the task's work is dropped and it reruns sequentially later (say so to the
+   user in one line).
+
+**`integrate <T1>, <T2>, ...`** (a wave was merged): `aidw integrate --change <id>`. It runs the wave's verify
+commands and the `code` layer on the merged code.
+- `PASS`: loop.
+- `FAIL` with a fix task `Inn`: loop; `next` returns it before anything else (it runs on the main checkout).
+- Fix rounds exhausted: the change is `escalated`; tell the user (section 2, step 2) and stop.
 
 **`escalate`**: see below.
 
@@ -135,6 +156,19 @@ aidw next --change <id> --json
 3. Follow `$(aidw plugin-path skills/deliver/SKILL.md)`: delivery package, screenshots, check, archive.
 4. Final report to the user: tasks and commits, quality layers and fix rounds, converge result, the preview
    URL, known issues, and where the delivery package is.
+
+## Unattended runs (usage limits)
+
+If the user wants the run to survive usage or rate limits without them, tell them to start the runner in
+their own terminal (never run it yourself; the gate denies it):
+
+```
+aidw run <id> --permission-mode auto -- --plugin-dir <plugin dir if not installed>
+```
+
+It loops `claude -p "/aidw:resume <id>"` until the change is archived, waits out each limit (the reset time from
+the error, or 5 to 60 minutes of backoff), and stops on escalation or when two sessions make no progress
+(log: `.aidw/run/runner.log`). Tier-3 questions cannot be answered headless; they end in an escalation.
 
 ## Long-running commands
 

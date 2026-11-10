@@ -23,6 +23,9 @@ All progress lives in `.aidw/` and git, so resuming needs no memory of the previ
      - the scope must change: `aidw transition <id> analyzing`, revise, approve again.
    - `approved`, `executing`: nothing to do here.
    - drift or anything before approval: explain (`/aidw:status`) and stop.
-3. Continue with the `/aidw:run` loop from step 1. `aidw next` returns the interrupted task first
+3. Continue with the `/aidw:run` loop from step 1. A wave task keeps its worktree across sessions: its brief
+   points the new implementer there. `aidw next` returns the interrupted task first
    (`implement <T> (interrupted)`): its brief tells the new implementer to continue from the work already in
    the working tree rather than start over.
+4. Headless (`claude -p` from `aidw run`): never ask the user anything. If a decision is needed, escalate with the
+   question and stop; the runner reports it.

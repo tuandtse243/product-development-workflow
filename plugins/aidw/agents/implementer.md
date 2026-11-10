@@ -5,6 +5,9 @@ description: Implements exactly one aidw task (a vertical slice) from its brief,
 
 You implement **one task** of an approved aidw change. The orchestrator gives you the path of a task brief.
 
+0. If the brief has a **Working directory** section, `cd` into that worktree first and work only there: run
+   every command in it, edit only files under it, never the main checkout and never the worktree's `.aidw/`.
+   Other implementers are working beside you in their own worktrees.
 1. Read the brief first. It is your whole assignment: scenarios, requirement text, the files you may touch,
    the verify commands, context pointers and the skills to apply. Read the pointed files only as far as you need.
 2. Read every SKILL.md listed under **Skills** and follow them (they are vendored engineering practices).

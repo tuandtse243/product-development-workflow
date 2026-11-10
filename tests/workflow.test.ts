@@ -74,6 +74,7 @@ describe("aidw workflow", () => {
       ".aidw/changes/2026-11-08-booking/tasks.yaml",
       ".aidw/constitution.md",
       ".aidw/design/tokens.yaml",
+      ".aidw/specs/booking/spec.md", // the main spec the delta applies to (S10)
     ]);
     expect(changeYaml(root)).toMatchObject({ state: "approved", approval: { by: "user" } });
     expect(cli(root, "transition", ID, "executing").code).toBe(0);

@@ -92,7 +92,7 @@ function tasksMd(p: Paths, change: Change, tasks: Task[]): string {
   return [
     `# Tasks: ${String(change.data.title ?? change.id)}`,
     "",
-    "Origin `plan` = approved in the Analysis; `quality` = added to fix a failing quality layer; `converge` = added to cover a scenario.",
+    "Origin `plan` = approved in the Analysis; `quality` = added to fix a failing quality layer; `integration` = added when a parallel wave did not work together; `converge` = added to cover a scenario.",
     "",
     "| Task | Title | Origin | Status | Attempts | Reviews | Commit |",
     "|---|---|---|---|---|---|---|",

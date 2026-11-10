@@ -126,6 +126,9 @@ export function firstMatch<R extends Rule>(rules: R[], text: string): R | undefi
 /** `aidw approve` is a human decision: the agent may run it only through a permission prompt. */
 export const APPROVE_COMMAND = /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+approve\b/;
 
+/** `aidw run`: the headless auto-resume runner (S9); it spawns `claude -p`, so it never runs inside a session. */
+export const RUNNER_COMMAND = /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+run\b/;
+
 /** Commands that invoke the aidw CLI itself (its writes stay inside .aidw/), by name or quoted path. */
 export const AIDW_COMMAND = /^\s*["']?(?:[^\s;&|"']*\/)?aidw["']?\s/;
 
@@ -134,4 +137,4 @@ export const SHELL_CHAINING = /[;&|`<>]|\$\(/;
 
 /** aidw commands that record progress or change state: the orchestrator's job, never a subagent's. */
 export const AIDW_STATE_COMMAND =
-  /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+(?:task|checkpoint|review|layer-review|verify|converge|deploy|deliver|transition|approve|archive|merge|init|change|brief)\b/;
+  /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+(?:task|checkpoint|review|layer-review|verify|integrate|converge|deploy|deliver|transition|approve|archive|merge|init|change|brief)\b/;

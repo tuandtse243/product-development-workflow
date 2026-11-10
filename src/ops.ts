@@ -17,7 +17,7 @@ import { analyzeChange, PLACEHOLDER } from "./analyze.js";
 import { recordBaseline } from "./backstop.js";
 import { checkChange, deltaFiles } from "./check.js";
 import { Diags } from "./diag.js";
-import { capabilityOf, isDir, pathsFor, readText, rel, walkFiles, type Paths } from "./project.js";
+import { capabilityOf, isDir, KEBAB_SEGMENT, pathsFor, projectKind, readText, rel, walkFiles, type Paths } from "./project.js";
 import { applyDelta, type MergeSummary } from "./spec/merge.js";
 import { parseSpec } from "./spec/parse.js";
 import { git, headCommit, isGitRepo } from "./git.js";
@@ -25,6 +25,8 @@ import { checkDelivery } from "./deliver.js";
 import { transitionGuard } from "./guards.js";
 import { parseTasks } from "./tasks.js";
 import { VERSION } from "./version.js";
+import { detectProject, type Detection } from "./detect.js";
+import YAML from "yaml";
 
 export class OpError extends Error {
   constructor(
@@ -72,16 +74,37 @@ It is part of the approved Analysis package: changing it after approval is drift
 
 const SKELETON_DIRS = ["requirements", "specs", "domain", "architecture", "decisions", "design", "changes", "archive", "run"];
 
-export function initProject(projectDir: string): { created: string[]; paths: Paths } {
+/** project.yaml with the detection result: brownfield projects keep their stack (Q9, source client). */
+function projectYaml(name: string, det: Detection): string {
+  const base = PROJECT_YAML(name).replace("schema: 1\n", `schema: 1\nkind: ${det.kind} # greenfield | brownfield (aidw detect)\n`);
+  if (det.kind === "greenfield") return base;
+  const doc = YAML.parseDocument(base);
+  doc.setIn(["stack", "source"], "client");
+  doc.setIn(["stack", "items"], doc.createNode(det.stack));
+  doc.setIn(["stack", "reason"], "existing project: aidw keeps the stack it finds and does not migrate it (Q9)");
+  doc.set(
+    "detected",
+    doc.createNode({
+      package_manager: det.packageManager,
+      languages: det.languages,
+      signals: det.signals,
+      suggested_layers: Object.fromEntries(det.layers.map((l) => [l.name, l.run])),
+    }),
+  );
+  return String(doc);
+}
+
+export function initProject(projectDir: string): { created: string[]; paths: Paths; detection: Detection } {
   const p = pathsFor(projectDir);
   if (existsSync(p.aidw)) throw new OpError(`${rel(p, p.aidw)}/ already exists; refusing to overwrite`);
+  const detection = detectProject(projectDir);
   const created: string[] = [];
   const write = (file: string, content: string) => {
     mkdirSync(dirname(file), { recursive: true });
     writeFileSync(file, content);
     created.push(rel(p, file));
   };
-  write(p.projectYaml, PROJECT_YAML(basename(projectDir)));
+  write(p.projectYaml, projectYaml(basename(projectDir), detection));
   write(p.constitution, CONSTITUTION);
   write(join(p.aidw, ".gitignore"), "run/\n");
   for (const d of SKELETON_DIRS) {
@@ -89,7 +112,51 @@ export function initProject(projectDir: string): { created: string[]; paths: Pat
     if (d !== "run") write(keep, "");
     else mkdirSync(join(p.aidw, d), { recursive: true });
   }
-  return { created, paths: p };
+  return { created, paths: p, detection };
+}
+
+// ---------------------------------------------------------------- baseline (S10)
+
+const PRE_APPROVAL = new Set(["draft", "intake", "analyzing"]);
+
+/**
+ * Lazy baseline spec (S10): before a brownfield change modifies a capability that has no spec yet, the current
+ * behavior of the existing code is written down as `.aidw/specs/<capability>/spec.md`. Only capabilities a
+ * change touches get one. The skeleton fails `aidw analyze` until every TODO(aidw) is replaced; the spec is
+ * approved with the change (it is the base of its deltas) and frozen while the change runs.
+ */
+export function createBaseline(p: Paths, id: string, capability: string): string {
+  if (!capability.split("/").every((s) => KEBAB_SEGMENT.test(s))) throw new OpError(`capability "${capability}" must be kebab-case segments (e.g. billing or billing/invoices)`);
+  const change = loadChange(p, id);
+  const state = String(change.data.state);
+  if (!PRE_APPROVAL.has(state)) throw new OpError(`change "${id}" is "${state}"; baseline specs are written during the Analysis (draft, intake, analyzing)`);
+  const file = join(p.specs, ...capability.split("/"), "spec.md");
+  if (existsSync(file)) throw new OpError(`${rel(p, file)} already exists; a capability gets its baseline once`);
+  const head = headCommit(p.project);
+  const title = capability.split("/").at(-1)!.split("-").map((w) => w[0]!.toUpperCase() + w.slice(1)).join(" ");
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(
+    file,
+    `# ${title}
+
+<!-- aidw:baseline: current behavior of the existing code${head ? ` at ${head.slice(0, 12)}` : ""}, written for change ${id}.
+Describe what the code does TODAY (read the code and its tests), not what it should do. Changes go in the change's delta specs. -->
+
+## Purpose
+
+${PLACEHOLDER}: what this capability does today, in one or two sentences.
+
+## Requirements
+
+### Requirement: ${PLACEHOLDER} one current behavior
+The system SHALL ${PLACEHOLDER}.
+
+#### Scenario: ${PLACEHOLDER} observed case
+- **WHEN** ${PLACEHOLDER}
+- **THEN** ${PLACEHOLDER}
+`,
+  );
+  return file;
 }
 
 // ---------------------------------------------------------------- change new
@@ -138,13 +205,13 @@ export function newChange(p: Paths, id: string, opts: { title?: string; inputTyp
     ].join("\n"),
   );
   writeFileSync(join(dir, "intake.md"), INTAKE(title));
-  writeFileSync(join(dir, "analysis.md"), ANALYSIS(title));
+  writeFileSync(join(dir, "analysis.md"), ANALYSIS(title, projectKind(p) === "brownfield"));
   recordBaseline(p);
   return dir;
 }
 
 // Section names must match ANALYSIS_SECTIONS in analyze.ts; `aidw analyze` rejects leftover TODO(aidw).
-const ANALYSIS = (title: string) => `# Analysis: ${title}
+const ANALYSIS = (title: string, brownfield = false) => `# Analysis: ${title}
 
 ## Summary
 
@@ -159,7 +226,17 @@ Write "None" only if there are none.
 ## Requirements and scope
 
 ${PLACEHOLDER}: in scope, out of scope, assumptions. Link .aidw/requirements/<change>.md.
+${
+  brownfield
+    ? `
+## Existing system
 
+${PLACEHOLDER}: brownfield assessment. What exists (stack from project.yaml, structure, main flows), conventions
+the change follows, the health baseline (which existing checks pass or fail today), the capabilities this change
+touches and their baseline specs (aidw baseline <capability>), and what must not change.
+`
+    : ""
+}
 ## Domain
 
 ${PLACEHOLDER}: key entities and business rules. Link .aidw/domain/model.md.

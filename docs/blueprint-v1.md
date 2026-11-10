@@ -509,9 +509,9 @@ Vòng dev: `claude --plugin-dir ./plugins/aidw` trong thư mục fixture. Cài t
 | S5 | Converge, archive/merge, deliver | [7][8] → **Mốc A**. **Code xong 2026-11-08** (xem §26); cả 8 tiêu chí có test và đã chạy thử trọn bằng bin, chờ một lần chạy thật với Claude Code |
 | S6 | 4 design mode + tuân thủ thiết kế và Analysis (D-26) | code xong (§28) |
 | S7 | Các layer ui-ux, a11y, security, perf và reviewers (D-28) | code xong (§30), chờ trial-3 |
-| S8 | Song song + worktree + integration verify | |
-| S9 | Auto-resume khi hết quota (`aidw run`) | |
-| S10 | Brownfield: assessment, lazy baseline spec, profile detect, fixture brownfield | **Mốc B = v1.0** |
+| S8 | Song song + worktree + integration verify (D-29) | code xong (§31), chờ trial-3 |
+| S9 | Auto-resume khi hết quota (`aidw run`, D-30) | code xong (§31), chờ trial-3 |
+| S10 | Brownfield: assessment, lazy baseline spec, profile detect, fixture brownfield (D-31) | code xong (§31), chờ trial-3 → **Mốc B = v1.0** |
 
 **Tiêu chí mốc A** (chạy từ project rỗng với một JD fixture):
 1. `/aidw:start <JD>` sinh intake và analysis đầy đủ (stack đúng thứ tự ưu tiên, có danh sách quyền bậc 2).
@@ -561,8 +561,8 @@ Spike nằm ở scratchpad của phiên, không nằm trong repo. Khi làm S2 s�
 1. Tên sản phẩm (thay cho `aidw`).
 2. Cách ngăn skill vendor tự kích hoạt: đặt ngoài `skills/`, hay chỉnh description (§7.3).
 3. Gắn kiểm tra evidence vào hook nào: `TaskCompleted`, `SubagentStop` hay chỉ `aidw checkpoint` (§11).
-4. `isolation: worktree` có hoạt động với plugin agent không (§9).
-5. Runner auto-resume: cách biết thời điểm reset quota, hay dùng backoff (§13).
+4. ~~`isolation: worktree` có hoạt động với plugin agent không~~: **đóng bởi D-29**, aidw tự tạo worktree nên không phụ thuộc.
+5. ~~Runner auto-resume: thời điểm reset hay backoff~~: **đóng bởi D-30**, đọc thời điểm reset trong lỗi, không có thì backoff 5→60 phút.
 6. Định dạng bundle export của Claude Design (§10).
 7. Vai của `improve-codebase-architecture` (Pocock) và `deprecation-and-migration` (Addy) cho brownfield (S10).
 8. JD thật để làm fixture số 1.
@@ -931,4 +931,57 @@ cơ chế D-24: mọi tầng là một mục trong `quality.yaml`, Analysis ch�
 - Lighthouse có gắn được vào Chrome CDP từ trong sandbox không (chrome-launcher dùng lại Chrome đang nghe cổng 9222);
 - `start-server-and-test` dừng server sạch trong sandbox;
 - thời gian thêm của 4 tầng.
+
+## 31. Nhật ký triển khai S8, S9, S10 (2026-11-10)
+
+Ba slice cuối của mốc B được làm một lượt theo yêu cầu của người dùng, rồi kiểm chung trong trial-3
+(`docs/trial-3.md`).
+
+### S8: song song, worktree, integration verify (D-29)
+
+- `src/parallel.ts`: `globsOverlap` (prefix tĩnh, bảo thủ), `planWave`, worktree (`ensureWorktree`, `removeWorktree`,
+  `mergeWorktree`), `integrate`.
+- `aidw next` có thêm hai action: `wave` (≥2 task) và `integrate` (wave đã merge mà chưa kiểm chung). Task `Inn`
+  của integration chạy trước mọi task mới.
+- `aidw task start <T> --worktree`: tạo worktree tại base của task, chạy `parallel.setup`; setup fail thì task
+  `sequential: true`. Trường runtime mới (không tính drift): `worktree`, `branch`, `merged_at`, `sequential`.
+- Checkpoint, brief, review làm theo thư mục của task. Brief có mục *Working directory*.
+- `aidw review <T> pass` với task trong worktree: commit trong worktree (`<T> (worktree): ...`, không gồm `.aidw/`),
+  `merge --no-ff --no-commit`, commit `<T>: <title>` kèm state `.aidw/`, rồi xóa worktree và nhánh. Conflict:
+  `merge --abort`, bỏ nhánh, task về `pending` + `sequential`, attempts về 0.
+- Guard: `verifying` cần wave cuối đã integrate. Gate: ghi code trong worktree theo luật như project, chặn `.aidw/`
+  bản sao; `findProject` từ trong worktree trả về checkout chính.
+- Skill run có nhánh `wave` (spawn implementer song song trong một message, checkpoint lần lượt) và `integrate`.
+
+### S9: `aidw run` (D-30)
+
+- `src/runner.ts`: vòng `claude -p "/aidw:resume <id>"` (state `delivered` thì `/aidw:deliver`), `waitMs` đọc thời
+  điểm reset hoặc backoff, `fingerprint` (state + hash các file tiến độ, bỏ timestamp) để phát hiện session không
+  tiến triển. Output có chữ rate limit/429/529 mà change chưa pause thì cũng chờ.
+- Kết quả: `archived` (exit 0), `escalated`/`needs_user` (exit 2), `no_progress`/`max_runs`/`claude_failed` (exit 1).
+- Gate chặn `aidw run` trong session; CLI cũng từ chối khi `CLAUDECODE=1`.
+
+### S10: brownfield (D-31)
+
+- `src/detect.ts`: framework, UI, styling, components, ORM, database, auth, test runner, deploy; package manager
+  (field `packageManager`, lockfile); ngôn ngữ; lệnh layer gợi ý từ `scripts` (`code`, `unit`, `e2e`).
+- `aidw init` ghi `kind`, stack và `detected:` vào `project.yaml`. `aidw detect` in lại.
+- Analysis: `## Existing system` bắt buộc khi `kind: brownfield` (template sinh sẵn). Spec gốc có `TODO(aidw)` làm
+  analyze báo lỗi.
+- `aidw baseline <capability>`: skeleton spec hành vi hiện tại, chỉ trước approve, không ghi đè.
+- Hash approve gồm spec gốc mà delta áp vào; gate khóa nó trong lúc change chạy.
+- Skill start bước 1b (assessment: đọc code, health baseline, conventions, giữ stack), bước 4 (lazy baseline,
+  characterization test), bước 7–8 (touches gọn để chạy song song, `parallel`), profile quality-layers (brownfield).
+- Fixture `evals/fixtures/brownfield-app` (Next.js todo, có test và vercel.json); `vitest.config.ts` giới hạn
+  test của repo trong `tests/`.
+
+**Test:** 125 pass. Bộ mới `tests/parallel.test.ts` (git thật: wave, merge, conflict, integration fail, setup fail,
+gate), `tests/runner.test.ts` (claude giả), `tests/brownfield.test.ts`.
+
+**Chưa kiểm trên Claude Code thật (trial-3):**
+- Agent tool chạy nhiều implementer song song trong một message, mỗi cái `cd` vào worktree của mình;
+- `next build`/Turbopack trong worktree lồng trong project (node_modules ở thư mục cha, nhiều lockfile);
+- `claude -p "/aidw:resume"` gọi được skill `disable-model-invocation`, `--permission-mode auto` chạy headless,
+  hook StopFailure có chạy trong `-p` không;
+- brownfield: chất lượng assessment, baseline spec, health baseline trên project thật.
 

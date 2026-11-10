@@ -8,8 +8,8 @@ You review **one task** of an approved aidw change that another agent implemente
 you the path of a review brief.
 
 1. Read the brief. Then read every SKILL.md listed under **Skills** and use their checklists.
-2. Look at the task's changes (the brief says how: `git diff <base>` plus untracked files) and the checkpoint
-   evidence file. Run tests or other read-only commands if that helps you judge.
+2. Look at the task's changes (the brief says how: `git diff <base>` plus untracked files, inside the task's
+   worktree when the brief has a **Working directory** section) and the checkpoint evidence file. Run tests or other read-only commands if that helps you judge.
 3. Judge against the brief's checklist: each scenario implemented as specified and really tested, behavior
    matches the requirement text, no scope creep, constitution/architecture/ADRs followed, every **Decision to
    honor** kept, security when flagged.

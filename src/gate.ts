@@ -12,7 +12,7 @@
  * Fails closed inside an aidw project: an internal error denies the call.
  */
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
-import { approvalStatus, CHANGE_PACKAGE_FILES, FROZEN_PROJECT_DIRS } from "./approval.js";
+import { approvalStatus, baseSpecFiles, CHANGE_PACKAGE_FILES, FROZEN_PROJECT_DIRS } from "./approval.js";
 import { listChangeIds, loadChange, POST_APPROVAL, stateOf, type State } from "./change.js";
 import { AIDW_DIR, findProject, pathsFor, rel, type Paths } from "./project.js";
 import {
@@ -27,6 +27,7 @@ import {
   TIER2_COMMANDS,
   WRITE_COMMANDS,
   maskQuotedAngles,
+  RUNNER_COMMAND,
 } from "./policy.js";
 import { grantedResources } from "./quality.js";
 
@@ -88,6 +89,11 @@ function inside(parent: string, child: string): boolean {
 function isFrozenPackageFile(p: Paths, file: string, frozen: string[]): boolean {
   if (file === p.constitution || FROZEN_PROJECT_DIRS(p).some((d) => inside(d, file))) return frozen.length > 0;
   for (const id of frozen) {
+    try {
+      if (baseSpecFiles(p, loadChange(p, id)).includes(file)) return true;
+    } catch {
+      // unreadable change: its package files are checked below
+    }
     const dir = join(p.changes, id);
     if (!inside(dir, file)) continue;
     const r = relative(dir, file).split(sep).join("/");
@@ -148,6 +154,15 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
     if (!inside(project, file)) return null; // outside the project: normal permission rules apply
 
     if (role === "reviewer") return deny("the reviewer is read-only; report issues in the verdict instead of fixing them");
+    // S8: a wave task's git worktree is project code, not aidw state; its own .aidw/ is a stale copy.
+    const worktrees = join(p.run, "worktrees");
+    if (inside(worktrees, file)) {
+      const parts = relative(worktrees, file).split(sep);
+      if (parts.length < 3) return deny("write inside a task's worktree (.aidw/run/worktrees/<change>/<task>/...)");
+      if (parts[2] === AIDW_DIR) return deny("the worktree's .aidw/ is a stale copy; aidw state lives in the main checkout and is the orchestrator's");
+      const st = gateState(p);
+      return st.open ? allow("analysis approved (task worktree)") : deny(closedReason(st));
+    }
     if (role === "implementer" && inside(p.aidw, file) && !inside(join(p.run, "shots"), file)) {
       return deny("implementers do not write .aidw/; the orchestrator records progress and evidence");
     }
@@ -173,6 +188,9 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
     if (forbidden) return deny(`command ${forbidden.why}; forbidden (tier x)`);
     if (role && AIDW_STATE_COMMAND.test(cmd)) {
       return deny(`the ${role} does not change aidw state (no self-verification); report back to the orchestrator`);
+    }
+    if (RUNNER_COMMAND.test(cmd)) {
+      return deny("`aidw run` starts Claude Code headless in a loop; the user runs it in their own terminal, not inside a session");
     }
     if (APPROVE_COMMAND.test(cmd)) {
       return ask("approving the Analysis package is the user's decision. Approve only if you (the user) reviewed analysis.md.");

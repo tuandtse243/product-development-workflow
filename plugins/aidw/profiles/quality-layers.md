@@ -37,6 +37,9 @@ deploy:
     - vercel curl /api/health --deployment "$AIDW_DEPLOY_URL" --yes -- --fail --silent --show-error --output /dev/null
 permissions: [vercel-preview]   # tier-2 resource keys; each must also be named in ## Permissions
 max_fix_rounds: 3               # fix tasks per failing layer before escalating (default 3)
+parallel:                       # waves of tasks with disjoint touches, each in its own git worktree (S8)
+  max: 3                        # 1 = sequential
+  setup: []                     # commands run in each new worktree, e.g. ["pnpm install --offline --frozen-lockfile"]
 ```
 
 - **Review layers** carry `review: ui` or `review: security`. Their `run` commands (optional) produce the
@@ -74,6 +77,13 @@ max_fix_rounds: 3               # fix tasks per failing layer before escalating 
 - Preview deploys need the user's provider login (`vercel login` once). Environment variables for the preview
   (e.g. Supabase URL and anon key) are listed in `## Deploy strategy`; if they require a cloud database, add the
   `supabase-dev` key and say which project.
+
+## Brownfield projects
+
+Use the project's own scripts (`aidw detect` lists them under `layer`) and its package manager; do not add
+tools the project does not use unless a layer needs one (say why in `## Quality profile`). Run every layer
+command once during the Analysis (health baseline). A check that already fails on the untouched code is
+recorded under `## Existing system`; the user decides whether the change fixes it or the layer skips it.
 
 ## Tier-2 resource keys
 

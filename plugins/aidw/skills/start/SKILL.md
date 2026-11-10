@@ -44,6 +44,27 @@ already `awaiting_approval` or later, tell the user and stop: one change at a ti
 4. Fill `.aidw/changes/<id>/intake.md`: paste the original request **verbatim** (or its path), record the
    client's explicit constraints, including any stack the client requires.
 
+## 1b. Assessment (brownfield only)
+
+When `.aidw/project.yaml` says `kind: brownfield` (or the input type is `codebase`), understand the existing
+system before asking anything; the grilling then asks only what the code cannot answer.
+
+1. The working tree must be clean (`git status`): aidw commits per task. Ask the user to commit or stash first.
+2. Read `.aidw/project.yaml` (`stack`, `detected`), `aidw detect`, the README, `package.json` scripts, config
+   files, the folder structure and the main flows. Read code; do not run the app yet.
+3. Write what you found where it belongs: `.aidw/architecture/overview.md` (the architecture as it is, folder
+   structure, integrations), `.aidw/domain/model.md` (entities and rules the code already has), and the
+   conventions the code follows into `.aidw/constitution.md` (naming, folders, state management, styling,
+   test style). These describe the current system; the change adds to them later.
+4. **Health baseline**: run the existing checks that the quality layers will use (`detected.suggested_layers`:
+   lint, typecheck, build, tests) once, now. Record which pass and which already fail. A check that fails
+   before any change is not this change's fault: the user decides at the gate whether the change fixes it,
+   or the layer leaves it out with a reason (`## Quality profile`).
+5. Fill `## Existing system` in `analysis.md`: what exists, conventions to follow, the health baseline, the
+   capabilities this change touches and what must not change.
+6. Keep the stack: `Source: client` (the existing code is the client's choice, Q9). Never migrate frameworks,
+   package manager or libraries unless the user asks for exactly that.
+
 ## 2. Discovery (grilling + clarify)
 
 1. `aidw transition <id> analyzing`
@@ -109,6 +130,15 @@ The system SHALL <behavior>.
 Every requirement needs at least one scenario; scenarios become the E2E and integration tests later.
 Run `aidw validate <id>` and fix every error.
 
+**Brownfield: lazy baseline specs.** Existing behavior has no spec yet, and aidw does not spec the whole
+system. When this change modifies or removes behavior of a capability that has no `.aidw/specs/<capability>/`,
+first run `aidw baseline <capability> --change <id>` and replace every `TODO(aidw)` in the skeleton with the
+behavior the code has **today** (read the code and its tests; one requirement per behavior the change touches,
+plus the neighbours it must not break). Then write the delta against it (`## MODIFIED Requirements` copies the
+baseline block). The baseline is approved with the change and frozen while it runs. Capabilities the change
+only adds to need no baseline. When a modified behavior has no test today, plan a first task that adds a
+characterization test (it must pass on the current code) before changing it.
+
 ## 5. Design decision (Q3)
 
 Detect design assets: Figma links, screenshots, an existing design system, brand guides. Then choose the
@@ -135,6 +165,7 @@ the user the token table (name, value, use) as part of the Design discussion.
 2. Write `.aidw/architecture/overview.md`: components, data model outline, folder structure, integrations,
    auth and payment choices.
 3. ADRs for hard-to-reverse, surprising, real trade-offs only (domain-modeling's rule).
+   Brownfield: extend the existing architecture; record only what the change adds.
 4. Fill `.aidw/constitution.md`: engineering principles and stack conventions every agent must follow.
 5. Update `stack:` and `design_mode:` in `.aidw/project.yaml`.
 
@@ -162,6 +193,11 @@ tasks:
 ```
 
 - Every requirement and scenario marked `*` (changed) in `aidw ids <id>` must be referenced by some task.
+- **Parallel waves.** Tasks whose `touches` do not overlap and whose dependencies are done run side by side,
+  each in its own git worktree. Keep `touches` tight (exact folders, not `src/**`) so independent slices can
+  run together, and list shared files (`package.json`, the root layout, a shared schema) only in the task
+  that really changes them. `risk: high` (auth, payments, migrations, wide refactors) always runs alone. At
+  most one task per wave may drive a browser (UI or e2e verify), since they share the e2e port.
 - The first tasks usually scaffold the project with the approved stack and set up the test harness, the
   JUnit reporters of quality.yaml, and `.env.example` for every environment variable (names only).
 
@@ -193,6 +229,10 @@ Read `$(aidw plugin-path profiles/quality-layers.md)` and `$(aidw plugin-path po
   e2e layer and a Decision to honor (`E2E connects to Chrome over CDP at E2E_CDP_URL, default
   http://127.0.0.1:9222`). Use a launched browser instead only if the user prefers it and a real launch works
   in this session.
+- **Parallel.** `parallel: { max: 3 }` in quality.yaml is the default (1 turns waves off). A wave task runs in
+  `.aidw/run/worktrees/<change>/<task>`, inside the project, so dependencies resolve from the main checkout's
+  `node_modules`. If the stack needs its own install per worktree, add an offline install as `parallel.setup`
+  (e.g. `pnpm install --offline --frozen-lockfile`); a task whose setup fails runs sequentially instead.
 - `## Permissions`: one bullet per tier-2 resource, starting with its key, e.g.
   ``- `vercel-preview`: preview deploy of the demo, deleted after handoff``, or `None`. `aidw analyze` checks
   that every key in quality.yaml is named here.

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Change } from "./change.js";
-import { rel, walkFiles, type Paths } from "./project.js";
+import { capabilityOf, rel, walkFiles, type Paths } from "./project.js";
 import { canonicalTasks } from "./tasks.js";
 
 export interface ApprovalHash {
@@ -17,12 +17,29 @@ export const CHANGE_PACKAGE_FILES = ["intake.md", "analysis.md", "design.md", "q
 /** Project-level directories that belong to the approved package (with constitution.md). */
 export const FROZEN_PROJECT_DIRS = (p: Paths): string[] => [p.design, p.domain, p.architecture, p.requirements];
 
+/**
+ * Main specs the change's deltas apply to (S10): MODIFIED/REMOVED requirements are only meaningful against
+ * them, and in a brownfield project they are the baseline written before the gate. They are approved with
+ * the change and frozen while it runs.
+ */
+export function baseSpecFiles(p: Paths, change: Change): string[] {
+  const out = new Set<string>();
+  for (const f of walkFiles(join(change.dir, "specs"))) {
+    const cap = capabilityOf(join(change.dir, "specs"), f);
+    if (!cap) continue;
+    const main = join(p.specs, ...cap.split("/"), "spec.md");
+    if (existsSync(main)) out.add(main);
+  }
+  return [...out];
+}
+
 const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
 const normalize = (s: string) => s.replace(/\r\n?/g, "\n");
 
 /**
  * Hash of everything the user approves at the gate:
- *   change: intake.md, analysis.md, design.md, quality.yaml, specs/** (deltas), tasks.yaml (planned fields only)
+ *   change: intake.md, analysis.md, design.md, quality.yaml, specs/** (deltas), tasks.yaml (planned fields only),
+ *           and the main specs those deltas apply to
  *   project: constitution.md, design/**, domain/**, architecture/**, requirements/**
  * Execution progress (task status, evidence, run state) is deliberately excluded.
  * decisions/ (ADRs) is excluded: implementation-level ADRs may be added during execution.
@@ -37,6 +54,7 @@ export function computeApprovalHash(p: Paths, change: Change): ApprovalHash {
 
   for (const name of CHANGE_PACKAGE_FILES) add(join(change.dir, name));
   for (const f of walkFiles(join(change.dir, "specs"))) add(f);
+  for (const f of baseSpecFiles(p, change)) add(f);
   const tasksFile = join(change.dir, "tasks.yaml");
   if (existsSync(tasksFile)) add(tasksFile, canonicalTasks(readFileSync(tasksFile, "utf8")));
   add(p.constitution);

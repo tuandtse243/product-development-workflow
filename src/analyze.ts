@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { loadChange } from "./change.js";
 import { deltaFiles } from "./check.js";
 import { Diags } from "./diag.js";
-import { capabilityOf, readText, rel, walkFiles, type Paths } from "./project.js";
+import { capabilityOf, projectKind, readText, rel, walkFiles, type Paths } from "./project.js";
 import { applyDelta } from "./spec/merge.js";
 import { parseDelta, parseSpec, sections, slugify } from "./spec/parse.js";
 import { parseQuality } from "./quality.js";
@@ -172,7 +172,24 @@ export function analyzeChange(p: Paths, id: string): Diags {
   const analysisFile = join(change.dir, "analysis.md");
   const analysis = readText(analysisFile);
   if (analysis === null) d.error(rel(p, analysisFile), "analysis.md is missing");
-  else checkAnalysisDoc(analysis, rel(p, analysisFile), d);
+  else {
+    checkAnalysisDoc(analysis, rel(p, analysisFile), d);
+    // S10: a brownfield change states what exists and what it must not break.
+    if (projectKind(p) === "brownfield") {
+      const existing = sections(analysis).find((s) => s.name.toLowerCase() === "existing system");
+      if (!existing) d.error(rel(p, analysisFile), 'brownfield project: missing section "## Existing system" (assessment of the current code)');
+      else if (!existing.body) d.error(rel(p, analysisFile), 'section "## Existing system" is empty', existing.line);
+    }
+  }
+  // Baseline specs (aidw baseline) start as skeletons; an unfinished one must not reach the gate.
+  for (const f of walkFiles(p.specs)) {
+    if (!f.endsWith(".md")) continue;
+    readFileSync(f, "utf8")
+      .split(/\r?\n/)
+      .forEach((l, i) => {
+        if (l.includes(PLACEHOLDER)) d.error(rel(p, f), `unfinished baseline spec: unresolved ${PLACEHOLDER} placeholder`, i + 1);
+      });
+  }
 
   // Every tier-2 resource in quality.yaml must be named in the human-readable "## Permissions".
   const qText = readText(join(change.dir, "quality.yaml"));

@@ -13,7 +13,9 @@ autonomous build → layered quality gates → living specs → complete deliver
   use rules for all four design modes, checkpoint token and screenshot checks, reviewer design and
   decisions-to-honor checks, README command check at delivery). **S7 code done** (review layers `review: ui|security` in
   `quality.yaml` with read-only `aidw:ui-reviewer` / `aidw:security-reviewer` agents and `aidw layer-review`; a11y and
-  performance layers over Chrome CDP in the quality profile). Test guide: [`docs/milestone-a-test.md`](docs/milestone-a-test.md)
+  performance layers over Chrome CDP in the quality profile). **S8-S10 code done** (parallel waves in git worktrees
+  with merge per task and integration verify; `aidw run`, the headless auto-resume runner; brownfield detection,
+  `## Existing system`, lazy baseline specs). Milestone B awaits trial 3: [`docs/trial-3.md`](docs/trial-3.md). Test guide: [`docs/milestone-a-test.md`](docs/milestone-a-test.md)
   (set `AIDW_HOOK_LOG=<file>` to trace every hook call).
 
 ## Use it in a project (local, no install)
@@ -84,6 +86,11 @@ aidw review <task> pass|fix [--notes-file F] independent verdict; pass marks don
 aidw verify [--layer L] [--fresh]            quality layers not yet passing; a failure adds a fix task;
                                              a review layer stops with a brief for aidw:<kind>-reviewer
 aidw layer-review <layer> pass|fix [--notes-file F]  record the layer reviewer's verdict
+aidw task start <task> --worktree           a wave task in its own git worktree
+aidw integrate                              after a wave: verify the merged code (failure -> fix task)
+aidw detect                                 brownfield: stack, package manager, suggested layers
+aidw baseline <capability>                  brownfield: skeleton spec of current behavior (before approval)
+aidw run [<id>] [--permission-mode M] [-- <claude args>]  unattended loop in your terminal, waits out limits
 aidw converge                                every changed scenario has a passing test; gaps become tasks
 aidw deploy                                  approved preview deploy + smoke checks (or record none/local)
 aidw deliver [--check]                       delivery package (generated parts + handoff skeleton), checklist

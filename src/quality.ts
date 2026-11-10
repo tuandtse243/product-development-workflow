@@ -55,7 +55,18 @@ export interface QualityConfig {
   deploy: { target: DeployTarget; command: string | null; smoke: string[] };
   permissions: Tier2Resource[];
   maxFixRounds: number;
+  /** S8: parallel waves of tasks with disjoint touches, each in its own git worktree */
+  parallel: ParallelConfig;
 }
+
+export interface ParallelConfig {
+  /** most tasks in one wave; 1 runs every task sequentially */
+  max: number;
+  /** commands run inside each new worktree before its implementer starts (e.g. an offline install) */
+  setup: string[];
+}
+
+export const DEFAULT_PARALLEL: ParallelConfig = { max: 3, setup: [] };
 
 const isStrList = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) => typeof x === "string" && x.trim() !== "");
 const isProjectRelative = (r: string) => !r.startsWith("/") && !r.split("/").includes("..");
@@ -143,6 +154,14 @@ export function parseQuality(text: string, file: string): { config: QualityConfi
   const max = data.max_fix_rounds ?? DEFAULT_MAX_FIX_ROUNDS;
   if (!(Number.isInteger(max) && Number(max) >= 1)) d.error(file, '"max_fix_rounds" must be a positive integer');
 
+  const par = (data.parallel ?? {}) as Record<string, unknown>;
+  if (data.parallel !== undefined && (typeof data.parallel !== "object" || data.parallel === null || Array.isArray(data.parallel))) {
+    d.error(file, '"parallel" must be a mapping with "max" and optional "setup"');
+  }
+  const parMax = par.max ?? DEFAULT_PARALLEL.max;
+  if (!(Number.isInteger(parMax) && Number(parMax) >= 1 && Number(parMax) <= 10)) d.error(file, '"parallel.max" must be an integer from 1 to 10');
+  if (par.setup !== undefined && !isStrList(par.setup)) d.error(file, '"parallel.setup" must be a list of commands');
+
   if (d.errors.length) return { config: null, diags: d };
   return {
     config: {
@@ -150,6 +169,7 @@ export function parseQuality(text: string, file: string): { config: QualityConfi
       deploy: { target, command, smoke: isStrList(dep.smoke) ? dep.smoke : [] },
       permissions,
       maxFixRounds: Number(max),
+      parallel: { max: Number(parMax), setup: isStrList(par.setup) ? par.setup : [] },
     },
     diags: d,
   };
