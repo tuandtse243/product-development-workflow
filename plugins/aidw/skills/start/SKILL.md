@@ -172,13 +172,18 @@ Read `$(aidw plugin-path profiles/quality-layers.md)` and `$(aidw plugin-path po
 - Write `.aidw/changes/<id>/quality.yaml`: the layers with the exact commands for the chosen stack, the deploy
   target and command, the smoke checks, and the tier-2 resource keys. These commands run unattended after
   approval, so make them non-interactive.
-- `## Quality profile`: which layers run and why (code, unit, integration, e2e now; ui-ux, a11y, security,
-  performance later), scaled to the project's risk (Q5: comprehensive by default). Justify any dropped layer.
+- `## Quality profile`: which layers run and why, scaled to the project's risk (Q5: comprehensive by default).
+  `code`, `unit`, `e2e` are expected. Add `ui-ux` (screenshots at three viewports + `review: ui`) and `a11y`
+  (axe) whenever the change has UI; `security` (audit + secret scan + `review: security`) whenever it has
+  server code, auth, user data or a database; `performance` (Lighthouse budgets) for a public web app. The
+  profile's "Recommended layers" section has the commands and the test files the scaffold task must add.
+  Justify every layer you leave out; the quality report lists it as not covered.
 - `## Deploy strategy`: none | local | preview, the provider, the preview environment variables and where their
   values come from. Production is never automatic: it is tier 3 and asks.
 - **Environment preflight.** The layers run unattended in this Claude Code session, under its sandbox, so check
   now that what they need works here: the package manager and runners (`<pm> --version`, `npx vitest --version`),
-  and the deploy CLI and its login (`vercel whoami`). Settle every gap with the user before approval and record
+  the deploy CLI and its login (`vercel whoami`), and `npx lighthouse --version` when the profile has a
+  `performance` layer. Settle every gap with the user before approval and record
   it under the Summary's risks: a layer that cannot run here fails in verify and escalates.
 - **E2E browser.** Claude Code's sandbox usually blocks launching Chromium, so the default is **Chrome over
   CDP**: the user runs Chrome outside the sandbox with a debugging port, and Playwright connects to it (setup

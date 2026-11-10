@@ -11,7 +11,9 @@ autonomous build → layered quality gates → living specs → complete deliver
   checks, tier-2 allowlist), **S5 code done** (converge from JUnit reports, delivery package, archive). All
   milestone-A code is in and ran end to end in Claude Code (blueprint section 27). **S6 code done** (design tokens with
   use rules for all four design modes, checkpoint token and screenshot checks, reviewer design and
-  decisions-to-honor checks, README command check at delivery). Test guide: [`docs/milestone-a-test.md`](docs/milestone-a-test.md)
+  decisions-to-honor checks, README command check at delivery). **S7 code done** (review layers `review: ui|security` in
+  `quality.yaml` with read-only `aidw:ui-reviewer` / `aidw:security-reviewer` agents and `aidw layer-review`; a11y and
+  performance layers over Chrome CDP in the quality profile). Test guide: [`docs/milestone-a-test.md`](docs/milestone-a-test.md)
   (set `AIDW_HOOK_LOG=<file>` to trace every hook call).
 
 ## Use it in a project (local, no install)
@@ -79,7 +81,9 @@ aidw brief <task> [--for implement|review]   context packet for a fresh subagent
 aidw skills <task> [--for implement|review]  vendored skills selected for the task
 aidw checkpoint <task> [--timeout <sec>]     a test per scenario id + every verify command passes
 aidw review <task> pass|fix [--notes-file F] independent verdict; pass marks done and commits
-aidw verify [--layer L] [--fresh]            quality layers not yet passing; a failure adds a fix task
+aidw verify [--layer L] [--fresh]            quality layers not yet passing; a failure adds a fix task;
+                                             a review layer stops with a brief for aidw:<kind>-reviewer
+aidw layer-review <layer> pass|fix [--notes-file F]  record the layer reviewer's verdict
 aidw converge                                every changed scenario has a passing test; gaps become tasks
 aidw deploy                                  approved preview deploy + smoke checks (or record none/local)
 aidw deliver [--check]                       delivery package (generated parts + handoff skeleton), checklist

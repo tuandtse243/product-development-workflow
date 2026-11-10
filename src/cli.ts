@@ -24,7 +24,7 @@ import { runStopFailure } from "./pause.js";
 import { findProject, pathsFor, rel, type Paths } from "./project.js";
 import { converge } from "./converge.js";
 import { deliver } from "./deliver.js";
-import { deploy, verify } from "./quality.js";
+import { deploy, recordLayerReview, verify } from "./quality.js";
 import { buildBrief, checkpoint, nextAction, recordReview, retryTask, startTask } from "./run.js";
 import { VERSION } from "./version.js";
 
@@ -56,7 +56,10 @@ Execution (state executing; add --change <id> when several changes are active):
   review <task> pass|fix [--notes-file F | --notes T] [--no-commit]
                                          record the independent review; pass marks done and commits
   verify [--layer L] [--fresh]           (verifying) run quality layers not yet passing on the current code;
-                                         a failing layer adds a fix task and returns the change to executing
+                                         a failing layer adds a fix task and returns the change to executing;
+                                         a review layer (review: ui|security) stops with a brief for its reviewer
+  layer-review <layer> pass|fix [--notes-file F | --notes T]
+                                         (verifying) record the layer reviewer's verdict; fix adds a fix task
   converge                               (converging) every changed scenario has a passing test; gaps become tasks
   deploy                                 (deploying) approved preview deploy + smoke checks, or record target none/local
   deliver [--check]                      (delivered) write the delivery package and check its checklist
@@ -315,18 +318,41 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           ...(str(args.flags.layer) ? { layer: str(args.flags.layer) as string } : {}),
           fresh: args.flags.fresh === true,
           ...(timeout ? { timeoutMs: Number(timeout) * 1000 } : {}),
+          vendorDir: join(pluginRoot(env), "vendor"),
         });
         const lines = r.layers.map((l) => {
           const bad = l.runs.find((x) => x.exit !== 0);
-          const mark = l.status === "pass" ? "ok     " : l.status === "fail" ? "FAILED " : l.reused ? "ok     " : "skipped";
+          const mark = l.status === "pass" ? "ok     " : l.status === "fail" ? "FAILED " : l.status === "review" ? "REVIEW " : l.reused ? "ok     " : "skipped";
           return `  ${mark} ${l.name}${l.reused ? "  (passed earlier on this commit; --fresh reruns it)" : ""}${bad ? `  (${bad.command}${bad.timedOut ? ", timed out" : `, exit ${bad.exit}`})` : ""}`;
         });
         const failed = r.layers.find((l) => l.status === "fail")?.runs.find((x) => x.exit !== 0);
+        const a = r.awaitingReview;
         emit(
           { change: id, ...r },
-          `${r.ok ? "PASS" : "FAIL"}: ${r.summary}\n${lines.join("\n")}\n${failed ? `\n--- ${failed.command} (tail)\n${failed.tail}\n` : ""}`,
+          `${r.ok ? "PASS" : a ? "REVIEW" : "FAIL"}: ${r.summary}\n${lines.join("\n")}\n${failed ? `\n--- ${failed.command} (tail)\n${failed.tail}\n` : ""}${
+            a ? `\n  agent  ${a.agent}\n  brief  ${a.brief}\n  prompt Layer review brief: ${a.brief}. Review the layer and reply with the verdict.\n` : ""
+          }`,
         );
         return r.ok ? 0 : 1;
+      }
+
+      case "layer-review": {
+        const p = project();
+        const id = resolveChangeId(p, str(args.flags.change));
+        const layer = need(rest[0], "layer name");
+        const verdict = need(rest[1], "verdict (pass|fix)");
+        if (verdict !== "pass" && verdict !== "fix") throw new UsageError('verdict must be "pass" or "fix"');
+        const notesFile = str(args.flags["notes-file"]);
+        const notes = notesFile ? readFileSync(notesFile, "utf8") : (str(args.flags.notes) ?? "");
+        if (verdict === "fix" && !notes.trim()) throw new UsageError("a fix verdict needs --notes or --notes-file");
+        const r = recordLayerReview(p, id, layer, verdict, notes);
+        emit(
+          { ok: !r.escalated, change: id, ...r },
+          `${r.layer}: ${r.kind} review ${r.verdict} -> ${r.summary}${
+            verdict === "pass" && !notes.trim() ? "\n  note: no reviewer reply recorded; pass it with --notes-file so its non-blocking remarks reach the handoff" : ""
+          }\n`,
+        );
+        return r.escalated ? 1 : 0;
       }
 
       case "converge": {

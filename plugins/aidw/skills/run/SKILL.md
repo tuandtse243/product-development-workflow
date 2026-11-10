@@ -90,10 +90,23 @@ aidw next --change <id> --json
 
 1. `aidw transition <id> verifying` (refused while any task is not done).
 2. `aidw verify --change <id>`. It runs the layers of the approved `quality.yaml` in order (code, unit,
-   integration, e2e, ...), skipping layers that already passed on the current code.
-   - `PASS`: go to step 4.
+   integration, e2e, ui-ux, a11y, security, performance, ...), skipping layers that already passed on the
+   current code.
+   - `PASS`: go to section 4.
    - A layer failed and a **fix task** `Qnn` was added: the change is back in `executing`. Return to the loop
      (section 1): the fix task runs through implement, checkpoint and review like any other, then come back here.
+   - `REVIEW`: a **review layer** (`review: ui` or `review: security`) passed its commands and waits for an
+     independent reviewer. The output names the agent, the brief and the prompt:
+     1. Spawn that agent (`subagent_type: "aidw:ui-reviewer"` or `"aidw:security-reviewer"`) with exactly the
+        printed prompt: `Layer review brief: <path>. Review the layer and reply with the verdict.`
+     2. Write its reply verbatim to `.aidw/run/layer-review-<layer>.md`, then
+        `aidw layer-review <layer> pass|fix --notes-file .aidw/run/layer-review-<layer>.md --change <id>`
+        according to the first line (`VERDICT: pass` / `VERDICT: fix`). No clear verdict: spawn a fresh
+        reviewer once more; still unclear, treat it as `fix` with its reply. Always pass the reply: its
+        non-blocking remarks go into the quality report and the handoff.
+     3. `pass` -> run `aidw verify` again for the remaining layers. `fix` -> a fix task `Qnn` was added with the
+        reviewer's notes; return to the loop (section 1), then come back here. Fix rounds exhausted -> the change
+        is `escalated`: tell the user and stop.
    - Fix rounds exhausted: the change is already `escalated`. Tell the user (section 2, step 2) and stop.
 3. Do not edit quality.yaml, skip a layer or weaken a test to get green: the package is frozen and the gate
    denies it. If a layer cannot pass for a reason outside the code (missing Docker, missing login), escalate.

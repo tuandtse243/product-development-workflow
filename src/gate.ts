@@ -96,10 +96,14 @@ function isFrozenPackageFile(p: Paths, file: string, frozen: string[]): boolean 
   return false;
 }
 
-/** aidw subagent role from the hook's agent_type ("aidw:reviewer", "reviewer", ...). */
+/**
+ * aidw subagent role from the hook's agent_type ("aidw:reviewer", "reviewer", "aidw:ui-reviewer", ...).
+ * Every `*-reviewer` (ui, security) is read-only like the task reviewer.
+ */
 export function agentRole(agentType: string | undefined): "implementer" | "reviewer" | null {
-  const name = (agentType ?? "").split(":").pop();
-  return name === "implementer" || name === "reviewer" ? name : null;
+  const name = (agentType ?? "").split(":").pop() ?? "";
+  if (name === "implementer") return "implementer";
+  return name === "reviewer" || name.endsWith("-reviewer") ? "reviewer" : null;
 }
 
 const deny = (reason: string): Decision => ({ decision: "deny", reason: `AIDW: ${reason}` });

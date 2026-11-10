@@ -17,15 +17,13 @@ import { Diags } from "./diag.js";
 import { git, isGitRepo } from "./git.js";
 import { OpError } from "./ops.js";
 import { readText, rel, walkFiles, type Paths } from "./project.js";
-import { EXPECTED_LAYERS, lastDeploy, loadQuality, parseQuality, qualityFile, readSummary } from "./quality.js";
+import { EXPECTED_LAYERS, RECOMMENDED_LAYERS, lastDeploy, loadQuality, parseQuality, qualityFile, readSummary } from "./quality.js";
 import { loadTasks, type Evidence } from "./run.js";
 import { touchesUi } from "./skills.js";
 import type { Task } from "./tasks.js";
 import { sections } from "./spec/parse.js";
 
 export const HANDOFF_SECTIONS = ["Overview", "Run locally", "Environment", "Deploy", "Usage", "Known issues", "Next steps"] as const;
-/** Layers planned for later slices; the report lists them as not run so nothing looks covered that is not. */
-const LATER_LAYERS = ["ui-ux", "a11y", "security", "performance"];
 const IMAGE = /\.(png|jpe?g|webp)$/i;
 
 export const deliveryDir = (change: Change) => join(change.dir, "delivery");
@@ -115,17 +113,19 @@ function qualityMd(p: Paths, change: Change, tasks: Task[]): string {
   const deploy = lastDeploy(change);
   const out: string[] = [`# Quality report: ${String(change.data.title ?? change.id)}`, ""];
 
-  out.push("## Layers", "", "| Layer | Status | Last run | Fix rounds | Commands |", "|---|---|---|---|---|");
+  out.push("## Layers", "", "| Layer | Status | Last run | Fix rounds | Commands | Review |", "|---|---|---|---|---|---|");
   for (const l of config?.layers ?? []) {
     const r = summary.layers[l.name];
     const rounds = tasks.filter((t) => t.origin === "quality" && t.layer === l.name).length;
-    out.push(`| ${l.name} | ${r?.status ?? "not run"} | ${r?.at ?? "-"} | ${rounds} | ${cell([...l.setup, ...l.run].map((c) => `\`${c}\``).join("<br>"))} |`);
+    const review = l.review ? `${l.review} reviewer: ${r?.review ? `${r.review.verdict} (${r.review.at})` : "no verdict"}` : "-";
+    const cmds = [...l.setup, ...l.run].map((c) => `\`${c}\``).join("<br>") || "(review only)";
+    out.push(`| ${l.name} | ${r?.status ?? "not run"} | ${r?.at ?? "-"} | ${rounds} | ${cell(cmds)} | ${cell(review)} |`);
   }
   out.push("");
   const absent = (n: string) => !config?.layers.some((l) => l.name === n);
   const notRun = [
     ...EXPECTED_LAYERS.filter(absent).map((n) => `layer "${n}" was not in the approved quality profile (see the Analysis for why)`),
-    ...LATER_LAYERS.filter(absent).map((n) => `layer "${n}" did not run (not in the quality profile of this workflow version)`),
+    ...RECOMMENDED_LAYERS.filter(absent).map((n) => `layer "${n}" was not in the approved quality profile: nothing here covers it`),
     ...Object.entries(summary.layers).flatMap(([n, r]) => (r.missing_reports?.length ? [`layer "${n}": declared report(s) missing: ${r.missing_reports.join(", ")}`] : [])),
   ];
   out.push("## Not covered", "", ...(notRun.length ? notRun.map((m) => `- ${m}`) : ["Nothing beyond the layers above."]), "");
@@ -154,11 +154,13 @@ function qualityMd(p: Paths, change: Change, tasks: Task[]): string {
   }
   out.push("");
 
-  const nonBlocking = tasks.flatMap((t) =>
-    (readEvidence(change, t.id)?.reviews ?? [])
-      .filter((r) => r.verdict === "pass" && /non-blocking/i.test(r.notes))
-      .map((r) => `- ${t.id}: ${cell(r.notes.slice(r.notes.search(/non-blocking/i)).replace(/^non-blocking:?\s*/i, ""))}`),
-  );
+  const remark = (notes: string) => cell(notes.slice(notes.search(/non-blocking/i)).replace(/^non-blocking:?\s*/i, ""));
+  const nonBlocking = [
+    ...tasks.flatMap((t) =>
+      (readEvidence(change, t.id)?.reviews ?? []).filter((r) => r.verdict === "pass" && /non-blocking/i.test(r.notes)).map((r) => `- ${t.id}: ${remark(r.notes)}`),
+    ),
+    ...Object.entries(summary.layers).flatMap(([n, r]) => (r.review?.verdict === "pass" && /non-blocking/i.test(r.review.notes) ? [`- layer ${n}: ${remark(r.review.notes)}`] : [])),
+  ];
   out.push("## Reviewer remarks (non-blocking)", "", ...(nonBlocking.length ? nonBlocking : ["None recorded."]), "");
 
   out.push("## Deploy", "", deployLine(deploy), "");

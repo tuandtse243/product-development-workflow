@@ -190,7 +190,7 @@ ${PLACEHOLDER}: number of tasks and waves, what can run in parallel, which agent
 
 ## Quality profile
 
-${PLACEHOLDER}: quality layers that run (code, unit, integration, e2e, ui-ux, a11y, security, performance, review) and their thresholds.
+${PLACEHOLDER}: quality layers that run (code, unit, integration, e2e, ui-ux, a11y, security, performance), their thresholds, and why any recommended layer is left out.
 
 ## Deploy strategy
 

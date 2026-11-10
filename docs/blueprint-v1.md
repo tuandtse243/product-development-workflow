@@ -508,7 +508,7 @@ Vòng dev: `claude --plugin-dir ./plugins/aidw` trong thư mục fixture. Cài t
 | S4 | Quality: code/unit/integration/e2e, preview deploy | [6]. **Code xong 2026-11-08** (xem §25); có test và chạy thử bằng bin với deploy giả, chờ project Next.js thật + Vercel thật |
 | S5 | Converge, archive/merge, deliver | [7][8] → **Mốc A**. **Code xong 2026-11-08** (xem §26); cả 8 tiêu chí có test và đã chạy thử trọn bằng bin, chờ một lần chạy thật với Claude Code |
 | S6 | 4 design mode + tuân thủ thiết kế và Analysis (D-26) | code xong (§28) |
-| S7 | Các layer ui-ux, a11y, security, perf và reviewers | |
+| S7 | Các layer ui-ux, a11y, security, perf và reviewers (D-28) | code xong (§30), chờ trial-3 |
 | S8 | Song song + worktree + integration verify | |
 | S9 | Auto-resume khi hết quota (`aidw run`) | |
 | S10 | Brownfield: assessment, lazy baseline spec, profile detect, fixture brownfield | **Mốc B = v1.0** |
@@ -895,4 +895,40 @@ Cuối cùng dừng ở `escalated` vì smoke check của deploy fail.
   trình duyệt trong sandbox. `deliver --check` cảnh báo khi project không có README.
 
 Test: 102 pass. Có thêm bộ `tests/trial2.test.ts`.
+
+## 30. Nhật ký triển khai S7 (2026-11-10)
+
+**Quyết định (D-28):** Lần chạy thử 2 cho thấy reviewer từng task không bắt được lỗi chỉ lộ ra khi nhìn cả sản phẩm:
+nút theme nháy khi tải, lưới icon tràn 8px ở 390px, ô ngày không đều. S7 thêm tầng kiểm cho **cả change** mà vẫn giữ
+cơ chế D-24: mọi tầng là một mục trong `quality.yaml`, Analysis chọn, người dùng duyệt.
+
+**Đã làm:**
+- `quality.yaml`: tầng có thể mang `review: ui | security` và `artifacts: [glob]`. Tầng review có thể không có `run`.
+  `parseQuality` kiểm kind, glob tương đối, cảnh báo `artifacts` không đi với `review`.
+- `aidw verify`: với tầng review, chạy `run` như thường; đạt thì viết brief
+  `.aidw/run/briefs/<change>/<layer>.layer-review.md`, ghi summary `status: review` và dừng (`REVIEW: ...`, in agent,
+  brief và prompt). Gọi lại `verify` không chạy lại lệnh khi tầng vẫn chờ trên cùng commit.
+- `aidw layer-review <layer> pass|fix [--notes-file]`: `pass` lưu reply và tầng thành `pass`; `fix` thành task `Qnn`
+  mang nguyên nhận xét (tách `addFixTask` dùng chung với tầng lệnh), hết `max_fix_rounds` thì escalate. Từ chối khi
+  tầng không ở trạng thái chờ review trên code hiện tại.
+- Brief tầng (`src/layers.ts`): phạm vi (`git diff <base của task đầu>`), artifact đã resolve (mở từng file), ảnh
+  từng task, danh sách task UI, output các lệnh của tầng, Decisions to honor, bảng token (ui), checklist riêng
+  cho ui (design compliance, responsive 320–390, states, consistency, hierarchy) và security (authz, input/output,
+  secrets, data/RLS, session, dependencies), skill Addy tương ứng.
+- Agent mới: `plugins/aidw/agents/ui-reviewer.md`, `security-reviewer.md` (Read, Grep, Glob, Bash; chỉ đọc).
+- Gate: mọi `*-reviewer` là reviewer. `AIDW_STATE_COMMAND` thêm `layer-review`, `verify`, `converge`, `deploy`, `deliver`.
+- Deliver: quality report có cột Review (verdict của reviewer tầng), nhận xét non-blocking của tầng, và liệt kê
+  tầng khuyến nghị bị bỏ là "not covered" (thay câu "slice sau").
+- Profile `quality-layers.md`: mục *Recommended layers* với lệnh và file mẫu: `shots.spec.ts` (3 viewport × theme),
+  `a11y.spec.ts` (axe + keyboard), security (`pnpm audit` + `git grep` secret), performance (Lighthouse `--port=9222`
+  gắn vào Chrome CDP, `start-server-and-test`, `scripts/lh-budget.mjs`). Playwright chia project `e2e`/`a11y`/`shots`,
+  JUnit theo `PLAYWRIGHT_JUNIT_OUTPUT_NAME`.
+- Skill: start bước 8 (khi nào thêm tầng nào, preflight `lighthouse --version`); run §3 nhánh `REVIEW`.
+- Test: 108 pass. Bộ mới `tests/layers.test.ts`.
+
+**Chưa kiểm trên Claude Code thật (mục tiêu trial-3):**
+- ui-reviewer có mở hết ảnh và bắt được lỗi kiểu trial-2 không;
+- Lighthouse có gắn được vào Chrome CDP từ trong sandbox không (chrome-launcher dùng lại Chrome đang nghe cổng 9222);
+- `start-server-and-test` dừng server sạch trong sandbox;
+- thời gian thêm của 4 tầng.
 

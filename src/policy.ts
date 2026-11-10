@@ -133,4 +133,5 @@ export const AIDW_COMMAND = /^\s*["']?(?:[^\s;&|"']*\/)?aidw["']?\s/;
 export const SHELL_CHAINING = /[;&|`<>]|\$\(/;
 
 /** aidw commands that record progress or change state: the orchestrator's job, never a subagent's. */
-export const AIDW_STATE_COMMAND = /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+(?:task|checkpoint|review|transition|approve|archive|merge|init|change|brief)\b/;
+export const AIDW_STATE_COMMAND =
+  /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+(?:task|checkpoint|review|layer-review|verify|converge|deploy|deliver|transition|approve|archive|merge|init|change|brief)\b/;

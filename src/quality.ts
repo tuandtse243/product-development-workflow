@@ -20,6 +20,7 @@ import { headCommit } from "./git.js";
 import { OpError, transition } from "./ops.js";
 import { firstMatch, isTier2Resource, TIER2_COMMANDS, TIER2_RESOURCES, ASK_COMMANDS, type Tier2Resource } from "./policy.js";
 import { readText, rel, type Paths } from "./project.js";
+import { buildLayerBrief } from "./layers.js";
 import { loadTasks, saveTasksDoc, shellRunner, type CommandRunner, type VerifyRun } from "./run.js";
 import type { Task } from "./tasks.js";
 
@@ -28,6 +29,14 @@ export type DeployTarget = (typeof DEPLOY_TARGETS)[number];
 export const DEFAULT_MAX_FIX_ROUNDS = 3;
 /** Layers a web project is expected to run (Q5: comprehensive by default); missing ones are warnings. */
 export const EXPECTED_LAYERS = ["code", "unit", "e2e"] as const;
+/** Layers the quality report lists as "not covered" when the profile leaves them out (S7). */
+export const RECOMMENDED_LAYERS = ["ui-ux", "a11y", "security", "performance"] as const;
+/**
+ * Review layers (S7, D-28): after its commands pass, the layer waits for an independent read-only reviewer
+ * subagent (`aidw:<kind>-reviewer`) whose verdict the orchestrator records with `aidw layer-review`.
+ */
+export const REVIEW_KINDS = ["ui", "security"] as const;
+export type ReviewKind = (typeof REVIEW_KINDS)[number];
 
 export interface Layer {
   name: string;
@@ -35,6 +44,10 @@ export interface Layer {
   run: string[];
   /** JUnit XML files the layer writes (project-relative); converge reads test results from them */
   reports: string[];
+  /** independent reviewer that judges this layer after its commands pass (null: commands only) */
+  review: ReviewKind | null;
+  /** project-relative globs of files the reviewer must open (screenshots, audit reports) */
+  artifacts: string[];
 }
 
 export interface QualityConfig {
@@ -45,6 +58,7 @@ export interface QualityConfig {
 }
 
 const isStrList = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) => typeof x === "string" && x.trim() !== "");
+const isProjectRelative = (r: string) => !r.startsWith("/") && !r.split("/").includes("..");
 const LAYER_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 export const qualityFile = (change: Change) => join(change.dir, "quality.yaml");
@@ -68,16 +82,28 @@ export function parseQuality(text: string, file: string): { config: QualityConfi
       const where = typeof l.name === "string" ? `layer "${l.name}"` : `layer #${i + 1}`;
       if (typeof l.name !== "string" || !LAYER_NAME.test(l.name)) d.error(file, `${where} needs a kebab-case "name"`);
       else if (layers.some((x) => x.name === l.name)) d.error(file, `duplicate layer "${l.name}"`);
-      if (!isStrList(l.run) || l.run.length === 0) d.error(file, `${where} needs a non-empty "run" list of commands`);
+      const review = l.review === undefined || l.review === null ? null : String(l.review);
+      if (review !== null && !(REVIEW_KINDS as readonly string[]).includes(review)) {
+        d.error(file, `${where}: "review" must be one of ${REVIEW_KINDS.join(", ")} (an aidw:<kind>-reviewer agent exists for each)`);
+      }
+      if (l.run === undefined && review !== null) {
+        // a pure review layer: nothing to run, the reviewer judges the code and the artifacts
+      } else if (!isStrList(l.run) || l.run.length === 0) d.error(file, `${where} needs a non-empty "run" list of commands${review ? "" : ' (or "review: ui|security")'}`);
       if (l.setup !== undefined && !isStrList(l.setup)) d.error(file, `${where}: "setup" must be a list of commands`);
-      if (l.reports !== undefined && !(isStrList(l.reports) && l.reports.every((r) => !r.startsWith("/") && !r.split("/").includes("..")))) {
+      if (l.reports !== undefined && !(isStrList(l.reports) && l.reports.every(isProjectRelative))) {
         d.error(file, `${where}: "reports" must be a list of project-relative JUnit XML paths`);
       }
+      if (l.artifacts !== undefined && !(isStrList(l.artifacts) && l.artifacts.every(isProjectRelative))) {
+        d.error(file, `${where}: "artifacts" must be a list of project-relative file globs`);
+      }
+      if (l.artifacts !== undefined && review === null) d.warn(file, `${where}: "artifacts" only matter to a review layer; add "review:" or drop them`);
       layers.push({
         name: String(l.name),
         setup: isStrList(l.setup) ? l.setup : [],
         run: isStrList(l.run) ? l.run : [],
         reports: isStrList(l.reports) ? l.reports : [],
+        review: review as ReviewKind | null,
+        artifacts: isStrList(l.artifacts) ? l.artifacts : [],
       });
     }
     for (const name of EXPECTED_LAYERS) {
@@ -165,8 +191,15 @@ export interface TestCase {
   message?: string;
 }
 
+export interface LayerReview {
+  verdict: "pass" | "fix";
+  notes: string;
+  at: string;
+}
+
 export interface LayerResult {
-  status: "pass" | "fail";
+  /** `review`: commands passed, the layer waits for the reviewer's verdict (aidw layer-review) */
+  status: "pass" | "fail" | "review";
   at: string;
   head: string | null;
   runs: VerifyRun[];
@@ -174,6 +207,12 @@ export interface LayerResult {
   tests?: TestCase[];
   /** declared reports that were missing or unreadable after the run */
   missing_reports?: string[];
+  /** review layers: the brief written for the reviewer (project-relative) */
+  brief?: string;
+  /** review layers: artifacts found for the reviewer (project-relative) */
+  artifacts?: string[];
+  /** review layers: the recorded verdict */
+  review?: LayerReview;
 }
 
 export interface QualitySummary {
@@ -184,6 +223,13 @@ const qualityDir = (change: Change) => join(change.dir, "evidence", "quality");
 const summaryFile = (change: Change) => join(qualityDir(change), "summary.json");
 const deployFile = (change: Change) => join(change.dir, "evidence", "deploy.json");
 const now = () => new Date().toISOString();
+
+/** Stores a layer result in the summary and appends it to the layer's history. */
+export function recordLayerResult(change: Change, summary: QualitySummary, name: string, result: LayerResult): void {
+  summary.layers[name] = result;
+  writeJson(summaryFile(change), summary);
+  appendHistory(join(qualityDir(change), `${name}.json`), result);
+}
 
 export function readSummary(change: Change): QualitySummary {
   const f = summaryFile(change);
@@ -281,10 +327,21 @@ export function readJunit(project: string, reports: string[]): { tests: TestCase
 
 export interface VerifyLayerOutcome {
   name: string;
-  status: "pass" | "fail" | "skipped";
+  /** `review`: the layer waits for its reviewer (see VerifyResult.awaitingReview) */
+  status: "pass" | "fail" | "skipped" | "review";
   runs: VerifyRun[];
   /** skipped because it already passed on this commit (rerun with --fresh) */
   reused?: boolean;
+}
+
+export interface AwaitingReview {
+  layer: string;
+  kind: ReviewKind;
+  /** subagent to spawn, e.g. aidw:ui-reviewer */
+  agent: string;
+  /** project-relative path of the review brief */
+  brief: string;
+  artifacts: string[];
 }
 
 export interface VerifyResult {
@@ -295,6 +352,8 @@ export interface VerifyResult {
   fixTask?: string;
   /** fix rounds for the failing layer are exhausted (the change is escalated) */
   escalated?: boolean;
+  /** a review layer's commands passed; verify stops until `aidw layer-review` records the verdict */
+  awaitingReview?: AwaitingReview;
   summary: string;
 }
 
@@ -311,27 +370,51 @@ function runCommands(commands: string[], cwd: string, timeoutMs: number, runner:
 
 const failedRun = (runs: VerifyRun[]) => runs.find((r) => r.exit !== 0);
 
+/** Verify and layer-review run only while the change is verifying with a valid approval. */
+export function requireVerifying(p: Paths, id: string, what: string): Change {
+  const change = loadChange(p, id);
+  if (stateOf(change) !== "verifying") throw new OpError(`change "${id}" is "${String(change.data.state)}"; ${what} runs in state verifying`);
+  if (approvalStatus(p, change).status !== "valid") throw new OpError(`approval drift in "${id}": escalate and re-approve`);
+  return change;
+}
+
+const reviewAgent = (kind: ReviewKind) => `aidw:${kind}-reviewer`;
+
+function awaiting(layer: Layer, r: LayerResult): AwaitingReview {
+  return { layer: layer.name, kind: layer.review as ReviewKind, agent: reviewAgent(layer.review as ReviewKind), brief: r.brief ?? "", artifacts: r.artifacts ?? [] };
+}
+
+const awaitingSummary = (a: AwaitingReview) =>
+  `layer "${a.layer}" awaits its ${a.kind} review: spawn ${a.agent} with the brief ${a.brief}, then \`aidw layer-review ${a.layer} pass|fix --notes-file <reply>\``;
+
 export function verify(
   p: Paths,
   id: string,
-  opts: { layer?: string; fresh?: boolean; timeoutMs?: number; runner?: CommandRunner } = {},
+  opts: { layer?: string; fresh?: boolean; timeoutMs?: number; runner?: CommandRunner; vendorDir?: string } = {},
 ): VerifyResult {
-  const change = loadChange(p, id);
-  if (stateOf(change) !== "verifying") throw new OpError(`change "${id}" is "${String(change.data.state)}"; aidw verify runs in state verifying`);
-  if (approvalStatus(p, change).status !== "valid") throw new OpError(`approval drift in "${id}": escalate and re-approve`);
+  const change = requireVerifying(p, id, "aidw verify");
   const { config, pending, summary } = pendingLayers(p, id);
   if (opts.layer && !config.layers.some((l) => l.name === opts.layer)) throw new OpError(`no layer "${opts.layer}" in quality.yaml`);
 
   const runner = opts.runner ?? shellRunner;
   const timeoutMs = opts.timeoutMs ?? 30 * 60 * 1000;
   const head = headCommit(p.project);
+  const tasks = loadTasks(p, id).tasks;
   const outcomes: VerifyLayerOutcome[] = [];
   let failed: Layer | undefined;
+  let review: AwaitingReview | undefined;
   for (const layer of config.layers) {
     const wanted = opts.layer ? layer.name === opts.layer : opts.fresh || pending.includes(layer.name);
-    if (!wanted || failed) {
-      const reused = !failed && !opts.layer && !pending.includes(layer.name);
+    if (!wanted || failed || review) {
+      const reused = !failed && !review && !opts.layer && !pending.includes(layer.name);
       outcomes.push({ name: layer.name, status: "skipped", runs: [], ...(reused ? { reused: true } : {}) });
+      continue;
+    }
+    // A review layer whose commands already passed on this code keeps waiting for its verdict; no rerun.
+    const prev = summary.layers[layer.name];
+    if (layer.review && prev?.status === "review" && isFresh(prev, tasks, head) && !opts.fresh) {
+      review = awaiting(layer, prev);
+      outcomes.push({ name: layer.name, status: "review", runs: prev.runs });
       continue;
     }
     const runs = runCommands([...layer.setup, ...layer.run], p.project, timeoutMs, runner);
@@ -342,22 +425,25 @@ export function verify(
       result.tests = tests;
       if (missing.length) result.missing_reports = missing;
     }
-    summary.layers[layer.name] = result;
-    writeJson(summaryFile(change), summary);
-    appendHistory(join(qualityDir(change), `${layer.name}.json`), result);
+    if (ok && layer.review) {
+      const brief = buildLayerBrief(p, id, layer, runs, opts.vendorDir);
+      result.status = "review";
+      result.brief = rel(p, brief.path);
+      result.artifacts = brief.artifacts;
+      review = awaiting(layer, result);
+    }
+    recordLayerResult(change, summary, layer.name, result);
     outcomes.push({ name: layer.name, status: result.status, runs });
     if (!ok) failed = layer;
   }
 
+  if (review) return { ok: false, layers: outcomes, awaitingReview: review, summary: awaitingSummary(review) };
   if (!failed) {
     const left = pendingLayers(p, id).pending;
     const ok = left.length === 0;
     return { ok, layers: outcomes, summary: ok ? "all quality layers pass" : `layers still to run: ${left.join(", ")}` };
   }
 
-  // A failing layer becomes a fix task in the normal loop, within the approved fix-round budget.
-  const tf = loadTasks(p, id);
-  const rounds = tf.tasks.filter((t) => t.origin === "quality" && t.layer === failed.name).length;
   const bad = failedRun(summary.layers[failed.name]?.runs ?? []);
   const failing = (summary.layers[failed.name]?.tests ?? []).filter((t) => t.status === "fail");
   const cases = failing.length
@@ -369,34 +455,77 @@ export function verify(
   const problem = bad
     ? `Quality layer "${failed.name}" failed: \`${bad.command}\`${bad.timedOut ? " timed out" : ` exited ${bad.exit}`}.\n\n${cases}${bad.tail}`
     : `Quality layer "${failed.name}" did not complete.`;
+  const fix = addFixTask(p, id, config, failed, problem);
+  return { ok: false, layers: outcomes, failed: failed.name, ...fix };
+}
+
+export interface FixOutcome {
+  fixTask?: string;
+  escalated?: boolean;
+  summary: string;
+}
+
+/** A failing layer becomes a fix task in the normal loop, within the approved fix-round budget. */
+export function addFixTask(p: Paths, id: string, config: QualityConfig, layer: Layer, problem: string): FixOutcome {
+  const tf = loadTasks(p, id);
+  const rounds = tf.tasks.filter((t) => t.origin === "quality" && t.layer === layer.name).length;
   if (rounds >= config.maxFixRounds) {
-    transition(p, id, "escalated", { reason: `quality layer "${failed.name}" still failing after ${rounds} fix round(s)` });
-    return { ok: false, layers: outcomes, failed: failed.name, escalated: true, summary: `layer "${failed.name}" failed; fix rounds exhausted (${rounds}/${config.maxFixRounds}): escalated` };
+    transition(p, id, "escalated", { reason: `quality layer "${layer.name}" still failing after ${rounds} fix round(s)` });
+    return { escalated: true, summary: `layer "${layer.name}" failed; fix rounds exhausted (${rounds}/${config.maxFixRounds}): escalated` };
   }
   const n = tf.tasks.filter((t) => t.origin === "quality").length + 1;
   const taskId = `Q${String(n).padStart(2, "0")}`;
   const task = {
     id: taskId,
-    title: `Fix the ${failed.name} quality layer`,
+    title: `Fix the ${layer.name} quality layer`,
     role: "fullstack-engineer",
     origin: "quality",
-    layer: failed.name,
+    layer: layer.name,
     depends_on: [],
     touches: ["**"],
-    verify: [...failed.setup, ...failed.run],
+    verify: [...layer.setup, ...layer.run],
     problem,
     status: "pending",
   };
   (tf.doc.get("tasks") as YAML.YAMLSeq).add(tf.doc.createNode(task));
   saveTasksDoc(tf);
   transition(p, id, "executing", {});
-  return {
-    ok: false,
-    layers: outcomes,
-    failed: failed.name,
-    fixTask: taskId,
-    summary: `layer "${failed.name}" failed: fix task ${taskId} added (round ${rounds + 1}/${config.maxFixRounds}); change is executing again`,
-  };
+  return { fixTask: taskId, summary: `layer "${layer.name}" failed: fix task ${taskId} added (round ${rounds + 1}/${config.maxFixRounds}); change is executing again` };
+}
+
+export interface LayerReviewResult {
+  layer: string;
+  kind: ReviewKind;
+  verdict: "pass" | "fix";
+  /** layers still to pass after this verdict (pass) */
+  pending?: string[];
+  fixTask?: string;
+  escalated?: boolean;
+  summary: string;
+}
+
+/** Records the independent reviewer's verdict on a review layer (the orchestrator's step after the subagent). */
+export function recordLayerReview(p: Paths, id: string, name: string, verdict: "pass" | "fix", notes: string): LayerReviewResult {
+  const change = requireVerifying(p, id, "aidw layer-review");
+  const config = loadQuality(p, change);
+  const layer = config.layers.find((l) => l.name === name);
+  if (!layer) throw new OpError(`no layer "${name}" in quality.yaml`);
+  if (!layer.review) throw new OpError(`layer "${name}" has no "review:" kind; only review layers take a verdict`);
+  const summary = readSummary(change);
+  const prev = summary.layers[name];
+  const head = headCommit(p.project);
+  if (prev?.status !== "review" || !isFresh(prev, loadTasks(p, id).tasks, head)) {
+    throw new OpError(`layer "${name}" is not awaiting review on the current code; run \`aidw verify\` first`);
+  }
+  if (verdict === "fix" && !notes.trim()) throw new OpError("a fix verdict needs the reviewer's notes");
+  const review: LayerReview = { verdict, notes: notes.trim(), at: now() };
+  recordLayerResult(change, summary, name, { ...prev, status: verdict === "pass" ? "pass" : "fail", at: review.at, review });
+  if (verdict === "pass") {
+    const left = pendingLayers(p, id).pending;
+    return { layer: name, kind: layer.review, verdict, pending: left, summary: left.length ? `layer "${name}" passed its ${layer.review} review; layers still to run: ${left.join(", ")}` : `layer "${name}" passed its ${layer.review} review; all quality layers pass` };
+  }
+  const problem = `Quality layer "${name}" (${layer.review} review) asked for fixes. The reviewer's notes, verbatim:\n\n${review.notes}`;
+  return { layer: name, kind: layer.review, verdict, ...addFixTask(p, id, config, layer, problem) };
 }
 
 function appendHistory(file: string, entry: unknown): void {
