@@ -24,6 +24,7 @@ import {
 import { runStopFailure } from "./pause.js";
 import { findProject, pathsFor, rel, type Paths } from "./project.js";
 import { converge } from "./converge.js";
+import { formatCost, readSessions } from "./cost.js";
 import { detectProject } from "./detect.js";
 import { runLoop } from "./runner.js";
 import { deliver } from "./deliver.js";
@@ -124,6 +125,7 @@ Hooks:
   backstop                               Stop hook: reads hook JSON on stdin
   stop-failure                           StopFailure hook: pauses running changes
   session-start                          SessionStart hook: appends the plugin bin/ to PATH via CLAUDE_ENV_FILE
+  cost [--session <id prefix>] [--last N]  where the tokens of this project's Claude Code sessions went (orchestrator vs subagents)
   version
 
 States: ${STATES.join(", ")}
@@ -135,7 +137,7 @@ interface Args {
   flags: Record<string, string | true>;
 }
 
-const VALUE_FLAGS = new Set(["root", "title", "input-type", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude"]);
+const VALUE_FLAGS = new Set(["session", "last", "root", "title", "input-type", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude"]);
 
 export function parseArgs(argv: string[]): Args {
   const pos: string[] = [];
@@ -426,6 +428,18 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           }\n`,
         );
         return r.escalated ? 1 : 0;
+      }
+
+      case "cost": {
+        const p = project();
+        const prefix = str(args.flags.session);
+        const last = str(args.flags.last);
+        if (last !== undefined && !(Number.isInteger(Number(last)) && Number(last) >= 1)) throw new UsageError("--last must be a positive integer");
+        let sessions = readSessions(p.project, env);
+        if (prefix) sessions = sessions.filter((s) => s.id.startsWith(prefix));
+        if (last) sessions = sessions.slice(-Number(last));
+        emit({ project: p.project, sessions }, formatCost(sessions));
+        return 0;
       }
 
       case "run": {

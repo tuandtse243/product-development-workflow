@@ -10,6 +10,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { closedReason, gateState } from "./gate.js";
+import { isGeneratedPath } from "./git.js";
 import { AIDW_DIR, findProject, pathsFor, type Paths } from "./project.js";
 
 export interface StopInput {
@@ -66,7 +67,8 @@ const isAidw = (f: string) => f === AIDW_DIR || f.startsWith(`${AIDW_DIR}/`);
 /** Pure decision: which dirty paths are unexpected while the gate is closed. */
 export function unexpectedChanges(dirty: string[], baseline: string[]): string[] {
   const base = new Set(baseline);
-  return dirty.filter((f) => !isAidw(f) && !base.has(f)).sort();
+  // Generated files (tsc incremental state, Next shims, build output) appear whenever a command runs; not a write by the agent.
+  return dirty.filter((f) => !isAidw(f) && !base.has(f) && !isGeneratedPath(f)).sort();
 }
 
 export function runBackstop(stdin: string, env: NodeJS.ProcessEnv, dirtyProvider = gitDirtyPaths): string {

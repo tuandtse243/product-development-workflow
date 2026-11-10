@@ -1,0 +1,153 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Vòng lặp của một task",
+    "viewBox": [
+      1060,
+      660
+    ],
+    "quality_profile": "showcase",
+    "column_fit": "spread"
+  },
+  "participants": [
+    {
+      "id": "orch",
+      "type": "frontend",
+      "label": "Orchestrator",
+      "sublabel": "session chính"
+    },
+    {
+      "id": "cli",
+      "type": "backend",
+      "label": "aidw CLI",
+      "sublabel": "luật và state"
+    },
+    {
+      "id": "impl",
+      "type": "cloud",
+      "label": "Implementer",
+      "sublabel": "subagent mới"
+    },
+    {
+      "id": "rev",
+      "type": "security",
+      "label": "Reviewer",
+      "sublabel": "subagent mới"
+    }
+  ],
+  "segments": [
+    {
+      "from": 150,
+      "to": 234,
+      "label": "Bắt đầu"
+    },
+    {
+      "from": 238,
+      "to": 354,
+      "label": "Làm và kiểm"
+    },
+    {
+      "from": 358,
+      "to": 592,
+      "label": "Review và commit"
+    }
+  ],
+  "messages": [
+    {
+      "from": "orch",
+      "to": "cli",
+      "y": 172,
+      "label": "task start T03",
+      "variant": "emphasis"
+    },
+    {
+      "from": "cli",
+      "to": "orch",
+      "y": 212,
+      "label": "brief và prompt",
+      "variant": "return"
+    },
+    {
+      "from": "orch",
+      "to": "impl",
+      "y": 252,
+      "label": "đường dẫn brief",
+      "variant": "emphasis"
+    },
+    {
+      "from": "impl",
+      "to": "orch",
+      "y": 292,
+      "label": "xong: test, code, verify xanh",
+      "variant": "return"
+    },
+    {
+      "from": "orch",
+      "to": "cli",
+      "y": 332,
+      "label": "checkpoint T03",
+      "variant": "emphasis"
+    },
+    {
+      "from": "cli",
+      "to": "orch",
+      "y": 372,
+      "label": "PASS và prompt reviewer",
+      "variant": "return"
+    },
+    {
+      "from": "orch",
+      "to": "rev",
+      "y": 412,
+      "label": "đường dẫn review brief",
+      "variant": "emphasis"
+    },
+    {
+      "from": "rev",
+      "to": "cli",
+      "y": 452,
+      "label": "ghi verdict vào file",
+      "variant": "dashed"
+    },
+    {
+      "from": "rev",
+      "to": "orch",
+      "y": 492,
+      "label": "VERDICT: pass",
+      "variant": "return"
+    },
+    {
+      "from": "orch",
+      "to": "cli",
+      "y": 532,
+      "label": "verdict T03",
+      "variant": "emphasis"
+    },
+    {
+      "from": "cli",
+      "to": "orch",
+      "y": 572,
+      "label": "commit T03 và NEXT",
+      "variant": "return"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Orchestrator mỏng",
+      "items": [
+        "Không đọc code, chỉ chuyển đường dẫn file",
+        "Mỗi lệnh aidw in sẵn bước kế tiếp"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Hai subagent độc lập",
+      "items": [
+        "Implementer và reviewer đều bắt đầu với context mới",
+        "Reviewer chỉ được ghi đúng một file verdict"
+      ]
+    }
+  ]
+}

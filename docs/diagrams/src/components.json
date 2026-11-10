@@ -1,0 +1,216 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Các thành phần của aidw và ba hook bảo vệ",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    {
+      "id": "claude",
+      "type": "frontend",
+      "label": "Claude Code",
+      "sublabel": "orchestrator",
+      "pos": [
+        40,
+        300
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "gate",
+      "type": "security",
+      "label": "Hook gate",
+      "sublabel": "trước mỗi tool call",
+      "pos": [
+        330,
+        130
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "tag": "allow, ask, deny"
+    },
+    {
+      "id": "cli",
+      "type": "backend",
+      "label": "aidw CLI",
+      "sublabel": "luật và state",
+      "pos": [
+        330,
+        300
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "backstop",
+      "type": "security",
+      "label": "Hook backstop",
+      "sublabel": "khi session dừng",
+      "pos": [
+        330,
+        470
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "tag": "bắt file lạ"
+    },
+    {
+      "id": "state",
+      "type": "database",
+      "label": ".aidw/",
+      "sublabel": "spec, task, evidence",
+      "pos": [
+        620,
+        300
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "git",
+      "type": "database",
+      "label": "git",
+      "sublabel": "một commit mỗi task",
+      "pos": [
+        620,
+        470
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "pause",
+      "type": "security",
+      "label": "Hook pause",
+      "sublabel": "lỗi API, hết quota",
+      "pos": [
+        620,
+        130
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "tag": "StopFailure"
+    },
+    {
+      "id": "runner",
+      "type": "external",
+      "label": "aidw run",
+      "sublabel": "terminal của bạn",
+      "pos": [
+        890,
+        300
+      ],
+      "size": [
+        130,
+        60
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "claude-to-gate",
+      "from": "claude",
+      "to": "gate",
+      "label": "mỗi tool call",
+      "variant": "security",
+      "fromSide": "top",
+      "toSide": "left"
+    },
+    {
+      "id": "claude-to-cli",
+      "from": "claude",
+      "to": "cli",
+      "label": "aidw next, checkpoint",
+      "variant": "emphasis"
+    },
+    {
+      "id": "claude-to-backstop",
+      "from": "claude",
+      "to": "backstop",
+      "label": "khi dừng",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "left"
+    },
+    {
+      "id": "cli-to-state",
+      "from": "cli",
+      "to": "state",
+      "label": "ghi state"
+    },
+    {
+      "id": "state-to-git",
+      "from": "state",
+      "to": "git",
+      "label": "commit",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [
+        690,
+        374
+      ]
+    },
+    {
+      "id": "pause-to-state",
+      "from": "pause",
+      "to": "state",
+      "label": "paused",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [
+        690,
+        208
+      ]
+    },
+    {
+      "id": "runner-to-state",
+      "from": "runner",
+      "to": "state",
+      "label": "đọc tiến độ",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "Gate",
+      "items": [
+        "Chặn ghi code trước approve và sau khi đóng băng",
+        "Hỏi bạn ở lệnh nguy hiểm, kể cả aidw approve"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Backstop và pause",
+      "items": [
+        "Backstop phát hiện file bị sửa ngoài luật",
+        "Pause đặt change về paused khi hết quota"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Chạy không người trông",
+      "items": [
+        "aidw run mở session mới cho mỗi task",
+        "Chờ đến giờ reset rồi tự chạy tiếp"
+      ]
+    }
+  ]
+}

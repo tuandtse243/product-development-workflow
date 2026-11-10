@@ -20,6 +20,7 @@ import { OpError, transition } from "./ops.js";
 import { readText, rel, type Paths } from "./project.js";
 import { DEFAULT_PARALLEL, parseQuality, qualityFile, type ParallelConfig, type QualityConfig } from "./quality.js";
 import { touchesUi } from "./skills.js";
+import { globsOverlap, staticPrefix, touchesOverlap } from "./touches.js";
 import type { Task } from "./tasks.js";
 import type { CommandRunner, VerifyRun } from "./run.js";
 
@@ -30,29 +31,7 @@ const BROWSER_VERIFY = /\b(playwright|cypress|e2e)\b/i;
 
 // ---------------------------------------------------------------- touches overlap
 
-/** Leading path segments of a glob up to the first wildcard ("app/api/**" -> ["app", "api"]). */
-export function staticPrefix(glob: string): string[] {
-  const segs = glob.trim().replace(/^\.\//, "").replace(/\/+$/, "").split("/").filter(Boolean);
-  const out: string[] = [];
-  for (const s of segs) {
-    if (/[*?{[]/.test(s)) break;
-    out.push(s);
-  }
-  return out;
-}
-
-/**
- * Conservative: two globs may match a common file unless their static prefixes differ in some segment.
- * ("app/api/**" vs "lib/**" are disjoint; "app/**" vs "app/page.tsx" overlap; "**" overlaps everything.)
- */
-export function globsOverlap(a: string, b: string): boolean {
-  const pa = staticPrefix(a);
-  const pb = staticPrefix(b);
-  for (let i = 0; i < Math.min(pa.length, pb.length); i++) if (pa[i] !== pb[i]) return false;
-  return true;
-}
-
-export const touchesOverlap = (a: string[], b: string[]) => a.some((x) => b.some((y) => globsOverlap(x, y)));
+export { globsOverlap, staticPrefix, touchesOverlap } from "./touches.js";
 
 /** A task whose verify or screenshots start the app in a browser: two at once would fight over the e2e port. */
 export const drivesBrowser = (t: Task) => list(t.verify).some((v) => BROWSER_VERIFY.test(v)) || touchesUi(t);

@@ -16,13 +16,15 @@ export function isGitRepo(cwd: string): boolean {
 }
 
 /** Dependency and build-output folders that must never be committed (aidw commits with `git add -A`). */
-const JUNK_PATH =
-  /(^|\/)(node_modules|\.next|\.nuxt|\.svelte-kit|\.turbo|\.vercel|coverage|playwright-report|test-results)\/|(^|\/)(next-env\.d\.ts|\.DS_Store|\.env(?:\.(?!example$)[\w.-]+)?)$|\.tsbuildinfo$/;
+const GENERATED_PATH =
+  /(^|\/)(node_modules|\.next|\.nuxt|\.svelte-kit|\.turbo|\.vercel|coverage|playwright-report|test-results)\/|(^|\/)(next-env\.d\.ts|\.DS_Store)$|\.tsbuildinfo$/;
+/** Secrets files: never committed either, but a write to one is not "generated" for the backstop. */
+const ENV_FILE = /(^|\/)\.env(?:\.(?!example$)[\w.-]+)?$/;
+const JUNK_PATH = { test: (f: string) => GENERATED_PATH.test(f) || ENV_FILE.test(f) };
 
-/**
- * Staged files that are dependencies or build output. Called after `git add -A` and before every aidw commit:
- * a project without a proper .gitignore would otherwise get node_modules into its history.
- */
+/** Files a tool generates while it runs (tsc state, Next shims, build output). */
+export const isGeneratedPath = (f: string): boolean => GENERATED_PATH.test(f);
+
 export function stagedJunk(cwd: string): string[] {
   const r = git(cwd, ["diff", "--cached", "--name-only"]);
   return r.ok ? r.out.split("\n").filter((f) => JUNK_PATH.test(f)) : [];

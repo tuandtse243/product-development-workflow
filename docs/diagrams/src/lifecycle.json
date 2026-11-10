@@ -1,0 +1,179 @@
+{
+  "schema_version": 1,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "Vòng đời của một change trong aidw",
+    "output": "docs/diagrams/lifecycle.html",
+    "viewBox": [
+      1030,
+      630
+    ],
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    {
+      "id": "main",
+      "label": "Đường chính"
+    },
+    {
+      "id": "waiting",
+      "label": "Dừng chờ và sửa"
+    }
+  ],
+  "states": [
+    {
+      "id": "analyzing",
+      "type": "start",
+      "label": "Analyzing",
+      "sublabel": "hỏi và viết spec",
+      "lane": "main",
+      "col": 0,
+      "step": "01",
+      "tag": "/aidw:start"
+    },
+    {
+      "id": "awaiting",
+      "type": "decision",
+      "label": "Awaiting approval",
+      "sublabel": "bạn đọc analysis.md",
+      "lane": "main",
+      "col": 1,
+      "step": "02",
+      "tag": "/aidw:approve"
+    },
+    {
+      "id": "executing",
+      "type": "active",
+      "label": "Executing",
+      "sublabel": "làm, review, commit",
+      "lane": "main",
+      "col": 2,
+      "step": "03",
+      "tag": "/aidw:run"
+    },
+    {
+      "id": "verifying",
+      "type": "active",
+      "label": "Verifying",
+      "sublabel": "chất lượng, converge",
+      "lane": "main",
+      "col": 3,
+      "step": "04",
+      "tag": "tự động"
+    },
+    {
+      "id": "delivered",
+      "type": "success",
+      "label": "Delivered",
+      "sublabel": "deploy, bàn giao",
+      "lane": "main",
+      "col": 4,
+      "step": "05",
+      "tag": "/aidw:deliver"
+    },
+    {
+      "id": "paused",
+      "type": "waiting",
+      "label": "Paused",
+      "sublabel": "hết quota, chờ reset",
+      "lane": "waiting",
+      "col": 0,
+      "tag": "tự quay lại"
+    },
+    {
+      "id": "escalated",
+      "type": "waiting",
+      "label": "Escalated",
+      "sublabel": "cần bạn quyết định",
+      "lane": "waiting",
+      "col": 2,
+      "tag": "/aidw:resume",
+      "width": 100
+    },
+    {
+      "id": "fixtask",
+      "type": "failure",
+      "label": "Task sửa",
+      "sublabel": "Qnn, Cnn hoặc Inn",
+      "lane": "waiting",
+      "col": 1,
+      "tag": "tự thêm",
+      "width": 100
+    }
+  ],
+  "transitions": [
+    {
+      "id": "t-analyzed",
+      "from": "analyzing",
+      "to": "awaiting",
+      "variant": "default",
+      "route": "straight"
+    },
+    {
+      "id": "t-approved",
+      "from": "awaiting",
+      "to": "executing",
+      "variant": "emphasis",
+      "route": "straight"
+    },
+    {
+      "id": "t-tasks-done",
+      "from": "executing",
+      "to": "verifying",
+      "variant": "default",
+      "route": "straight"
+    },
+    {
+      "id": "t-quality-ok",
+      "from": "verifying",
+      "to": "delivered",
+      "variant": "default",
+      "route": "straight"
+    },
+    {
+      "id": "t-pause",
+      "from": "executing",
+      "to": "paused",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "straight"
+    },
+    {
+      "id": "t-fail",
+      "from": "verifying",
+      "to": "fixtask",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "straight"
+    },
+    {
+      "id": "t-esc",
+      "from": "fixtask",
+      "to": "escalated",
+      "variant": "security",
+      "fromSide": "right",
+      "toSide": "left",
+      "route": "straight"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Đường chính",
+      "items": [
+        "Bạn chỉ quyết định ở một chỗ: duyệt analysis.md",
+        "Sau đó executing, verifying và delivered chạy tự động"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Dừng và sửa",
+      "items": [
+        "Paused tự quay lại khi hết giới hạn; Escalated cần bạn xử lý",
+        "Lớp chất lượng fail thì aidw thêm task sửa và chạy lại"
+      ]
+    }
+  ]
+}

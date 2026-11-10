@@ -49,7 +49,8 @@ export const ASK_COMMANDS: Rule[] = [
   { re: /\b(npm|pnpm|yarn)\s+publish\b/, why: "publishes a package" },
   { re: /\b(terraform\s+(apply|destroy)|pulumi\s+(up|destroy)|kubectl\s+(apply|delete)|docker\s+push)\b/, why: "changes infrastructure" },
   { re: /\bgh\s+(repo\s+(create|delete)|pr\s+merge|release\s+create)\b/, why: "changes GitHub state" },
-  { re: /\bstripe\b[^|;&]*--live\b|\bsk_live_/, why: "uses live payment credentials" },
+  // a key literal (sk_live_ + 8 or more characters), not a search pattern such as `grep "sk_live_[0-9a-z]{24}"` in a secret scan
+  { re: /\bstripe\b[^|;&]*--live\b|\bsk_live_[A-Za-z0-9]{8,}/, why: "uses live payment credentials" },
   { re: /\bdrop\s+(database|schema)\b/i, why: "drops a database" },
 ];
 

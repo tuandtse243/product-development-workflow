@@ -4,6 +4,7 @@ import { join } from "node:path";
 import YAML from "yaml";
 import { describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
+import { unexpectedChanges } from "../src/backstop.js";
 import { decide, type HookInput } from "../src/gate.js";
 import { stagedJunk } from "../src/git.js";
 import { parseVerdict } from "../src/run.js";
@@ -149,5 +150,22 @@ describe("generated files never get committed", () => {
     for (const f of ["tsconfig.tsbuildinfo", "next-env.d.ts", ".env", ".env.production", "coverage/lcov.info", "src/a.ts", ".env.example", "docs/next-env.d.ts.md"]) write(root, f, "x\n");
     g("add", "-A");
     expect(stagedJunk(root).sort()).toEqual([".env", ".env.production", "coverage/lcov.info", "next-env.d.ts", "tsconfig.tsbuildinfo"]);
+  });
+});
+
+describe("false alarms seen in trial-3b", () => {
+  const env = {} as NodeJS.ProcessEnv;
+  const bash = (root: string, command: string) =>
+    decide({ hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command }, cwd: root }, env)?.decision ?? "none";
+
+  it("a secret scan that greps for sk_live_ is not a use of live payment credentials", () => {
+    const root = executingProject();
+    expect(bash(root, `git grep -nE 'sk_live_[0-9a-zA-Z]{24}' -- . ; pnpm audit`)).not.toBe("ask");
+    expect(bash(root, "curl -H 'Authorization: Bearer sk_live_51Habcdefghijklmnop' https://api.stripe.com/v1/charges")).toBe("ask");
+    expect(bash(root, "stripe charges create --live")).toBe("ask");
+  });
+
+  it("the backstop ignores files tools generate (tsc state, Next shim) but not a stray source file", () => {
+    expect(unexpectedChanges(["tsconfig.tsbuildinfo", "next-env.d.ts", ".next/types/a.ts", "src/a.ts", ".env"], [])).toEqual([".env", "src/a.ts"]);
   });
 });

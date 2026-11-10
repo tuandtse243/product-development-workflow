@@ -200,6 +200,12 @@ tasks:
   run together, and list shared files (`package.json`, the root layout, a shared schema) only in the task
   that really changes them. `risk: high` (auth, payments, migrations, wide refactors) always runs alone. At
   most one task per wave may drive a browser (UI or e2e verify), since they share the e2e port.
+- **Slice vertically, not by layer.** A plan that is one `depends_on` chain (T01 types, T02 API, T03 UI, T04
+  tests...) can never run a wave. After scaffolding, cut the work into slices that each carry their own API,
+  UI and tests for one behavior; give a task `depends_on` only for something it truly needs (a shared type or
+  file it imports), not for "it comes next". `aidw analyze` warns when the plan is one chain or when
+  `depends_on` links tasks whose `touches` do not overlap: act on that warning, or keep the chain when the
+  dependency is real.
 - The first tasks usually scaffold the project with the approved stack and set up the test harness, the
   JUnit reporters of quality.yaml, and `.env.example` for every environment variable (names only).
 

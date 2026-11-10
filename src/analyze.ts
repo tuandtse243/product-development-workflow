@@ -14,6 +14,7 @@ import { parseDelta, parseSpec, sections, slugify } from "./spec/parse.js";
 import { parseQuality } from "./quality.js";
 import { loadTokens, tokensFile } from "./design.js";
 import { touchesUi } from "./skills.js";
+import { planAdvice } from "./plan.js";
 import { parseTasks, type Task } from "./tasks.js";
 
 /** Sections every Analysis package must contain (headings are matched case-insensitively). */
@@ -246,5 +247,6 @@ export function analyzeChange(p: Paths, id: string): Diags {
   for (const s of changed.scenarios) {
     if (!coveredScenarios.has(s)) d.error(tf, `scenario "${s}" has no task that implements and verifies it`);
   }
+  for (const advice of planAdvice(tasks)) d.warn(tf, advice);
   return d;
 }

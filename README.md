@@ -3,6 +3,7 @@
 Analysis-gated autonomous development for Claude Code: intake → analysis → **one approval gate** →
 autonomous build → layered quality gates → living specs → complete delivery package.
 
+- **User guide (Vietnamese, with diagrams): [`docs/user-guide.md`](docs/user-guide.md)**
 - Design and decisions: [`docs/blueprint-v1.md`](docs/blueprint-v1.md), [`docs/decisions-log.md`](docs/decisions-log.md)
 - Status: **S1 done** (deterministic core CLI), **S2 code done** (analysis skills, analyze, approval gate hook,
   stop backstop, vendored Pocock and Addy skills), **S3 code done** (sequential orchestrator: a fresh
