@@ -8456,6 +8456,12 @@ function git(cwd, args) {
 function isGitRepo(cwd) {
   return git(cwd, ["rev-parse", "--is-inside-work-tree"]).out === "true";
 }
+var JUNK_PATH = /(^|\/)(node_modules|\.next|\.nuxt|\.svelte-kit|\.turbo|\.vercel)\//;
+function stagedJunk(cwd) {
+  const r = git(cwd, ["diff", "--cached", "--name-only"]);
+  return r.ok ? r.out.split("\n").filter((f) => JUNK_PATH.test(f)) : [];
+}
+var junkMessage = (files) => `refusing to commit dependency or build output (${files.slice(0, 3).join(", ")}${files.length > 3 ? ", ..." : ""}): the project has no .gitignore covering it. Add node_modules/, .next/ and the like to .gitignore, run \`git rm -r -q --cached node_modules .next\` for anything already tracked, then retry`;
 function headCommit(cwd) {
   const r = git(cwd, ["rev-parse", "--verify", "-q", "HEAD"]);
   return r.ok && r.out ? r.out : null;
@@ -8825,6 +8831,11 @@ function mergeWorktree(p, t, message) {
   if (!(0, import_node_fs6.existsSync)(wt) || !branch) throw new OpError(`task ${t.id} has no worktree to merge (${String(t.worktree)})`);
   const add = git(wt, ["add", "-A", "--", ".", ":(exclude).aidw"]);
   if (!add.ok) throw new OpError(`git add in the worktree of ${t.id} failed: ${add.err}`);
+  const junk = stagedJunk(wt);
+  if (junk.length) {
+    git(wt, ["reset", "-q"]);
+    throw new OpError(`${t.id}: ${junkMessage(junk)}`);
+  }
   if (!git(wt, ["diff", "--cached", "--quiet"]).ok) {
     const c = git(wt, ["commit", "-q", "-m", message.replace(/^([^:]+):/, "$1 (worktree):")]);
     if (!c.ok) throw new OpError(`commit in the worktree of ${t.id} failed: ${c.err || c.out}`);
@@ -9223,7 +9234,9 @@ aidw change ${id}, task ${taskId}. Checkpoint and review evidence: .aidw/changes
   if (opts.commit === false && !inWorktree) return { task: taskId, verdict, status: "done", commit: null };
   if (!isGitRepo(p.project)) return { task: taskId, verdict, status: "done", commit: null, warning: "not a git repository: task not committed" };
   const add = git(p.project, ["add", "-A"]);
-  const commit = add.ok ? git(p.project, ["commit", "-q", "-m", msg]) : add;
+  const junk = add.ok ? stagedJunk(p.project) : [];
+  if (junk.length) git(p.project, ["reset", "-q"]);
+  const commit = junk.length ? { ok: false, out: "", err: junkMessage(junk) } : add.ok ? git(p.project, ["commit", "-q", "-m", msg]) : add;
   if (inWorktree && commit.ok) removeWorktree(p, String(t.worktree), String(t.branch ?? ""));
   if (!commit.ok) {
     if (inWorktree) {
@@ -9957,6 +9970,19 @@ function pmCommands(pm) {
       return { script: (s) => s === "test" ? "npm test" : `npm run ${s}`, exec: (b) => `npx ${b}` };
   }
 }
+var JUNK_DIRS = ["node_modules", ".next", ".nuxt", ".svelte-kit", ".turbo"];
+function repoWarnings(dir, hasPackage) {
+  const out = [];
+  const ignoreText = (0, import_node_fs10.existsSync)((0, import_node_path11.join)(dir, ".gitignore")) ? (0, import_node_fs10.readFileSync)((0, import_node_path11.join)(dir, ".gitignore"), "utf8") : null;
+  if (hasPackage && ignoreText === null) out.push("no .gitignore: add one with node_modules/, .next/, test-results/ and .env*.local before the first task (aidw commits with `git add -A`)");
+  if (!isGitRepo(dir)) return out;
+  for (const d of JUNK_DIRS) {
+    const tracked = git(dir, ["ls-files", "--", d]).out;
+    if (tracked) out.push(`${d}/ is tracked by git (${tracked.split("\n").length} file(s)): run \`git rm -r -q --cached ${d}\`, ignore it in .gitignore and commit`);
+    else if ((0, import_node_fs10.existsSync)((0, import_node_path11.join)(dir, d)) && !git(dir, ["check-ignore", "-q", d]).ok) out.push(`${d}/ exists but is not ignored by .gitignore: add "${d}/" before aidw commits`);
+  }
+  return out;
+}
 function detectProject(dir) {
   let pkg = null;
   const pkgFile = (0, import_node_path11.join)(dir, "package.json");
@@ -10008,7 +10034,7 @@ function detectProject(dir) {
     else if (stack["e2e tests"]?.startsWith("Playwright")) layers.push({ name: "e2e", run: [c.exec("playwright test")] });
     else if (stack["e2e tests"]?.startsWith("Cypress")) layers.push({ name: "e2e", run: [c.exec("cypress run")] });
   }
-  return { kind, signals, packageManager: pm, languages: [...languages], stack, scripts, layers, codeFiles };
+  return { kind, signals, packageManager: pm, languages: [...languages], stack, scripts, layers, codeFiles, warnings: repoWarnings(dir, pkg !== null) };
 }
 
 // src/ops.ts
@@ -11870,7 +11896,8 @@ ${[...r.runs, ...r.smoke].find((x) => x.exit !== 0)?.tail ?? r.runs[0]?.tail ?? 
 ${d.kind === "brownfield" ? `${d.signals.map((s) => `  signal  ${s}
 `).join("")}${Object.entries(d.stack).map(([k, v]) => `  stack   ${k}: ${v}
 `).join("")}  (recorded in .aidw/project.yaml; the existing stack is kept)
-` : ""}`
+` : ""}${d.warnings.map((w) => `  WARNING ${w}
+`).join("")}`
         );
         return 0;
       }
@@ -11881,7 +11908,8 @@ ${d.kind === "brownfield" ? `${d.signals.map((s) => `  signal  ${s}
           `${d.kind}${d.packageManager ? ` (${d.packageManager})` : ""}${d.languages.length ? `, ${d.languages.join(", ")}` : ""}`,
           ...d.signals.map((s) => `  signal  ${s}`),
           ...Object.entries(d.stack).map(([k, v]) => `  stack   ${k}: ${v}`),
-          ...d.layers.map((l) => `  layer   ${l.name}: ${l.run.join(" && ")}`)
+          ...d.layers.map((l) => `  layer   ${l.name}: ${l.run.join(" && ")}`),
+          ...d.warnings.map((w) => `  WARNING ${w}`)
         ];
         emit(d, `${text.join("\n")}
 `);

@@ -985,3 +985,15 @@ gate), `tests/runner.test.ts` (claude giả), `tests/brownfield.test.ts`.
   hook StopFailure có chạy trong `-p` không;
 - brownfield: chất lượng assessment, baseline spec, health baseline trên project thật.
 
+
+### Bổ sung sau khi chạy thử 3B: vệ sinh repo (D-31)
+
+Khi chuẩn bị trial-3B, fixture không có `.gitignore` và hướng dẫn cho `git add -A` sau `pnpm install`, nên
+`node_modules` bị commit. Gốc lỗi nằm ở plugin: aidw commit mỗi task bằng `git add -A`, nên mọi project thiếu
+`.gitignore` đều gặp. Đã thêm hai lớp chặn:
+- `aidw init` và `aidw detect` in `WARNING` khi project có `package.json` mà không có `.gitignore`, khi
+  `node_modules/`, `.next/`... đang bị git theo dõi, hoặc tồn tại mà chưa được ignore. Skill init (bước 4) và start
+  (bước 1b) bắt xử lý trước khi làm tiếp.
+- `aidw review pass` (và merge worktree của S8) từ chối commit khi thấy `node_modules`, `.next`, `.vercel`... trong
+  staged: bỏ staged, task giữ ở `review`, báo cách sửa (`.gitignore` + `git rm -r --cached`).
+- Fixture `brownfield-app` có `.gitignore`; `docs/trial-3.md` đổi thứ tự lệnh. Test: 127 pass.

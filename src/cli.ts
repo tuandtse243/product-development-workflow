@@ -528,7 +528,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
             d.kind === "brownfield"
               ? `${d.signals.map((s) => `  signal  ${s}\n`).join("")}${Object.entries(d.stack).map(([k, v]) => `  stack   ${k}: ${v}\n`).join("")}  (recorded in .aidw/project.yaml; the existing stack is kept)\n`
               : ""
-          }`,
+          }${d.warnings.map((w) => `  WARNING ${w}\n`).join("")}`,
         );
         return 0;
       }
@@ -541,6 +541,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           ...d.signals.map((s) => `  signal  ${s}`),
           ...Object.entries(d.stack).map(([k, v]) => `  stack   ${k}: ${v}`),
           ...d.layers.map((l) => `  layer   ${l.name}: ${l.run.join(" && ")}`),
+          ...d.warnings.map((w) => `  WARNING ${w}`),
         ];
         emit(d, `${text.join("\n")}\n`);
         return 0;

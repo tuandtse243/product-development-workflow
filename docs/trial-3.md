@@ -89,8 +89,9 @@ ls .aidw/run/briefs/*/ | grep layer-review
 ```bash
 cp -R ~/Desktop/Learning/product-development-workflow/evals/fixtures/brownfield-app ~/Desktop/Learning/aidw-trial-3b
 cd ~/Desktop/Learning/aidw-trial-3b
-rm pnpm-lock.yaml && pnpm install           # fixture không có lockfile thật
-git init && git add -A && git commit -m "existing app"
+git init && git add -A && git commit -m "existing app"   # trước khi cài: fixture có .gitignore sẵn
+rm pnpm-lock.yaml && pnpm install --reporter=append-only   # fixture không có lockfile thật; đừng bấm Ctrl+C khi tải chậm
+git add -A && git commit -m "lockfile" && git status --short   # phải sạch (node_modules đã bị ignore)
 aidwc
 ```
 

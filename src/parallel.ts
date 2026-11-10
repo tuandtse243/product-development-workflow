@@ -15,7 +15,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { join } from "node:path";
 import YAML from "yaml";
 import { loadChange, type Change } from "./change.js";
-import { git, headCommit, isGitRepo } from "./git.js";
+import { git, headCommit, isGitRepo, junkMessage, stagedJunk } from "./git.js";
 import { OpError, transition } from "./ops.js";
 import { readText, rel, type Paths } from "./project.js";
 import { DEFAULT_PARALLEL, parseQuality, qualityFile, type ParallelConfig, type QualityConfig } from "./quality.js";
@@ -134,6 +134,11 @@ export function mergeWorktree(p: Paths, t: Task, message: string): MergeOutcome 
   if (!existsSync(wt) || !branch) throw new OpError(`task ${t.id} has no worktree to merge (${String(t.worktree)})`);
   const add = git(wt, ["add", "-A", "--", ".", ":(exclude).aidw"]);
   if (!add.ok) throw new OpError(`git add in the worktree of ${t.id} failed: ${add.err}`);
+  const junk = stagedJunk(wt);
+  if (junk.length) {
+    git(wt, ["reset", "-q"]);
+    throw new OpError(`${t.id}: ${junkMessage(junk)}`);
+  }
   if (!git(wt, ["diff", "--cached", "--quiet"]).ok) {
     // The merge commit carries "<task>: <title>"; the branch commit says where the work was done.
     const c = git(wt, ["commit", "-q", "-m", message.replace(/^([^:]+):/, "$1 (worktree):")]);

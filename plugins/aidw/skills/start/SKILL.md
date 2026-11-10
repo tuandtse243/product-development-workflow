@@ -49,7 +49,9 @@ already `awaiting_approval` or later, tell the user and stop: one change at a ti
 When `.aidw/project.yaml` says `kind: brownfield` (or the input type is `codebase`), understand the existing
 system before asking anything; the grilling then asks only what the code cannot answer.
 
-1. The working tree must be clean (`git status`): aidw commits per task. Ask the user to commit or stash first.
+1. The working tree must be clean (`git status`) and `aidw detect` must print no `WARNING` (no `.gitignore`,
+   tracked or unignored `node_modules/`): aidw commits per task with `git add -A`. Ask the user to commit or
+   stash first, and fix the warnings (see `/aidw:init` step 4).
 2. Read `.aidw/project.yaml` (`stack`, `detected`), `aidw detect`, the README, `package.json` scripts, config
    files, the folder structure and the main flows. Read code; do not run the app yet.
 3. Write what you found where it belongs: `.aidw/architecture/overview.md` (the architecture as it is, folder

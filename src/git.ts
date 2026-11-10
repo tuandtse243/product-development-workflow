@@ -15,6 +15,21 @@ export function isGitRepo(cwd: string): boolean {
   return git(cwd, ["rev-parse", "--is-inside-work-tree"]).out === "true";
 }
 
+/** Dependency and build-output folders that must never be committed (aidw commits with `git add -A`). */
+const JUNK_PATH = /(^|\/)(node_modules|\.next|\.nuxt|\.svelte-kit|\.turbo|\.vercel)\//;
+
+/**
+ * Staged files that are dependencies or build output. Called after `git add -A` and before every aidw commit:
+ * a project without a proper .gitignore would otherwise get node_modules into its history.
+ */
+export function stagedJunk(cwd: string): string[] {
+  const r = git(cwd, ["diff", "--cached", "--name-only"]);
+  return r.ok ? r.out.split("\n").filter((f) => JUNK_PATH.test(f)) : [];
+}
+
+export const junkMessage = (files: string[]) =>
+  `refusing to commit dependency or build output (${files.slice(0, 3).join(", ")}${files.length > 3 ? ", ..." : ""}): the project has no .gitignore covering it. Add node_modules/, .next/ and the like to .gitignore, run \`git rm -r -q --cached node_modules .next\` for anything already tracked, then retry`;
+
 /** Current commit, or null outside git or before the first commit. */
 export function headCommit(cwd: string): string | null {
   const r = git(cwd, ["rev-parse", "--verify", "-q", "HEAD"]);

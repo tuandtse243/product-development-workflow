@@ -24,6 +24,8 @@ export interface Detection {
   /** quality layers suggested from the project's own scripts and tools */
   layers: { name: string; run: string[] }[];
   codeFiles: number;
+  /** problems to fix before aidw commits anything (missing .gitignore, tracked node_modules) */
+  warnings: string[];
 }
 
 const SKIP = new Set(["node_modules", ".git", ".aidw", ".next", ".nuxt", ".svelte-kit", ".turbo", ".vercel", ".output", "dist", "build", "out", "coverage", "vendor", "venv", ".venv", "__pycache__", "target"]);
@@ -146,6 +148,22 @@ export function pmCommands(pm: PackageManager): { script: (s: string) => string;
   }
 }
 
+const JUNK_DIRS = ["node_modules", ".next", ".nuxt", ".svelte-kit", ".turbo"];
+
+/** Repo hygiene aidw depends on: it commits per task with `git add -A`, so dependencies must be ignored. */
+export function repoWarnings(dir: string, hasPackage: boolean): string[] {
+  const out: string[] = [];
+  const ignoreText = existsSync(join(dir, ".gitignore")) ? readFileSync(join(dir, ".gitignore"), "utf8") : null;
+  if (hasPackage && ignoreText === null) out.push("no .gitignore: add one with node_modules/, .next/, test-results/ and .env*.local before the first task (aidw commits with `git add -A`)");
+  if (!isGitRepo(dir)) return out;
+  for (const d of JUNK_DIRS) {
+    const tracked = git(dir, ["ls-files", "--", d]).out;
+    if (tracked) out.push(`${d}/ is tracked by git (${tracked.split("\n").length} file(s)): run \`git rm -r -q --cached ${d}\`, ignore it in .gitignore and commit`);
+    else if (existsSync(join(dir, d)) && !git(dir, ["check-ignore", "-q", d]).ok) out.push(`${d}/ exists but is not ignored by .gitignore: add "${d}/" before aidw commits`);
+  }
+  return out;
+}
+
 export function detectProject(dir: string): Detection {
   let pkg: Record<string, unknown> | null = null;
   const pkgFile = join(dir, "package.json");
@@ -201,5 +219,5 @@ export function detectProject(dir: string): Detection {
     else if (stack["e2e tests"]?.startsWith("Playwright")) layers.push({ name: "e2e", run: [c.exec("playwright test")] });
     else if (stack["e2e tests"]?.startsWith("Cypress")) layers.push({ name: "e2e", run: [c.exec("cypress run")] });
   }
-  return { kind, signals, packageManager: pm, languages: [...languages], stack, scripts, layers, codeFiles };
+  return { kind, signals, packageManager: pm, languages: [...languages], stack, scripts, layers, codeFiles, warnings: repoWarnings(dir, pkg !== null) };
 }

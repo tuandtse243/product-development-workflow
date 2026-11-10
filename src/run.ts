@@ -18,7 +18,7 @@ import { decisionsToHonor, requirementsAfterChange } from "./analyze.js";
 import { approvalStatus } from "./approval.js";
 import { loadChange, stateOf, type Change } from "./change.js";
 import { hardcodedColors, loadTokens, missingTokens, shotsDir, taskShots, tokensFile, tokensTable } from "./design.js";
-import { changedSince, git, headCommit, isGitRepo } from "./git.js";
+import { changedSince, git, headCommit, isGitRepo, junkMessage, stagedJunk } from "./git.js";
 import { matchesAny } from "./glob.js";
 import { OpError } from "./ops.js";
 import { readText, rel, walkFiles, type Paths } from "./project.js";
@@ -507,7 +507,9 @@ export function recordReview(
   if (opts.commit === false && !inWorktree) return { task: taskId, verdict, status: "done", commit: null };
   if (!isGitRepo(p.project)) return { task: taskId, verdict, status: "done", commit: null, warning: "not a git repository: task not committed" };
   const add = git(p.project, ["add", "-A"]);
-  const commit = add.ok ? git(p.project, ["commit", "-q", "-m", msg]) : add;
+  const junk = add.ok ? stagedJunk(p.project) : [];
+  if (junk.length) git(p.project, ["reset", "-q"]);
+  const commit = junk.length ? { ok: false, out: "", err: junkMessage(junk) } : add.ok ? git(p.project, ["commit", "-q", "-m", msg]) : add;
   if (inWorktree && commit.ok) removeWorktree(p, String(t.worktree), String(t.branch ?? ""));
   if (!commit.ok) {
     // keep the task reviewable so the commit can be retried

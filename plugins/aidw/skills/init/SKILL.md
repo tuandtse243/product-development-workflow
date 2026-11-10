@@ -18,7 +18,12 @@ The `aidw` CLI ships with this plugin as `${CLAUDE_PLUGIN_ROOT}/bin/aidw`. If a 
 3. Check `.aidw/project.yaml`: set `name`; for brownfield, correct anything detection got wrong (read
    `package.json` and the config files; never guess) and add what it cannot see (e.g. the hosting the client
    uses). Do not change the code.
-4. Brownfield: tell the user that `/aidw:start` begins with an assessment of the existing code, and that the
+4. **Repo hygiene.** If `aidw init` or `aidw detect` prints a `WARNING` (no `.gitignore`, `node_modules/` tracked
+   or not ignored), fix it with the user before anything else: aidw commits every task with `git add -A`, so
+   dependencies would end up in the history. Add `.gitignore` (`node_modules/`, `.next/`, `test-results/`,
+   `playwright-report/`, `.vercel`, `.env*.local`), run `git rm -r -q --cached node_modules` if it is tracked,
+   and commit. `aidw review` refuses to commit when it finds dependency or build output staged.
+5. Brownfield: tell the user that `/aidw:start` begins with an assessment of the existing code, and that the
    working tree must be committed or stashed first (aidw commits per task).
 5. If the project is not a git repository, suggest `git init`. Git is needed for checkpoints, worktrees and
    the stop backstop.
