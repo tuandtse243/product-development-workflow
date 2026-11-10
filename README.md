@@ -4,7 +4,6 @@ Analysis-gated autonomous development for Claude Code: intake → analysis → *
 autonomous build → layered quality gates → living specs → complete delivery package.
 
 - **User guide (Vietnamese, with diagrams): [`docs/user-guide.md`](docs/user-guide.md)**
-- Design and decisions: [`docs/blueprint-v1.md`](docs/blueprint-v1.md), [`docs/decisions-log.md`](docs/decisions-log.md)
 - Status: **S1 done** (deterministic core CLI), **S2 code done** (analysis skills, analyze, approval gate hook,
   stop backstop, vendored Pocock and Addy skills), **S3 code done** (sequential orchestrator: a fresh
   implementer per task, scenario evidence, independent reviewer, a commit per task, resume), **S4 code done**
@@ -16,7 +15,7 @@ autonomous build → layered quality gates → living specs → complete deliver
   `quality.yaml` with read-only `aidw:ui-reviewer` / `aidw:security-reviewer` agents and `aidw layer-review`; a11y and
   performance layers over Chrome CDP in the quality profile). **S8-S10 code done** (parallel waves in git worktrees
   with merge per task and integration verify; `aidw run`, the headless auto-resume runner; brownfield detection,
-  `## Existing system`, lazy baseline specs). Milestone B awaits trial 3: [`docs/trial-3.md`](docs/trial-3.md). Test guide: [`docs/milestone-a-test.md`](docs/milestone-a-test.md)
+  `## Existing system`, lazy baseline specs). Milestone B awaits trial 3: [`docs/trial-3.md`](docs/trial-3.md).
   (set `AIDW_HOOK_LOG=<file>` to trace every hook call).
 
 ## Use it in a project (local, no install)

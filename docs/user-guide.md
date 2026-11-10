@@ -3,8 +3,7 @@
 aidw là một plugin cho Claude Code. Bạn mô tả cần làm gì, trả lời một vòng câu hỏi, **đọc và duyệt một văn bản
 phân tích**, rồi aidw tự làm phần còn lại: viết code, kiểm thử, deploy preview và bàn giao.
 
-Tài liệu này dành cho người mới. Thiết kế chi tiết nằm ở [`blueprint-v1.md`](blueprint-v1.md) và
-[`decisions-log.md`](decisions-log.md).
+Tài liệu này dành cho người mới. Kế hoạch kiểm thử thực tế nằm ở [`trial-3.md`](trial-3.md).
 
 ## 1. Hiểu nhanh trong một phút
 
@@ -123,7 +122,7 @@ aidw run <id> --permission-mode auto -- --plugin-dir /đường/dẫn/plugins/ai
 
 Dùng `/aidw:run` tương tác vẫn được. Nên gõ `/clear` trước (cuộc trò chuyện phân tích dài, mỗi lượt sau đều đọc
 lại toàn bộ). Giữ session quá dài là nguyên nhân chính khiến tốn token: lần đo ở `aidw-trial-3b` cho thấy 91%
-token là của session chính (xem [blueprint §32](blueprint-v1.md)).
+token là của session chính (đo bằng `aidw cost`, 319 lượt và 103.7M token đọc cache ở session chính của `aidw-trial-3b`).
 
 ### Đo token: `aidw cost`
 

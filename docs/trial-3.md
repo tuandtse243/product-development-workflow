@@ -23,7 +23,7 @@ Có thể làm 3B trước, vì 3B ngắn hơn.
 | 28 | Code mới theo conventions có sẵn, không migrate stack | S10 | Diff |
 | 30 | `aidw analyze` cảnh báo kế hoạch một chuỗi; một change có wave thật (commit `(worktree)`) | thông lượng | `aidw analyze`, `git log --graph` |
 | 31 | `aidw cost` so với mốc trial-3b (319 lượt, 103.7M cache-read ở session chính, 46 subagent) | token | `aidw cost` |
-| 29 | Token (D-32): `aidw run` mỗi task một session (`END THIS SESSION`), reviewer ghi verdict vào file, task `C*` chỉ-test tự pass review | tối ưu | `runner.log`, tổng token trong transcript (so với mốc đã đo của trial-3b (xem #31)) |
+| 29 | Token: `aidw run` mỗi task một session (`END THIS SESSION`), reviewer ghi verdict vào file, task `C*` chỉ-test tự pass review | tối ưu | `runner.log`, tổng token trong transcript (so với mốc đã đo của trial-3b (xem #31)) |
 
 ## 0. Chuẩn bị
 
