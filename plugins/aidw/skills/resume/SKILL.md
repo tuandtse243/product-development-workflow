@@ -12,7 +12,7 @@ The `aidw` CLI ships with this plugin as `${CLAUDE_PLUGIN_ROOT}/bin/aidw`. If a 
 
 All progress lives in `.aidw/` and git, so resuming needs no memory of the previous session.
 
-1. `aidw status`. Pick the change (`$ARGUMENTS`, or the single active one) and report where it stands:
+1. `aidw status` (one call; skip it when the prompt already names the change and its state is known). Pick the change (`$ARGUMENTS`, or the single active one) and report where it stands:
    state, paused reason, tasks done/total.
 2. By state:
    - `paused`: `aidw transition <id> resume` (returns to the state it paused from).

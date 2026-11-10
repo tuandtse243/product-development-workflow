@@ -16,7 +16,8 @@ export function isGitRepo(cwd: string): boolean {
 }
 
 /** Dependency and build-output folders that must never be committed (aidw commits with `git add -A`). */
-const JUNK_PATH = /(^|\/)(node_modules|\.next|\.nuxt|\.svelte-kit|\.turbo|\.vercel)\//;
+const JUNK_PATH =
+  /(^|\/)(node_modules|\.next|\.nuxt|\.svelte-kit|\.turbo|\.vercel|coverage|playwright-report|test-results)\/|(^|\/)(next-env\.d\.ts|\.DS_Store|\.env(?:\.(?!example$)[\w.-]+)?)$|\.tsbuildinfo$/;
 
 /**
  * Staged files that are dependencies or build output. Called after `git add -A` and before every aidw commit:
@@ -28,7 +29,7 @@ export function stagedJunk(cwd: string): string[] {
 }
 
 export const junkMessage = (files: string[]) =>
-  `refusing to commit dependency or build output (${files.slice(0, 3).join(", ")}${files.length > 3 ? ", ..." : ""}): the project has no .gitignore covering it. Add node_modules/, .next/ and the like to .gitignore, run \`git rm -r -q --cached node_modules .next\` for anything already tracked, then retry`;
+  `refusing to commit dependency or build output (${files.slice(0, 3).join(", ")}${files.length > 3 ? ", ..." : ""}): the project has no .gitignore covering it. Add node_modules/, .next/, *.tsbuildinfo, next-env.d.ts, .env and the like to .gitignore, run \`git rm -r -q --cached <path>\` for anything already tracked, then retry`;
 
 /** Current commit, or null outside git or before the first commit. */
 export function headCommit(cwd: string): string | null {

@@ -129,25 +129,34 @@ export function converge(p: Paths, id: string): ConvergeResult {
     const verify = (testLayers.length ? testLayers : config.layers).flatMap((l) => [...l.setup, ...l.run]);
     let n = tf.tasks.filter((t) => t.origin === "converge").length;
     const seq = tf.doc.get("tasks") as YAML.YAMLSeq;
+    // One task per capability: its scenarios share files and context, so one implementer covers them all
+    // (a task per scenario cost a subagent and a review each).
+    const byCapability = new Map<string, string[]>();
     for (const s of fresh) {
+      const cap = s.split("/").slice(0, -1).join("/");
+      byCapability.set(cap, [...(byCapability.get(cap) ?? []), s]);
+    }
+    for (const [cap, ids] of byCapability) {
       n += 1;
       const taskId = `C${String(n).padStart(2, "0")}`;
-      const r = scenarios[s] as ScenarioResult;
+      const problems = ids.map((s) => {
+        const r = scenarios[s] as ScenarioResult;
+        return r.status === "missing"
+          ? `- ${s}: no test found (${mode} evidence). Write a test named with the id that asserts its THEN outcome, and make it pass.`
+          : `- ${s}: its test is ${r.status === "fail" ? "failing" : "skipped"}: ${r.where.join("; ")}. Make it a real, passing test.`;
+      });
       seq.add(
         tf.doc.createNode({
           id: taskId,
-          title: `Cover scenario ${s}`,
+          title: ids.length === 1 ? `Cover scenario ${ids[0]}` : `Cover ${ids.length} scenarios of ${cap}`,
           role: "fullstack-engineer",
           origin: "converge",
-          specs: [s.split("/").slice(0, -1).join("/")],
-          scenarios: [s],
+          specs: [cap],
+          scenarios: ids,
           depends_on: [],
           touches: ["**"],
           verify,
-          problem:
-            r.status === "missing"
-              ? `Converge found no test for scenario ${s} (${mode} evidence). Write a test named with the id that asserts its THEN outcome, and make it pass.`
-              : `Converge found the test for scenario ${s} ${r.status === "fail" ? "failing" : "skipped"}: ${r.where.join("; ")}. Make it a real, passing test.`,
+          problem: `Converge found scenario(s) of ${cap} without a passing test:\n${problems.join("\n")}`,
           status: "pending",
         }),
       );

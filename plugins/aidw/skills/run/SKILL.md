@@ -25,6 +25,11 @@ that aidw creates; everything else runs sequentially on the main checkout.
 - Do not read or write source code yourself, and do not paste code into subagent prompts. Pass the brief path.
 - Keep subagent replies short; do not re-verify their work by reading code. `aidw checkpoint` and the reviewer
   are the verification.
+- **Your context is the cost.** Every turn you take re-reads everything before it, so each avoidable command is
+  expensive. Run only what this skill says, one command per step; never `cat` or `sed` a skill, profile or brief
+  into the session (subagents read those themselves); never run `aidw status`/`aidw next` when the previous
+  command already printed `NEXT:`.
+- Reviewers write their verdict to a file and reply with one line; do not read the file. `aidw verdict` does.
 - The aidw gate still applies: tier-3 actions (production deploy, pushing, paid resources) ask the user.
 - Talk to the user in their language; keep status lines short (`T03 done (2/8)`).
 - Spawn subagents with the prompt given below and nothing else: the brief already carries failures, review
@@ -41,6 +46,9 @@ that aidw creates; everything else runs sequentially on the main checkout.
    - drift, `awaiting_approval` or earlier: stop and tell the user (`/aidw:status` explains what to do).
 2. When the project is a git repository, check `git status`: unrelated uncommitted user changes would end up in
    task commits. If there are any, ask the user to commit or stash them first.
+3. Not running under the runner (`echo $AIDW_RUNNER` is empty) and more than 3 tasks remain: tell the user once,
+   in one line, that `aidw run <id>` in their own terminal does the same with a fresh session per task and costs
+   about a quarter of the tokens of this long session; then continue here if they do not switch.
 
 ## 1. Loop
 
@@ -51,39 +59,44 @@ aidw next --change <id> --json
 ```
 
 **`implement <T>`** (reason `new`, `retry` or `interrupted`):
-1. `aidw task start <T> --change <id>`. If it fails because attempts are exhausted, go to *Escalate*.
-2. `aidw brief <T> --change <id>` prints the brief path.
-3. Spawn the `aidw:implementer` subagent (Agent tool, `subagent_type: "aidw:implementer"`) with the prompt:
-   `Task brief: <path>. Read it and implement the task.` Wait for it.
-4. If the implementer reports a blocker it cannot resolve (missing decision, contradictory spec, credential),
+1. `aidw task start <T> --change <id>`. It prints the brief path and the exact prompt to use. If it fails
+   because attempts are exhausted, go to *Escalate*.
+2. Spawn the `aidw:implementer` subagent (Agent tool, `subagent_type: "aidw:implementer"`) with the printed
+   prompt (`Task brief: <path>. Read it and implement the task.`). Wait for it.
+3. If the implementer reports a blocker it cannot resolve (missing decision, contradictory spec, credential),
    go to *Escalate* with its words.
-5. `aidw checkpoint <T> --change <id>`. On FAIL the task is marked failed with the reason; just loop
-   (`next` returns a retry, whose brief carries the failure and the debugging skill).
+4. `aidw checkpoint <T> --change <id>`. Read its last lines:
+   - FAIL: the task is marked failed with the reason. It prints `NEXT: implement <T> (retry)`; loop (the retry
+     brief carries the failure and the debugging skill).
+   - PASS with `auto-passed`: a converge task that only added tests; it is reviewed and committed already.
+     Follow the printed `NEXT:`.
+   - PASS with `SPAWN aidw:reviewer`: go to the review step below.
 
 **`review <T>`**:
-1. `aidw brief <T> --change <id> --for review` prints the review brief path.
-2. Spawn the `aidw:reviewer` subagent with: `Review brief: <path>. Review the task and reply with the verdict.`
-3. Read the first line of its reply.
-   - `VERDICT: pass` -> write the reply verbatim to `.aidw/run/review-<T>.md`, then
-     `aidw review <T> pass --notes-file .aidw/run/review-<T>.md --change <id>` (marks done and commits the
-     task). Always pass the reply: its non-blocking remarks go into the quality report and the handoff's
-     Known issues; a pass without notes loses them.
-   - `VERDICT: fix` -> write the reply verbatim to `.aidw/run/review-<T>.md`, then
-     `aidw review <T> fix --notes-file .aidw/run/review-<T>.md --change <id>`. Loop: the retry brief carries
-     the notes.
-   - No clear verdict: spawn a fresh reviewer once more; if still unclear, treat it as `fix` with its reply.
-4. Report one line to the user: `T03 done (3/8)` or `T03 needs fixes (attempt 2/3)`.
+1. The checkpoint printed the review brief and prompt (if you only have `NEXT: review <T>`, run
+   `aidw brief <T> --change <id> --for review`). Spawn the `aidw:reviewer` subagent with
+   `Review brief: <path>. Review the task and reply with the verdict.`
+2. The reviewer writes its verdict to `.aidw/run/review-<T>.md` and replies with its first line. Run
+   `aidw verdict <T> --change <id>`: it reads that file, records `pass` (marks done, commits the task, keeps the
+   reviewer's non-blocking remarks for the handoff) or `fix` (the retry brief carries the notes), and prints
+   `NEXT:`.
+   - It fails with "no verdict file" or "does not start with VERDICT": spawn a fresh reviewer once more; if
+     still unclear, save its reply to that file yourself and, as a last resort,
+     `aidw review <T> fix --notes-file <file> --change <id>`.
+3. Report one line to the user: `T03 done (3/8)` or `T03 needs fixes (attempt 2/3)`.
+4. **`END THIS SESSION`** in the output (only under `aidw run`): reply with one line and stop, calling no more
+   tools. The runner starts a fresh session for the next task. Do not continue the loop.
 
 **`wave <T1>, <T2>, ...`** (tasks that can run side by side):
 1. For each task: `aidw task start <T> --worktree --change <id>`. If one fails because its worktree setup
    failed, it is marked sequential and runs later on its own; continue with the others.
-2. For each started task: `aidw brief <T> --change <id>`.
+2. Each `task start` printed the brief path and prompt.
 3. Spawn one `aidw:implementer` per task **in a single message** (parallel Agent calls), each with only its
-   prompt `Task brief: <path>. Read it and implement the task.` Wait for all of them.
+   printed prompt (`Task brief: <path>. Read it and implement the task.`). Wait for all of them.
 4. A blocker from any implementer: finish the others, then *Escalate*.
 5. `aidw checkpoint <T>` for each task, one after the other (checkpoints run builds; never in parallel).
-6. Loop: `next` now returns `review <T>` for each checkpointed task (and retries for failed ones). When several
-   tasks wait for review, you may spawn their reviewers in one message; record each verdict as below.
+6. Each passing checkpoint printed its review prompt. Spawn the reviewers of all passing tasks in one message,
+   then `aidw verdict <T>` for each, one after the other.
    `aidw review <T> pass` merges the task's worktree into the change branch and commits it. If the merge
    conflicts, the output says so: the task's work is dropped and it reruns sequentially later (say so to the
    user in one line).
@@ -120,11 +133,11 @@ commands and the `code` layer on the merged code.
      independent reviewer. The output names the agent, the brief and the prompt:
      1. Spawn that agent (`subagent_type: "aidw:ui-reviewer"` or `"aidw:security-reviewer"`) with exactly the
         printed prompt: `Layer review brief: <path>. Review the layer and reply with the verdict.`
-     2. Write its reply verbatim to `.aidw/run/layer-review-<layer>.md`, then
-        `aidw layer-review <layer> pass|fix --notes-file .aidw/run/layer-review-<layer>.md --change <id>`
-        according to the first line (`VERDICT: pass` / `VERDICT: fix`). No clear verdict: spawn a fresh
-        reviewer once more; still unclear, treat it as `fix` with its reply. Always pass the reply: its
-        non-blocking remarks go into the quality report and the handoff.
+     2. The reviewer writes its verdict to `.aidw/run/layer-review-<layer>.md` and replies with one line. Run
+        `aidw layer-review <layer> --change <id>` (no verdict argument): it reads that file and records
+        `pass` or `fix`, keeping the non-blocking remarks for the quality report and the handoff. No clear
+        verdict: spawn a fresh reviewer once more; still unclear, record `fix` with
+        `aidw layer-review <layer> fix --notes-file <file>`.
      3. `pass` -> run `aidw verify` again for the remaining layers. `fix` -> a fix task `Qnn` was added with the
         reviewer's notes; return to the loop (section 1), then come back here. Fix rounds exhausted -> the change
         is `escalated`: tell the user and stop.
@@ -166,7 +179,8 @@ their own terminal (never run it yourself; the gate denies it):
 aidw run <id> --permission-mode auto -- --plugin-dir <plugin dir if not installed>
 ```
 
-It loops `claude -p "/aidw:resume <id>"` until the change is archived, waits out each limit (the reset time from
+It loops `claude -p "/aidw:resume <id>"` until the change is archived, **one task per session** (a fresh session
+starts at about 55K tokens instead of carrying hundreds of thousands), waits out each limit (the reset time from
 the error, or 5 to 60 minutes of backoff), and stops on escalation or when two sessions make no progress
 (log: `.aidw/run/runner.log`). Tier-3 questions cannot be answered headless; they end in an escalation.
 

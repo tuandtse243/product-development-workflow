@@ -149,10 +149,11 @@ export function buildLayerBrief(p: Paths, id: string, layer: Layer, runs: Verify
     ...h("Checklist", checklist),
     "## Verdict",
     "",
-    "Your reply starts with exactly one line: `VERDICT: pass` or `VERDICT: fix`.",
+    "Your verdict starts with exactly one line: `VERDICT: pass` or `VERDICT: fix`.",
     "For `fix`, follow with numbered blocking issues: where (file or screen and viewport), the problem, the expected fix.",
     "Only blocking issues justify `fix`; put everything else under `Non-blocking:`. Be concrete: a fix task gets your notes verbatim,",
     "and the non-blocking remarks go into the delivery's quality report and the handoff's Known issues.",
+    `**Write the whole verdict to \`${join(p.run, `layer-review-${layer.name}.md`)}\` with the Write tool** (the only file you may write), then reply with just its first line, \`VERDICT: pass\` or \`VERDICT: fix\`. The orchestrator reads the file; keeping your reply short saves its context.`,
     "",
     ...h("Decisions to honor (approved; binding)", decisions.map((x) => `- ${x}`)),
     ...h(

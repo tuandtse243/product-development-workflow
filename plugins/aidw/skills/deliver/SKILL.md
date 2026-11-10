@@ -68,3 +68,5 @@ width; add mobile for the most important one):
    commits `.aidw/`. It refuses an incomplete package.
 4. Report to the user: the preview URL, where the package is (`.aidw/archive/<id>/delivery/`), the quality
    summary, and the known issues.
+5. Tell the user to `/clear` (or open a new session) before the next change: this session's context is large
+   and a new change does not need it.

@@ -149,17 +149,22 @@ export function pmCommands(pm: PackageManager): { script: (s: string) => string;
 }
 
 const JUNK_DIRS = ["node_modules", ".next", ".nuxt", ".svelte-kit", ".turbo"];
+/** Generated files that are often committed by accident (tsc incremental state, Next's type shim). */
+const JUNK_FILES = ["tsconfig.tsbuildinfo", "next-env.d.ts", ".DS_Store"];
 
 /** Repo hygiene aidw depends on: it commits per task with `git add -A`, so dependencies must be ignored. */
 export function repoWarnings(dir: string, hasPackage: boolean): string[] {
   const out: string[] = [];
   const ignoreText = existsSync(join(dir, ".gitignore")) ? readFileSync(join(dir, ".gitignore"), "utf8") : null;
-  if (hasPackage && ignoreText === null) out.push("no .gitignore: add one with node_modules/, .next/, test-results/ and .env*.local before the first task (aidw commits with `git add -A`)");
+  if (hasPackage && ignoreText === null) out.push("no .gitignore: add one with node_modules/, .next/, test-results/, *.tsbuildinfo, next-env.d.ts and .env*.local before the first task (aidw commits with `git add -A`)");
   if (!isGitRepo(dir)) return out;
   for (const d of JUNK_DIRS) {
     const tracked = git(dir, ["ls-files", "--", d]).out;
     if (tracked) out.push(`${d}/ is tracked by git (${tracked.split("\n").length} file(s)): run \`git rm -r -q --cached ${d}\`, ignore it in .gitignore and commit`);
     else if (existsSync(join(dir, d)) && !git(dir, ["check-ignore", "-q", d]).ok) out.push(`${d}/ exists but is not ignored by .gitignore: add "${d}/" before aidw commits`);
+  }
+  for (const f of JUNK_FILES) {
+    if (git(dir, ["ls-files", "--", f]).out) out.push(`${f} is tracked by git: it is generated; run \`git rm -q --cached ${f}\`, ignore it in .gitignore and commit`);
   }
   return out;
 }

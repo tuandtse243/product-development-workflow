@@ -24,4 +24,8 @@ The user has asked to approve. This is the single human gate of the workflow (Q2
    - the approved package (intake, analysis, specs, design, constitution) is frozen; changing it needs
      `aidw transition <id> escalated`, then `analyzing`, then a new approval;
    - autonomous execution starts with `/aidw:run` (one fresh implementer per task, checkpoint evidence,
-     independent review, a commit per task); after an interruption, `/aidw:resume`.
+     independent review, a commit per task); after an interruption, `/aidw:resume`;
+   - the cheapest way to run it: the analysis conversation above is long and every later turn re-reads it.
+     Either type `/clear` and then `/aidw:run`, or run `aidw run <id> --permission-mode auto` in a separate
+     terminal (a fresh session per task, waits out usage limits). Say this in two lines; do not start the run
+     yourself unless the user asks.

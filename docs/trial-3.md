@@ -21,11 +21,12 @@ Có thể làm 3B trước, vì 3B ngắn hơn.
 | 26 | Assessment: `## Existing system`, health baseline, conventions vào constitution | S10 | `analysis.md`, `constitution.md` |
 | 27 | Baseline spec cho capability `todos` trước khi sửa, delta là MODIFIED | S10 | `.aidw/specs/todos/spec.md`, `aidw approval check` |
 | 28 | Code mới theo conventions có sẵn, không migrate stack | S10 | Diff |
+| 29 | Token (D-32): `aidw run` mỗi task một session (`END THIS SESSION`), reviewer ghi verdict vào file, task `C*` chỉ-test tự pass review | tối ưu | `runner.log`, tổng token trong transcript (so với 181M của trial-3b) |
 
 ## 0. Chuẩn bị
 
 ```bash
-cd ~/Desktop/Learning/product-development-workflow && npm test     # bin mới, 125 test pass
+cd ~/Desktop/Learning/product-development-workflow && npm test     # bin mới, 148 test pass
 alias aidwc='AIDW_HOOK_LOG=$HOME/$(basename "$PWD")-hooks.jsonl claude --plugin-dir ~/Desktop/Learning/product-development-workflow/plugins/aidw'
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
   --remote-debugging-port=9222 --user-data-dir="$HOME/.aidw-chrome" --no-first-run about:blank &

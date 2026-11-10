@@ -8247,6 +8247,7 @@ function isFrozenPackageFile(p, file, frozen) {
   }
   return false;
 }
+var VERDICT_FILE = /^(?:layer-)?review-[A-Za-z0-9._-]+\.md$/;
 function agentRole(agentType) {
   const name = (agentType ?? "").split(":").pop() ?? "";
   if (name === "implementer") return "implementer";
@@ -8287,7 +8288,10 @@ function decide(input, env) {
     const secret = firstMatch(SECRET_PATHS, file);
     if (secret && !inside(project, file)) return deny(`writing ${secret.why} is forbidden (tier x)`);
     if (!inside(project, file)) return null;
-    if (role === "reviewer") return deny("the reviewer is read-only; report issues in the verdict instead of fixing them");
+    if (role === "reviewer") {
+      if ((0, import_node_path4.dirname)(file) === p.run && VERDICT_FILE.test((0, import_node_path4.basename)(file))) return allow("reviewer verdict file");
+      return deny("the reviewer is read-only; report issues in the verdict instead of fixing them (it may write only .aidw/run/review-<task>.md or layer-review-<layer>.md)");
+    }
     const worktrees = (0, import_node_path4.join)(p.run, "worktrees");
     if (inside(worktrees, file)) {
       const parts = (0, import_node_path4.relative)(worktrees, file).split(import_node_path4.sep);
@@ -8456,12 +8460,12 @@ function git(cwd, args) {
 function isGitRepo(cwd) {
   return git(cwd, ["rev-parse", "--is-inside-work-tree"]).out === "true";
 }
-var JUNK_PATH = /(^|\/)(node_modules|\.next|\.nuxt|\.svelte-kit|\.turbo|\.vercel)\//;
+var JUNK_PATH = /(^|\/)(node_modules|\.next|\.nuxt|\.svelte-kit|\.turbo|\.vercel|coverage|playwright-report|test-results)\/|(^|\/)(next-env\.d\.ts|\.DS_Store|\.env(?:\.(?!example$)[\w.-]+)?)$|\.tsbuildinfo$/;
 function stagedJunk(cwd) {
   const r = git(cwd, ["diff", "--cached", "--name-only"]);
   return r.ok ? r.out.split("\n").filter((f) => JUNK_PATH.test(f)) : [];
 }
-var junkMessage = (files) => `refusing to commit dependency or build output (${files.slice(0, 3).join(", ")}${files.length > 3 ? ", ..." : ""}): the project has no .gitignore covering it. Add node_modules/, .next/ and the like to .gitignore, run \`git rm -r -q --cached node_modules .next\` for anything already tracked, then retry`;
+var junkMessage = (files) => `refusing to commit dependency or build output (${files.slice(0, 3).join(", ")}${files.length > 3 ? ", ..." : ""}): the project has no .gitignore covering it. Add node_modules/, .next/, *.tsbuildinfo, next-env.d.ts, .env and the like to .gitignore, run \`git rm -r -q --cached <path>\` for anything already tracked, then retry`;
 function headCommit(cwd) {
   const r = git(cwd, ["rev-parse", "--verify", "-q", "HEAD"]);
   return r.ok && r.out ? r.out : null;
@@ -9252,6 +9256,18 @@ aidw change ${id}, task ${taskId}. Checkpoint and review evidence: .aidw/changes
   }
   return { task: taskId, verdict, status: "done", commit: headCommit(p.project) };
 }
+function parseVerdict(text) {
+  const first = text.split("\n").find((l) => l.trim() !== "") ?? "";
+  const m = /^\W*VERDICT:\s*(pass|fix)\b/i.exec(first);
+  return m ? m[1].toLowerCase() : null;
+}
+function autoReview(p, id, taskId, changed) {
+  const tf = loadTasks(p, id);
+  const t = tf.tasks[indexOf(tf, taskId)];
+  if (t.origin !== "converge" || statusOf2(t) !== "review" || !changed || changed.length === 0) return null;
+  if (!changed.every((f) => TEST_FILE.test(f))) return null;
+  return recordReview(p, id, taskId, "pass", "auto-reviewed: a converge task that changed only test files (checkpoint passed; `aidw converge` re-checks every scenario).");
+}
 function integrateChange(p, id, opts = {}) {
   const tf = loadTasks(p, id);
   requireExecuting(p, tf.change);
@@ -9400,9 +9416,10 @@ ${req.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`;
       "",
       "## Verdict",
       "",
-      "Your reply starts with exactly one line: `VERDICT: pass` or `VERDICT: fix`.",
+      "Your verdict starts with exactly one line: `VERDICT: pass` or `VERDICT: fix`.",
       "For `fix`, follow with numbered blocking issues: file, problem, expected fix. Only blocking issues justify `fix`;",
       "put anything else under `Non-blocking:`. Be concrete: the implementer will get your notes verbatim.",
+      `**Write the whole verdict to \`${(0, import_node_path8.join)(p.run, `review-${taskId}.md`)}\` with the Write tool** (the only file you may write), then reply with just its first line, \`VERDICT: pass\` or \`VERDICT: fix\`. The orchestrator reads the file; keeping your reply short saves its context.`,
       "",
       ...shared
     ];
@@ -9482,22 +9499,31 @@ function converge(p, id) {
     const verify2 = (testLayers.length ? testLayers : config.layers).flatMap((l) => [...l.setup, ...l.run]);
     let n = tf.tasks.filter((t) => t.origin === "converge").length;
     const seq = tf.doc.get("tasks");
+    const byCapability = /* @__PURE__ */ new Map();
     for (const s of fresh) {
+      const cap = s.split("/").slice(0, -1).join("/");
+      byCapability.set(cap, [...byCapability.get(cap) ?? [], s]);
+    }
+    for (const [cap, ids] of byCapability) {
       n += 1;
       const taskId = `C${String(n).padStart(2, "0")}`;
-      const r = scenarios[s];
+      const problems = ids.map((s) => {
+        const r = scenarios[s];
+        return r.status === "missing" ? `- ${s}: no test found (${mode} evidence). Write a test named with the id that asserts its THEN outcome, and make it pass.` : `- ${s}: its test is ${r.status === "fail" ? "failing" : "skipped"}: ${r.where.join("; ")}. Make it a real, passing test.`;
+      });
       seq.add(
         tf.doc.createNode({
           id: taskId,
-          title: `Cover scenario ${s}`,
+          title: ids.length === 1 ? `Cover scenario ${ids[0]}` : `Cover ${ids.length} scenarios of ${cap}`,
           role: "fullstack-engineer",
           origin: "converge",
-          specs: [s.split("/").slice(0, -1).join("/")],
-          scenarios: [s],
+          specs: [cap],
+          scenarios: ids,
           depends_on: [],
           touches: ["**"],
           verify: verify2,
-          problem: r.status === "missing" ? `Converge found no test for scenario ${s} (${mode} evidence). Write a test named with the id that asserts its THEN outcome, and make it pass.` : `Converge found the test for scenario ${s} ${r.status === "fail" ? "failing" : "skipped"}: ${r.where.join("; ")}. Make it a real, passing test.`,
+          problem: `Converge found scenario(s) of ${cap} without a passing test:
+${problems.join("\n")}`,
           status: "pending"
         })
       );
@@ -9971,15 +9997,19 @@ function pmCommands(pm) {
   }
 }
 var JUNK_DIRS = ["node_modules", ".next", ".nuxt", ".svelte-kit", ".turbo"];
+var JUNK_FILES = ["tsconfig.tsbuildinfo", "next-env.d.ts", ".DS_Store"];
 function repoWarnings(dir, hasPackage) {
   const out = [];
   const ignoreText = (0, import_node_fs10.existsSync)((0, import_node_path11.join)(dir, ".gitignore")) ? (0, import_node_fs10.readFileSync)((0, import_node_path11.join)(dir, ".gitignore"), "utf8") : null;
-  if (hasPackage && ignoreText === null) out.push("no .gitignore: add one with node_modules/, .next/, test-results/ and .env*.local before the first task (aidw commits with `git add -A`)");
+  if (hasPackage && ignoreText === null) out.push("no .gitignore: add one with node_modules/, .next/, test-results/, *.tsbuildinfo, next-env.d.ts and .env*.local before the first task (aidw commits with `git add -A`)");
   if (!isGitRepo(dir)) return out;
   for (const d of JUNK_DIRS) {
     const tracked = git(dir, ["ls-files", "--", d]).out;
     if (tracked) out.push(`${d}/ is tracked by git (${tracked.split("\n").length} file(s)): run \`git rm -r -q --cached ${d}\`, ignore it in .gitignore and commit`);
     else if ((0, import_node_fs10.existsSync)((0, import_node_path11.join)(dir, d)) && !git(dir, ["check-ignore", "-q", d]).ok) out.push(`${d}/ exists but is not ignored by .gitignore: add "${d}/" before aidw commits`);
+  }
+  for (const f of JUNK_FILES) {
+    if (git(dir, ["ls-files", "--", f]).out) out.push(`${f} is tracked by git: it is generated; run \`git rm -q --cached ${f}\`, ignore it in .gitignore and commit`);
   }
   return out;
 }
@@ -10534,10 +10564,11 @@ function buildLayerBrief(p, id, layer, runs, vendorDir) {
     ...h("Checklist", checklist),
     "## Verdict",
     "",
-    "Your reply starts with exactly one line: `VERDICT: pass` or `VERDICT: fix`.",
+    "Your verdict starts with exactly one line: `VERDICT: pass` or `VERDICT: fix`.",
     "For `fix`, follow with numbered blocking issues: where (file or screen and viewport), the problem, the expected fix.",
     "Only blocking issues justify `fix`; put everything else under `Non-blocking:`. Be concrete: a fix task gets your notes verbatim,",
     "and the non-blocking remarks go into the delivery's quality report and the handoff's Known issues.",
+    `**Write the whole verdict to \`${(0, import_node_path13.join)(p.run, `layer-review-${layer.name}.md`)}\` with the Write tool** (the only file you may write), then reply with just its first line, \`VERDICT: pass\` or \`VERDICT: fix\`. The orchestrator reads the file; keeping your reply short saves its context.`,
     "",
     ...h("Decisions to honor (approved; binding)", decisions.map((x) => `- ${x}`)),
     ...h(
@@ -11427,6 +11458,33 @@ function loadChangeState(p, id) {
 }
 
 // src/cli.ts
+function reviewLine(r, verdict, notes) {
+  return `${r.task}: review ${r.verdict} -> ${r.status}${r.commit ? ` (commit ${r.commit.slice(0, 8)})` : ""}${r.warning ? `
+  warning: ${r.warning}` : ""}${r.conflict ? `
+  merge conflict (${r.conflict}): the task reruns sequentially` : ""}${verdict === "pass" && !notes.trim() ? "\n  note: no reviewer reply recorded; pass it with --notes-file so its non-blocking remarks reach the handoff" : ""}
+`;
+}
+function nextText(n) {
+  return n.action === "implement" ? `implement ${n.task} (${n.reason}): ${n.title}` : n.action === "review" ? `review ${n.task}: ${n.title}` : n.action === "escalate" ? `escalate: ${n.reason}` : n.action === "wave" ? `wave of ${n.tasks.length}: ${n.tasks.map((x) => `${x.task} (${x.title})`).join(", ")}` : n.action === "integrate" ? `integrate ${n.tasks.join(", ")}: run \`aidw integrate\` on the merged code` : `complete: all ${n.done} task(s) done`;
+}
+function nextLine(p, id) {
+  try {
+    return `NEXT: ${nextText(nextAction(p, id))}
+`;
+  } catch {
+    return "";
+  }
+}
+var REVIEWER_PROMPT = (path) => `Review brief: ${path}. Review the task and reply with the verdict.`;
+var sessionEnd = (env, p, id) => {
+  if (env.AIDW_RUNNER !== "1") return "";
+  try {
+    if (nextAction(p, id).action === "complete") return "";
+  } catch {
+    return "";
+  }
+  return "END THIS SESSION: one task is done and committed. The runner (`aidw run`) starts a fresh session for the next one, which costs far less than carrying this context on. Reply with one line and stop; call no more tools.\n";
+};
 var HELP = `aidw ${VERSION} - deterministic core of the AI Fullstack Autonomous Development Workflow
 
 Usage: aidw <command> [args] [--json] [--root <dir>]
@@ -11461,12 +11519,13 @@ Unattended (in your own terminal, not inside Claude Code):
   brief <task> [--for implement|review]  write the context packet for a fresh subagent; prints its path
   skills <task> [--for implement|review] vendored skills selected for the task
   checkpoint <task> [--timeout <sec>]    evidence: a test per scenario id + every verify command passes
+  verdict <task> [--notes-file F]        record the reviewer's verdict from .aidw/run/review-<task>.md (first line VERDICT: pass|fix)
   review <task> pass|fix [--notes-file F | --notes T] [--no-commit]
                                          record the independent review; pass marks done and commits
   verify [--layer L] [--fresh]           (verifying) run quality layers not yet passing on the current code;
                                          a failing layer adds a fix task and returns the change to executing;
                                          a review layer (review: ui|security) stops with a brief for its reviewer
-  layer-review <layer> pass|fix [--notes-file F | --notes T]
+  layer-review <layer> [pass|fix] [--notes-file F | --notes T]   no verdict: read .aidw/run/layer-review-<layer>.md
                                          (verifying) record the layer reviewer's verdict; fix adds a fix task
   converge                               (converging) every changed scenario has a passing test; gaps become tasks
   deploy                                 (deploying) approved preview deploy + smoke checks, or record target none/local
@@ -11619,14 +11678,8 @@ function run(argv, env, cwd, io) {
         const p = project();
         const id = resolveChangeId(p, str(args.flags.change) ?? rest[0]);
         const n = nextAction(p, id);
-        const text = n.action === "implement" ? `implement ${n.task} (${n.reason}): ${n.title}
-` : n.action === "review" ? `review ${n.task}: ${n.title}
-` : n.action === "escalate" ? `escalate: ${n.reason}
-` : n.action === "wave" ? `wave of ${n.tasks.length}: ${n.tasks.map((x) => `${x.task} (${x.title})`).join(", ")}
-` : n.action === "integrate" ? `integrate ${n.tasks.join(", ")}: run \`aidw integrate\` on the merged code
-` : `complete: all ${n.done} task(s) done
-`;
-        emit({ change: id, ...n }, text);
+        emit({ change: id, ...n }, `${nextText(n)}
+`);
         return 0;
       }
       case "task": {
@@ -11640,9 +11693,12 @@ function run(argv, env, cwd, io) {
           return 0;
         }
         const r = startTask(p, id, need(rest[1], "task id"), { worktree: args.flags.worktree === true });
+        const brief = buildBrief(p, id, r.task, "implement", (0, import_node_path18.join)(pluginRoot(env), "vendor"));
         emit(
-          { ok: true, change: id, ...r },
+          { ok: true, change: id, ...r, brief: brief.path },
           `${r.task} running: attempt ${r.attempt} of ${r.maxAttempts}${r.resumed ? " (resumed)" : ""}${r.base ? `, base ${r.base.slice(0, 8)}` : ""}${r.worktree ? `, worktree ${r.worktree}` : ""}
+brief ${brief.path}
+SPAWN aidw:implementer with: Task brief: ${brief.path}. Read it and implement the task.
 `
         );
         return 0;
@@ -11679,11 +11735,28 @@ function run(argv, env, cwd, io) {
           ...r.problems.map((x) => `  PROBLEM ${x}`)
         ];
         const failed = r.verify.find((v) => v.exit !== 0);
-        emit({ change: id, ...r }, `${lines.join("\n")}
+        let after = "";
+        let reviewBrief;
+        if (r.ok) {
+          const auto = autoReview(p, id, r.task, r.changed_files);
+          if (auto) {
+            after = `review ${auto.task}: auto-passed (converge task, tests only)${auto.commit ? ` (commit ${auto.commit.slice(0, 8)})` : ""}
+${nextLine(p, id)}${sessionEnd(env, p, id)}`;
+          } else {
+            reviewBrief = buildBrief(p, id, r.task, "review", (0, import_node_path18.join)(pluginRoot(env), "vendor")).path;
+            after = `review brief ${reviewBrief}
+SPAWN aidw:reviewer with: ${REVIEWER_PROMPT(reviewBrief)}
+Then: aidw verdict ${r.task}
+`;
+          }
+        } else {
+          after = nextLine(p, id);
+        }
+        emit({ change: id, ...r, ...reviewBrief ? { review_brief: reviewBrief } : {} }, `${lines.join("\n")}
 ${failed ? `
 --- ${failed.command} (tail)
 ${failed.tail}
-` : ""}`);
+` : ""}${after}`);
         return r.ok ? 0 : 1;
       }
       case "verify": {
@@ -11723,9 +11796,16 @@ ${failed.tail}
         const p = project();
         const id = resolveChangeId(p, str(args.flags.change));
         const layer = need(rest[0], "layer name");
-        const verdict = need(rest[1], "verdict (pass|fix)");
+        let verdict = rest[1];
+        let notesFile = str(args.flags["notes-file"]);
+        if (verdict === void 0 || verdict === "auto") {
+          notesFile = notesFile ?? (0, import_node_path18.join)(p.run, `layer-review-${layer}.md`);
+          if (!(0, import_node_fs17.existsSync)(notesFile)) throw new OpError(`no verdict file at ${notesFile}: the reviewer did not write it. Spawn a fresh reviewer, or save its reply there and run this again`);
+          const parsed = parseVerdict((0, import_node_fs17.readFileSync)(notesFile, "utf8"));
+          if (!parsed) throw new OpError(`${notesFile} does not start with "VERDICT: pass" or "VERDICT: fix"; spawn a fresh reviewer once more`);
+          verdict = parsed;
+        }
         if (verdict !== "pass" && verdict !== "fix") throw new UsageError('verdict must be "pass" or "fix"');
-        const notesFile = str(args.flags["notes-file"]);
         const notes = notesFile ? (0, import_node_fs17.readFileSync)(notesFile, "utf8") : str(args.flags.notes) ?? "";
         if (verdict === "fix" && !notes.trim()) throw new UsageError("a fix verdict needs --notes or --notes-file");
         const r = recordLayerReview(p, id, layer, verdict, notes);
@@ -11825,9 +11905,23 @@ ${[...r.runs, ...r.smoke].find((x) => x.exit !== 0)?.tail ?? r.runs[0]?.tail ?? 
         const r = recordReview(p, id, taskId, verdict, notes, { commit: args.flags["no-commit"] !== true });
         emit(
           { ok: true, change: id, ...r },
-          `${r.task}: review ${r.verdict} -> ${r.status}${r.commit ? ` (commit ${r.commit.slice(0, 8)})` : ""}${r.warning ? `
-  warning: ${r.warning}` : ""}${verdict === "pass" && !notes.trim() ? "\n  note: no reviewer reply recorded; pass it with --notes-file so its non-blocking remarks reach the handoff" : ""}
-`
+          `${reviewLine(r, verdict, notes)}${nextLine(p, id)}${r.status === "done" ? sessionEnd(env, p, id) : ""}`
+        );
+        return 0;
+      }
+      case "verdict": {
+        const p = project();
+        const id = resolveChangeId(p, str(args.flags.change));
+        const taskId = need(rest[0], "task id");
+        const file = str(args.flags["notes-file"]) ?? (0, import_node_path18.join)(p.run, `review-${taskId}.md`);
+        if (!(0, import_node_fs17.existsSync)(file)) throw new OpError(`no verdict file at ${file}: the reviewer did not write it. Spawn a fresh reviewer, or save its reply there and run this again`);
+        const notes = (0, import_node_fs17.readFileSync)(file, "utf8");
+        const verdict = parseVerdict(notes);
+        if (!verdict) throw new OpError(`${file} does not start with "VERDICT: pass" or "VERDICT: fix"; spawn a fresh reviewer once more, and if it is still unclear record it with \`aidw review ${taskId} fix --notes-file\``);
+        const r = recordReview(p, id, taskId, verdict, notes, { commit: args.flags["no-commit"] !== true });
+        emit(
+          { ok: true, change: id, ...r },
+          `${reviewLine(r, verdict, notes)}${nextLine(p, id)}${r.status === "done" ? sessionEnd(env, p, id) : ""}`
         );
         return 0;
       }

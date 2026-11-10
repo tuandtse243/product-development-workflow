@@ -11,7 +11,7 @@
  *   - tier 3 / `aidw approve`           -> ask (a human decides)
  * Fails closed inside an aidw project: an internal error denies the call.
  */
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { approvalStatus, baseSpecFiles, CHANGE_PACKAGE_FILES, FROZEN_PROJECT_DIRS } from "./approval.js";
 import { listChangeIds, loadChange, POST_APPROVAL, stateOf, type State } from "./change.js";
 import { AIDW_DIR, findProject, pathsFor, rel, type Paths } from "./project.js";
@@ -102,6 +102,9 @@ function isFrozenPackageFile(p: Paths, file: string, frozen: string[]): boolean 
   return false;
 }
 
+/** The only file a reviewer may write: its verdict, in .aidw/run/. */
+const VERDICT_FILE = /^(?:layer-)?review-[A-Za-z0-9._-]+\.md$/;
+
 /**
  * aidw subagent role from the hook's agent_type ("aidw:reviewer", "reviewer", "aidw:ui-reviewer", ...).
  * Every `*-reviewer` (ui, security) is read-only like the task reviewer.
@@ -153,7 +156,12 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
     if (secret && !inside(project, file)) return deny(`writing ${secret.why} is forbidden (tier x)`);
     if (!inside(project, file)) return null; // outside the project: normal permission rules apply
 
-    if (role === "reviewer") return deny("the reviewer is read-only; report issues in the verdict instead of fixing them");
+    if (role === "reviewer") {
+      // The one thing a reviewer writes is its verdict file: the orchestrator reads it from disk instead of
+      // carrying the whole reply in its context.
+      if (dirname(file) === p.run && VERDICT_FILE.test(basename(file))) return allow("reviewer verdict file");
+      return deny("the reviewer is read-only; report issues in the verdict instead of fixing them (it may write only .aidw/run/review-<task>.md or layer-review-<layer>.md)");
+    }
     // S8: a wave task's git worktree is project code, not aidw state; its own .aidw/ is a stale copy.
     const worktrees = join(p.run, "worktrees");
     if (inside(worktrees, file)) {

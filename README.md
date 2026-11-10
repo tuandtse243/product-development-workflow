@@ -90,6 +90,7 @@ aidw task start <task> --worktree           a wave task in its own git worktree
 aidw integrate                              after a wave: verify the merged code (failure -> fix task)
 aidw detect                                 brownfield: stack, package manager, suggested layers
 aidw baseline <capability>                  brownfield: skeleton spec of current behavior (before approval)
+aidw verdict <task>                         record the reviewer's verdict from its file, print the next step
 aidw run [<id>] [--permission-mode M] [-- <claude args>]  unattended loop in your terminal, waits out limits
 aidw converge                                every changed scenario has a passing test; gaps become tasks
 aidw deploy                                  approved preview deploy + smoke checks (or record none/local)

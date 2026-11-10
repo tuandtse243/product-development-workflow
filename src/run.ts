@@ -527,6 +527,26 @@ export function recordReview(
   return { task: taskId, verdict, status: "done", commit: headCommit(p.project) };
 }
 
+/** `VERDICT: pass|fix` on the first non-empty line of a reviewer's verdict; null when it is not there. */
+export function parseVerdict(text: string): "pass" | "fix" | null {
+  const first = text.split("\n").find((l) => l.trim() !== "") ?? "";
+  const m = /^\W*VERDICT:\s*(pass|fix)\b/i.exec(first);
+  return m ? ((m[1] as string).toLowerCase() as "pass" | "fix") : null;
+}
+
+/**
+ * A converge task only adds tests for scenarios that lacked one, and `aidw converge` re-checks them after
+ * the fix. When its checkpoint passed and every changed file is a test file, a reviewer subagent adds a
+ * whole fresh context for nothing: record the review as passed. Anything else still goes to a reviewer.
+ */
+export function autoReview(p: Paths, id: string, taskId: string, changed: string[] | null): ReviewResult | null {
+  const tf = loadTasks(p, id);
+  const t = tf.tasks[indexOf(tf, taskId)] as Task;
+  if (t.origin !== "converge" || statusOf(t) !== "review" || !changed || changed.length === 0) return null;
+  if (!changed.every((f) => TEST_FILE.test(f))) return null;
+  return recordReview(p, id, taskId, "pass", "auto-reviewed: a converge task that changed only test files (checkpoint passed; `aidw converge` re-checks every scenario).");
+}
+
 // ---------------------------------------------------------------- integrate
 
 /** Integration verify after a wave (state executing): the merged code runs the wave's verify and the code layer. */
@@ -712,9 +732,10 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
       "",
       "## Verdict",
       "",
-      "Your reply starts with exactly one line: `VERDICT: pass` or `VERDICT: fix`.",
+      "Your verdict starts with exactly one line: `VERDICT: pass` or `VERDICT: fix`.",
       "For `fix`, follow with numbered blocking issues: file, problem, expected fix. Only blocking issues justify `fix`;",
       "put anything else under `Non-blocking:`. Be concrete: the implementer will get your notes verbatim.",
+      `**Write the whole verdict to \`${join(p.run, `review-${taskId}.md`)}\` with the Write tool** (the only file you may write), then reply with just its first line, \`VERDICT: pass\` or \`VERDICT: fix\`. The orchestrator reads the file; keeping your reply short saves its context.`,
       "",
       ...shared,
     ];

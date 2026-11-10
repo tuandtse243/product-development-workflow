@@ -997,3 +997,35 @@ Khi chuẩn bị trial-3B, fixture không có `.gitignore` và hướng dẫn ch
 - `aidw review pass` (và merge worktree của S8) từ chối commit khi thấy `node_modules`, `.next`, `.vercel`... trong
   staged: bỏ staged, task giữ ở `review`, báo cách sửa (`.gitignore` + `git rm -r --cached`).
 - Fixture `brownfield-app` có `.gitignore`; `docs/trial-3.md` đổi thứ tự lệnh. Test: 127 pass.
+
+## 32. Tối ưu token sau trial-3b (2026-11-10) (D-32)
+
+Đo từ transcript của `aidw-trial-3b` (hai change, 9 + 9 task):
+
+| | lượt gọi model | token đọc từ cache |
+|---|---|---|
+| orchestrator (session chính) | 526 | 164M (91%), context 55K → 578K |
+| 46 subagent | 465 | 16.7M (9%) |
+
+Chi phí đến từ việc session chính **không bao giờ được reset** và mỗi lượt đọc lại toàn bộ. Đã sửa:
+
+- Dưới `aidw run`, sau mỗi task commit CLI in `END THIS SESSION`; skill dừng; runner mở session mới. Tương tác:
+  skill nhắc `/clear` sau approve và sau archive, hoặc chạy `aidw run` ở terminal riêng.
+- Lệnh gộp: `aidw task start` in đường dẫn brief và prompt implementer; `aidw checkpoint` in brief và prompt
+  reviewer (hoặc `auto-passed`); `aidw verdict <T>` và `aidw layer-review <layer>` (không tham số verdict) đọc
+  verdict từ file và in `NEXT:`. Mỗi task còn khoảng 4-5 lượt thay vì 9-10.
+- Reviewer (cả `ui-reviewer`, `security-reviewer`) ghi verdict vào `.aidw/run/review-<T>.md` /
+  `layer-review-<layer>.md` rồi trả một dòng. Gate cho reviewer ghi đúng hai dạng file này, không gì khác.
+- Task `C*` mà checkpoint pass và chỉ đổi file test: tự pass review. Converge gộp scenario theo capability.
+- Skill run: không `cat`/`sed` skill, profile hay brief vào session chính; không chạy `status`/`next` khi lệnh
+  trước đã in `NEXT:`.
+- `stagedJunk` và `aidw detect` thêm `*.tsbuildinfo`, `next-env.d.ts`, `.env*` (không tính `.env.example`),
+  `coverage/`, `playwright-report/`, `test-results/`, `.DS_Store` (trial-3b đã commit tsc và Next generated file).
+
+Còn lại ngoài tầm với của aidw: plugin context-mode viết lại prompt của mọi lần spawn Agent nên mỗi lần tốn thêm
+một lượt gọi (cộng khối `context_window_protection` dài vào prompt subagent). Tắt plugin đó khi chạy aidw sẽ bỏ
+chi phí này.
+
+**Cần đo lại ở trial-3 tiếp theo:** tổng token của một change tương tự so với 181M của trial-3b; `aidw run` một
+task mỗi session có chạy đủ vòng không (đặc biệt `END THIS SESSION` trong `claude -p`). Test: 148 pass.
+
