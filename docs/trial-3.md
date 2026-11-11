@@ -25,14 +25,43 @@ Có thể làm 3B trước, vì 3B ngắn hơn.
 | 31 | `aidw cost` so với mốc trial-3b (319 lượt, 103.7M cache-read ở session chính, 46 subagent) | token | `aidw cost` |
 | 29 | Token: `aidw run` mỗi task một session (`END THIS SESSION`), reviewer ghi verdict vào file, task `C*` chỉ-test tự pass review | tối ưu | `runner.log`, tổng token trong transcript (so với mốc đã đo của trial-3b (xem #31)) |
 
+## Kiểm đợt 1 của roadmap (làm cùng 3A)
+
+Đợt 1 thêm các tính năng sau; chúng chưa từng chạy trong Claude Code thật. Kiểm khi đi qua 3A, không cần lượt riêng.
+Cột "Kết quả" để trống cho tới khi chạy.
+
+| # | Điều cần kiểm | Cách biết | Kết quả |
+|---|---|---|---|
+| 32 | Change branch: khởi động từ `main` sạch; sau `aidw transition <id> executing` (do `/aidw:run`), HEAD ở `aidw/<id>`, in dòng "task commits go to the new branch" | `git branch --show-current`; `git log main --oneline` không có commit `Txx:` | |
+| 33 | Task branch của wave tên `aidw/<id>.Txx`, biến mất sau merge; branch `aidw/<id>` còn lại | `git branch --list 'aidw/*'` giữa wave và sau wave | |
+| 34 | `aidw/<id>` giữ đúng khi `/aidw:resume` hoặc `aidw run` chạy lại từ `main` (switch về branch) | `git switch main` rồi resume; `git branch --show-current` | |
+| 35 | Mở session mới khi HEAD ở `main` còn branch change chưa merge: có dòng "unmerged change branch" | Output đầu session / `AIDW_HOOK_LOG` | |
+| 36 | Gate MCP: trước approve, tool MCP có tên ghi (create/update/deploy...) bị deny; sau approve thì hỏi; implementer subagent bị deny; tool tên đọc (list/get/search) đi qua. Thử bằng một tool vô hại | `grep mcp__ ~/aidw-trial-3-hooks.jsonl`; transcript | |
+| 37 | Scaffold code-style (T01): có `.husky/pre-commit`, `.prettierrc`, `.prettierignore`, script `format` / `format:check` / `prepare`, `lint-staged` trong package.json | `ls -a`, đọc `package.json` | |
+| 38 | `quality.yaml` layer `code` có `pnpm format:check`, và nó pass | `quality.yaml`; `evidence/quality/summary.json` | |
+| 39 | Commit của aidw đi qua hook husky không lỗi; prettier có sửa file staged thì commit vẫn thành | `git log`; không có `refusing`/hook fail trong transcript | |
+| 40 | Trong worktree hook không chạy, nhưng implementer đã chạy formatter: `format:check` vẫn pass sau wave | Checkpoint và `aidw integrate` pass; `integration.json` | |
+| 41 | Ghi chú implementer: file `.aidw/run/report-<T>.md` chỉ có khi cần (đa số task không có); review brief có dòng "Implementer notes" khi file tồn tại | `ls .aidw/run/report-*.md`; `ls .aidw/run/briefs/*/` rồi đọc brief review | |
+| 42 | `maxTurns: 100` không cắt ngang implementer nào | Không có task nào "đột ngột dừng"; `aidw cost` ghi số lượt mỗi subagent | |
+| 43 | `codebase-design`: `start` đọc nó ở bước Architecture; task tạo module mới có `skills: [pocock/codebase-design]` và brief của nó liệt kê skill | `tasks.yaml`; brief implement | |
+| 44 | `allowed-tools: Bash(aidw *)`: `/aidw:run` ở chế độ default không hỏi quyền cho từng lệnh `aidw` (số lần bị hỏi thấp) | Đếm hộp thoại quyền trong phiên | |
+| 45 | Sau `/compact` (hoặc auto-compact) giữa lúc run: session in "context was compacted" kèm change và bước tiếp theo, và orchestrator tiếp tục đúng | Transcript sau `/compact`; `AIDW_HOOK_LOG` có `source: compact` | |
+| 46 | Verify flaky: nếu gặp, evidence có `"flaky": true` (cơ hội, không cố tạo) | `grep -r '"flaky"' .aidw/changes/*/evidence` | |
+
+Đo token: ghi `aidw cost` của 3A và so với mốc trial-3b (#31). Đợt 1 thêm ít token (một dòng trong brief, một skill chỉ nạp
+cho task tạo module), nên mức tăng đáng kể là dấu hiệu bất thường.
+
 ## 0. Chuẩn bị
 
 ```bash
-cd ~/Desktop/Learning/product-development-workflow && npm test     # bin mới, 148 test pass
+cd ~/Desktop/Learning/product-development-workflow && npm test     # bin mới, 176 test pass (chạy ngoài sandbox của Claude Code)
 alias aidwc='AIDW_HOOK_LOG=$HOME/$(basename "$PWD")-hooks.jsonl claude --plugin-dir ~/Desktop/Learning/product-development-workflow/plugins/aidw'
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
   --remote-debugging-port=9222 --user-data-dir="$HOME/.aidw-chrome" --no-first-run about:blank &
 vercel whoami        # làm mới token ngoài sandbox (lỗi trial-2)
+
+# Monorepo: cảnh báo phải hiện (kiểm nhanh, không cần project thật)
+mkdir -p $TMPDIR/mono && cd $TMPDIR/mono && echo '{}' > package.json && touch pnpm-workspace.yaml && ~/Desktop/Learning/product-development-workflow/plugins/aidw/bin/aidw detect | grep -i monorepo
 ```
 
 ## 3A. Greenfield: S7, S8, S9

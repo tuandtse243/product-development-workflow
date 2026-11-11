@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
 import { detectProject } from "../src/detect.js";
 import { decide } from "../src/gate.js";
+import { findProject } from "../src/project.js";
 import { ANALYSIS_MD, REQ, tempProject, write } from "./fixtures.js";
 
 const FIXTURE = join(__dirname, "..", "evals", "fixtures", "brownfield-app");
@@ -204,5 +205,20 @@ describe("repo hygiene (aidw commits with git add -A)", () => {
     write(root, ".gitignore", "node_modules/\n");
     expect(cli(root, "review", "T01", "pass").code).toBe(0);
     expect(g(root, "ls-files", "node_modules")).toBe("");
+  });
+});
+
+describe("project root lookup", () => {
+  it("does not take a cache-only .aidw/ (like ~/.aidw/chrome-e2e) for a project", () => {
+    const home = tempProject();
+    write(home, ".aidw/chrome-e2e/Default/Preferences", "{}\n");
+    const child = join(home, "work", "trial");
+    write(home, "work/trial/README.md", "x\n");
+    expect(findProject({ cwd: child, env: {} })).toBeNull();
+    write(home, ".aidw/project.yaml", "schema: 1\nkind: greenfield\n");
+    expect(findProject({ cwd: child, env: {} })).toBe(home);
+    // a nested project wins over the one above it
+    write(home, "work/trial/.aidw/project.yaml", "schema: 1\nkind: greenfield\n");
+    expect(findProject({ cwd: child, env: {} })).toBe(child);
   });
 });

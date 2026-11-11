@@ -7363,15 +7363,16 @@ function pathsFor(project) {
     run: (0, import_node_path.join)(aidw, "run")
   };
 }
+var isProjectDir = (dir) => (0, import_node_fs.existsSync)((0, import_node_path.join)(dir, AIDW_DIR, "project.yaml"));
 function findProject(opts) {
   if (opts.root) return (0, import_node_path.resolve)(opts.cwd, opts.root);
   const envDir = opts.env.CLAUDE_PROJECT_DIR;
-  if (envDir && (0, import_node_fs.existsSync)((0, import_node_path.join)(envDir, AIDW_DIR))) return (0, import_node_path.resolve)(envDir);
+  if (envDir && isProjectDir(envDir)) return (0, import_node_path.resolve)(envDir);
   let dir = (0, import_node_path.resolve)(opts.cwd);
   const wt = new RegExp(`^(.*?)[\\/]${AIDW_DIR.replace(".", "\\.")}[\\/]run[\\/]worktrees(?:[\\/]|$)`).exec(dir);
-  if (wt?.[1] && (0, import_node_fs.existsSync)((0, import_node_path.join)(wt[1], AIDW_DIR))) return wt[1];
+  if (wt?.[1] && isProjectDir(wt[1])) return wt[1];
   for (; ; ) {
-    if ((0, import_node_fs.existsSync)((0, import_node_path.join)(dir, AIDW_DIR))) return dir;
+    if (isProjectDir(dir)) return dir;
     const parent = (0, import_node_path.dirname)(dir);
     if (parent === dir) return null;
     dir = parent;

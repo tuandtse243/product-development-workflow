@@ -39,19 +39,26 @@ export function pathsFor(project: string): Paths {
 }
 
 /**
- * Resolves the project root: --root, then $CLAUDE_PROJECT_DIR when it holds .aidw/,
- * then the nearest ancestor of cwd that holds .aidw/.
+ * A project is a directory whose `.aidw/` has `project.yaml` (written by `aidw init`). A bare `.aidw/` is not enough:
+ * aidw keeps its own caches there (`~/.aidw/chrome-e2e`, the browser profile of the e2e layers) and `$HOME` must not
+ * turn into a project.
+ */
+export const isProjectDir = (dir: string): boolean => existsSync(join(dir, AIDW_DIR, "project.yaml"));
+
+/**
+ * Resolves the project root: --root, then $CLAUDE_PROJECT_DIR when it is a project, then the nearest ancestor of cwd
+ * that is one.
  */
 export function findProject(opts: { root?: string; cwd: string; env: NodeJS.ProcessEnv }): string | null {
   if (opts.root) return resolve(opts.cwd, opts.root);
   const envDir = opts.env.CLAUDE_PROJECT_DIR;
-  if (envDir && existsSync(join(envDir, AIDW_DIR))) return resolve(envDir);
+  if (envDir && isProjectDir(envDir)) return resolve(envDir);
   let dir = resolve(opts.cwd);
   // A wave task's worktree (S8) holds a stale checkout of .aidw/; the project is the main checkout around it.
   const wt = new RegExp(`^(.*?)[\\/]${AIDW_DIR.replace(".", "\\.")}[\\/]run[\\/]worktrees(?:[\\/]|$)`).exec(dir);
-  if (wt?.[1] && existsSync(join(wt[1], AIDW_DIR))) return wt[1];
+  if (wt?.[1] && isProjectDir(wt[1])) return wt[1];
   for (;;) {
-    if (existsSync(join(dir, AIDW_DIR))) return dir;
+    if (isProjectDir(dir)) return dir;
     const parent = dirname(dir);
     if (parent === dir) return null;
     dir = parent;
