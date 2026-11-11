@@ -132,6 +132,26 @@ describe("tiers", () => {
     expect(decision(hook("Bash", { command: "rm -rf ~" }))).toBe("deny");
   });
 
+  it("gates MCP tools: read-like names pass, others are denied before approval and asked after", () => {
+    const sub = (h: HookInput) => ({ ...h, agent_type: "aidw:implementer" });
+    for (const t of ["mcp__vercel__list_deployments", "mcp__github__get_file", "mcp__figma__whoami", "mcp__x__search_docs"]) {
+      expect([t, decision(hook(t, {}))]).toEqual([t, "none"]);
+    }
+    expect(decision(hook("mcp__vercel__deploy_to_vercel", {}))).toBe("deny");
+    readyForApproval();
+    expect(cli("approve", ID)).toBe(0);
+    expect(cli("transition", ID, "executing")).toBe(0);
+    expect(decision(hook("mcp__vercel__deploy_to_vercel", {}))).toBe("ask");
+    expect(decision(hook("mcp__github__create_pull_request", {}))).toBe("ask");
+    expect(decision(sub(hook("mcp__supabase__apply_migration", {})))).toBe("deny");
+    expect(decision(sub(hook("mcp__supabase__list_tables", {})))).toBe("none");
+  });
+
+  it("the hook matcher covers MCP tools", () => {
+    const hooks = JSON.parse(readFileSync(join(__dirname, "../plugins/aidw/hooks/hooks.json"), "utf8"));
+    expect(new RegExp(`^(?:${hooks.hooks.PreToolUse[0].matcher})$`).test("mcp__vercel__deploy_to_vercel")).toBe(true);
+  });
+
   it("emits the PreToolUse wire format", () => {
     const out = JSON.parse(runGate(JSON.stringify(hook("Write", { file_path: "src/a.ts" })), env));
     expect(out.hookSpecificOutput).toMatchObject({ hookEventName: "PreToolUse", permissionDecision: "deny" });

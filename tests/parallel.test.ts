@@ -8,6 +8,7 @@ import YAML from "yaml";
 import { describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
 import { decide, type HookInput } from "../src/gate.js";
+import { offBranchNote } from "../src/ops.js";
 import { globsOverlap, planWave } from "../src/parallel.js";
 import { findProject } from "../src/project.js";
 import type { Task } from "../src/tasks.js";
@@ -88,6 +89,58 @@ const tasks = (root: string) => (YAML.parse(readFileSync(join(root, ".aidw/chang
 const task = (root: string, id: string) => tasks(root).find((t) => t.id === id) as Record<string, unknown>;
 const next = (root: string) => cli(root, "next", "--json").json();
 
+describe("change branch", () => {
+  const run = (root: string) => (YAML.parse(readFileSync(join(root, ".aidw/changes", ID, "change.yaml"), "utf8")) as { run?: Record<string, unknown> }).run ?? {};
+
+  it("moves task commits off the default branch and switches back later", () => {
+    const root = project();
+    expect(g(root, "branch", "--show-current")).toBe(`aidw/${ID}`);
+    const base = run(root).base_branch as string;
+    expect(["main", "master"]).toContain(base);
+    expect(run(root).branch).toBe(`aidw/${ID}`);
+    expect(cli(root, "transition", ID, "escalated").code).toBe(0);
+    g(root, "switch", "-q", base); // uncommitted .aidw/ state travels with the switch
+    const r = cli(root, "transition", ID, "executing");
+    expect(r.err + r.out).toMatch(/switched to the change branch/);
+    expect(g(root, "branch", "--show-current")).toBe(`aidw/${ID}`);
+  });
+
+  it("warns at session start when HEAD is off an unmerged change branch", () => {
+    const root = project();
+    const base = run(root).base_branch as string;
+    g(root, "add", "-A");
+    g(root, "commit", "-qm", "task work");
+    expect(offBranchNote(root, {})).toBeNull();
+    g(root, "switch", "-q", base);
+    expect(offBranchNote(root, {})).toMatch(new RegExp(`git switch aidw/${ID}`));
+    expect(cli(root, "session-start").out).toMatch(/unmerged change branch/);
+  });
+
+  it("keeps a feature branch the user is already on", () => {
+    const root = tempProject();
+    g(root, "init", "-q");
+    g(root, "config", "user.email", "t@t");
+    g(root, "config", "user.name", "t");
+    write(root, "README.md", "# demo\n");
+    g(root, "add", "-A");
+    g(root, "commit", "-qm", "base");
+    g(root, "switch", "-q", "-c", "feature/x");
+    cli(root, "init");
+    write(root, ".aidw/specs/booking/spec.md", MAIN_SPEC);
+    cli(root, "change", "new", ID);
+    const c = `.aidw/changes/${ID}`;
+    write(root, `${c}/analysis.md`, ANALYSIS_MD);
+    write(root, `${c}/tasks.yaml`, TASKS());
+    write(root, `${c}/quality.yaml`, QUALITY());
+    write(root, `${c}/specs/booking/spec.md`, `## ADDED Requirements\n\n${REQ("Reschedule appointment")}`);
+    for (const s of ["intake", "analyzing", "awaiting_approval"]) cli(root, "transition", ID, s);
+    expect(cli(root, "approve", ID).code).toBe(0);
+    expect(cli(root, "transition", ID, "executing").out).toMatch(/current branch feature\/x/);
+    expect(g(root, "branch", "--show-current")).toBe("feature/x");
+    expect(run(root).branch).toBe("feature/x");
+  });
+});
+
 describe("wave planning", () => {
   it("treats globs as overlapping unless their static prefixes differ", () => {
     expect(globsOverlap("app/api/**", "lib/**")).toBe(false);
@@ -124,12 +177,12 @@ describe("a wave in worktrees (git)", () => {
     expect(cli(root, "task", "start", "T02", "--worktree").out).toMatch(/T02 running: attempt 1 of 3, base [0-9a-f]{8}, worktree \.aidw\/run\/worktrees\/.*\/T02/);
     const wt1 = join(root, s1.worktree);
     const wt2 = join(root, `.aidw/run/worktrees/${ID}/T02`);
-    expect(g(wt1, "rev-parse", "--abbrev-ref", "HEAD")).toBe(`aidw/${ID}/T01`);
+    expect(g(wt1, "rev-parse", "--abbrev-ref", "HEAD")).toBe(`aidw/${ID}.T01`);
     expect(findProject({ cwd: join(wt1, "lib"), env: {} })).toBe(root);
 
     // the brief sends the implementer into the worktree
     const brief = readFileSync(cli(root, "brief", "T01").out.trim(), "utf8");
-    expect(brief).toMatch(/## Working directory \(parallel wave\)[\s\S]*own git worktree: `.*\/T01` \(branch `aidw\/2026-11-10-wave\/T01`\)/);
+    expect(brief).toMatch(/## Working directory \(parallel wave\)[\s\S]*own git worktree: `.*\/T01` \(branch `aidw\/2026-11-10-wave\.T01`\)/);
 
     // implementers write only in their worktrees; the main checkout stays untouched
     write(wt1, "lib/a/booking.js", "module.exports = 1;\n");
@@ -152,7 +205,7 @@ describe("a wave in worktrees (git)", () => {
     expect(g(root, "log", "--format=%s").split("\n")).toContain("T01 (worktree): Booking logic");
     expect(readFileSync(join(root, "lib/a/booking.js"), "utf8")).toBe("module.exports = 1;\n");
     expect(existsSync(wt1)).toBe(false);
-    expect(g(root, "branch", "--list", "aidw/*")).toBe("");
+    expect(g(root, "branch", "--list", "aidw/*.*")).toBe(""); // task branches gone; the change branch stays
     expect(g(root, "status", "--porcelain")).toBe("");
     expect(task(root, "T01")).toMatchObject({ status: "done" });
     expect(task(root, "T01").worktree).toBeUndefined();

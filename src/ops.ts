@@ -17,7 +17,7 @@ import { analyzeChange, PLACEHOLDER } from "./analyze.js";
 import { recordBaseline } from "./backstop.js";
 import { checkChange, deltaFiles } from "./check.js";
 import { Diags } from "./diag.js";
-import { capabilityOf, isDir, KEBAB_SEGMENT, pathsFor, projectKind, readText, rel, walkFiles, type Paths } from "./project.js";
+import { capabilityOf, findProject, isDir, KEBAB_SEGMENT, pathsFor, projectKind, readText, rel, walkFiles, type Paths } from "./project.js";
 import { applyDelta, type MergeSummary } from "./spec/merge.js";
 import { parseSpec } from "./spec/parse.js";
 import { git, headCommit, isGitRepo } from "./git.js";
@@ -314,7 +314,7 @@ export function approve(p: Paths, id: string): { hash: string; files: string[] }
 
 // ---------------------------------------------------------------- transition
 
-export function transition(p: Paths, id: string, to: string, opts: { reason?: string }): { from: State; to: State; commit?: string } {
+export function transition(p: Paths, id: string, to: string, opts: { reason?: string }): { from: State; to: State; commit?: string; notes?: string[] } {
   const change = loadChange(p, id);
   const from = stateOf(change);
   if (!from) throw new OpError(`change "${id}" has an unknown state "${String(change.data.state)}"`);
@@ -364,6 +364,12 @@ export function transition(p: Paths, id: string, to: string, opts: { reason?: st
     if (d.errors.length) throw new OpError("Analysis package is not ready for approval", d);
   }
 
+  const notes: string[] = [];
+  if (BUILD_STATES.has(target)) {
+    const note = useChangeBranch(p, change, id);
+    if (note) notes.push(note);
+  }
+
   if (target === "paused") {
     change.doc.setIn(["run", "paused"], change.doc.createNode({ from, reason: opts.reason ?? "unspecified", at: now() }));
   } else if (from === "paused") {
@@ -378,9 +384,75 @@ export function transition(p: Paths, id: string, to: string, opts: { reason?: st
   if (target === "delivered") {
     // Quality and deploy evidence plus the final state belong in history; only .aidw/ is committed.
     const commit = commitAidw(p, `aidw: ${id} delivered\n\nQuality layer and deploy evidence: .aidw/changes/${id}/evidence/`);
-    return { from, to: target, ...(commit ? { commit } : {}) };
+    return { from, to: target, ...(commit ? { commit } : {}), ...(notes.length ? { notes } : {}) };
   }
-  return { from, to: target };
+  return { from, to: target, ...(notes.length ? { notes } : {}) };
+}
+
+/** States in which aidw commits task work: HEAD must be on the change branch. */
+const BUILD_STATES: ReadonlySet<State> = new Set<State>(["executing", "verifying", "converging", "deploying"]);
+
+export const changeBranchName = (id: string): string => `aidw/${id}`;
+
+/** cwd from a hook's stdin JSON, or the fallback. */
+export function hookCwd(stdin: string, fallback: string): string {
+  try {
+    const c = (JSON.parse(stdin) as { cwd?: unknown }).cwd;
+    return typeof c === "string" && c ? c : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+/**
+ * `.aidw/` is committed with the code, so a checkout that is not on an unmerged change branch reads stale
+ * state. Returns a warning when such branches exist and HEAD is on none of them, else null.
+ */
+export function offBranchNote(cwd: string, env: NodeJS.ProcessEnv): string | null {
+  const dir = findProject({ cwd, env });
+  if (!dir || !isGitRepo(dir) || !headCommit(dir)) return null;
+  const list = git(dir, ["branch", "--no-merged", "HEAD", "--format=%(refname:short)", "--list", "aidw/*"]);
+  const open = list.ok ? list.out.split("\n").filter((b) => b && !b.includes(".")) : [];
+  const current = git(dir, ["branch", "--show-current"]).out;
+  if (!open.length || open.includes(current)) return null;
+  return `AIDW: HEAD is on ${current || "a detached commit"}, but unmerged change branch(es) ${open.join(", ")} hold newer aidw state. Before /aidw:run, /aidw:resume or /aidw:status, run \`git switch ${open[0]}\` (or merge it).`;
+}
+
+function isDefaultBranch(cwd: string, name: string): boolean {
+  const origin = git(cwd, ["symbolic-ref", "-q", "--short", "refs/remotes/origin/HEAD"]);
+  if (origin.ok && origin.out) return origin.out.replace(/^origin\//, "") === name;
+  return ["main", "master", "trunk", "develop"].includes(name);
+}
+
+/**
+ * Keeps task commits off the default branch (permissions.md: "commit on the change branch"). The first time
+ * the change builds, a default branch or detached HEAD moves to a new `aidw/<id>`; a feature branch the user
+ * is already on is kept. The branch is recorded in change.yaml (`run.branch`, `run.base_branch`) and later
+ * transitions switch back to it. Returns a note for the user, or null.
+ */
+function useChangeBranch(p: Paths, change: ReturnType<typeof loadChange>, id: string): string | null {
+  if (!isGitRepo(p.project) || !headCommit(p.project)) return null;
+  const current = git(p.project, ["branch", "--show-current"]).out;
+  const recorded = (change.data.run as { branch?: unknown } | undefined)?.branch;
+  if (typeof recorded === "string" && recorded) {
+    if (current === recorded) return null;
+    const sw = git(p.project, ["switch", "-q", recorded]);
+    return sw.ok
+      ? `switched to the change branch ${recorded}`
+      : `HEAD is on ${current || "a detached commit"}, but this change commits on ${recorded} and switching failed (${sw.err.split("\n")[0]}); switch to ${recorded} before continuing`;
+  }
+  if (current && !isDefaultBranch(p.project, current)) {
+    change.doc.setIn(["run", "branch"], current);
+    change.doc.setIn(["run", "base_branch"], null);
+    return `committing on your current branch ${current}`;
+  }
+  const want = changeBranchName(id);
+  const exists = git(p.project, ["rev-parse", "--verify", "-q", `refs/heads/${want}`]).ok;
+  const sw = git(p.project, exists ? ["switch", "-q", want] : ["switch", "-q", "-c", want]);
+  if (!sw.ok) return `could not create the change branch ${want} (${sw.err.split("\n")[0]}); task commits go to ${current || "the detached HEAD"}`;
+  change.doc.setIn(["run", "branch"], want);
+  change.doc.setIn(["run", "base_branch"], current || null);
+  return `task commits go to the new branch ${want} (from ${current || "a detached commit"})`;
 }
 
 /**

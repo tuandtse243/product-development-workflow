@@ -8248,6 +8248,7 @@ function isFrozenPackageFile(p, file, frozen) {
   }
   return false;
 }
+var MCP_READ_TOOL = /^(?:get|list|search|read|fetch|find|query|show|view|describe|whoami)(?:_|$)/i;
 var VERDICT_FILE = /^(?:layer-)?review-[A-Za-z0-9._-]+\.md$/;
 function agentRole(agentType) {
   const name = (agentType ?? "").split(":").pop() ?? "";
@@ -8317,6 +8318,13 @@ function decide(input, env) {
     if (st.delivered && rel(p, file) === ".env.example") return allow("environment template for the delivery package");
     if (st.delivered && rel(p, file) === "README.md") return allow("project README brought up to date at delivery");
     return deny(closedReason(st));
+  }
+  if (tool.startsWith("mcp__")) {
+    if (MCP_READ_TOOL.test(tool.split("__").pop() ?? "")) return null;
+    if (role) return deny(`the ${role} does not call external services that change state (${tool}); report the need to the orchestrator`);
+    const st = gateState(p);
+    if (!st.open) return deny(`${tool} may change an external service. ${closedReason(st)}`);
+    return ask(`${tool} may change an external service; it needs your confirmation (tier 3)`);
   }
   if (tool === "Bash") {
     const cmd2 = String(ti.command ?? "");
@@ -8811,7 +8819,7 @@ function parallelConfig(p, change) {
 }
 var worktreesRoot = (p) => (0, import_node_path7.join)(p.run, "worktrees");
 var worktreeDir = (p, id, taskId) => (0, import_node_path7.join)(worktreesRoot(p), id, taskId);
-var branchName = (id, taskId) => `aidw/${id}/${taskId}`;
+var branchName = (id, taskId) => `aidw/${id}.${taskId}`;
 function taskDir(p, t) {
   return typeof t.worktree === "string" && t.worktree ? (0, import_node_path7.join)(p.project, t.worktree) : p.project;
 }
@@ -10357,6 +10365,11 @@ function transition(p, id, to, opts) {
     const d = readinessCheck(p, id, target);
     if (d.errors.length) throw new OpError("Analysis package is not ready for approval", d);
   }
+  const notes = [];
+  if (BUILD_STATES.has(target)) {
+    const note = useChangeBranch(p, change, id);
+    if (note) notes.push(note);
+  }
   if (target === "paused") {
     change.doc.setIn(["run", "paused"], change.doc.createNode({ from, reason: opts.reason ?? "unspecified", at: now4() }));
   } else if (from === "paused") {
@@ -10371,9 +10384,55 @@ function transition(p, id, to, opts) {
     const commit = commitAidw(p, `aidw: ${id} delivered
 
 Quality layer and deploy evidence: .aidw/changes/${id}/evidence/`);
-    return { from, to: target, ...commit ? { commit } : {} };
+    return { from, to: target, ...commit ? { commit } : {}, ...notes.length ? { notes } : {} };
   }
-  return { from, to: target };
+  return { from, to: target, ...notes.length ? { notes } : {} };
+}
+var BUILD_STATES = /* @__PURE__ */ new Set(["executing", "verifying", "converging", "deploying"]);
+var changeBranchName = (id) => `aidw/${id}`;
+function hookCwd(stdin, fallback) {
+  try {
+    const c = JSON.parse(stdin).cwd;
+    return typeof c === "string" && c ? c : fallback;
+  } catch {
+    return fallback;
+  }
+}
+function offBranchNote(cwd, env) {
+  const dir = findProject({ cwd, env });
+  if (!dir || !isGitRepo(dir) || !headCommit(dir)) return null;
+  const list5 = git(dir, ["branch", "--no-merged", "HEAD", "--format=%(refname:short)", "--list", "aidw/*"]);
+  const open = list5.ok ? list5.out.split("\n").filter((b) => b && !b.includes(".")) : [];
+  const current = git(dir, ["branch", "--show-current"]).out;
+  if (!open.length || open.includes(current)) return null;
+  return `AIDW: HEAD is on ${current || "a detached commit"}, but unmerged change branch(es) ${open.join(", ")} hold newer aidw state. Before /aidw:run, /aidw:resume or /aidw:status, run \`git switch ${open[0]}\` (or merge it).`;
+}
+function isDefaultBranch(cwd, name) {
+  const origin = git(cwd, ["symbolic-ref", "-q", "--short", "refs/remotes/origin/HEAD"]);
+  if (origin.ok && origin.out) return origin.out.replace(/^origin\//, "") === name;
+  return ["main", "master", "trunk", "develop"].includes(name);
+}
+function useChangeBranch(p, change, id) {
+  if (!isGitRepo(p.project) || !headCommit(p.project)) return null;
+  const current = git(p.project, ["branch", "--show-current"]).out;
+  const recorded = change.data.run?.branch;
+  if (typeof recorded === "string" && recorded) {
+    if (current === recorded) return null;
+    const sw2 = git(p.project, ["switch", "-q", recorded]);
+    return sw2.ok ? `switched to the change branch ${recorded}` : `HEAD is on ${current || "a detached commit"}, but this change commits on ${recorded} and switching failed (${sw2.err.split("\n")[0]}); switch to ${recorded} before continuing`;
+  }
+  if (current && !isDefaultBranch(p.project, current)) {
+    change.doc.setIn(["run", "branch"], current);
+    change.doc.setIn(["run", "base_branch"], null);
+    return `committing on your current branch ${current}`;
+  }
+  const want = changeBranchName(id);
+  const exists = git(p.project, ["rev-parse", "--verify", "-q", `refs/heads/${want}`]).ok;
+  const sw = git(p.project, exists ? ["switch", "-q", want] : ["switch", "-q", "-c", want]);
+  if (!sw.ok) return `could not create the change branch ${want} (${sw.err.split("\n")[0]}); task commits go to ${current || "the detached HEAD"}`;
+  change.doc.setIn(["run", "branch"], want);
+  change.doc.setIn(["run", "base_branch"], current || null);
+  return `task commits go to the new branch ${want} (from ${current || "a detached commit"})`;
 }
 function commitAidw(p, message, opts = {}) {
   if (!isGitRepo(p.project)) return null;
@@ -11854,6 +11913,12 @@ function run(argv, env, cwd, io) {
           addBinToPath(env);
         } catch {
         }
+        try {
+          const note = offBranchNote(hookCwd(io.stdin?.() ?? "", cwd), env);
+          if (note) io.out(`${note}
+`);
+        } catch {
+        }
         return 0;
       }
       case "version":
@@ -12322,7 +12387,8 @@ ${d.kind === "brownfield" ? `${d.signals.map((s) => `  signal  ${s}
         const to = need(rest[1], "target state");
         const r = transition(p, id, to, { reason: str(args.flags.reason) });
         emit({ ok: true, id, ...r }, `${id}: ${r.from} -> ${r.to}${r.commit ? ` (committed .aidw/ ${r.commit.slice(0, 8)})` : ""}
-`);
+${(r.notes ?? []).map((n) => `  ${n}
+`).join("")}`);
         return 0;
       }
       case "merge": {

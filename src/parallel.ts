@@ -4,7 +4,7 @@
  *   wave       ready tasks whose `touches` do not overlap, none `risk: high` or marked sequential, at most one
  *              that drives a browser (fixed e2e port), at most `parallel.max` (quality.yaml)
  *   worktree   each wave task runs in its own git worktree `.aidw/run/worktrees/<change>/<task>` on branch
- *              `aidw/<change>/<task>`, created by aidw (not the Agent tool's isolation), so the gate, the
+ *              `aidw/<change>.<task>` (beside the change branch `aidw/<change>`), created by aidw (not the Agent tool's isolation), so the gate, the
  *              checkpoint and resume work the same for every runtime
  *   merge      review pass commits the worktree and merges it into the change branch (one commit per task);
  *              a conflict drops the branch and reruns the task sequentially on the latest code
@@ -71,7 +71,7 @@ export function parallelConfig(p: Paths, change: Change): ParallelConfig {
 
 export const worktreesRoot = (p: Paths) => join(p.run, "worktrees");
 export const worktreeDir = (p: Paths, id: string, taskId: string) => join(worktreesRoot(p), id, taskId);
-export const branchName = (id: string, taskId: string) => `aidw/${id}/${taskId}`;
+export const branchName = (id: string, taskId: string) => `aidw/${id}.${taskId}`;
 
 /** Where a task's files live: its worktree, or the main checkout. */
 export function taskDir(p: Paths, t: Task): string {

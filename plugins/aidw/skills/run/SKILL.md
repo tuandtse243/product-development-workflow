@@ -44,6 +44,8 @@ that aidw creates; everything else runs sequentially on the main checkout.
    - `paused`: `aidw transition <id> resume`
    - `executing`: continue.
    - drift, `awaiting_approval` or earlier: stop and tell the user (`/aidw:status` explains what to do).
+   - The transition puts HEAD on the change branch (`aidw/<id>`, or the feature branch the user was on) and
+     prints where task commits go. If it says switching failed, stop and tell the user.
 2. When the project is a git repository, check `git status`: unrelated uncommitted user changes would end up in
    task commits. If there are any, ask the user to commit or stash them first.
 3. Not running under the runner (`echo $AIDW_RUNNER` is empty) and more than 3 tasks remain: tell the user once,

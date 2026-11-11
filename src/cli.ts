@@ -11,6 +11,8 @@ import {
   approve,
   archiveChange,
   createBaseline,
+  hookCwd,
+  offBranchNote,
   assertProject,
   initProject,
   INPUT_TYPES,
@@ -265,6 +267,14 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         // case Claude Code did not add it. Prints nothing: SessionStart stdout would become session context.
         try {
           addBinToPath(env);
+        } catch {
+          // never fail the hook
+        }
+        try {
+          // The one exception to printing nothing: a session opened off an unmerged change branch would read stale
+          // .aidw/ state, so it gets told where the change lives.
+          const note = offBranchNote(hookCwd(io.stdin?.() ?? "", cwd), env);
+          if (note) io.out(`${note}\n`);
         } catch {
           // never fail the hook
         }
@@ -720,7 +730,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const id = need(rest[0], "change id");
         const to = need(rest[1], "target state");
         const r = transition(p, id, to, { reason: str(args.flags.reason) });
-        emit({ ok: true, id, ...r }, `${id}: ${r.from} -> ${r.to}${r.commit ? ` (committed .aidw/ ${r.commit.slice(0, 8)})` : ""}\n`);
+        emit({ ok: true, id, ...r }, `${id}: ${r.from} -> ${r.to}${r.commit ? ` (committed .aidw/ ${r.commit.slice(0, 8)})` : ""}\n${(r.notes ?? []).map((n) => `  ${n}\n`).join("")}`);
         return 0;
       }
 

@@ -9,6 +9,8 @@
  *   - project writes before approval    -> deny
  *   - project writes after approval     -> allow
  *   - tier 3 / `aidw approve`           -> ask (a human decides)
+ *   - MCP tools that may write          -> deny before approval and for subagents, ask after approval
+ *                                          (read-like names: get_, list_, search_... follow normal rules)
  * Fails closed inside an aidw project: an internal error denies the call.
  */
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -102,6 +104,9 @@ function isFrozenPackageFile(p: Paths, file: string, frozen: string[]): boolean 
   return false;
 }
 
+/** MCP tool names (the part after `mcp__<server>__`) that only read. */
+export const MCP_READ_TOOL = /^(?:get|list|search|read|fetch|find|query|show|view|describe|whoami)(?:_|$)/i;
+
 /** The only file a reviewer may write: its verdict, in .aidw/run/. */
 const VERDICT_FILE = /^(?:layer-)?review-[A-Za-z0-9._-]+\.md$/;
 
@@ -188,6 +193,16 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
     if (st.delivered && rel(p, file) === ".env.example") return allow("environment template for the delivery package");
     if (st.delivered && rel(p, file) === "README.md") return allow("project README brought up to date at delivery");
     return deny(closedReason(st));
+  }
+
+  if (tool.startsWith("mcp__")) {
+    // MCP servers (Vercel, GitHub, Supabase...) reach the outside world directly, around the Bash tiers.
+    // Read-like tools follow the normal permission rules; anything else is a human decision.
+    if (MCP_READ_TOOL.test(tool.split("__").pop() ?? "")) return null;
+    if (role) return deny(`the ${role} does not call external services that change state (${tool}); report the need to the orchestrator`);
+    const st = gateState(p);
+    if (!st.open) return deny(`${tool} may change an external service. ${closedReason(st)}`);
+    return ask(`${tool} may change an external service; it needs your confirmation (tier 3)`);
   }
 
   if (tool === "Bash") {

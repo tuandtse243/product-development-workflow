@@ -67,6 +67,7 @@ width; add mobile for the most important one):
 3. `aidw archive <id>`: merges the delta specs into `.aidw/specs/`, moves the change to `.aidw/archive/` and
    commits `.aidw/`. It refuses an incomplete package.
 4. Report to the user: the preview URL, where the package is (`.aidw/archive/<id>/delivery/`), the quality
-   summary, and the known issues.
+   summary, and the known issues. Name the branch that holds the work (`run.branch` in change.yaml,
+   usually `aidw/<id>`) and its base: the user merges it, or opens a PR from it. aidw does not merge or push.
 5. Tell the user to `/clear` (or open a new session) before the next change: this session's context is large
    and a new change does not need it.
