@@ -195,3 +195,8 @@ hành vi, thay vì chia theo tầng.
 - Plugin context-mode (nếu bạn dùng) viết lại prompt của mỗi lần spawn subagent, nên mỗi lần spawn tốn thêm một
   lượt gọi. Tắt nó khi chạy aidw sẽ tiết kiệm token.
 - aidw giữ stack của project có sẵn, không đề xuất migrate.
+- Mỗi project chỉ chạy **một change tại một thời điểm**. Muốn làm thêm thì `deliver` và archive change hiện tại trước.
+- **Monorepo chưa được hỗ trợ** (pnpm workspaces, turbo, nx). `aidw init` và `aidw detect` cảnh báo; chạy aidw trong
+  một package thì được, nhưng `touches`, lệnh verify và quality layer phải tự chỉnh.
+- Từ lúc `executing`, aidw commit mọi task lên branch `aidw/<change-id>` (hoặc feature branch bạn đang đứng), không
+  commit lên `main`. aidw không tự merge hay push: bạn merge, hoặc mở PR từ branch đó.

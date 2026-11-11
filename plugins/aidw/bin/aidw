@@ -8249,6 +8249,7 @@ function isFrozenPackageFile(p, file, frozen) {
   return false;
 }
 var MCP_READ_TOOL = /^(?:get|list|search|read|fetch|find|query|show|view|describe|whoami)(?:_|$)/i;
+var REPORT_FILE = /^report-[A-Za-z0-9._-]+\.md$/;
 var VERDICT_FILE = /^(?:layer-)?review-[A-Za-z0-9._-]+\.md$/;
 function agentRole(agentType) {
   const name = (agentType ?? "").split(":").pop() ?? "";
@@ -8302,6 +8303,7 @@ function decide(input, env) {
       const st2 = gateState(p);
       return st2.open ? allow("analysis approved (task worktree)") : deny(closedReason(st2));
     }
+    if (role === "implementer" && (0, import_node_path4.dirname)(file) === p.run && REPORT_FILE.test((0, import_node_path4.basename)(file))) return allow("implementer note for the reviewer");
     if (role === "implementer" && inside(p.aidw, file) && !inside((0, import_node_path4.join)(p.run, "shots"), file)) {
       return deny("implementers do not write .aidw/; the orchestrator records progress and evidence");
     }
@@ -9155,6 +9157,12 @@ var shellRunner = (command, cwd, timeoutMs, env) => {
   return { exit: r.status, timedOut, tail: tailOf(`${r.stdout ?? ""}
 ${r.stderr ?? ""}`) };
 };
+var retryingShellRunner = (command, cwd, timeoutMs, env) => {
+  const first = shellRunner(command, cwd, timeoutMs, env);
+  if (first.exit === 0 || first.timedOut) return first;
+  const second = shellRunner(command, cwd, timeoutMs, env);
+  return second.exit === 0 ? { ...second, flaky: true } : first;
+};
 function checkpoint(p, id, taskId, opts = {}) {
   const tf = loadTasks(p, id);
   requireExecuting(p, tf.change);
@@ -9168,7 +9176,7 @@ function checkpoint(p, id, taskId, opts = {}) {
   const changed = changedSince(dir, base)?.filter((f) => !f.startsWith(".aidw/")) ?? null;
   const touches = list3(t.touches);
   const outside = changed ? changed.filter((f) => !matchesAny(touches, f)) : [];
-  const runner = opts.runner ?? shellRunner;
+  const runner = opts.runner ?? retryingShellRunner;
   const timeoutMs = opts.timeoutMs ?? 15 * 60 * 1e3;
   const verify2 = [];
   for (const command of list3(t.verify)) {
@@ -9346,6 +9354,8 @@ ${req.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`;
   const tokenInfo = touchesUi(t) ? loadTokens(p) : null;
   const tokens = tokenInfo && tokenInfo.diags.errors.length === 0 ? tokenInfo.tokens : [];
   const shots = shotsDir(p, id, taskId);
+  const reportFile = (0, import_node_path8.join)(p.run, `report-${taskId}.md`);
+  if (kind === "implement") (0, import_node_fs7.rmSync)(reportFile, { force: true });
   const header = [
     `# ${kind === "implement" ? "Task" : "Review"} brief: ${taskId} - ${String(t.title ?? "")}`,
     "",
@@ -9393,7 +9403,8 @@ ${req.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`;
         `- **Screenshots**: when it works, save at most 6 PNG screenshots of the screens and states this task changes into \`${shots}\` (create it): the most telling states, at desktop and mobile width, dark theme too if tokens have dark values. The reviewer opens every one. **Every attempt, retries included, saves new ones**: the checkpoint counts only PNGs written after the previous checkpoint, even when the UI did not change.`,
         "- Take screenshots with Playwright through the project's `webServer` config (it starts and stops the app), e.g. a spec run on its own with `npx playwright test <file>`. If you start a server yourself, stop it before you report: a leftover server holds the e2e port and fails the checkpoint."
       ] : [],
-      "- Report in at most 10 lines: what works now, files changed, verify result, anything the reviewer should know (e.g. files outside Touches and why).",
+      "- Report in at most 10 lines: what works now, files changed, verify result.",
+      `- Only if the reviewer needs to know something (a file outside Touches and why, a scenario you narrowed or could not cover, a risk), write it to \`${reportFile}\` with the Write tool (the only .aidw file you may write besides screenshots). Otherwise write nothing: do not create the file.`,
       "",
       ...workdir,
       ...priorWork ? h("Resuming", [
@@ -9415,6 +9426,7 @@ ${req.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`;
       "",
       `- The task's changes: ${diff}.`,
       `- Checkpoint evidence: \`${rel(p, (0, import_node_path8.join)(tf.change.dir, evidenceRel(taskId)))}\` (verify output, where each scenario test lives).`,
+      ...(0, import_node_fs7.existsSync)(reportFile) ? [`- Implementer notes: \`${rel(p, reportFile)}\` (read it first; it explains files outside Touches and anything the implementer flagged).`] : [],
       ...outside.length ? [`- Files changed outside Touches: ${outside.map((f) => `\`${f}\``).join(", ")}. Decide whether each is justified.`] : [],
       ...design?.screenshots.length ? [`- Screenshots (open each with Read): ${design.screenshots.map((f) => `\`${(0, import_node_path8.join)(p.project, f)}\``).join(", ")}`] : [],
       ...design?.hardcoded_colors.length ? [`- Color literals that are not tokens, in changed files: ${design.hardcoded_colors.map((f) => `\`${f}\``).join(", ")}. Each needs a reason or becomes a token.`] : [],
@@ -10012,8 +10024,21 @@ function pmCommands(pm) {
 }
 var JUNK_DIRS = ["node_modules", ".next", ".nuxt", ".svelte-kit", ".turbo"];
 var JUNK_FILES = ["tsconfig.tsbuildinfo", "next-env.d.ts", ".DS_Store"];
+var WORKSPACE_FILES = ["pnpm-workspace.yaml", "turbo.json", "nx.json", "lerna.json", "rush.json"];
+function monorepoSignal(dir) {
+  const file = WORKSPACE_FILES.find((f) => (0, import_node_fs10.existsSync)((0, import_node_path11.join)(dir, f)));
+  if (file) return file;
+  try {
+    const pkg = JSON.parse((0, import_node_fs10.readFileSync)((0, import_node_path11.join)(dir, "package.json"), "utf8"));
+    if (pkg.workspaces) return "package.json workspaces";
+  } catch {
+  }
+  return null;
+}
 function repoWarnings(dir, hasPackage) {
   const out = [];
+  const mono = monorepoSignal(dir);
+  if (mono) out.push(`monorepo detected (${mono}): aidw does not support workspaces yet. Run it in a single package, or expect task Touches, verify commands and quality layers to need manual care`);
   const ignoreText = (0, import_node_fs10.existsSync)((0, import_node_path11.join)(dir, ".gitignore")) ? (0, import_node_fs10.readFileSync)((0, import_node_path11.join)(dir, ".gitignore"), "utf8") : null;
   if (hasPackage && ignoreText === null) out.push("no .gitignore: add one with node_modules/, .next/, test-results/, *.tsbuildinfo, next-env.d.ts and .env*.local before the first task (aidw commits with `git add -A`)");
   if (!isGitRepo(dir)) return out;
@@ -10885,7 +10910,7 @@ function verify(p, id, opts = {}) {
   const change = requireVerifying(p, id, "aidw verify");
   const { config, pending, summary } = pendingLayers(p, id);
   if (opts.layer && !config.layers.some((l) => l.name === opts.layer)) throw new OpError(`no layer "${opts.layer}" in quality.yaml`);
-  const runner = opts.runner ?? shellRunner;
+  const runner = opts.runner ?? retryingShellRunner;
   const timeoutMs = opts.timeoutMs ?? 30 * 60 * 1e3;
   const head = headCommit(p.project);
   const tasks = loadTasks(p, id).tasks;
@@ -11731,6 +11756,27 @@ function reviewLine(r, verdict, notes) {
   merge conflict (${r.conflict}): the task reruns sequentially` : ""}${verdict === "pass" && !notes.trim() ? "\n  note: no reviewer reply recorded; pass it with --notes-file so its non-blocking remarks reach the handoff" : ""}
 `;
 }
+function compactNote(cwd, env) {
+  const dir = findProject({ cwd, env });
+  if (!dir) return null;
+  const p = pathsFor(dir);
+  const active = [];
+  for (const id of listChangeIds(p)) {
+    try {
+      const st = stateOf(loadChange(p, id));
+      if (st && !["draft", "delivered", "archived"].includes(st)) active.push(`${id}=${st}`);
+    } catch {
+    }
+  }
+  if (!active.length) return null;
+  let next = "";
+  try {
+    const id = active[0].split("=")[0];
+    next = ` Next: ${nextText(nextAction(p, id))}.`;
+  } catch {
+  }
+  return `AIDW (context was compacted): ${active.join(", ")}.${next} All progress is in .aidw/ and git; run \`aidw status\` before acting, and \`/aidw:resume\` if the run was interrupted.`;
+}
 function nextText(n) {
   return n.action === "implement" ? `implement ${n.task} (${n.reason}): ${n.title}` : n.action === "review" ? `review ${n.task}: ${n.title}` : n.action === "escalate" ? `escalate: ${n.reason}` : n.action === "wave" ? `wave of ${n.tasks.length}: ${n.tasks.map((x) => `${x.task} (${x.title})`).join(", ")}` : n.action === "integrate" ? `integrate ${n.tasks.join(", ")}: run \`aidw integrate\` on the merged code` : `complete: all ${n.done} task(s) done`;
 }
@@ -11914,8 +11960,15 @@ function run(argv, env, cwd, io) {
         } catch {
         }
         try {
-          const note = offBranchNote(hookCwd(io.stdin?.() ?? "", cwd), env);
-          if (note) io.out(`${note}
+          const stdin = io.stdin?.() ?? "";
+          const where = hookCwd(stdin, cwd);
+          let source = "";
+          try {
+            source = String(JSON.parse(stdin).source ?? "");
+          } catch {
+          }
+          const notes = [offBranchNote(where, env), source === "compact" ? compactNote(where, env) : null].filter(Boolean);
+          if (notes.length) io.out(`${notes.join("\n")}
 `);
         } catch {
         }

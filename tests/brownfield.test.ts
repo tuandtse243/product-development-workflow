@@ -161,6 +161,20 @@ describe("repo hygiene (aidw commits with git add -A)", () => {
     expect(detectProject(FIXTURE).warnings).toEqual([]);
   });
 
+  it("warns that a monorepo is not supported yet, for each workspace marker", () => {
+    for (const [file, body] of [["pnpm-workspace.yaml", "packages: [apps/*]\n"], ["turbo.json", "{}\n"], ["nx.json", "{}\n"]] as const) {
+      const root = tempProject();
+      cpSync(FIXTURE, root, { recursive: true });
+      write(root, file, body);
+      expect(detectProject(root).warnings).toEqual([expect.stringContaining(`monorepo detected (${file})`)]);
+    }
+    const root = tempProject();
+    cpSync(FIXTURE, root, { recursive: true });
+    const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+    write(root, "package.json", JSON.stringify({ ...pkg, workspaces: ["packages/*"] }));
+    expect(detectProject(root).warnings).toEqual([expect.stringMatching(/package\.json workspaces/)]);
+  });
+
   it("refuses to commit node_modules at review and keeps the task reviewable", () => {
     const root = tempProject();
     cpSync(FIXTURE, root, { recursive: true });

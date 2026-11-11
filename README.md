@@ -32,6 +32,15 @@ claude --plugin-dir /path/to/product-development-workflow/plugins/aidw
 /aidw:deliver    # delivery package + archive (run calls it at the end)
 ```
 
+## Limits
+
+- One change at a time per project.
+- Monorepos (pnpm workspaces, turbo, nx) are not supported yet: `aidw init` warns.
+- From `executing` on, task commits go to the branch `aidw/<change-id>` (or the feature branch you were on), never
+  to `main`. aidw does not merge or push.
+
+See [`docs/roadmap.md`](docs/roadmap.md) for what is planned.
+
 ## Vendored skills
 
 Selected skills from `mattpocock/skills` and `addyosmani/agent-skills` (both MIT) live verbatim in

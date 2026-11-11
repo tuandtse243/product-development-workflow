@@ -1,6 +1,7 @@
 ---
 name: resume
 description: Resume an aidw change after an interruption - killed session, quota or rate limit, or an escalation the user has resolved. Use when the user runs /aidw:resume.
+allowed-tools: Bash(aidw *)
 disable-model-invocation: true
 argument-hint: "[change id]"
 ---

@@ -11,7 +11,7 @@
  * session resumes from files, never from conversation memory.
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import YAML from "yaml";
 import { decisionsToHonor, requirementsAfterChange } from "./analyze.js";
@@ -278,6 +278,8 @@ export interface VerifyRun {
   ms: number;
   timedOut: boolean;
   tail: string;
+  /** failed once, then passed on an immediate rerun: the command is unreliable, not the code */
+  flaky?: boolean;
 }
 
 export interface CheckpointRecord {
@@ -367,6 +369,18 @@ export const shellRunner: CommandRunner = (command, cwd, timeoutMs, env) => {
   return { exit: r.status, timedOut, tail: tailOf(`${r.stdout ?? ""}\n${r.stderr ?? ""}`) };
 };
 
+/**
+ * Default runner for verify commands: a command that fails (not a timeout) is run once more. When the rerun
+ * passes, the result is marked `flaky` so the evidence shows an unreliable test instead of burning an attempt.
+ * Injected runners and deploy commands are never retried.
+ */
+export const retryingShellRunner: CommandRunner = (command, cwd, timeoutMs, env) => {
+  const first = shellRunner(command, cwd, timeoutMs, env);
+  if (first.exit === 0 || first.timedOut) return first;
+  const second = shellRunner(command, cwd, timeoutMs, env);
+  return second.exit === 0 ? { ...second, flaky: true } : first;
+};
+
 export interface CheckpointResult extends CheckpointRecord {
   task: string;
   status: "review" | "failed";
@@ -398,7 +412,7 @@ export function checkpoint(
   const touches = list(t.touches);
   const outside = changed ? changed.filter((f) => !matchesAny(touches, f)) : [];
 
-  const runner = opts.runner ?? shellRunner;
+  const runner = opts.runner ?? retryingShellRunner;
   const timeoutMs = opts.timeoutMs ?? 15 * 60 * 1000;
   const verify: VerifyRun[] = [];
   for (const command of list(t.verify)) {
@@ -636,6 +650,8 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
   const tokenInfo = touchesUi(t) ? loadTokens(p) : null;
   const tokens = tokenInfo && tokenInfo.diags.errors.length === 0 ? tokenInfo.tokens : [];
   const shots = shotsDir(p, id, taskId);
+  const reportFile = join(p.run, `report-${taskId}.md`);
+  if (kind === "implement") rmSync(reportFile, { force: true }); // a note from an earlier attempt would be stale
   const header = [
     `# ${kind === "implement" ? "Task" : "Review"} brief: ${taskId} - ${String(t.title ?? "")}`,
     "",
@@ -689,7 +705,8 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
             "- Take screenshots with Playwright through the project's `webServer` config (it starts and stops the app), e.g. a spec run on its own with `npx playwright test <file>`. If you start a server yourself, stop it before you report: a leftover server holds the e2e port and fails the checkpoint.",
           ]
         : []),
-      "- Report in at most 10 lines: what works now, files changed, verify result, anything the reviewer should know (e.g. files outside Touches and why).",
+      "- Report in at most 10 lines: what works now, files changed, verify result.",
+      `- Only if the reviewer needs to know something (a file outside Touches and why, a scenario you narrowed or could not cover, a risk), write it to \`${reportFile}\` with the Write tool (the only .aidw file you may write besides screenshots). Otherwise write nothing: do not create the file.`,
       "",
       ...workdir,
       ...(priorWork
@@ -715,6 +732,7 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
       "",
       `- The task's changes: ${diff}.`,
       `- Checkpoint evidence: \`${rel(p, join(tf.change.dir, evidenceRel(taskId)))}\` (verify output, where each scenario test lives).`,
+      ...(existsSync(reportFile) ? [`- Implementer notes: \`${rel(p, reportFile)}\` (read it first; it explains files outside Touches and anything the implementer flagged).`] : []),
       ...(outside.length ? [`- Files changed outside Touches: ${outside.map((f) => `\`${f}\``).join(", ")}. Decide whether each is justified.`] : []),
       ...(design?.screenshots.length ? [`- Screenshots (open each with Read): ${design.screenshots.map((f) => `\`${join(p.project, f)}\``).join(", ")}`] : []),
       ...(design?.hardcoded_colors.length ? [`- Color literals that are not tokens, in changed files: ${design.hardcoded_colors.map((f) => `\`${f}\``).join(", ")}. Each needs a reason or becomes a token.`] : []),

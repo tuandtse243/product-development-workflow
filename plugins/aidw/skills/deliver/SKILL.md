@@ -1,6 +1,7 @@
 ---
 name: deliver
-description: Build the Complete Delivery Package of a delivered aidw change - handoff, quality report, screenshots, env template - and archive the change. Use when the user runs /aidw:deliver, or from /aidw:run once the change is delivered.
+description: Build the Complete Delivery Package of a delivered aidw change - handoff, quality report, screenshots, env template - and archive the change. Use when the user runs /aidw:deliver; /aidw:run reads this file itself once the change is delivered.
+allowed-tools: Bash(aidw *)
 disable-model-invocation: true
 argument-hint: "[change id]"
 ---

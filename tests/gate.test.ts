@@ -147,6 +147,30 @@ describe("tiers", () => {
     expect(decision(sub(hook("mcp__supabase__list_tables", {})))).toBe("none");
   });
 
+  it("lets an implementer write only a report-<task>.md note under .aidw/", () => {
+    readyForApproval();
+    expect(cli("approve", ID)).toBe(0);
+    expect(cli("transition", ID, "executing")).toBe(0);
+    const sub = (f: string) => ({ ...hook("Write", { file_path: join(root, f) }), agent_type: "aidw:implementer" });
+    expect(decision(sub(".aidw/run/report-T01.md"))).toBe("allow");
+    expect(decision(sub(".aidw/run/progress.json"))).toBe("deny");
+    expect(decision(sub(".aidw/changes/app/tasks.yaml"))).toBe("deny");
+    expect(decision({ ...sub(".aidw/run/report-T01.md"), agent_type: "aidw:reviewer" })).toBe("deny");
+  });
+
+  it("tells a session where the run stands after a compaction, and only then", () => {
+    readyForApproval();
+    expect(cli("approve", ID)).toBe(0);
+    expect(cli("transition", ID, "executing")).toBe(0);
+    const hookOut = (source: string) => {
+      let out = "";
+      run(["session-start"], {}, root, { out: (s) => (out += s), err: () => {}, stdin: () => JSON.stringify({ hook_event_name: "SessionStart", source, cwd: root }) });
+      return out;
+    };
+    expect(hookOut("compact")).toMatch(/context was compacted\): app=executing\. Next: implement T01/);
+    expect(hookOut("startup")).toBe("");
+  });
+
   it("the hook matcher covers MCP tools", () => {
     const hooks = JSON.parse(readFileSync(join(__dirname, "../plugins/aidw/hooks/hooks.json"), "utf8"));
     expect(new RegExp(`^(?:${hooks.hooks.PreToolUse[0].matcher})$`).test("mcp__vercel__deploy_to_vercel")).toBe(true);

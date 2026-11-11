@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { analyzeChange, idsAfterChange, mainSpecIds } from "./analyze.js";
 import { approvalStatus, computeApprovalHash } from "./approval.js";
 import { runBackstop } from "./backstop.js";
-import { ChangeError, isState, listChangeIds, loadChange, NEEDS_ANALYSIS, resolveChangeId, STATES } from "./change.js";
+import { ChangeError, isState, listChangeIds, loadChange, NEEDS_ANALYSIS, resolveChangeId, stateOf, STATES } from "./change.js";
 import { runGate } from "./gate.js";
 import { checkChange, checkSpecs } from "./check.js";
 import { Diags, type Diagnostic } from "./diag.js";
@@ -38,6 +38,35 @@ function reviewLine(r: { task: string; verdict: string; status: string; commit: 
   return `${r.task}: review ${r.verdict} -> ${r.status}${r.commit ? ` (commit ${r.commit.slice(0, 8)})` : ""}${r.warning ? `\n  warning: ${r.warning}` : ""}${
     r.conflict ? `\n  merge conflict (${r.conflict}): the task reruns sequentially` : ""
   }${verdict === "pass" && !notes.trim() ? "\n  note: no reviewer reply recorded; pass it with --notes-file so its non-blocking remarks reach the handoff" : ""}\n`;
+}
+
+/**
+ * After a compaction the session forgets which change it was running. SessionStart with source "compact" is the
+ * hook event whose stdout becomes context (PostCompact cannot inject any), so name the active change and the
+ * orchestrator's next step. Null when nothing is in flight.
+ */
+function compactNote(cwd: string, env: NodeJS.ProcessEnv): string | null {
+  const dir = findProject({ cwd, env });
+  if (!dir) return null;
+  const p = pathsFor(dir);
+  const active: string[] = [];
+  for (const id of listChangeIds(p)) {
+    try {
+      const st = stateOf(loadChange(p, id));
+      if (st && !["draft", "delivered", "archived"].includes(st)) active.push(`${id}=${st}`);
+    } catch {
+      // unreadable change: skipped
+    }
+  }
+  if (!active.length) return null;
+  let next = "";
+  try {
+    const id = active[0]!.split("=")[0]!;
+    next = ` Next: ${nextText(nextAction(p, id))}.`;
+  } catch {
+    // not in an execution state: status is enough
+  }
+  return `AIDW (context was compacted): ${active.join(", ")}.${next} All progress is in .aidw/ and git; run \`aidw status\` before acting, and \`/aidw:resume\` if the run was interrupted.`;
 }
 
 function nextText(n: NextAction): string {
@@ -273,8 +302,16 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         try {
           // The one exception to printing nothing: a session opened off an unmerged change branch would read stale
           // .aidw/ state, so it gets told where the change lives.
-          const note = offBranchNote(hookCwd(io.stdin?.() ?? "", cwd), env);
-          if (note) io.out(`${note}\n`);
+          const stdin = io.stdin?.() ?? "";
+          const where = hookCwd(stdin, cwd);
+          let source = "";
+          try {
+            source = String((JSON.parse(stdin) as { source?: unknown }).source ?? "");
+          } catch {
+            // no hook JSON: not a compact
+          }
+          const notes = [offBranchNote(where, env), source === "compact" ? compactNote(where, env) : null].filter(Boolean);
+          if (notes.length) io.out(`${notes.join("\n")}\n`);
         } catch {
           // never fail the hook
         }

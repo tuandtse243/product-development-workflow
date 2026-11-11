@@ -11,7 +11,8 @@
       "domain-modeling": "skills/engineering/domain-modeling",
       "to-spec": "skills/engineering/to-spec",
       "to-tickets": "skills/engineering/to-tickets",
-      "implement-spec": "skills/engineering/implement-spec"
+      "implement-spec": "skills/engineering/implement-spec",
+      "codebase-design": "skills/engineering/codebase-design"
     }
   },
   "addy": {

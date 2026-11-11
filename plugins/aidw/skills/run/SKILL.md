@@ -1,6 +1,7 @@
 ---
 name: run
 description: Execute an approved aidw change autonomously - one fresh implementer subagent per task, machine-checked evidence, an independent reviewer, one commit per task. Use when the user runs /aidw:run.
+allowed-tools: Bash(aidw *)
 disable-model-invocation: true
 argument-hint: "[change id]"
 ---

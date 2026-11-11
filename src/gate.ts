@@ -107,6 +107,9 @@ function isFrozenPackageFile(p: Paths, file: string, frozen: string[]): boolean 
 /** MCP tool names (the part after `mcp__<server>__`) that only read. */
 export const MCP_READ_TOOL = /^(?:get|list|search|read|fetch|find|query|show|view|describe|whoami)(?:_|$)/i;
 
+/** The one aidw file an implementer may write besides screenshots: a note for the reviewer. */
+const REPORT_FILE = /^report-[A-Za-z0-9._-]+\.md$/;
+
 /** The only file a reviewer may write: its verdict, in .aidw/run/. */
 const VERDICT_FILE = /^(?:layer-)?review-[A-Za-z0-9._-]+\.md$/;
 
@@ -176,6 +179,7 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
       const st = gateState(p);
       return st.open ? allow("analysis approved (task worktree)") : deny(closedReason(st));
     }
+    if (role === "implementer" && dirname(file) === p.run && REPORT_FILE.test(basename(file))) return allow("implementer note for the reviewer");
     if (role === "implementer" && inside(p.aidw, file) && !inside(join(p.run, "shots"), file)) {
       return deny("implementers do not write .aidw/; the orchestrator records progress and evidence");
     }

@@ -1,6 +1,7 @@
 ---
 name: status
 description: Show where aidw changes stand - state, approval, drift, tasks and validation findings. Use when the user runs /aidw:status or asks about the state of the aidw workflow.
+allowed-tools: Bash(aidw *)
 ---
 
 # aidw: status

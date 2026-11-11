@@ -21,7 +21,7 @@ import { OpError, transition } from "./ops.js";
 import { firstMatch, isTier2Resource, TIER2_COMMANDS, TIER2_RESOURCES, ASK_COMMANDS, type Tier2Resource } from "./policy.js";
 import { readText, rel, type Paths } from "./project.js";
 import { buildLayerBrief } from "./layers.js";
-import { loadTasks, saveTasksDoc, shellRunner, type CommandRunner, type VerifyRun } from "./run.js";
+import { loadTasks, saveTasksDoc, retryingShellRunner, shellRunner, type CommandRunner, type VerifyRun } from "./run.js";
 import type { Task } from "./tasks.js";
 
 export const DEPLOY_TARGETS = ["none", "local", "preview"] as const;
@@ -416,7 +416,7 @@ export function verify(
   const { config, pending, summary } = pendingLayers(p, id);
   if (opts.layer && !config.layers.some((l) => l.name === opts.layer)) throw new OpError(`no layer "${opts.layer}" in quality.yaml`);
 
-  const runner = opts.runner ?? shellRunner;
+  const runner = opts.runner ?? retryingShellRunner;
   const timeoutMs = opts.timeoutMs ?? 30 * 60 * 1000;
   const head = headCommit(p.project);
   const tasks = loadTasks(p, id).tasks;

@@ -33,7 +33,7 @@ Input: `$ARGUMENTS` (an idea, a path to a PRD/JD, pasted client text, or "this c
 
 ## 0. Preconditions
 
-Run `aidw status`. If it reports no `.aidw/`, run the `/aidw:init` steps first (`aidw init`). If a change is
+Run `aidw status`. If it reports no `.aidw/`, follow `$(aidw plugin-path skills/init/SKILL.md)` first (it runs `aidw init`). If a change is
 already `awaiting_approval` or later, tell the user and stop: one change at a time.
 
 ## 1. Intake
@@ -166,6 +166,10 @@ the user the token table (name, value, use) as part of the Design discussion.
    fallback**. Record `Source: client|ai|fallback` and the reasons.
 2. Write `.aidw/architecture/overview.md`: components, data model outline, folder structure, integrations,
    auth and payment choices.
+   Read `$(aidw vendor-path pocock/codebase-design)` first and use it as design principles (deep modules, where a seam
+   goes, the interface is the test surface), not as required vocabulary: the project's own `domain/model.md` terms win.
+   For a task that creates a new module or interface, add `skills: [pocock/codebase-design]` in tasks.yaml so its
+   implementer loads it; do not add it to every task (about 1.5k tokens each).
 3. ADRs for hard-to-reverse, surprising, real trade-offs only (domain-modeling's rule).
    Brownfield: extend the existing architecture; record only what the change adds.
 4. Fill `.aidw/constitution.md`: engineering principles and stack conventions every agent must follow.

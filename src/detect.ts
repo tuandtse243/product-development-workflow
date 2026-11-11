@@ -153,8 +153,26 @@ const JUNK_DIRS = ["node_modules", ".next", ".nuxt", ".svelte-kit", ".turbo"];
 const JUNK_FILES = ["tsconfig.tsbuildinfo", "next-env.d.ts", ".DS_Store"];
 
 /** Repo hygiene aidw depends on: it commits per task with `git add -A`, so dependencies must be ignored. */
+/** Workspace markers: package-scoped touches, verify and layers are not supported yet (docs/roadmap.md). */
+const WORKSPACE_FILES = ["pnpm-workspace.yaml", "turbo.json", "nx.json", "lerna.json", "rush.json"];
+
+/** Names the monorepo tool when the project is a workspace, else null. */
+export function monorepoSignal(dir: string): string | null {
+  const file = WORKSPACE_FILES.find((f) => existsSync(join(dir, f)));
+  if (file) return file;
+  try {
+    const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")) as { workspaces?: unknown };
+    if (pkg.workspaces) return "package.json workspaces";
+  } catch {
+    // no readable package.json
+  }
+  return null;
+}
+
 export function repoWarnings(dir: string, hasPackage: boolean): string[] {
   const out: string[] = [];
+  const mono = monorepoSignal(dir);
+  if (mono) out.push(`monorepo detected (${mono}): aidw does not support workspaces yet. Run it in a single package, or expect task Touches, verify commands and quality layers to need manual care`);
   const ignoreText = existsSync(join(dir, ".gitignore")) ? readFileSync(join(dir, ".gitignore"), "utf8") : null;
   if (hasPackage && ignoreText === null) out.push("no .gitignore: add one with node_modules/, .next/, test-results/, *.tsbuildinfo, next-env.d.ts and .env*.local before the first task (aidw commits with `git add -A`)");
   if (!isGitRepo(dir)) return out;

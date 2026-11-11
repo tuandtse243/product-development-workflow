@@ -1,7 +1,7 @@
 # Upstream: mattpocock/skills
 
 - Commit: `4ae2317ddb22b046e26455e4f9c9b3aaaf62212d` (ref `main`)
-- Synced: 2026-11-07
+- Synced: 2026-11-11
 - License: see `LICENSE` (copied verbatim from upstream)
 - Role in aidw: Product engineering: grilling, domain modeling, spec and tickets, orchestration pattern (blueprint 7.1)
 
@@ -18,3 +18,4 @@ adapter instructions of the aidw skills that load them. Re-sync with
 - `to-spec` <- `skills/engineering/to-spec`
 - `to-tickets` <- `skills/engineering/to-tickets`
 - `implement-spec` <- `skills/engineering/implement-spec`
+- `codebase-design` <- `skills/engineering/codebase-design`

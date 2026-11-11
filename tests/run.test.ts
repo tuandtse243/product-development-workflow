@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import YAML from "yaml";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -116,6 +116,15 @@ describe("execution loop (exit criterion [4])", () => {
     expect(brief).toMatch(/## Previous attempt/);
     expect(brief).toMatch(/Missing scenario tests: `booking\/reschedule-appointment\/reschedule-appointment-works`/);
     expect(brief).toMatch(/addy\/debugging-and-error-recovery\/SKILL\.md/);
+
+    // implementer notes: the brief says where to write them; the review brief links the file only when it exists
+    expect(brief).toMatch(/Only if the reviewer needs to know something[^\n]*report-T01\.md/);
+    expect(readFileSync(cli(root, "brief", "T01", "--for", "review").out.trim(), "utf8")).not.toMatch(/Implementer notes/);
+    write(root, ".aidw/run/report-T01.md", "Touched lib/x.ts: shared helper.\n");
+    expect(readFileSync(cli(root, "brief", "T01", "--for", "review").out.trim(), "utf8")).toMatch(/Implementer notes: `\.aidw\/run\/report-T01\.md`/);
+    expect(existsSync(join(root, ".aidw/run/report-T01.md"))).toBe(true);
+    cli(root, "brief", "T01"); // a new implement brief drops the stale note
+    expect(existsSync(join(root, ".aidw/run/report-T01.md"))).toBe(false);
 
     write(root, "tests/booking.test.ts", SCENARIO_TEST);
     const pass = cli(root, "checkpoint", "T01", "--json");

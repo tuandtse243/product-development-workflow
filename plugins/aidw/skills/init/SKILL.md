@@ -1,6 +1,6 @@
 ---
 name: init
-description: Set up aidw in the current project (creates .aidw/). Use when the user runs /aidw:init or wants to use the aidw workflow in a project that has no .aidw/ yet.
+description: Set up aidw in the current project (creates .aidw/). Use when the user runs /aidw:init.
 disable-model-invocation: true
 ---
 
