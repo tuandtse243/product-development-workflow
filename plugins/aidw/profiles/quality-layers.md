@@ -10,7 +10,7 @@ command must be one the user would accept running unattended.
 ```yaml
 layers:                         # run in this order by `aidw verify`; any kebab-case name works
   - name: code
-    run: ["pnpm lint", "pnpm exec tsc --noEmit", "pnpm build"]
+    run: ["pnpm lint", "pnpm format:check", "pnpm exec tsc --noEmit", "pnpm build"]
   - name: unit
     run: ["pnpm exec vitest run --project unit --reporter=default --reporter=junit --outputFile.junit=test-results/unit.xml"]
     reports: [test-results/unit.xml]       # JUnit XML: converge reads real pass/fail/skip per scenario
@@ -100,11 +100,12 @@ creating or deleting Supabase projects, other hosts).
 
 | Stack | code | unit | integration | e2e | ui-ux / a11y / security / performance |
 |---|---|---|---|---|---|
-| Next.js (fallback) | `pnpm lint`, `pnpm exec tsc --noEmit`, `pnpm build` | `pnpm exec vitest run` | `pnpm exec supabase start` + vitest project | `pnpm exec playwright test --project=e2e` | all four (section below) |
-| Vite + React | `pnpm lint`, `pnpm exec tsc -b`, `pnpm build` | `pnpm exec vitest run` | vitest against the API | `pnpm exec playwright test --project=e2e` | all four |
-| NestJS / Express API | `pnpm lint`, `pnpm exec tsc --noEmit`, `pnpm build` | `pnpm test` | supertest + local DB (Docker) | API smoke via Playwright `request` or supertest | security only (no UI) |
+| Next.js (fallback) | `pnpm lint`, `pnpm format:check`, `pnpm exec tsc --noEmit`, `pnpm build` | `pnpm exec vitest run` | `pnpm exec supabase start` + vitest project | `pnpm exec playwright test --project=e2e` | all four (section below) |
+| Vite + React | `pnpm lint`, `pnpm format:check`, `pnpm exec tsc -b`, `pnpm build` | `pnpm exec vitest run` | vitest against the API | `pnpm exec playwright test --project=e2e` | all four |
+| NestJS / Express API | `pnpm lint`, `pnpm format:check`, `pnpm exec tsc --noEmit`, `pnpm build` | `pnpm test` | supertest + local DB (Docker) | API smoke via Playwright `request` or supertest | security only (no UI) |
 
 Use the package manager the project uses; pin nothing here that the constitution decides otherwise.
+The `format:check` script comes from `profiles/code-style.md` (greenfield); a brownfield project uses its own.
 
 ## E2E browser over CDP
 

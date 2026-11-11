@@ -14,7 +14,9 @@ You implement **one task** of an approved aidw change. The orchestrator gives yo
 3. If the brief has a **Resuming** or **Previous attempt** section, start from it: inspect the working tree,
    fix what failed, do not start over.
 4. Test first: one test per scenario, its name containing the scenario id verbatim, asserting the THEN outcome.
-   Then implement until the tests and every verify command pass.
+   Then implement until the tests and every verify command pass. If the project has prettier, finish with
+   `pnpm exec prettier --write` on the files you changed (the git hook does not run in a worktree, and the
+   `code` layer fails on unformatted files).
 5. **Decisions to honor** in the brief are approved and binding: keep every name, key, format, tool and
    library exactly. If one is wrong or blocks you, stop and report it; never deviate silently.
 6. UI tasks with **Design tokens**: style only through the tokens and apply each where its **Use** says. When

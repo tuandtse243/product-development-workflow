@@ -208,6 +208,9 @@ tasks:
   dependency is real.
 - The first tasks usually scaffold the project with the approved stack and set up the test harness, the
   JUnit reporters of quality.yaml, and `.env.example` for every environment variable (names only).
+- **Code style.** For a greenfield JS/TS project the scaffold task also sets up prettier, eslint, husky and
+  lint-staged as described in `$(aidw plugin-path profiles/code-style.md)`; put those files in its `touches`
+  and tell it to follow that profile. Brownfield projects keep their own tooling.
 
 ## 8. Quality, deploy and permissions
 
