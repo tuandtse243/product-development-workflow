@@ -9548,6 +9548,7 @@ ${req.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`;
         `- **Screenshots**: when it works, save at most 6 PNG screenshots of the screens and states this task changes into \`${shots}\` (create it): the most telling states, at desktop and mobile width, dark theme too if tokens have dark values. The reviewer opens every one. **Every attempt, retries included, saves new ones**: the checkpoint counts only PNGs written after the previous checkpoint, even when the UI did not change.`,
         "- Take screenshots with Playwright through the project's `webServer` config (it starts and stops the app), e.g. a spec run on its own with `npx playwright test <file>`. If you start a server yourself, stop it before you report: a leftover server holds the e2e port and fails the checkpoint."
       ] : [],
+      ...t.type === "fix" ? ["- **Bugfix**: first write a regression test that reproduces the bug and run it to watch it FAIL on the current code; only then fix it. The test name keeps the scenario id."] : [],
       "- Report in at most 10 lines: what works now, files changed, verify result.",
       `- Only if the reviewer needs to know something (a file outside Touches and why, a scenario you narrowed or could not cover, a risk), write it to \`${reportFile}\` with the Write tool (the only .aidw file you may write besides screenshots). Otherwise write nothing: do not create the file.`,
       "",
@@ -10411,6 +10412,8 @@ function newChange(p, id, opts) {
 var ANALYSIS = (title, brownfield = false) => `# Analysis: ${title}
 
 ## Summary
+
+Size: normal (small | normal: small is a bugfix or tweak, at most 3 tasks, see /aidw:start step 1c)
 
 ${PLACEHOLDER}: one page the user can review in minutes - goal, scope, the 5-10 key decisions, and the risks and assumptions that need their attention.
 
@@ -11507,6 +11510,15 @@ function checkAnalysisDoc(text, file, d) {
     d.error(file, '"## Permissions" must list each tier-2 resource as a bullet, or say "None"', perms.line);
   }
 }
+var SIZES = ["small", "normal"];
+var SMALL_LAYERS = /* @__PURE__ */ new Set(["code", "unit", "integration", "e2e"]);
+var SMALL_MAX_TASKS = 3;
+function sizeOf(analysis) {
+  const m = analysis === null ? null : /^Size:\s*(\S+)/im.exec(analysis);
+  if (!m) return "normal";
+  const v = m[1].toLowerCase().replace(/[.,;]$/, "");
+  return SIZES.includes(v) ? v : "invalid";
+}
 function analyzeChange(p, id) {
   const d = new Diags();
   const change = loadChange(p, id);
@@ -11578,6 +11590,15 @@ function analyzeChange(p, id) {
     if (!coveredScenarios.has(s)) d.error(tf, `scenario "${s}" has no task that implements and verifies it`);
   }
   uiScenarioAdvice(p, id, tasks, d, tf);
+  const size = sizeOf(analysis);
+  if (size === "invalid") d.error(rel(p, analysisFile), 'invalid "Size:" line: write "Size: small" or "Size: normal"');
+  if (size === "small") {
+    if (tasks.length > SMALL_MAX_TASKS) d.error(tf, `Size: small allows at most ${SMALL_MAX_TASKS} tasks (${tasks.length} planned): make it Size: normal or cut the scope`);
+    for (const l of quality?.layers ?? []) {
+      if (!SMALL_LAYERS.has(l.name)) d.warn(rel(p, analysisFile), `Size: small normally runs only code, unit and e2e (UI); layer "${l.name}" was added: say why in "## Quality profile" or drop it`);
+    }
+    if (quality && quality.deploy.target !== "none") d.warn(rel(p, analysisFile), "Size: small does not deploy unless the user asked for it; set the deploy target to none");
+  }
   for (const advice of planAdvice(tasks)) d.warn(tf, advice);
   return d;
 }

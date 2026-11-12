@@ -216,6 +216,8 @@ const ANALYSIS = (title: string, brownfield = false) => `# Analysis: ${title}
 
 ## Summary
 
+Size: normal (small | normal: small is a bugfix or tweak, at most 3 tasks, see /aidw:start step 1c)
+
 ${PLACEHOLDER}: one page the user can review in minutes - goal, scope, the 5-10 key decisions, and the risks and assumptions that need their attention.
 
 ## Decisions to honor

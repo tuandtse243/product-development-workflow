@@ -165,6 +165,20 @@ function checkAnalysisDoc(text: string, file: string, d: Diags): void {
   }
 }
 
+export const SIZES = ["small", "normal"] as const;
+export type Size = (typeof SIZES)[number];
+/** Layers a small change may run: code and unit always, e2e when it touches UI. */
+const SMALL_LAYERS = new Set(["code", "unit", "integration", "e2e"]);
+export const SMALL_MAX_TASKS = 3;
+
+/** `Size: small | normal` in the Analysis (default normal); the user confirms it at the gate with the rest of the file. */
+export function sizeOf(analysis: string | null): Size | "invalid" {
+  const m = analysis === null ? null : /^Size:\s*(\S+)/im.exec(analysis);
+  if (!m) return "normal";
+  const v = (m[1] as string).toLowerCase().replace(/[.,;]$/, "");
+  return (SIZES as readonly string[]).includes(v) ? (v as Size) : "invalid";
+}
+
 /** Runs every pre-gate consistency check for one change. */
 export function analyzeChange(p: Paths, id: string): Diags {
   const d = new Diags();
@@ -248,6 +262,15 @@ export function analyzeChange(p: Paths, id: string): Diags {
     if (!coveredScenarios.has(s)) d.error(tf, `scenario "${s}" has no task that implements and verifies it`);
   }
   uiScenarioAdvice(p, id, tasks, d, tf);
+  const size = sizeOf(analysis);
+  if (size === "invalid") d.error(rel(p, analysisFile), 'invalid "Size:" line: write "Size: small" or "Size: normal"');
+  if (size === "small") {
+    if (tasks.length > SMALL_MAX_TASKS) d.error(tf, `Size: small allows at most ${SMALL_MAX_TASKS} tasks (${tasks.length} planned): make it Size: normal or cut the scope`);
+    for (const l of quality?.layers ?? []) {
+      if (!SMALL_LAYERS.has(l.name)) d.warn(rel(p, analysisFile), `Size: small normally runs only code, unit and e2e (UI); layer "${l.name}" was added: say why in "## Quality profile" or drop it`);
+    }
+    if (quality && quality.deploy.target !== "none") d.warn(rel(p, analysisFile), "Size: small does not deploy unless the user asked for it; set the deploy target to none");
+  }
   for (const advice of planAdvice(tasks)) d.warn(tf, advice);
   return d;
 }

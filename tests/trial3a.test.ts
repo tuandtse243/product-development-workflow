@@ -173,3 +173,35 @@ describe("re-approval keeps done work and tasks can be reopened", () => {
     expect(cli(root, "next", "--json").json()).toMatchObject({ action: "implement", task: "T01" });
   });
 });
+
+describe("small changes", () => {
+  const withSize = (root: string, line: string) => {
+    const f = join(root, ".aidw/changes", ID, "analysis.md");
+    write(root, `.aidw/changes/${ID}/analysis.md`, readFileSync(f, "utf8").replace("## Summary\n", `## Summary\n\n${line}\n`));
+  };
+  const four = Array.from({ length: 4 }, (_, i) => `  - id: T0${i + 1}\n    title: t${i + 1}\n    role: backend-engineer\n    type: ${i === 0 ? "fix" : "feat"}\n${i === 0 ? `    scenarios: [${SCENARIO}]\n` : ""}    touches: ["lib/${i}/**"]\n    verify: ['node -e "process.exit(0)"']\n    status: pending\n`).join("");
+
+  it("limits Size: small to three tasks and flags extra layers and a deploy", () => {
+    const root = project({ tasks: `tasks:\n${four}` });
+    withSize(root, "Size: small");
+    const r = cli(root, "analyze", ID, "--json").out;
+    expect(r).toMatch(/at most 3 tasks \(4 planned\)/);
+    expect(r).toMatch(/does not deploy unless the user asked/);
+  });
+
+  it("rejects an unknown size and accepts normal", () => {
+    const root = project();
+    withSize(root, "Size: huge");
+    expect(cli(root, "analyze", ID, "--json").out).toMatch(/invalid \\"Size:\\" line/);
+    const ok = project();
+    withSize(ok, "Size: normal");
+    expect(cli(ok, "analyze", ID, "--json").out).not.toMatch(/Size/);
+  });
+
+  it("tells a bugfix implementer to write a failing regression test first", () => {
+    const root = project({ tasks: `tasks:\n${four.split("  - id: T02")[0]}` });
+    approve(root);
+    cli(root, "task", "start", "T01");
+    expect(readFileSync(cli(root, "brief", "T01").out.trim(), "utf8")).toMatch(/regression test[^\n]*FAIL on the current code/);
+  });
+});

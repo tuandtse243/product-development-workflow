@@ -67,6 +67,19 @@ system before asking anything; the grilling then asks only what the code cannot 
 6. Keep the stack: `Source: client` (the existing code is the client's choice, Q9). Never migrate frameworks,
    package manager or libraries unless the user asks for exactly that.
 
+## 1c. Size
+
+Decide with the user whether this is a **small** change (a bugfix or a tweak to one behavior) or a **normal** one, and
+write `Size: small` or `Size: normal` in the Analysis Summary; the user confirms it at the gate. Small means:
+
+- at most 3 grilling questions (only what the code cannot answer), no new domain model, design tokens or ADRs
+  unless the change really needs one;
+- at most 3 tasks, and `aidw analyze` refuses more;
+- quality layers `code` + `unit`, plus `e2e` when UI is touched; deploy target `none` unless the user asked;
+- a bugfix (`type: fix`) needs a regression test that fails first (its implementer brief says so).
+
+Everything else (intake, specs, one gate, independent review, evidence) is unchanged.
+
 ## 2. Discovery (grilling + clarify)
 
 1. `aidw transition <id> analyzing`

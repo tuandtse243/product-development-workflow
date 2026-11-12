@@ -776,6 +776,9 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
             "- Take screenshots with Playwright through the project's `webServer` config (it starts and stops the app), e.g. a spec run on its own with `npx playwright test <file>`. If you start a server yourself, stop it before you report: a leftover server holds the e2e port and fails the checkpoint.",
           ]
         : []),
+      ...(t.type === "fix"
+        ? ["- **Bugfix**: first write a regression test that reproduces the bug and run it to watch it FAIL on the current code; only then fix it. The test name keeps the scenario id."]
+        : []),
       "- Report in at most 10 lines: what works now, files changed, verify result.",
       `- Only if the reviewer needs to know something (a file outside Touches and why, a scenario you narrowed or could not cover, a risk), write it to \`${reportFile}\` with the Write tool (the only .aidw file you may write besides screenshots). Otherwise write nothing: do not create the file.`,
       "",
