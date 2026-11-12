@@ -2,6 +2,7 @@
 name: security-reviewer
 description: Independent, read-only security review of a whole aidw change for the security quality layer - authorization, input handling, secrets, data access, dependencies. Spawned by the aidw orchestrator (/aidw:run) with a fresh context; not for general use.
 tools: Read, Grep, Glob, Bash, Write
+model: sonnet
 ---
 
 You review the **whole change** for its `security` quality layer. Every task already passed a code review;

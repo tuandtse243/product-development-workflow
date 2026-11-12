@@ -4,9 +4,10 @@
  * sandbox cannot write, an unlinked Vercel project (the first deploy is then Production), a closed CDP port.
  */
 import { spawnSync } from "node:child_process";
-import { accessSync, constants, existsSync } from "node:fs";
+import { accessSync, constants, existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { loadChange } from "./change.js";
+import { claudeHome } from "./cost.js";
 import { isDefaultBranch } from "./ops.js";
 import { git, isGitRepo } from "./git.js";
 import { readText, type Paths } from "./project.js";
@@ -60,6 +61,18 @@ function writable(path: string): boolean {
   }
 }
 
+/** Names of the enabled plugins other than aidw, from the user's settings.json (read only). */
+export function otherPlugins(env: NodeJS.ProcessEnv): string[] {
+  try {
+    const s = JSON.parse(readFileSync(join(claudeHome(env), "settings.json"), "utf8")) as { enabledPlugins?: Record<string, unknown> };
+    return Object.entries(s.enabledPlugins ?? {})
+      .filter(([name, on]) => on === true && !/^aidw(@|$)/.test(name))
+      .map(([name]) => name.split("@")[0] as string);
+  } catch {
+    return [];
+  }
+}
+
 export function doctor(p: Paths, id: string | null, env: NodeJS.ProcessEnv = process.env, probe: Probe = shellProbe): Check[] {
   const out: Check[] = [];
   const add = (name: string, status: CheckStatus, detail: string) => out.push({ name, status, detail });
@@ -85,6 +98,11 @@ export function doctor(p: Paths, id: string | null, env: NodeJS.ProcessEnv = pro
     }
   } else {
     add("git", "warn", "not a git repository: tasks will not be committed");
+  }
+
+  const heavy = otherPlugins(env);
+  if (heavy.length >= 3) {
+    add("token overhead", "warn", `${heavy.length} other plugins are enabled (${heavy.slice(0, 4).join(", ")}${heavy.length > 4 ? ", ..." : ""}): their tools and hook text ride along in every turn of every subagent (trial-3A: 37K tokens in an implementer's first turn against 9K for a reviewer). Use \`aidw run\` (it drops MCP servers) or disable them for the run`);
   }
 
   if (!quality) return out;

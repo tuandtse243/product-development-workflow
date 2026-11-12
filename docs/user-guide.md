@@ -221,6 +221,24 @@ hành vi, thay vì chia theo tầng.
 | Giữa chừng báo plugin/agent `aidw:*` biến mất | chạy bằng `--plugin-dir` và session được nạp lại | cài plugin bằng marketplace (mục 2), rồi `/reload-plugins` |
 | Hộp thoại xác nhận lặp lại | lệnh bậc 2 hoặc 3 chưa nằm trong danh sách | xem mục 6 |
 
+## Token và tốc độ (số đo từ trial-3A)
+
+`aidw cost` in ra chi phí theo vai trò và hiệu quả của parallel. Một lần chạy 11 task, 29 subagent:
+
+| Phần | Tỉ lệ chi phí | Vì sao |
+|---|---|---|
+| Orchestrator (session chính) | 57% | 186 lượt, mỗi lượt đọc lại context lớn dần từ 51K lên 300K token |
+| Implementer | 33% | lượt đầu tiên đã 37K token (so với 9K của reviewer): schema tool của MCP và plugin đi kèm mọi lượt |
+| Reviewer, UI reviewer, security | 10% | ảnh chụp màn hình chiếm phần lớn ở UI reviewer (4 vòng) |
+
+**Parallel có nhanh hơn không?** Có: 6 task chạy theo wave mất 14 phút thay vì 22 phút (nhanh hơn 37%). Mức tăng bị giới hạn bởi
+độ rộng của đồ thị task (wave rộng 2 trong 4 tầng). **Có tốn thêm token không?** Không đáng kể: mỗi task tốn như nhau dù chạy song
+song hay tuần tự; phần thêm duy nhất là bước `aidw integrate` sau wave. Chi phí lớn nhất là số lượt của orchestrator, không phải số subagent.
+
+Đã tối ưu: implementer chỉ có 6 tool (allowlist), reviewer chạy Sonnet, `aidw run` bỏ MCP server, UI reviewer vòng 2 trở đi chỉ mở ảnh đã đổi,
+task sửa lỗi của layer có reviewer riêng được tự duyệt, orchestrator có kỷ luật token trong `/aidw:run`. Cách rẻ nhất vẫn là chạy
+`aidw run <id>` ở terminal của bạn (session mới cho từng task, khoảng một phần tư token). `aidw doctor` cảnh báo khi bật nhiều plugin khác.
+
 ## 11. Giới hạn hiện tại
 
 - Chạy song song (wave), `aidw run` và brownfield đã có code và test, nhưng **chưa được kiểm trong Claude Code

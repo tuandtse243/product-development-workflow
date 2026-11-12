@@ -7,7 +7,7 @@
  * verdict with `aidw layer-review <layer> pass|fix`. The brief carries everything the reviewer
  * needs as pointers and artifacts, never chat history.
  */
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { decisionsToHonor } from "./analyze.js";
 import { loadChange } from "./change.js";
@@ -83,7 +83,15 @@ export function buildLayerBrief(p: Paths, id: string, layer: Layer, runs: Verify
   const change = loadChange(p, id);
   const tasks = loadTasks(p, id).tasks;
   const artifacts = layerArtifacts(p, layer);
-  const shots = kind === "ui" ? taskShots(p, id) : [];
+  // Round 2 onwards: the reviewer already judged the artifacts that did not change since the previous brief, and each
+  // image costs tokens in every later turn. List only what a fix touched (trial-3A: four UI rounds, 61% of their cost
+  // was images). Per-task screenshots were reviewed per task: they are only a fallback when the layer has none.
+  const prevBrief = join(p.run, "briefs", id, `${layer.name}.layer-review.md`);
+  const prevAt = existsSync(prevBrief) ? statSync(prevBrief).mtimeMs : 0;
+  const changedArtifacts = prevAt ? artifacts.filter((f) => statSync(join(p.project, f)).mtimeMs > prevAt) : artifacts;
+  const toOpen = changedArtifacts.length ? changedArtifacts : artifacts;
+  const skipped = artifacts.length - toOpen.length;
+  const shots = kind === "ui" && !artifacts.length ? taskShots(p, id) : [];
   const decisions = decisionsToHonor(readText(join(change.dir, "analysis.md")) ?? "");
   const tokenInfo = kind === "ui" ? loadTokens(p) : null;
   const tokens = tokenInfo && tokenInfo.diags.errors.length === 0 ? tokenInfo.tokens : [];
@@ -116,7 +124,11 @@ export function buildLayerBrief(p: Paths, id: string, layer: Layer, runs: Verify
       ? `- Code: \`git diff ${base}\` plus untracked files (\`git status --porcelain\`); \`git diff --name-only ${base}\` lists the files.`
       : "- Code: the whole project (no base commit was recorded).",
     ...(artifacts.length
-      ? [`- Artifacts of this layer (open **every** one with Read):`, ...artifacts.map((f) => `  - \`${join(p.project, f)}\``)]
+      ? [
+          `- Artifacts of this layer (open **every** one listed with Read):`,
+          ...toOpen.map((f) => `  - \`${join(p.project, f)}\``),
+          ...(skipped ? [`- ${skipped} other artifact(s) did not change since your previous round and already passed it: open one only if a fix could affect it.`] : []),
+        ]
       : layer.artifacts.length
         ? [`- No file matched the layer's artifact globs (${layer.artifacts.map((g) => `\`${g}\``).join(", ")}): say so in your verdict; it is a blocking problem for a UI layer.`]
         : []),

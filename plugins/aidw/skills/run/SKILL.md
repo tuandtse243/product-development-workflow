@@ -60,6 +60,18 @@ that aidw creates; everything else runs sequentially on the main checkout.
    in one line, that `aidw run <id>` in their own terminal does the same with a fresh session per task and costs
    about a quarter of the tokens of this long session; then continue here if they do not switch.
 
+## Token discipline (this session re-reads its whole context on every turn)
+
+Trial-3A: 186 orchestrator turns re-read a context that grew from 51K to 300K tokens; that was 57% of the cost.
+
+- Every aidw command prints a `NEXT:` or `SPAWN` line: follow it. Do not call `aidw next` or `aidw status` in between.
+- After spawning subagents, end the turn with no text. Do not narrate waiting or restate what a result said.
+- Run independent aidw commands in one Bash call (`aidw checkpoint T02; aidw checkpoint T03`), and spawn every
+  ready subagent in one message. Do not Read files a brief already summarizes.
+- A fix task of a layer that has its own reviewer is auto-reviewed: do not spawn a reviewer for it.
+- With more than 3 tasks left, the cheapest path is `aidw run <id>` in the user's terminal (fresh session per task,
+  no MCP servers). Say so once.
+
 ## 1. Loop
 
 Repeat until `aidw next` says `complete` or `escalate`:

@@ -118,7 +118,7 @@ export function readTranscript(file: string): Transcript {
 
 export interface SessionCost extends Transcript {
   id: string;
-  subagents: { count: number; turns: number; usage: Usage };
+  subagents: { count: number; turns: number; usage: Usage; /** by agent type (aidw:implementer ...) */ roles: Record<string, { count: number; turns: number; usage: Usage; firstContext: number }> };
   /** Agent tool calls beyond the subagents that actually ran: a plugin hook rewrote the call and it was sent twice */
   repeatedSpawns: number;
 }
@@ -144,13 +144,21 @@ export function readSessions(projectDir: string, env: NodeJS.ProcessEnv): Sessio
     const main = readTranscript(join(dir, name));
     if (main.turns === 0) continue;
     const subDir = join(dir, id, "subagents");
-    let subs = { count: 0, turns: 0, usage: emptyUsage() };
+    let subs: SessionCost["subagents"] = { count: 0, turns: 0, usage: emptyUsage(), roles: {} };
     if (existsSync(subDir)) {
       for (const f of readdirSync(subDir)) {
         if (!f.endsWith(".jsonl")) continue;
         const t = readTranscript(join(subDir, f));
         if (t.turns === 0) continue;
-        subs = { count: subs.count + 1, turns: subs.turns + t.turns, usage: addUsage(subs.usage, t.usage) };
+        let role = "subagent";
+        try {
+          role = String((JSON.parse(readFileSync(join(subDir, f.replace(/\.jsonl$/, ".meta.json")), "utf8")) as { agentType?: string }).agentType ?? role);
+        } catch {
+          /* no meta file: counted as a plain subagent */
+        }
+        const r = subs.roles[role] ?? { count: 0, turns: 0, usage: emptyUsage(), firstContext: 0 };
+        subs.roles[role] = { count: r.count + 1, turns: r.turns + t.turns, usage: addUsage(r.usage, t.usage), firstContext: r.firstContext + t.contextFirst };
+        subs = { count: subs.count + 1, turns: subs.turns + t.turns, usage: addUsage(subs.usage, t.usage), roles: subs.roles };
       }
     }
     out.push({ ...main, id, subagents: subs, repeatedSpawns: Math.max(0, (main.tools.Agent ?? 0) - subs.count) });
@@ -161,6 +169,28 @@ export function readSessions(projectDir: string, env: NodeJS.ProcessEnv): Sessio
 export const kilo = (n: number): string => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${Math.round(n / 1000)}K` : String(n));
 
 /** Plain-text report: one block per session, then the totals and what to do about them. */
+/** Wall time the parallel waves saved: the tasks' own durations added up against the time they actually covered. */
+export function parallelSavings(tasks: Record<string, unknown>[]): { wave: number; serialMs: number; wallMs: number } | null {
+  const iv = tasks
+    .filter((t) => typeof t.merged_at === "string" || t.merged_at instanceof Date)
+    .map((t) => [new Date(String(t.started_at)).getTime(), new Date(String(t.finished_at)).getTime()] as const)
+    .filter(([a, b]) => Number.isFinite(a) && Number.isFinite(b) && b >= a)
+    .sort((x, y) => x[0] - y[0]);
+  if (!iv.length) return null;
+  const serialMs = iv.reduce((n, [a, b]) => n + (b - a), 0);
+  let wallMs = 0;
+  let [cs, ce] = iv[0] as readonly [number, number];
+  for (const [a, b] of iv.slice(1)) {
+    if (a <= ce) ce = Math.max(ce, b);
+    else {
+      wallMs += ce - cs;
+      [cs, ce] = [a, b];
+    }
+  }
+  wallMs += ce - cs;
+  return { wave: iv.length, serialMs, wallMs };
+}
+
 export function formatCost(sessions: SessionCost[]): string {
   if (!sessions.length) return "no Claude Code transcripts found for this project\n";
   const lines: string[] = [];
@@ -194,9 +224,28 @@ export function formatCost(sessions: SessionCost[]): string {
     `total: ${sessions.length} session(s), ${turns} orchestrator turns + ${subTurns} subagent turns (${spawns} subagents)`,
     `  weighted cost ${kilo(total)} input-equivalent tokens (estimate for comparing runs): orchestrator ${share}%, subagents ${100 - share}%`,
   );
+  const roles: Record<string, { count: number; turns: number; usage: Usage; firstContext: number }> = {};
+  for (const s of sessions) {
+    for (const [name, r] of Object.entries(s.subagents.roles)) {
+      const x = roles[name] ?? { count: 0, turns: 0, usage: emptyUsage(), firstContext: 0 };
+      roles[name] = { count: x.count + r.count, turns: x.turns + r.turns, usage: addUsage(x.usage, r.usage), firstContext: x.firstContext + r.firstContext };
+    }
+  }
+  if (Object.keys(roles).length) {
+    lines.push("  by role (share of the total):");
+    lines.push(`    orchestrator   ${Math.round(share)}%`);
+    for (const [name, r] of Object.entries(roles).sort((a, b) => weighted(b[1].usage) - weighted(a[1].usage))) {
+      lines.push(`    ${name.replace(/^aidw:/, "").padEnd(14)} ${Math.round((weighted(r.usage) / (total || 1)) * 100)}%  (${r.count} agent(s), ${r.turns} turns, first turn ${kilo(Math.round(r.firstContext / r.count))} tokens)`);
+    }
+  }
   const worst = sessions.reduce((a, b) => (b.contextMax > a.contextMax ? b : a));
   const advice: string[] = [];
   if (worst.contextMax > 200_000) advice.push(`session ${worst.id.slice(0, 8)} grew to ${kilo(worst.contextMax)} per turn, and every turn re-reads it: run \`aidw run\` (a fresh session per task) or /clear between phases`);
+  const impl = roles["aidw:implementer"];
+  const rev = roles["aidw:reviewer"];
+  if (impl && rev && impl.firstContext / impl.count > 2 * (rev.firstContext / rev.count)) {
+    advice.push(`an implementer's first turn is ${kilo(Math.round(impl.firstContext / impl.count))} tokens against ${kilo(Math.round(rev.firstContext / rev.count))} for a reviewer: tool schemas of MCP servers and plugins ride along in every turn; use \`aidw run\` (it drops MCP servers) or disable them for the run`);
+  }
   if (repeated) advice.push(`${repeated} Agent call(s) were sent twice: a plugin hook rewrites the call (for example context-mode); disabling it for aidw runs saves one turn per spawn`);
   const chatty = sessions.flatMap((s) => Object.entries(s.aidwCommands)).filter(([k]) => k === "status" || k === "next");
   const chattyCalls = chatty.reduce((n, [, v]) => n + v, 0);

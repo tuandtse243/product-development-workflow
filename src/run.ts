@@ -627,7 +627,16 @@ export function parseVerdict(text: string): "pass" | "fix" | null {
 export function autoReview(p: Paths, id: string, taskId: string, changed: string[] | null): ReviewResult | null {
   const tf = loadTasks(p, id);
   const t = tf.tasks[indexOf(tf, taskId)] as Task;
-  if (t.origin !== "converge" || statusOf(t) !== "review" || !changed || changed.length === 0) return null;
+  if (statusOf(t) !== "review" || !changed || changed.length === 0) return null;
+  if (t.origin === "quality" && typeof t.layer === "string") {
+    // A fix for a layer that has its own reviewer is judged again by that reviewer right after: a per-task reviewer
+    // would be a third pair of eyes on a few lines (trial-3A: three of them, 24 turns).
+    const text = readText(qualityFile(tf.change));
+    const layer = text === null ? undefined : parseQuality(text, "quality.yaml").config?.layers.find((l) => l.name === t.layer);
+    if (!layer?.review) return null;
+    return recordReview(p, id, taskId, "pass", `auto-reviewed: a fix for the ${layer.name} layer (checkpoint passed); the ${layer.review} reviewer judges the layer again next.`);
+  }
+  if (t.origin !== "converge") return null;
   if (!changed.every((f) => TEST_FILE.test(f))) return null;
   return recordReview(p, id, taskId, "pass", "auto-reviewed: a converge task that changed only test files (checkpoint passed; `aidw converge` re-checks every scenario).");
 }

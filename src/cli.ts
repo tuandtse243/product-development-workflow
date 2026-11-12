@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { analyzeChange, idsAfterChange, mainSpecIds } from "./analyze.js";
 import { approvalStatus, computeApprovalHash } from "./approval.js";
@@ -24,9 +24,10 @@ import {
   writeMerge,
 } from "./ops.js";
 import { runStopFailure } from "./pause.js";
-import { findProject, pathsFor, rel, type Paths } from "./project.js";
+import { findProject, pathsFor, readText, rel, type Paths } from "./project.js";
+import { parseTasks, type Task } from "./tasks.js";
 import { converge } from "./converge.js";
-import { formatCost, readSessions } from "./cost.js";
+import { formatCost, parallelSavings, readSessions } from "./cost.js";
 import { detectProject } from "./detect.js";
 import { doctor, doctorText } from "./doctor.js";
 import { createPr, planPr } from "./pr.js";
@@ -70,6 +71,19 @@ function compactNote(cwd: string, env: NodeJS.ProcessEnv): string | null {
     // not in an execution state: status is enough
   }
   return `AIDW (context was compacted): ${active.join(", ")}.${next} All progress is in .aidw/ and git; run \`aidw status\` before acting, and \`/aidw:resume\` if the run was interrupted.`;
+}
+
+/** tasks.yaml of every change, active or archived. */
+function changeTasks(p: Paths): Task[][] {
+  const out: Task[][] = [];
+  for (const base of [p.changes, p.archive]) {
+    if (!existsSync(base)) continue;
+    for (const d of readdirSync(base)) {
+      const text = readText(join(base, d, "tasks.yaml"));
+      if (text !== null) out.push(parseTasks(text).tasks);
+    }
+  }
+  return out;
 }
 
 function nextText(n: NextAction): string {
@@ -140,7 +154,7 @@ Execution (state executing; add --change <id> when several changes are active):
   integrate                              after a wave: verify the merged code; a failure adds a fix task
 
 Unattended (in your own terminal, not inside Claude Code):
-  run [<id>] [--permission-mode M] [--max-runs N] [--claude BIN] [-- <claude args>]
+  run [<id>] [--permission-mode M] [--max-runs N] [--claude BIN] [--keep-mcp] [-- <claude args>]
                                          loop \`claude -p "/aidw:resume <id>"\` until archived; waits out usage
                                          limits (stated reset time or 5-60 min backoff); stops on escalation
   task retry <task>                      user-granted fresh attempt budget for an escalated/failed task
@@ -428,7 +442,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         if (r.ok) {
           const auto = autoReview(p, id, r.task, r.changed_files);
           if (auto) {
-            after = `review ${auto.task}: auto-passed (converge task, tests only)${auto.commit ? ` (commit ${auto.commit.slice(0, 8)})` : ""}\n${nextLine(p, id)}${sessionEnd(env, p, id)}`;
+            after = `review ${auto.task}: auto-passed (converge tests, or a layer fix its own reviewer judges again)${auto.commit ? ` (commit ${auto.commit.slice(0, 8)})` : ""}\n${nextLine(p, id)}${sessionEnd(env, p, id)}`;
           } else {
             reviewBrief = buildBrief(p, id, r.task, "review", join(pluginRoot(env), "vendor")).path;
             after = `review brief ${reviewBrief}\nSPAWN aidw:reviewer with: ${REVIEWER_PROMPT(reviewBrief)}\nThen: aidw verdict ${r.task}\n`;
@@ -502,7 +516,11 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         let sessions = readSessions(p.project, env);
         if (prefix) sessions = sessions.filter((s) => s.id.startsWith(prefix));
         if (last) sessions = sessions.slice(-Number(last));
-        emit({ project: p.project, sessions }, formatCost(sessions));
+        const saved = changeTasks(p).map((t) => parallelSavings(t)).filter((x): x is NonNullable<typeof x> => x !== null);
+        const serial = saved.reduce((n, s) => n + s.serialMs, 0);
+        const wall = saved.reduce((n, s) => n + s.wallMs, 0);
+        const parallel = saved.length ? `\nparallel waves: ${saved.reduce((n, s) => n + s.wave, 0)} task(s) took ${Math.round(wall / 60000)} min of wall time instead of ${Math.round(serial / 60000)} min one after another (${serial ? Math.round((1 - wall / serial) * 100) : 0}% faster); tokens per task are the same\n` : "";
+        emit({ project: p.project, sessions, parallel: saved }, formatCost(sessions) + parallel);
         return 0;
       }
 
@@ -518,6 +536,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           ...(str(args.flags.claude) ? { claude: str(args.flags.claude) as string } : {}),
           ...(str(args.flags["permission-mode"]) ? { permissionMode: str(args.flags["permission-mode"]) as string } : {}),
           ...(maxRuns ? { maxRuns: Number(maxRuns) } : {}),
+          ...(args.flags["keep-mcp"] === true ? { keepMcp: true } : {}),
           extraArgs: passthrough,
           env,
           log: json ? () => {} : (line) => io.out(`[aidw run] ${line}\n`),
@@ -789,7 +808,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const { kept, reopened } = reconcileDoneTasks(p, id);
         emit(
           { ok: true, id, hash, files, kept, reopened },
-          `approved ${id}\n  ${hash}\n  covers ${files.length} file(s)\n${kept.length ? `  done work kept: ${kept.join(", ")}\n` : ""}${reopened.length ? `  edited tasks run again: ${reopened.join(", ")}\n` : ""}`,
+          `approved ${id}\n  ${hash}\n  covers ${files.length} file(s)\n${kept.length ? `  done work kept: ${kept.join(", ")}\n` : ""}${reopened.length ? `  edited tasks run again: ${reopened.join(", ")}\n` : ""}  cheapest build (about a quarter of the tokens): in your own terminal, ${join(pluginRoot(env), "bin", "aidw")} run ${id} --permission-mode auto\n`,
         );
         return 0;
       }

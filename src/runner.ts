@@ -20,6 +20,8 @@ import type { Paths } from "./project.js";
 export interface RunnerOptions {
   claude?: string;
   permissionMode?: string;
+  /** keep the user's MCP servers in the unattended sessions (default: drop them, their tool schemas cost tokens every turn) */
+  keepMcp?: boolean;
   /** extra arguments for every claude call (after `--` on the aidw command line), e.g. --plugin-dir */
   extraArgs?: string[];
   maxRuns?: number;
@@ -159,7 +161,7 @@ export function runLoop(p: Paths, id: string, opts: RunnerOptions = {}): RunnerR
     if (runs >= maxRuns) return result("max_runs", state, `${runs} sessions ran; raise --max-runs to continue`);
 
     const prompt = state === "delivered" ? `/aidw:deliver ${id}` : `/aidw:resume ${id}`;
-    const args = ["-p", prompt, "--permission-mode", mode, ...(opts.extraArgs ?? [])];
+    const args = ["-p", prompt, "--permission-mode", mode, ...(opts.keepMcp ? [] : ["--strict-mcp-config"]), ...(opts.extraArgs ?? [])];
     record(`session ${runs + 1}: ${claude} ${args.map((a) => (/\s/.test(a) ? JSON.stringify(a) : a)).join(" ")}`);
     const r = spawnSync(claude, args, {
       cwd: p.project,

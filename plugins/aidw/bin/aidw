@@ -9445,7 +9445,14 @@ function parseVerdict(text) {
 function autoReview(p, id, taskId, changed) {
   const tf = loadTasks(p, id);
   const t = tf.tasks[indexOf(tf, taskId)];
-  if (t.origin !== "converge" || statusOf2(t) !== "review" || !changed || changed.length === 0) return null;
+  if (statusOf2(t) !== "review" || !changed || changed.length === 0) return null;
+  if (t.origin === "quality" && typeof t.layer === "string") {
+    const text = readText(qualityFile(tf.change));
+    const layer = text === null ? void 0 : parseQuality(text, "quality.yaml").config?.layers.find((l) => l.name === t.layer);
+    if (!layer?.review) return null;
+    return recordReview(p, id, taskId, "pass", `auto-reviewed: a fix for the ${layer.name} layer (checkpoint passed); the ${layer.review} reviewer judges the layer again next.`);
+  }
+  if (t.origin !== "converge") return null;
   if (!changed.every((f) => TEST_FILE.test(f))) return null;
   return recordReview(p, id, taskId, "pass", "auto-reviewed: a converge task that changed only test files (checkpoint passed; `aidw converge` re-checks every scenario).");
 }
@@ -10764,7 +10771,12 @@ function buildLayerBrief(p, id, layer, runs, vendorDir) {
   const change = loadChange(p, id);
   const tasks = loadTasks(p, id).tasks;
   const artifacts = layerArtifacts(p, layer);
-  const shots = kind === "ui" ? taskShots2(p, id) : [];
+  const prevBrief = (0, import_node_path13.join)(p.run, "briefs", id, `${layer.name}.layer-review.md`);
+  const prevAt = (0, import_node_fs12.existsSync)(prevBrief) ? (0, import_node_fs12.statSync)(prevBrief).mtimeMs : 0;
+  const changedArtifacts = prevAt ? artifacts.filter((f) => (0, import_node_fs12.statSync)((0, import_node_path13.join)(p.project, f)).mtimeMs > prevAt) : artifacts;
+  const toOpen = changedArtifacts.length ? changedArtifacts : artifacts;
+  const skipped = artifacts.length - toOpen.length;
+  const shots = kind === "ui" && !artifacts.length ? taskShots2(p, id) : [];
   const decisions = decisionsToHonor(readText((0, import_node_path13.join)(change.dir, "analysis.md")) ?? "");
   const tokenInfo = kind === "ui" ? loadTokens(p) : null;
   const tokens = tokenInfo && tokenInfo.diags.errors.length === 0 ? tokenInfo.tokens : [];
@@ -10791,7 +10803,11 @@ function buildLayerBrief(p, id, layer, runs, vendorDir) {
   ];
   const scope = [
     base ? `- Code: \`git diff ${base}\` plus untracked files (\`git status --porcelain\`); \`git diff --name-only ${base}\` lists the files.` : "- Code: the whole project (no base commit was recorded).",
-    ...artifacts.length ? [`- Artifacts of this layer (open **every** one with Read):`, ...artifacts.map((f) => `  - \`${(0, import_node_path13.join)(p.project, f)}\``)] : layer.artifacts.length ? [`- No file matched the layer's artifact globs (${layer.artifacts.map((g) => `\`${g}\``).join(", ")}): say so in your verdict; it is a blocking problem for a UI layer.`] : [],
+    ...artifacts.length ? [
+      `- Artifacts of this layer (open **every** one listed with Read):`,
+      ...toOpen.map((f) => `  - \`${(0, import_node_path13.join)(p.project, f)}\``),
+      ...skipped ? [`- ${skipped} other artifact(s) did not change since your previous round and already passed it: open one only if a fix could affect it.`] : []
+    ] : layer.artifacts.length ? [`- No file matched the layer's artifact globs (${layer.artifacts.map((g) => `\`${g}\``).join(", ")}): say so in your verdict; it is a blocking problem for a UI layer.`] : [],
     ...shots.length ? [`- Per-task screenshots (already reviewed per task; use them to spot inconsistency between screens):`, ...shots.map((f) => `  - \`${(0, import_node_path13.join)(p.project, f)}\``)] : [],
     ...uiTasks.length ? [`- UI tasks in this change: ${uiTasks.map((t) => `${t.id} (${String(t.title ?? "")})`).join(", ")}.`] : []
   ];
@@ -11768,13 +11784,20 @@ function readSessions(projectDir, env) {
     const main = readTranscript((0, import_node_path17.join)(dir, name));
     if (main.turns === 0) continue;
     const subDir = (0, import_node_path17.join)(dir, id, "subagents");
-    let subs = { count: 0, turns: 0, usage: emptyUsage() };
+    let subs = { count: 0, turns: 0, usage: emptyUsage(), roles: {} };
     if ((0, import_node_fs16.existsSync)(subDir)) {
       for (const f of (0, import_node_fs16.readdirSync)(subDir)) {
         if (!f.endsWith(".jsonl")) continue;
         const t = readTranscript((0, import_node_path17.join)(subDir, f));
         if (t.turns === 0) continue;
-        subs = { count: subs.count + 1, turns: subs.turns + t.turns, usage: addUsage(subs.usage, t.usage) };
+        let role = "subagent";
+        try {
+          role = String(JSON.parse((0, import_node_fs16.readFileSync)((0, import_node_path17.join)(subDir, f.replace(/\.jsonl$/, ".meta.json")), "utf8")).agentType ?? role);
+        } catch {
+        }
+        const r = subs.roles[role] ?? { count: 0, turns: 0, usage: emptyUsage(), firstContext: 0 };
+        subs.roles[role] = { count: r.count + 1, turns: r.turns + t.turns, usage: addUsage(r.usage, t.usage), firstContext: r.firstContext + t.contextFirst };
+        subs = { count: subs.count + 1, turns: subs.turns + t.turns, usage: addUsage(subs.usage, t.usage), roles: subs.roles };
       }
     }
     out.push({ ...main, id, subagents: subs, repeatedSpawns: Math.max(0, (main.tools.Agent ?? 0) - subs.count) });
@@ -11782,6 +11805,22 @@ function readSessions(projectDir, env) {
   return out.sort((a, b) => (a.firstAt ?? "").localeCompare(b.firstAt ?? ""));
 }
 var kilo = (n) => n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}K` : String(n);
+function parallelSavings(tasks) {
+  const iv = tasks.filter((t) => typeof t.merged_at === "string" || t.merged_at instanceof Date).map((t) => [new Date(String(t.started_at)).getTime(), new Date(String(t.finished_at)).getTime()]).filter(([a, b]) => Number.isFinite(a) && Number.isFinite(b) && b >= a).sort((x, y) => x[0] - y[0]);
+  if (!iv.length) return null;
+  const serialMs = iv.reduce((n, [a, b]) => n + (b - a), 0);
+  let wallMs = 0;
+  let [cs, ce] = iv[0];
+  for (const [a, b] of iv.slice(1)) {
+    if (a <= ce) ce = Math.max(ce, b);
+    else {
+      wallMs += ce - cs;
+      [cs, ce] = [a, b];
+    }
+  }
+  wallMs += ce - cs;
+  return { wave: iv.length, serialMs, wallMs };
+}
 function formatCost(sessions) {
   if (!sessions.length) return "no Claude Code transcripts found for this project\n";
   const lines = [];
@@ -11815,9 +11854,28 @@ function formatCost(sessions) {
     `total: ${sessions.length} session(s), ${turns} orchestrator turns + ${subTurns} subagent turns (${spawns} subagents)`,
     `  weighted cost ${kilo(total)} input-equivalent tokens (estimate for comparing runs): orchestrator ${share}%, subagents ${100 - share}%`
   );
+  const roles = {};
+  for (const s of sessions) {
+    for (const [name, r] of Object.entries(s.subagents.roles)) {
+      const x = roles[name] ?? { count: 0, turns: 0, usage: emptyUsage(), firstContext: 0 };
+      roles[name] = { count: x.count + r.count, turns: x.turns + r.turns, usage: addUsage(x.usage, r.usage), firstContext: x.firstContext + r.firstContext };
+    }
+  }
+  if (Object.keys(roles).length) {
+    lines.push("  by role (share of the total):");
+    lines.push(`    orchestrator   ${Math.round(share)}%`);
+    for (const [name, r] of Object.entries(roles).sort((a, b) => weighted(b[1].usage) - weighted(a[1].usage))) {
+      lines.push(`    ${name.replace(/^aidw:/, "").padEnd(14)} ${Math.round(weighted(r.usage) / (total || 1) * 100)}%  (${r.count} agent(s), ${r.turns} turns, first turn ${kilo(Math.round(r.firstContext / r.count))} tokens)`);
+    }
+  }
   const worst = sessions.reduce((a, b) => b.contextMax > a.contextMax ? b : a);
   const advice = [];
   if (worst.contextMax > 2e5) advice.push(`session ${worst.id.slice(0, 8)} grew to ${kilo(worst.contextMax)} per turn, and every turn re-reads it: run \`aidw run\` (a fresh session per task) or /clear between phases`);
+  const impl = roles["aidw:implementer"];
+  const rev = roles["aidw:reviewer"];
+  if (impl && rev && impl.firstContext / impl.count > 2 * (rev.firstContext / rev.count)) {
+    advice.push(`an implementer's first turn is ${kilo(Math.round(impl.firstContext / impl.count))} tokens against ${kilo(Math.round(rev.firstContext / rev.count))} for a reviewer: tool schemas of MCP servers and plugins ride along in every turn; use \`aidw run\` (it drops MCP servers) or disable them for the run`);
+  }
   if (repeated) advice.push(`${repeated} Agent call(s) were sent twice: a plugin hook rewrites the call (for example context-mode); disabling it for aidw runs saves one turn per spawn`);
   const chatty = sessions.flatMap((s) => Object.entries(s.aidwCommands)).filter(([k]) => k === "status" || k === "next");
   const chattyCalls = chatty.reduce((n, [, v]) => n + v, 0);
@@ -11861,6 +11919,14 @@ function writable(path) {
     return false;
   }
 }
+function otherPlugins(env) {
+  try {
+    const s = JSON.parse((0, import_node_fs17.readFileSync)((0, import_node_path18.join)(claudeHome(env), "settings.json"), "utf8"));
+    return Object.entries(s.enabledPlugins ?? {}).filter(([name, on]) => on === true && !/^aidw(@|$)/.test(name)).map(([name]) => name.split("@")[0]);
+  } catch {
+    return [];
+  }
+}
 function doctor(p, id, env = process.env, probe = shellProbe) {
   const out = [];
   const add = (name, status, detail) => out.push({ name, status, detail });
@@ -11883,6 +11949,10 @@ function doctor(p, id, env = process.env, probe = shellProbe) {
     }
   } else {
     add("git", "warn", "not a git repository: tasks will not be committed");
+  }
+  const heavy = otherPlugins(env);
+  if (heavy.length >= 3) {
+    add("token overhead", "warn", `${heavy.length} other plugins are enabled (${heavy.slice(0, 4).join(", ")}${heavy.length > 4 ? ", ..." : ""}): their tools and hook text ride along in every turn of every subagent (trial-3A: 37K tokens in an implementer's first turn against 9K for a reviewer). Use \`aidw run\` (it drops MCP servers) or disable them for the run`);
   }
   if (!quality) return out;
   const cmds = commandsOf(quality);
@@ -12139,7 +12209,7 @@ function runLoop(p, id, opts = {}) {
     }
     if (runs >= maxRuns) return result("max_runs", state, `${runs} sessions ran; raise --max-runs to continue`);
     const prompt = state === "delivered" ? `/aidw:deliver ${id}` : `/aidw:resume ${id}`;
-    const args = ["-p", prompt, "--permission-mode", mode, ...opts.extraArgs ?? []];
+    const args = ["-p", prompt, "--permission-mode", mode, ...opts.keepMcp ? [] : ["--strict-mcp-config"], ...opts.extraArgs ?? []];
     record(`session ${runs + 1}: ${claude} ${args.map((a) => /\s/.test(a) ? JSON.stringify(a) : a).join(" ")}`);
     const r = (0, import_node_child_process6.spawnSync)(claude, args, {
       cwd: p.project,
@@ -12217,6 +12287,17 @@ function compactNote(cwd, env) {
   }
   return `AIDW (context was compacted): ${active.join(", ")}.${next} All progress is in .aidw/ and git; run \`aidw status\` before acting, and \`/aidw:resume\` if the run was interrupted.`;
 }
+function changeTasks(p) {
+  const out = [];
+  for (const base of [p.changes, p.archive]) {
+    if (!(0, import_node_fs20.existsSync)(base)) continue;
+    for (const d of (0, import_node_fs20.readdirSync)(base)) {
+      const text = readText((0, import_node_path21.join)(base, d, "tasks.yaml"));
+      if (text !== null) out.push(parseTasks(text).tasks);
+    }
+  }
+  return out;
+}
 function nextText(n) {
   return n.action === "implement" ? `implement ${n.task} (${n.reason}): ${n.title}${n.reason === "interrupted" ? " (if an implementer you spawned for it has not reported yet, it is still running: wait for it, do not spawn another)" : ""}` : n.action === "review" ? `review ${n.task}: ${n.title}` : n.action === "escalate" ? `escalate: ${n.reason}` : n.action === "wave" ? `wave of ${n.tasks.length}: ${n.tasks.map((x) => `${x.task} (${x.title})`).join(", ")}` : n.action === "integrate" ? `integrate ${n.tasks.join(", ")}: run \`aidw integrate\` on the merged code` : `complete: all ${n.done} task(s) done`;
 }
@@ -12270,7 +12351,7 @@ Execution (state executing; add --change <id> when several changes are active):
   integrate                              after a wave: verify the merged code; a failure adds a fix task
 
 Unattended (in your own terminal, not inside Claude Code):
-  run [<id>] [--permission-mode M] [--max-runs N] [--claude BIN] [-- <claude args>]
+  run [<id>] [--permission-mode M] [--max-runs N] [--claude BIN] [--keep-mcp] [-- <claude args>]
                                          loop \`claude -p "/aidw:resume <id>"\` until archived; waits out usage
                                          limits (stated reset time or 5-60 min backoff); stops on escalation
   task retry <task>                      user-granted fresh attempt budget for an escalated/failed task
@@ -12523,7 +12604,7 @@ SPAWN aidw:implementer with: Task brief: ${brief.path}. Read it and implement th
         if (r.ok) {
           const auto = autoReview(p, id, r.task, r.changed_files);
           if (auto) {
-            after = `review ${auto.task}: auto-passed (converge task, tests only)${auto.commit ? ` (commit ${auto.commit.slice(0, 8)})` : ""}
+            after = `review ${auto.task}: auto-passed (converge tests, or a layer fix its own reviewer judges again)${auto.commit ? ` (commit ${auto.commit.slice(0, 8)})` : ""}
 ${nextLine(p, id)}${sessionEnd(env, p, id)}`;
           } else {
             reviewBrief = buildBrief(p, id, r.task, "review", (0, import_node_path21.join)(pluginRoot(env), "vendor")).path;
@@ -12607,7 +12688,13 @@ ${failed.tail}
         let sessions = readSessions(p.project, env);
         if (prefix) sessions = sessions.filter((s) => s.id.startsWith(prefix));
         if (last) sessions = sessions.slice(-Number(last));
-        emit({ project: p.project, sessions }, formatCost(sessions));
+        const saved = changeTasks(p).map((t) => parallelSavings(t)).filter((x) => x !== null);
+        const serial = saved.reduce((n, s) => n + s.serialMs, 0);
+        const wall = saved.reduce((n, s) => n + s.wallMs, 0);
+        const parallel = saved.length ? `
+parallel waves: ${saved.reduce((n, s) => n + s.wave, 0)} task(s) took ${Math.round(wall / 6e4)} min of wall time instead of ${Math.round(serial / 6e4)} min one after another (${serial ? Math.round((1 - wall / serial) * 100) : 0}% faster); tokens per task are the same
+` : "";
+        emit({ project: p.project, sessions, parallel: saved }, formatCost(sessions) + parallel);
         return 0;
       }
       case "run": {
@@ -12622,6 +12709,7 @@ ${failed.tail}
           ...str(args.flags.claude) ? { claude: str(args.flags.claude) } : {},
           ...str(args.flags["permission-mode"]) ? { permissionMode: str(args.flags["permission-mode"]) } : {},
           ...maxRuns ? { maxRuns: Number(maxRuns) } : {},
+          ...args.flags["keep-mcp"] === true ? { keepMcp: true } : {},
           extraArgs: passthrough,
           env,
           log: json ? () => {
@@ -12906,7 +12994,8 @@ To open it (asks first): aidw pr --create [--base <branch>] [--draft]
   covers ${files.length} file(s)
 ${kept.length ? `  done work kept: ${kept.join(", ")}
 ` : ""}${reopened.length ? `  edited tasks run again: ${reopened.join(", ")}
-` : ""}`
+` : ""}  cheapest build (about a quarter of the tokens): in your own terminal, ${(0, import_node_path21.join)(pluginRoot(env), "bin", "aidw")} run ${id} --permission-mode auto
+`
         );
         return 0;
       }

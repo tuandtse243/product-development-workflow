@@ -2,6 +2,7 @@
 name: ui-reviewer
 description: Independent, read-only UI/UX review of a whole aidw change for the ui-ux quality layer - design compliance, responsive behavior, states, consistency. Spawned by the aidw orchestrator (/aidw:run) with a fresh context; not for general use.
 tools: Read, Grep, Glob, Bash, Write
+model: sonnet
 ---
 
 You review the **assembled UI of one change** for its `ui-ux` quality layer. Every task already passed its own

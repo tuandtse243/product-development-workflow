@@ -256,3 +256,56 @@ describe("migration rule", () => {
     expect(read("agents/security-reviewer.md")).toMatch(/Migrations:/);
   });
 });
+
+describe("token optimizations", () => {
+  const plugin = join(__dirname, "..", "plugins", "aidw");
+  const front = (f: string) => /^---\n([\s\S]*?)\n---/.exec(readFileSync(join(plugin, f), "utf8"))?.[1] ?? "";
+
+  it("the implementer has a tool allowlist and reviewers run on sonnet", () => {
+    expect(front("agents/implementer.md")).toMatch(/^tools: Read, Write, Edit, Glob, Grep, Bash$/m);
+    expect(front("agents/implementer.md")).not.toMatch(/disallowedTools/);
+    for (const r of ["reviewer", "ui-reviewer", "security-reviewer"]) expect(front(`agents/${r}.md`)).toMatch(/^model: sonnet$/m);
+  });
+
+  it("auto-reviews a quality fix whose layer has its own reviewer, but not other fixes", () => {
+    const q = `layers:\n  - name: code\n    run: ['node -e "process.exit(0)"']\n  - name: ui-ux\n    run: ['node -e "process.exit(0)"']\n    review: ui\n    artifacts: ["shots/*.png"]\n  - name: e2e\n    run: ['node -e "process.exit(0)"']\ndeploy:\n  target: none\n`;
+    const root = project({ quality: q, git: true });
+    approve(root);
+    const tf = join(root, ".aidw/changes", ID, "tasks.yaml");
+    const fix = (layer: string, id: string) => `  - id: ${id}\n    title: Fix ${layer}\n    role: fullstack-engineer\n    origin: quality\n    layer: ${layer}\n    touches: ["**"]\n    verify: ['node -e "process.exit(0)"']\n    status: pending\n`;
+    write(root, `.aidw/changes/${ID}/tasks.yaml`, `${readFileSync(tf, "utf8")}${fix("ui-ux", "Q01")}${fix("code", "Q02")}`);
+    for (const t of ["Q01", "Q02"]) {
+      cli(root, "task", "start", t);
+      write(root, `lib/${t}.js`, "1;\n");
+    }
+    expect(cli(root, "checkpoint", "Q01").out).toMatch(/auto-passed/);
+    expect(readFileSync(tf, "utf8")).toMatch(/id: Q01[\s\S]*status: done/);
+    expect(cli(root, "checkpoint", "Q02").out).toMatch(/^PASS/);
+    expect(readFileSync(tf, "utf8")).toMatch(/id: Q02[\s\S]*status: review/);
+  });
+});
+
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { parallelSavings } from "../src/cost.js";
+import { doctor, otherPlugins } from "../src/doctor.js";
+import { pathsFor } from "../src/project.js";
+
+describe("measuring and warning", () => {
+  it("doctor warns when many other plugins ride along in every turn", () => {
+    const home = mkdtempSync(join(tmpdir(), "aidw-home-"));
+    write(home, "settings.json", JSON.stringify({ enabledPlugins: { "aidw@aidw": true, "a@x": true, "b@x": true, "c@x": true, "d@x": false } }));
+    expect(otherPlugins({ CLAUDE_CONFIG_DIR: home })).toEqual(["a", "b", "c"]);
+    const root = project();
+    const checks = doctor(pathsFor(root), null, { CLAUDE_CONFIG_DIR: home }, () => ({ ok: true, out: "" }));
+    expect(checks.find((c) => c.name === "token overhead")).toMatchObject({ status: "warn" });
+    expect(doctor(pathsFor(root), null, { CLAUDE_CONFIG_DIR: tmpdir() + "/none" }, () => ({ ok: true, out: "" })).some((c) => c.name === "token overhead")).toBe(false);
+  });
+
+  it("parallelSavings compares serial task time with the time the waves covered", () => {
+    const t = (a: string, b: string, merged = true) => ({ started_at: `2026-11-12T00:${a}:00Z`, finished_at: `2026-11-12T00:${b}:00Z`, ...(merged ? { merged_at: "x" } : {}) });
+    const r = parallelSavings([t("00", "10"), t("00", "10"), t("20", "25"), t("30", "40", false)]);
+    expect(r).toEqual({ wave: 3, serialMs: 25 * 60000, wallMs: 15 * 60000 });
+    expect(parallelSavings([t("00", "05", false)])).toBeNull();
+  });
+});

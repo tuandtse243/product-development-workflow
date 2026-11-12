@@ -125,7 +125,7 @@ describe("verify with review layers (S7)", () => {
     const brief = readFileSync(join(root, r1.awaitingReview.brief), "utf8");
     expect(brief).toMatch(/^# Layer review brief: ui-ux \(ui review\) - Booking/);
     expect(brief).toContain(join(root, "test-results/shots/home-mobile-light.png"));
-    expect(brief).toContain(join(root, `.aidw/run/shots/${ID}/T01/booking.png`));
+    expect(brief).not.toContain(`.aidw/run/shots/${ID}/T01/booking.png`); // per-task shots were reviewed per task
     expect(brief).toMatch(/UI tasks in this change: T01 \(Booking page\)/);
     expect(brief).toMatch(/\| `accent` \| color \|/); // tokens table
     expect(brief).toMatch(/- D1: Times are stored in UTC/);

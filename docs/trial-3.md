@@ -78,6 +78,16 @@ trang: thêm, xoá, tìm ghi chú; có nút Xuất JSON". Cài plugin bằng mar
 | 63 | Reviewer dialog: nhận xét về focus trap / Escape / tên truy cập nếu dialog thiếu; handoff liệt kê hết nhận xét non-blocking | `quality-report.md`; `handoff.md` | |
 | 64 | Không còn implementer treo chờ tiến trình nền quá 5 phút | thời gian từng task (`aidw cost`) | |
 
+Đo token cho các sửa tối ưu (so với mốc trial-3A: orchestrator 57%, implementer 33%, lượt đầu implementer 37K token):
+
+| # | Điều cần kiểm | Cách biết | Kết quả |
+|---|---|---|---|
+| 65 | Lượt đầu của implementer giảm rõ (kỳ vọng dưới 15K) nhờ `tools:` allowlist | `aidw cost`, dòng "first turn" của implementer | |
+| 66 | `aidw run` không nạp MCP server (`--strict-mcp-config` trong `runner.log`); orchestrator lượt đầu nhỏ hơn | `.aidw/run/runner.log`; `aidw cost` | |
+| 67 | UI reviewer vòng 2+ chỉ mở ảnh đổi ("other artifact(s) did not change"); không còn ảnh trùng từ per-task shots | brief `ui-ux.layer-review.md` | |
+| 68 | Task fix của layer có reviewer (ui, security) được "auto-passed", không có reviewer subagent | output checkpoint; `aidw cost` số reviewer | |
+| 69 | `aidw cost` in "by role" và dòng "parallel waves: ... % faster" | output | |
+
 ## 0. Chuẩn bị
 
 ```bash

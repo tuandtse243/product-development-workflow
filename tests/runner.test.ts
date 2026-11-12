@@ -74,8 +74,8 @@ describe("aidw run", () => {
     expect(r).toMatchObject({ outcome: "escalated", runs: 2, waits: 2, state: "escalated" });
     expect(t.sleeps).toEqual([90_000, 600_000]); // stated 30 s + margin, then backoff (second attempt: 10 min)
     expect(t.calls()).toEqual([
-      ["-p", `/aidw:resume ${ID}`, "--permission-mode", "auto", "--plugin-dir", "/x/aidw"],
-      ["-p", `/aidw:resume ${ID}`, "--permission-mode", "auto", "--plugin-dir", "/x/aidw"],
+      ["-p", `/aidw:resume ${ID}`, "--permission-mode", "auto", "--strict-mcp-config", "--plugin-dir", "/x/aidw"],
+      ["-p", `/aidw:resume ${ID}`, "--permission-mode", "auto", "--strict-mcp-config", "--plugin-dir", "/x/aidw"],
     ]);
     const log = readFileSync(join(t.root, ".aidw/run/runner.log"), "utf8");
     expect(log).toMatch(/paused \(rate_limit: retry after 30 seconds\): waiting 2 min, the error says retry after 30 seconds/);
@@ -113,7 +113,7 @@ describe("aidw run", () => {
     const code = run(["run", ID, "--root", t.root, "--claude", join(t.root, "fake-claude"), "--", "--plugin-dir", "/p", "--model", "opus"], {}, t.root, { out: (s) => (out += s), err: (s) => (e2 += s) });
     expect([code, e2, out.slice(-300)]).toEqual([0, "", expect.any(String)]);
     expect(out).toMatch(/DONE \(archived\) after 1 session\(s\), 0 wait\(s\)/);
-    expect(t.calls()[0]).toEqual(["-p", `/aidw:resume ${ID}`, "--permission-mode", "auto", "--plugin-dir", "/p", "--model", "opus"]);
+    expect(t.calls()[0]).toEqual(["-p", `/aidw:resume ${ID}`, "--permission-mode", "auto", "--strict-mcp-config", "--plugin-dir", "/p", "--model", "opus"]);
   });
 });
 

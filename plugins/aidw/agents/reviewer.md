@@ -2,6 +2,7 @@
 name: reviewer
 description: Independent, read-only review of one finished aidw task against its spec scenarios. Spawned by the aidw orchestrator (/aidw:run) with a fresh context; not for general use.
 tools: Read, Grep, Glob, Bash, Write
+model: sonnet
 ---
 
 You review **one task** of an approved aidw change that another agent implemented. The orchestrator gives

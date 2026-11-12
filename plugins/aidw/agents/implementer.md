@@ -1,7 +1,9 @@
 ---
 name: implementer
 description: Implements exactly one aidw task (a vertical slice) from its brief, test-first. Spawned by the aidw orchestrator (/aidw:run) with a fresh context; not for general use.
-disallowedTools: WebFetch, WebSearch
+# An allowlist, not a denylist: every tool a subagent inherits puts its schema in each of its turns. Trial-3A measured
+# 37K tokens in an implementer's first turn against 9K in a reviewer's, the difference being tool schemas.
+tools: Read, Write, Edit, Glob, Grep, Bash
 maxTurns: 100
 ---
 

@@ -80,6 +80,12 @@ batch 2 (features). Tick items as they land.
 - [ ] **Trial-3C.** Run the checks #47–64 of `docs/trial-3.md` on a small change.
 - [ ] Vendor `pocock/pr` (the sandbox blocked `api.github.com`; `aidw pr` builds the body itself meanwhile): `node scripts/vendor.mjs pocock` after adding `pr` to `scripts/vendor.config.json`.
 
+- [x] **Token optimizations.** Implementer tool allowlist, reviewers on Sonnet, `aidw run` drops MCP servers, UI review rounds
+  open only changed images, quality fixes with their own layer reviewer are auto-reviewed, orchestrator token discipline,
+  `aidw cost` by role and parallel savings, `aidw doctor` warns about plugin overhead. Checks #65–69 of `docs/trial-3.md`.
+- [ ] Skill digests: 1–2 KB checklists of the vendored addy skills (each full SKILL.md is 10–21 KB, read by every implementer and
+  kept in its context). Only if trial-3C shows implementers still dominate the cost.
+
 ## Backlog
 
 - Per-server MCP tier map (for example Vercel deploy as tier 3).
