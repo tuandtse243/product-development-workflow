@@ -26,7 +26,9 @@ using pnpm.
    `"*.{json,md,css,yml,yaml}": ["prettier --write"]`.
 5. **`.husky/pre-commit`** containing `pnpm exec lint-staged`. The hook runs only on staged files and does not
    run tsc, build or tests: the quality layers own those.
-6. Run `pnpm exec prettier --write .` once at the end of the scaffold task so the first commit is already clean.
+6. **`.gitignore` and `.prettierignore`** also list `.pnpm-store/` (the sandbox puts the pnpm store in the project
+   root, 200 MB) and `.vitest/`, next to `node_modules`, build output and `.env*`.
+7. Run `pnpm exec prettier --write .` once at the end of the scaffold task so the first commit is already clean.
 
 ## Quality gate
 

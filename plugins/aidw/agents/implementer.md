@@ -28,6 +28,10 @@ You implement **one task** of an approved aidw change. The orchestrator gives yo
 7. Stay inside the brief's Touches. Do not edit `.aidw/` (except the report note and screenshots), do not run `aidw checkpoint`/`aidw review`, do not
    commit, push or deploy. The aidw gate blocks these for you: the orchestrator records progress and commits
    after an independent review.
+   Never end your turn to wait for a background command (an install, a build): poll it with a timeout and, if it
+   has not finished after about 5 minutes, report the blocker instead of waiting (an idle implementer held the
+   whole run for over an hour in trial-3A). Add the package manager's local store (`.pnpm-store/`) and tool caches
+   (`.vitest/`) to `.gitignore` and `.prettierignore` as soon as they appear.
 8. Stop every process you started (dev servers, watchers) before you reply. A leftover server holds the e2e
    port and fails the checkpoint.
 9. Reply in at most 10 lines: what works now, files changed, verify result. No code dumps. If the reviewer needs

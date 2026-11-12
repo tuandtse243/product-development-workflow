@@ -37,3 +37,12 @@ describe("conventional commits", () => {
     expect(validateTasksText(yaml("    type: feat\n"), "t.yaml").errors).toHaveLength(0);
   });
 });
+
+describe("long non-English titles", () => {
+  it("keeps a Vietnamese title within 72 characters, cut at a word", () => {
+    const h = header("feat", "expenses", "Khoản chi theo tháng: xem, thêm, sửa, xóa, lọc danh mục, trạng thái rỗng và lỗi");
+    expect(h.length).toBeLessThanOrEqual(72);
+    expect(h.startsWith("feat(expenses): khoản chi theo tháng")).toBe(true);
+    expect(isConventional(h)).toBe(true);
+  });
+});

@@ -71,7 +71,7 @@ function compactNote(cwd: string, env: NodeJS.ProcessEnv): string | null {
 
 function nextText(n: NextAction): string {
   return n.action === "implement"
-    ? `implement ${n.task} (${n.reason}): ${n.title}`
+    ? `implement ${n.task} (${n.reason}): ${n.title}${n.reason === "interrupted" ? " (if an implementer you spawned for it has not reported yet, it is still running: wait for it, do not spawn another)" : ""}`
     : n.action === "review"
       ? `review ${n.task}: ${n.title}`
       : n.action === "escalate"

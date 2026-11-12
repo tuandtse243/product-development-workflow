@@ -438,12 +438,20 @@ export function verify(
       continue;
     }
     const runs = runCommands([...layer.setup, ...layer.run], p.project, timeoutMs, runner);
-    const ok = runs.length === layer.setup.length + layer.run.length && !failedRun(runs);
+    let ok = runs.length === layer.setup.length + layer.run.length && !failedRun(runs);
     const result: LayerResult = { status: ok ? "pass" : "fail", at: now(), head, runs };
     if (layer.reports.length) {
       const { tests, missing } = readJunit(p.project, layer.reports);
       result.tests = tests;
       if (missing.length) result.missing_reports = missing;
+      if (missing.length && ok) {
+        // A layer whose declared JUnit report is absent proves nothing per scenario (trial-3A: the e2e config had
+        // `reporter: "list"`). Failing it makes the fix loop add the reporter instead of shipping blind.
+        const list = missing.join(", ");
+        ok = false;
+        result.status = "fail";
+        result.runs = [...runs, { command: `(declared report ${list})`, ms: 0, exit: 1, timedOut: false, tail: `the command passed but wrote no JUnit report ${list}: configure the test runner's JUnit reporter (Playwright: reporter [["list"], ["junit", { outputFile: process.env.PLAYWRIGHT_JUNIT_OUTPUT_NAME ?? "<file>" }]]; Vitest: --reporter=junit --outputFile.junit=<file>)` }];
+      }
     }
     if (ok && layer.review) {
       const brief = buildLayerBrief(p, id, layer, runs, opts.vendorDir);
@@ -453,7 +461,7 @@ export function verify(
       review = awaiting(layer, result);
     }
     recordLayerResult(change, summary, layer.name, result);
-    outcomes.push({ name: layer.name, status: result.status, runs });
+    outcomes.push({ name: layer.name, status: result.status, runs: result.runs });
     if (!ok) failed = layer;
   }
 
@@ -630,6 +638,14 @@ const DEPLOY_HINTS: { re: RegExp; hint: string }[] = [
   {
     re: /"err" is out of range|persistAuthConfig|EPERM[^\n]*com\.vercel\.cli/,
     hint: "the Vercel CLI had to refresh its login token and the sandbox blocked writing its auth file. The user runs `vercel whoami` in their own terminal (outside Claude Code), then `aidw deploy` again.",
+  },
+  {
+    re: /fetch failed|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|getaddrinfo/i,
+    hint: "the sandbox blocked the network. The user allows the deploy host (for Vercel: vercel.com and *.vercel.com) in the sandbox network settings, or runs the command in their own terminal, then `aidw deploy` again.",
+  },
+  {
+    re: /first_deployment_production/,
+    hint: "the Vercel project does not exist yet, and a project's first deployment is always Production. Run `vercel link --yes` once (creating a free project is covered by the vercel-preview permission), then `aidw deploy`. Never use --prod without the user's explicit yes.",
   },
   {
     re: /No existing credentials found|not logged in|vercel login/i,

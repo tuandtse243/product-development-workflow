@@ -11,7 +11,7 @@
  *   integrate  after a wave, the merged code runs every wave task's verify plus the `code` layer; a failure
  *              becomes a fix task (origin: integration) before anything new starts
  */
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import YAML from "yaml";
 import { loadChange, type Change } from "./change.js";
@@ -82,12 +82,16 @@ export function taskDir(p: Paths, t: Task): string {
 export function ensureWorktree(p: Paths, id: string, taskId: string, base: string): { dir: string; branch: string; created: boolean } {
   const dir = worktreeDir(p, id, taskId);
   const branch = branchName(id, taskId);
-  if (existsSync(join(dir, ".git"))) return { dir: rel(p, dir), branch, created: false };
+  if (existsSync(join(dir, ".git"))) {
+    linkDependencies(p, dir);
+    return { dir: rel(p, dir), branch, created: false };
+  }
   git(p.project, ["worktree", "prune"]);
   mkdirSync(join(dir, ".."), { recursive: true });
   const hasBranch = git(p.project, ["rev-parse", "--verify", "-q", `refs/heads/${branch}`]).ok;
   const r = hasBranch ? git(p.project, ["worktree", "add", "-q", dir, branch]) : git(p.project, ["worktree", "add", "-q", "-b", branch, dir, base]);
   if (!r.ok) throw new OpError(`could not create the worktree for ${taskId}: ${r.err || r.out}`);
+  linkDependencies(p, dir);
   return { dir: rel(p, dir), branch, created: true };
 }
 
@@ -225,3 +229,34 @@ export function integrate(
   write();
   return { ok: false, tasks: record.tasks, runs, fixTask: taskId, summary: `integration verify failed: fix task ${taskId} added (round ${failures}/${max})` };
 }
+
+/**
+ * A worktree has no node_modules (it is not tracked), so `pnpm exec vitest` fails there with "command not found"
+ * (trial-3A: T02 and T03 failed their first checkpoint). Link the main checkout's node_modules into it. The link is
+ * excluded from git (info/exclude is shared by every worktree) so `git add -A` never stages it.
+ */
+export function linkDependencies(p: Paths, dir: string): void {
+  const source = join(p.project, "node_modules");
+  const target = join(dir, "node_modules");
+  if (!existsSync(source) || existsSync(target) || isSymlink(target)) return;
+  try {
+    symlinkSync(source, target, "dir");
+  } catch {
+    return; // the task then runs `parallel.setup` or fails visibly in its checkpoint
+  }
+  const ex = git(p.project, ["rev-parse", "--path-format=absolute", "--git-path", "info/exclude"]);
+  if (!ex.ok || !ex.out) return;
+  const text = existsSync(ex.out) ? readFileSync(ex.out, "utf8") : "";
+  if (!/^\/?node_modules\/?$/m.test(text)) {
+    mkdirSync(join(ex.out, ".."), { recursive: true });
+    writeFileSync(ex.out, `${text}${text && !text.endsWith("\n") ? "\n" : ""}node_modules\n`);
+  }
+}
+
+const isSymlink = (f: string): boolean => {
+  try {
+    return lstatSync(f).isSymbolicLink();
+  } catch {
+    return false;
+  }
+};

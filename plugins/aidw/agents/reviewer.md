@@ -15,7 +15,12 @@ you the path of a review brief.
    honor** kept, security when flagged.
    For UI tasks, open every screenshot the brief lists with Read and compare it with the **Design tokens**:
    each token visibly used where its **Use** says, no stray colors, layout as the design direction describes.
-   Passing tests do not make a wrong-looking screen right.
+   Passing tests do not make a wrong-looking screen right. For dialogs, menus and popovers also check keyboard
+   behavior by reading the code: focus moves in, Escape closes, focus returns, and controls have readable accessible
+   names (not raw icon keys). Axe does not catch these; a missing one is a `fix` when the screen is a main flow.
+   A scenario whose WHEN is a user action on the screen (click, tap, type, open) is met only if the UI exists and a
+   component or browser test performs that action. An API or unit test of the underlying function does not make
+   it pass: return `fix` (trial-3A shipped an "Export CSV" requirement with no button).
 4. You are read-only except for one file: your verdict file (the brief names its path; the Write tool is only for that). Do not edit files or run commands that change anything; the aidw gate denies them.
    Do not fix problems yourself: describe them so the implementer can.
 5. Write this exact shape to the verdict file named in the brief, then reply to the orchestrator with only its first line (`VERDICT: pass` or `VERDICT: fix`):

@@ -8449,7 +8449,7 @@ function git(cwd, args) {
 function isGitRepo(cwd) {
   return git(cwd, ["rev-parse", "--is-inside-work-tree"]).out === "true";
 }
-var GENERATED_PATH = /(^|\/)(node_modules|\.next|\.nuxt|\.svelte-kit|\.turbo|\.vercel|coverage|playwright-report|test-results)\/|(^|\/)(next-env\.d\.ts|\.DS_Store)$|\.tsbuildinfo$/;
+var GENERATED_PATH = /(^|\/)(node_modules|\.next|\.nuxt|\.svelte-kit|\.turbo|\.vercel|\.pnpm-store|\.vitest|coverage|playwright-report|test-results)\/|(^|\/)(next-env\.d\.ts|\.DS_Store)$|\.tsbuildinfo$/;
 var ENV_FILE = /(^|\/)\.env(?:\.(?!example$)[\w.-]+)?$/;
 var JUNK_PATH = { test: (f) => GENERATED_PATH.test(f) || ENV_FILE.test(f) };
 var isGeneratedPath = (f) => GENERATED_PATH.test(f);
@@ -8879,12 +8879,16 @@ function taskDir(p, t) {
 function ensureWorktree(p, id, taskId, base) {
   const dir = worktreeDir(p, id, taskId);
   const branch = branchName(id, taskId);
-  if ((0, import_node_fs6.existsSync)((0, import_node_path7.join)(dir, ".git"))) return { dir: rel(p, dir), branch, created: false };
+  if ((0, import_node_fs6.existsSync)((0, import_node_path7.join)(dir, ".git"))) {
+    linkDependencies(p, dir);
+    return { dir: rel(p, dir), branch, created: false };
+  }
   git(p.project, ["worktree", "prune"]);
   (0, import_node_fs6.mkdirSync)((0, import_node_path7.join)(dir, ".."), { recursive: true });
   const hasBranch = git(p.project, ["rev-parse", "--verify", "-q", `refs/heads/${branch}`]).ok;
   const r = hasBranch ? git(p.project, ["worktree", "add", "-q", dir, branch]) : git(p.project, ["worktree", "add", "-q", "-b", branch, dir, base]);
   if (!r.ok) throw new OpError(`could not create the worktree for ${taskId}: ${r.err || r.out}`);
+  linkDependencies(p, dir);
   return { dir: rel(p, dir), branch, created: true };
 }
 function removeWorktree(p, worktree, branch) {
@@ -8983,6 +8987,31 @@ ${failed.tail}` : "Integration verify did not complete.";
   write();
   return { ok: false, tasks: record.tasks, runs, fixTask: taskId, summary: `integration verify failed: fix task ${taskId} added (round ${failures}/${max})` };
 }
+function linkDependencies(p, dir) {
+  const source = (0, import_node_path7.join)(p.project, "node_modules");
+  const target = (0, import_node_path7.join)(dir, "node_modules");
+  if (!(0, import_node_fs6.existsSync)(source) || (0, import_node_fs6.existsSync)(target) || isSymlink(target)) return;
+  try {
+    (0, import_node_fs6.symlinkSync)(source, target, "dir");
+  } catch {
+    return;
+  }
+  const ex = git(p.project, ["rev-parse", "--path-format=absolute", "--git-path", "info/exclude"]);
+  if (!ex.ok || !ex.out) return;
+  const text = (0, import_node_fs6.existsSync)(ex.out) ? (0, import_node_fs6.readFileSync)(ex.out, "utf8") : "";
+  if (!/^\/?node_modules\/?$/m.test(text)) {
+    (0, import_node_fs6.mkdirSync)((0, import_node_path7.join)(ex.out, ".."), { recursive: true });
+    (0, import_node_fs6.writeFileSync)(ex.out, `${text}${text && !text.endsWith("\n") ? "\n" : ""}node_modules
+`);
+  }
+}
+var isSymlink = (f) => {
+  try {
+    return (0, import_node_fs6.lstatSync)(f).isSymbolicLink();
+  } catch {
+    return false;
+  }
+};
 
 // src/run.ts
 var now2 = () => (/* @__PURE__ */ new Date()).toISOString();
@@ -10976,12 +11005,18 @@ function verify(p, id, opts = {}) {
       continue;
     }
     const runs = runCommands([...layer.setup, ...layer.run], p.project, timeoutMs, runner);
-    const ok = runs.length === layer.setup.length + layer.run.length && !failedRun(runs);
+    let ok = runs.length === layer.setup.length + layer.run.length && !failedRun(runs);
     const result = { status: ok ? "pass" : "fail", at: now5(), head, runs };
     if (layer.reports.length) {
       const { tests, missing } = readJunit(p.project, layer.reports);
       result.tests = tests;
       if (missing.length) result.missing_reports = missing;
+      if (missing.length && ok) {
+        const list5 = missing.join(", ");
+        ok = false;
+        result.status = "fail";
+        result.runs = [...runs, { command: `(declared report ${list5})`, ms: 0, exit: 1, timedOut: false, tail: `the command passed but wrote no JUnit report ${list5}: configure the test runner's JUnit reporter (Playwright: reporter [["list"], ["junit", { outputFile: process.env.PLAYWRIGHT_JUNIT_OUTPUT_NAME ?? "<file>" }]]; Vitest: --reporter=junit --outputFile.junit=<file>)` }];
+      }
     }
     if (ok && layer.review) {
       const brief = buildLayerBrief(p, id, layer, runs, opts.vendorDir);
@@ -10991,7 +11026,7 @@ function verify(p, id, opts = {}) {
       review = awaiting(layer, result);
     }
     recordLayerResult(change, summary, layer.name, result);
-    outcomes.push({ name: layer.name, status: result.status, runs });
+    outcomes.push({ name: layer.name, status: result.status, runs: result.runs });
     if (!ok) failed = layer;
   }
   if (review) return { ok: false, layers: outcomes, awaitingReview: review, summary: awaitingSummary(review) };
@@ -11116,6 +11151,14 @@ var DEPLOY_HINTS = [
   {
     re: /"err" is out of range|persistAuthConfig|EPERM[^\n]*com\.vercel\.cli/,
     hint: "the Vercel CLI had to refresh its login token and the sandbox blocked writing its auth file. The user runs `vercel whoami` in their own terminal (outside Claude Code), then `aidw deploy` again."
+  },
+  {
+    re: /fetch failed|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|getaddrinfo/i,
+    hint: "the sandbox blocked the network. The user allows the deploy host (for Vercel: vercel.com and *.vercel.com) in the sandbox network settings, or runs the command in their own terminal, then `aidw deploy` again."
+  },
+  {
+    re: /first_deployment_production/,
+    hint: "the Vercel project does not exist yet, and a project's first deployment is always Production. Run `vercel link --yes` once (creating a free project is covered by the vercel-preview permission), then `aidw deploy`. Never use --prod without the user's explicit yes."
   },
   {
     re: /No existing credentials found|not logged in|vercel login/i,
@@ -11464,8 +11507,38 @@ function analyzeChange(p, id) {
   for (const s of changed.scenarios) {
     if (!coveredScenarios.has(s)) d.error(tf, `scenario "${s}" has no task that implements and verifies it`);
   }
+  uiScenarioAdvice(p, id, tasks, d, tf);
   for (const advice of planAdvice(tasks)) d.warn(tf, advice);
   return d;
+}
+var UI_GESTURE = /\b(clicks?|taps?|presses|pressed|selects?|opens?|toggles?|button|dialog|screen|page)\b|bấm|nhấn|chạm|chọn|nút\b|màn hình|màn\b/i;
+var BROWSER_VERIFY_RE = /\b(playwright|cypress|e2e)\b/i;
+function scenarioWhens(raw) {
+  const out = /* @__PURE__ */ new Map();
+  let name = "";
+  for (const line of raw.split("\n")) {
+    const h = /^####\s+Scenario:\s*(.+?)\s*$/.exec(line);
+    if (h) name = h[1];
+    else if (name && /\*\*WHEN\*\*/.test(line)) out.set(name, line);
+  }
+  return out;
+}
+function uiScenarioAdvice(p, id, tasks, d, tf) {
+  const { deltas } = specsAfterChange(p, id);
+  for (const [cap, text] of deltas) {
+    const delta = parseDelta(text);
+    for (const r of [...delta.added, ...delta.modified]) {
+      for (const [name, when] of scenarioWhens(r.raw)) {
+        if (!UI_GESTURE.test(when)) continue;
+        const sid = scenarioId(cap, r.name, name);
+        const owners = tasks.filter((t) => Array.isArray(t.scenarios) && t.scenarios.map(String).includes(sid));
+        const reachesUi = owners.some((t) => touchesUi(t) || Array.isArray(t.verify) && t.verify.some((v) => BROWSER_VERIFY_RE.test(String(v))));
+        if (owners.length && !reachesUi) {
+          d.warn(tf, `scenario "${sid}" is triggered from the UI ("${when.replace(/^[-*\s]*\*\*WHEN\*\*\s*/, "").slice(0, 80)}") but task(s) ${owners.map((t) => t.id).join(", ")} touch no UI files and run no browser test: add the UI work to a task`);
+        }
+      }
+    }
+  }
 }
 
 // src/pause.ts
@@ -11823,7 +11896,7 @@ function compactNote(cwd, env) {
   return `AIDW (context was compacted): ${active.join(", ")}.${next} All progress is in .aidw/ and git; run \`aidw status\` before acting, and \`/aidw:resume\` if the run was interrupted.`;
 }
 function nextText(n) {
-  return n.action === "implement" ? `implement ${n.task} (${n.reason}): ${n.title}` : n.action === "review" ? `review ${n.task}: ${n.title}` : n.action === "escalate" ? `escalate: ${n.reason}` : n.action === "wave" ? `wave of ${n.tasks.length}: ${n.tasks.map((x) => `${x.task} (${x.title})`).join(", ")}` : n.action === "integrate" ? `integrate ${n.tasks.join(", ")}: run \`aidw integrate\` on the merged code` : `complete: all ${n.done} task(s) done`;
+  return n.action === "implement" ? `implement ${n.task} (${n.reason}): ${n.title}${n.reason === "interrupted" ? " (if an implementer you spawned for it has not reported yet, it is still running: wait for it, do not spawn another)" : ""}` : n.action === "review" ? `review ${n.task}: ${n.title}` : n.action === "escalate" ? `escalate: ${n.reason}` : n.action === "wave" ? `wave of ${n.tasks.length}: ${n.tasks.map((x) => `${x.task} (${x.title})`).join(", ")}` : n.action === "integrate" ? `integrate ${n.tasks.join(", ")}: run \`aidw integrate\` on the merged code` : `complete: all ${n.done} task(s) done`;
 }
 function nextLine(p, id) {
   try {

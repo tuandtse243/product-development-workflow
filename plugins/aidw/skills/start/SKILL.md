@@ -205,6 +205,9 @@ tasks:
   run together, and list shared files (`package.json`, the root layout, a shared schema) only in the task
   that really changes them. `risk: high` (auth, payments, migrations, wide refactors) always runs alone. At
   most one task per wave may drive a browser (UI or e2e verify), since they share the e2e port.
+- **Every UI scenario has a UI owner.** A scenario whose WHEN is a user action on a screen ("the user clicks Export CSV")
+  must be listed by a task that touches the UI files (and the API task may list it too). `aidw analyze` warns when
+  its only owners touch no UI files; fix the plan, do not leave the button to chance.
 - **Slice vertically, not by layer.** A plan that is one `depends_on` chain (T01 types, T02 API, T03 UI, T04
   tests...) can never run a wave. After scaffolding, cut the work into slices that each carry their own API,
   UI and tests for one behavior; give a task `depends_on` only for something it truly needs (a shared type or
@@ -216,6 +219,9 @@ tasks:
 - **Code style.** For a greenfield JS/TS project the scaffold task also sets up prettier, eslint, husky and
   lint-staged as described in `$(aidw plugin-path profiles/code-style.md)`; put those files in its `touches`
   and tell it to follow that profile. Brownfield projects keep their own tooling.
+- **Test reports.** Every layer in quality.yaml with `reports:` needs its runner configured to write that JUnit file
+  (Playwright `reporter: [['list'], ['junit', { outputFile: process.env.PLAYWRIGHT_JUNIT_OUTPUT_NAME ?? '...' }]]`).
+  Put it in the scaffold task's brief: a layer that passes without writing its report now fails verify.
 - **Commits.** Every planned task states a `type` (analysis fails without one). The task commit becomes
   `type(capability): title`, the scope being the capability of its first spec (`config` when it has none), so
   a task spanning several capabilities lists the main one first. Add `breaking: true` only for a breaking change.

@@ -44,6 +44,10 @@ batch 2 (features). Tick items as they land.
 
 - [x] **Conventional commits.** aidw builds `type(capability): title` itself (`src/commit.ts`), every planned task has a
   `type`, and greenfield scaffolds commitlint ([ADR-0002](adr/0002-conventional-commits.md)).
+- [x] **Trial-3A fixes.** Worktrees link the main node_modules; a layer that passes without its declared JUnit
+  report fails; `analyze` warns when a UI scenario has no UI owner (and the reviewer checks it); `.pnpm-store` and
+  `.vitest` count as junk; deploy hints for sandbox network and first-deploy-is-production; run preflight for
+  installs and `vercel link`; implementers never idle on background work.
 - [ ] **Stack packs** ([ADR-0001](adr/0001-stack-packs.md)).
   - Create `profiles/stacks/node.md` and move the JS knowledge there (`code-style.md` merges in).
   - `src/git.ts` reads junk paths per stack.
@@ -52,6 +56,7 @@ batch 2 (features). Tick items as they land.
   - the binary of each `quality.yaml` command and the package manager;
   - CDP 9222 when a layer needs a browser;
   - `vercel whoami` for preview deploys;
+  - the sandbox facts trial-3A hit: package store writable, registry reachable, deploy host allowed, `.vercel/project.json` present;
   - a clean tree on the change branch.
 
   Called from `start` §8, `run` §0, `resume` and the runner. It replaces the prose preflight.

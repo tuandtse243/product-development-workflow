@@ -1,0 +1,119 @@
+/**
+ * Regressions found by trial-3A (docs/trial-3.md): worktrees without node_modules, a layer passing without its
+ * JUnit report, a UI scenario owned only by an API task, and the pnpm store in the project root.
+ */
+import { execFileSync } from "node:child_process";
+import { existsSync, lstatSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import { run } from "../src/cli.js";
+import { ANALYSIS_MD, MAIN_SPEC, QUALITY_YAML, REQ, TOKENS_YAML, tempProject, write } from "./fixtures.js";
+
+const ID = "2026-11-12-t3a";
+const SCENARIO = "booking/reschedule-appointment/reschedule-appointment-works";
+
+function cli(root: string, ...argv: string[]) {
+  let out = "";
+  let err = "";
+  const code = run([...argv, "--root", root], {}, root, { out: (s) => (out += s), err: (s) => (err += s) });
+  return { code, out, err, json: () => JSON.parse(out) };
+}
+const g = (cwd: string, ...a: string[]) => execFileSync("git", a, { cwd, encoding: "utf8" }).trim();
+
+function project(opts: { quality?: string; spec?: string; tasks?: string; git?: boolean } = {}): string {
+  const root = tempProject();
+  cli(root, "init");
+  write(root, ".aidw/specs/booking/spec.md", MAIN_SPEC);
+  cli(root, "change", "new", ID);
+  const c = `.aidw/changes/${ID}`;
+  write(root, `${c}/analysis.md`, ANALYSIS_MD);
+  write(root, ".aidw/design/tokens.yaml", TOKENS_YAML);
+  write(root, `${c}/specs/booking/spec.md`, opts.spec ?? `## ADDED Requirements\n\n${REQ("Reschedule appointment")}`);
+  write(
+    root,
+    `${c}/tasks.yaml`,
+    opts.tasks ??
+      `tasks:\n  - id: T01\n    title: Reschedule\n    role: backend-engineer\n    type: feat\n    scenarios: [${SCENARIO}]\n    touches: ["lib/**", "tests/**"]\n    verify: ['node -e "process.exit(0)"']\n    status: pending\n`,
+  );
+  write(root, `${c}/quality.yaml`, opts.quality ?? QUALITY_YAML);
+  if (opts.git) {
+    g(root, "init", "-q");
+    g(root, "config", "user.email", "t@t");
+    g(root, "config", "user.name", "t");
+    write(root, ".gitignore", "node_modules/\n");
+    g(root, "add", "-A");
+    g(root, "commit", "-qm", "base");
+  }
+  return root;
+}
+
+function approve(root: string) {
+  for (const s of ["intake", "analyzing", "awaiting_approval"]) expect(cli(root, "transition", ID, s).err).toBe("");
+  expect(cli(root, "approve", ID).code).toBe(0);
+  expect(cli(root, "transition", ID, "executing").code).toBe(0);
+}
+
+describe("trial-3A regressions", () => {
+  it("links the main node_modules into a task worktree without staging it", () => {
+    const root = project({ git: true });
+    write(root, "node_modules/.bin/vitest", "#!/bin/sh\n");
+    approve(root);
+    const s = cli(root, "task", "start", "T01", "--worktree", "--json").json();
+    const wt = join(root, s.worktree);
+    expect(lstatSync(join(wt, "node_modules")).isSymbolicLink()).toBe(true);
+    expect(existsSync(join(wt, "node_modules/.bin/vitest"))).toBe(true);
+    write(wt, "lib/x.js", "1;\n");
+    expect(g(wt, "status", "--porcelain")).toBe("?? lib/");
+    // a resumed task gets the link again
+    execFileSync("rm", [join(wt, "node_modules")]);
+    cli(root, "task", "start", "T01", "--worktree");
+    expect(existsSync(join(wt, "node_modules"))).toBe(true);
+  });
+
+  it("fails a layer whose command passed but whose declared JUnit report is missing", () => {
+    const q = `layers:\n  - name: code\n    run: ['node -e "process.exit(0)"']\n  - name: unit\n    run: ['node -e "process.exit(0)"']\n    reports: [test-results/unit.xml]\n  - name: e2e\n    run: ['node -e "process.exit(0)"']\ndeploy:\n  target: none\n`;
+    const root = project({ quality: q });
+    write(root, "tests/a.test.ts", `test("${SCENARIO}: works", () => {})\n`);
+    approve(root);
+    cli(root, "task", "start", "T01");
+    expect(cli(root, "checkpoint", "T01").out).toMatch(/^PASS/);
+    expect(cli(root, "review", "T01", "pass").code).toBe(0);
+    expect(cli(root, "transition", ID, "verifying").code).toBe(0);
+    const v = cli(root, "verify", "--json");
+    expect(v.code).toBe(1);
+    expect(v.json()).toMatchObject({ ok: false, failed: "unit" });
+    const task = readFileSync(join(root, ".aidw/changes", ID, "tasks.yaml"), "utf8");
+    expect(task).toMatch(/wrote no JUnit report test-results\/unit\.xml/);
+  });
+
+  it("warns when a scenario triggered from the UI belongs only to a task that touches no UI", () => {
+    const spec = `## ADDED Requirements\n\n### Requirement: Export csv\nThe system SHALL download a CSV.\n\n#### Scenario: Whole month\n- **WHEN** the user clicks "Export CSV" on the list screen\n- **THEN** the file is downloaded\n`;
+    const sid = "booking/export-csv/whole-month";
+    const api = `tasks:\n  - id: T01\n    title: Export api\n    role: backend-engineer\n    type: feat\n    specs: [booking/export-csv]\n    scenarios: [${sid}]\n    touches: ["lib/csv.ts", "app/api/export/**"]\n    verify: ['node -e "process.exit(0)"']\n    status: pending\n`;
+    const warn = (tasks: string) => cli(project({ spec, tasks }), "analyze", ID, "--json").out;
+    expect(warn(api)).toMatch(/triggered from the UI[\s\S]*T01 touch no UI files/);
+    expect(warn(api.replace('"app/api/export/**"', '"components/export-button.tsx"'))).not.toMatch(/triggered from the UI/);
+    expect(warn(api.replace("node -e", "pnpm exec playwright test #"))).not.toMatch(/triggered from the UI/);
+  });
+
+  it("refuses to commit the pnpm store the sandbox puts in the project root", () => {
+    const root = project({ git: true });
+    approve(root);
+    cli(root, "task", "start", "T01");
+    write(root, ".pnpm-store/v3/files/00/abc", "x");
+    write(root, "tests/a.test.ts", `test("${SCENARIO}: works", () => {})\n`);
+    expect(cli(root, "checkpoint", "T01").out).toMatch(/^PASS/);
+    const r = cli(root, "review", "T01", "pass");
+    expect(r.code).not.toBe(0);
+    expect(r.err).toMatch(/refusing to commit dependency or build output \(\.pnpm-store/);
+  });
+});
+
+import { deployHint } from "../src/quality.js";
+
+describe("deploy hints", () => {
+  it("explains the sandbox network block and the first-deploy-is-production rule", () => {
+    expect(deployHint("Error: An unexpected error occurred in deploy: TypeError: fetch failed")).toMatch(/sandbox blocked the network/);
+    expect(deployHint('{"reason": "first_deployment_production"}')).toMatch(/vercel link --yes/);
+  });
+});

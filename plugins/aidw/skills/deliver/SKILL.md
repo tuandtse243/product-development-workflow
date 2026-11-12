@@ -39,7 +39,8 @@ quality report.
 - `## Deploy`: what was deployed (target, URL from the quality report) and how the client deploys to
   production themselves. Production was not touched by this workflow.
 - `## Usage`: the main user flows, referencing the screenshots.
-- `## Known issues`: be honest. Copy every failed, skipped or not-covered item from `quality-report.md`,
+- `## Known issues`: be honest. Include every item of the quality report's "Reviewer remarks (non-blocking)" (trial-3A dropped most of them, among them a missing focus trap), grouped by screen.
+  Also: Copy every failed, skipped or not-covered item from `quality-report.md`,
   reviewer remarks that were not fixed, files changed outside touches if relevant, and assumptions from the
   Analysis that the client must confirm. "None known" only if that is true.
 - `## Next steps`: what you would do next, in priority order.

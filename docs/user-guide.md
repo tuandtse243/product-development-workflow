@@ -31,6 +31,14 @@ Hoặc cài như một marketplace (repo này có `.claude-plugin/marketplace.js
 /plugin install aidw@aidw
 ```
 
+Để dùng `aidw` trong terminal của chính bạn (không chỉ trong Claude Code), liên kết nó vào PATH:
+
+```bash
+ln -sf /đường/dẫn/product-development-workflow/plugins/aidw/bin/aidw ~/.local/bin/aidw
+```
+
+Nên cài bằng marketplace cho các lần chạy dài: một plugin nạp bằng `--plugin-dir` có thể biến mất khi session được nạp lại giữa chừng (trial-3A).
+
 Gợi ý: đặt alias một dòng trong `~/.zshrc`, kèm file log hook để debug:
 
 ```bash
@@ -186,6 +194,11 @@ hành vi, thay vì chia theo tầng.
 | `aidw run` dừng `no_progress` | hai session liền không đổi gì | đọc `.aidw/run/runner.log`, chạy `/aidw:status` |
 | `refusing to commit dependency or build output` | thiếu `.gitignore` | thêm mục ignore, `git rm -r --cached <path>`, thử lại |
 | Deploy báo cần đăng nhập Vercel | token hết hạn | chạy `vercel whoami` ở terminal của bạn, rồi chạy lại |
+| Subagent bị từ chối: "input bị đổi sau khi duyệt" (auto mode) | plugin khác (context-mode) sửa prompt của Agent bằng hook | tắt hook PreToolUse của plugin đó cho tool Agent, hoặc tắt plugin khi chạy aidw |
+| `pnpm install` treo hoặc báo EPERM trong sandbox | store của pnpm không ghi được, hoặc safe-chain tải danh sách gói quá lâu | tự chạy `pnpm install` ở terminal của bạn khi T01 đã có `package.json` |
+| Deploy báo `fetch failed` | sandbox chặn mạng | cho phép `vercel.com` và `*.vercel.com` hoặc chạy lệnh ở terminal của bạn |
+| Deploy báo `first_deployment_production` | project Vercel chưa tồn tại | `vercel link --yes` rồi chạy lại; không dùng `--prod` nếu chưa chắc |
+| Giữa chừng báo plugin/agent `aidw:*` biến mất | chạy bằng `--plugin-dir` và session được nạp lại | cài plugin bằng marketplace (mục 2), rồi `/reload-plugins` |
 | Hộp thoại xác nhận lặp lại | lệnh bậc 2 hoặc 3 chưa nằm trong danh sách | xem mục 6 |
 
 ## 11. Giới hạn hiện tại

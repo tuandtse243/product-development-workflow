@@ -17,7 +17,7 @@ export function isGitRepo(cwd: string): boolean {
 
 /** Dependency and build-output folders that must never be committed (aidw commits with `git add -A`). */
 const GENERATED_PATH =
-  /(^|\/)(node_modules|\.next|\.nuxt|\.svelte-kit|\.turbo|\.vercel|coverage|playwright-report|test-results)\/|(^|\/)(next-env\.d\.ts|\.DS_Store)$|\.tsbuildinfo$/;
+  /(^|\/)(node_modules|\.next|\.nuxt|\.svelte-kit|\.turbo|\.vercel|\.pnpm-store|\.vitest|coverage|playwright-report|test-results)\/|(^|\/)(next-env\.d\.ts|\.DS_Store)$|\.tsbuildinfo$/;
 /** Secrets files: never committed either, but a write to one is not "generated" for the backstop. */
 const ENV_FILE = /(^|\/)\.env(?:\.(?!example$)[\w.-]+)?$/;
 const JUNK_PATH = { test: (f: string) => GENERATED_PATH.test(f) || ENV_FILE.test(f) };

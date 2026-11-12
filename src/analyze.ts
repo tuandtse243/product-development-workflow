@@ -247,6 +247,46 @@ export function analyzeChange(p: Paths, id: string): Diags {
   for (const s of changed.scenarios) {
     if (!coveredScenarios.has(s)) d.error(tf, `scenario "${s}" has no task that implements and verifies it`);
   }
+  uiScenarioAdvice(p, id, tasks, d, tf);
   for (const advice of planAdvice(tasks)) d.warn(tf, advice);
   return d;
+}
+
+/** A scenario whose WHEN is a user gesture (click, tap, "bấm"...). */
+const UI_GESTURE = /\b(clicks?|taps?|presses|pressed|selects?|opens?|toggles?|button|dialog|screen|page)\b|bấm|nhấn|chạm|chọn|nút\b|màn hình|màn\b/i;
+const BROWSER_VERIFY_RE = /\b(playwright|cypress|e2e)\b/i;
+
+/** WHEN line of each scenario of a requirement block, by scenario name. */
+function scenarioWhens(raw: string): Map<string, string> {
+  const out = new Map<string, string>();
+  let name = "";
+  for (const line of raw.split("\n")) {
+    const h = /^####\s+Scenario:\s*(.+?)\s*$/.exec(line);
+    if (h) name = h[1] as string;
+    else if (name && /\*\*WHEN\*\*/.test(line)) out.set(name, line);
+  }
+  return out;
+}
+
+/**
+ * Trial-3A: a spec said "the user clicks Export CSV on the list screen" but the only task for it touched the API,
+ * so the plan shipped without the button and every check still passed. A scenario triggered from the UI needs a task
+ * that touches UI files (or drives a browser) among those that implement it.
+ */
+function uiScenarioAdvice(p: Paths, id: string, tasks: Task[], d: Diags, tf: string): void {
+  const { deltas } = specsAfterChange(p, id);
+  for (const [cap, text] of deltas) {
+    const delta = parseDelta(text);
+    for (const r of [...delta.added, ...delta.modified]) {
+      for (const [name, when] of scenarioWhens(r.raw)) {
+        if (!UI_GESTURE.test(when)) continue;
+        const sid = scenarioId(cap, r.name, name);
+        const owners = tasks.filter((t) => Array.isArray(t.scenarios) && (t.scenarios as unknown[]).map(String).includes(sid));
+        const reachesUi = owners.some((t) => touchesUi(t) || (Array.isArray(t.verify) && (t.verify as unknown[]).some((v) => BROWSER_VERIFY_RE.test(String(v)))));
+        if (owners.length && !reachesUi) {
+          d.warn(tf, `scenario "${sid}" is triggered from the UI ("${when.replace(/^[-*\s]*\*\*WHEN\*\*\s*/, "").slice(0, 80)}") but task(s) ${owners.map((t) => t.id).join(", ")} touch no UI files and run no browser test: add the UI work to a task`);
+        }
+      }
+    }
+  }
 }
