@@ -205,3 +205,38 @@ describe("small changes", () => {
     expect(readFileSync(cli(root, "brief", "T01").out.trim(), "utf8")).toMatch(/regression test[^\n]*FAIL on the current code/);
   });
 });
+
+import { ASK_COMMANDS, AIDW_STATE_COMMAND, firstMatch } from "../src/policy.js";
+
+describe("pull request at delivery", () => {
+  it("prints a PR built from the Analysis, tasks, evidence and the diff", () => {
+    const root = project({ git: true });
+    write(root, ".env.example", "A=1\n");
+    g(root, "add", "-A");
+    g(root, "commit", "-qm", "base");
+    approve(root);
+    g(root, "switch", "-q", "-c", "scratch");
+    g(root, "switch", "-q", `aidw/${ID}`);
+    write(root, ".env.example", "A=1\nNEW_KEY=\n");
+    write(root, "db/migrations/001.sql", "select 1;\n");
+    write(root, "package.json", "{}\n");
+    g(root, "add", "-A");
+    g(root, "commit", "-qm", "work");
+    const r = cli(root, "pr", ID, "--base", "master", "--json").json();
+    expect(r.title).toMatch(/^feat\(config\): \S/);
+    expect(r.head).toBe(`aidw/${ID}`);
+    expect(r.body).toMatch(/## Summary[\s\S]*## Tasks[\s\S]*T01 Reschedule[\s\S]*## Evidence[\s\S]*## Merge danger/);
+    expect(r.body).toMatch(/Database migrations \(1\): db\/migrations\/001\.sql/);
+    expect(r.body).toMatch(/New environment variables[^\n]*NEW_KEY/);
+    expect(r.body).toMatch(/Dependencies changed: package\.json/);
+    expect(r.commands[1]).toMatch(/^gh pr create --base master --head aidw\//);
+    expect(cli(root, "pr", ID, "--create").err).toMatch(/open the PR after delivery/);
+  });
+
+  it("asks before pushing or opening a PR and keeps it from subagents", () => {
+    expect(firstMatch(ASK_COMMANDS, "aidw pr --create --draft")).toBeDefined();
+    expect(firstMatch(ASK_COMMANDS, "gh pr create --title x")).toBeDefined();
+    expect(firstMatch(ASK_COMMANDS, "aidw pr")).toBeUndefined();
+    expect(AIDW_STATE_COMMAND.test("aidw pr --create")).toBe(true);
+  });
+});

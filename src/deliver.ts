@@ -23,7 +23,7 @@ import { touchesUi } from "./skills.js";
 import type { Task } from "./tasks.js";
 import { sections } from "./spec/parse.js";
 
-export const HANDOFF_SECTIONS = ["Overview", "Run locally", "Environment", "Deploy", "Usage", "Known issues", "Next steps"] as const;
+export const HANDOFF_SECTIONS = ["Overview", "Run locally", "Environment", "Deploy", "Usage", "Known issues", "Merge danger", "Next steps"] as const;
 const IMAGE = /\.(png|jpe?g|webp)$/i;
 
 export const deliveryDir = (change: Change) => join(change.dir, "delivery");
@@ -53,6 +53,10 @@ ${PLACEHOLDER}: the main flows for an end user, with the screenshots in screensh
 ## Known issues
 
 ${PLACEHOLDER}: anything that does not work or was cut, failing or skipped checks, limitations. Write "None known" only if true.
+
+## Merge danger
+
+${PLACEHOLDER}: what could break when this merges: migrations (reversible, tried on a seeded copy), new or changed environment variables, dependency upgrades, breaking API changes, feature flags, data that must be moved. Write "None" only if true.
 
 ## Next steps
 

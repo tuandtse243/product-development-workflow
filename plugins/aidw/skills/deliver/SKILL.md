@@ -43,6 +43,10 @@ quality report.
   Also: Copy every failed, skipped or not-covered item from `quality-report.md`,
   reviewer remarks that were not fixed, files changed outside touches if relevant, and assumptions from the
   Analysis that the client must confirm. "None known" only if that is true.
+- `## Merge danger`: what could break when this merges: migrations (reversible, tried on a seeded copy), new or
+  changed environment variables, dependency upgrades, breaking API changes, data that must be moved. `aidw pr`
+  prints the computed part (migration files, dependency and `.env.example` changes, breaking tasks); add what only
+  you know. "None" only if true.
 - `## Next steps`: what you would do next, in priority order.
 
 ## 3. Screenshots (UI changes)
@@ -70,6 +74,9 @@ width; add mobile for the most important one):
    commits `.aidw/`. It refuses an incomplete package.
 4. Report to the user: the preview URL, where the package is (`.aidw/archive/<id>/delivery/`), the quality
    summary, and the known issues. Name the branch that holds the work (`run.branch` in change.yaml,
-   usually `aidw/<id>`) and its base: the user merges it, or opens a PR from it. aidw does not merge or push.
+   usually `aidw/<id>`) and its base. aidw never merges. **Pull request (opt-in):** if the project has a git remote and
+   the GitHub CLI, offer it once: `aidw pr` prints the title, summary, evidence and Merge danger; if the user
+   says yes, run `aidw pr --create` (tier 3: it asks, then pushes the branch and runs `gh pr create`). Without a
+   remote or `gh`, hand the user the printed body.
 5. Tell the user to `/clear` (or open a new session) before the next change: this session's context is large
    and a new change does not need it.

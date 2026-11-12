@@ -186,7 +186,7 @@ describe("aidw workflow", () => {
     expect(missing).toContain("unresolved TODO(aidw) placeholder");
     expect(missing).toContain("no screenshots (png, jpg, webp) of the main flows; this change has UI tasks");
     expect(cli(root, "archive", ID).err).toMatch(/delivery package of .* is incomplete/);
-    const handoff = ["Overview", "Run locally", "Environment", "Deploy", "Usage", "Known issues", "Next steps"]
+    const handoff = ["Overview", "Run locally", "Environment", "Deploy", "Usage", "Known issues", "Merge danger", "Next steps"]
       .map((h) => `## ${h}\n\n${h === "Environment" ? "SUPABASE_URL and SUPABASE_ANON_KEY, see .env.example." : `${h} text.`}\n`)
       .join("\n");
     write(root, `.aidw/changes/${ID}/delivery/handoff.md`, `# Handoff\n\n${handoff}`);

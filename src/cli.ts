@@ -29,6 +29,7 @@ import { converge } from "./converge.js";
 import { formatCost, readSessions } from "./cost.js";
 import { detectProject } from "./detect.js";
 import { doctor, doctorText } from "./doctor.js";
+import { createPr, planPr } from "./pr.js";
 import { runLoop } from "./runner.js";
 import { deliver } from "./deliver.js";
 import { deploy, recordLayerReview, verify } from "./quality.js";
@@ -112,6 +113,9 @@ const HELP = `aidw ${VERSION} - deterministic core of the AI Fullstack Autonomou
 Usage: aidw <command> [args] [--json] [--root <dir>]
 
   init                                   create .aidw/ in the current directory (or --root); detects brownfield
+  pr [<id>] [--base B] [--create] [--draft]
+                                         after delivery: print the pull request (title, summary, evidence, merge danger);
+                                         --create pushes the change branch and opens it with gh (asks first)
   doctor [<id>]                          check the machine for the run: binaries of the quality commands, package store, registry,
                                          Chrome CDP, Vercel login and link; exit 1 on a blocking problem
   detect                                 what the existing code uses (stack, package manager, suggested layers)
@@ -671,6 +675,20 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
               : ""
           }${d.warnings.map((w) => `  WARNING ${w}\n`).join("")}`,
         );
+        return 0;
+      }
+
+      case "pr": {
+        const p = project();
+        const id = resolveChangeId(p, str(args.flags.change) ?? rest[0]);
+        const base = str(args.flags.base);
+        if (args.flags.create === true) {
+          const r = createPr(p, id, { ...(base ? { base } : {}), draft: args.flags.draft === true });
+          emit({ ok: true, change: id, url: r.url, title: r.plan.title }, `pull request opened: ${r.url}\n`);
+          return 0;
+        }
+        const plan = planPr(p, id, base ? { base } : {});
+        emit({ ok: true, change: id, title: plan.title, head: plan.head, base: plan.base, body: plan.body, commands: plan.commands }, `title: ${plan.title}\n\n${plan.body}\nTo open it (asks first): aidw pr --create [--base <branch>] [--draft]\n`);
         return 0;
       }
 
