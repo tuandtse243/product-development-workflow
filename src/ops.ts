@@ -421,7 +421,7 @@ export function offBranchNote(cwd: string, env: NodeJS.ProcessEnv): string | nul
   return `AIDW: HEAD is on ${current || "a detached commit"}, but unmerged change branch(es) ${open.join(", ")} hold newer aidw state. Before /aidw:run, /aidw:resume or /aidw:status, run \`git switch ${open[0]}\` (or merge it).`;
 }
 
-function isDefaultBranch(cwd: string, name: string): boolean {
+export function isDefaultBranch(cwd: string, name: string): boolean {
   const origin = git(cwd, ["symbolic-ref", "-q", "--short", "refs/remotes/origin/HEAD"]);
   if (origin.ok && origin.out) return origin.out.replace(/^origin\//, "") === name;
   return ["main", "master", "trunk", "develop"].includes(name);

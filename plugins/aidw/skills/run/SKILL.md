@@ -49,14 +49,13 @@ that aidw creates; everything else runs sequentially on the main checkout.
      prints where task commits go. If it says switching failed, stop and tell the user.
 2. When the project is a git repository, check `git status`: unrelated uncommitted user changes would end up in
    task commits. If there are any, ask the user to commit or stash them first.
-3. **Sandbox preflight (once per change, before the first task).** Greenfield tasks install packages and the
-   last step deploys; both fail inside the sandbox in known ways (trial-3A lost over an hour to them):
-   - `<pm> install` needs a writable package store and a reachable registry. Check `<pm> store path` and
-     `curl -sI <registry>`. If the store is not writable, ask the user to run the first `<pm> install` in their
-     own terminal after T01's `package.json` exists, or to allow the path; do not let T01 sit waiting.
-   - A Vercel deploy target needs `.vercel/project.json`. If it is missing, run `vercel link --yes` now (creating a
-     free project is covered by the `vercel-preview` permission). Without it the first deploy is forced to
-     Production, which is tier 3. Make sure the sandbox allows `vercel.com` and `*.vercel.com`.
+3. **Preflight (once per change, before the first task).** Run `aidw doctor <id>`. Greenfield tasks install
+   packages and the last step deploys; both fail inside the sandbox in known ways (trial-3A lost over an hour):
+   - FAIL: stop and tell the user what to fix (the line says how), then run it again.
+   - `pnpm store` WARN (not writable): ask the user to run the first `pnpm install` in their own terminal after
+     T01's `package.json` exists, or to allow the path; do not let T01 sit waiting.
+   - `vercel project` WARN (not linked): run `vercel link --yes` now (creating a free project is covered by the
+     `vercel-preview` permission). Without it the first deploy is forced to Production, which is tier 3.
 4. Not running under the runner (`echo $AIDW_RUNNER` is empty) and more than 3 tasks remain: tell the user once,
    in one line, that `aidw run <id>` in their own terminal does the same with a fresh session per task and costs
    about a quarter of the tokens of this long session; then continue here if they do not switch.

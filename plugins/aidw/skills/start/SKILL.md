@@ -255,11 +255,11 @@ Read `$(aidw plugin-path profiles/quality-layers.md)` and `$(aidw plugin-path po
   Justify every layer you leave out; the quality report lists it as not covered.
 - `## Deploy strategy`: none | local | preview, the provider, the preview environment variables and where their
   values come from. Production is never automatic: it is tier 3 and asks.
-- **Environment preflight.** The layers run unattended in this Claude Code session, under its sandbox, so check
-  now that what they need works here: the package manager and runners (`<pm> --version`, `npx vitest --version`),
-  the deploy CLI and its login (`vercel whoami`), and `npx lighthouse --version` when the profile has a
-  `performance` layer. Settle every gap with the user before approval and record
-  it under the Summary's risks: a layer that cannot run here fails in verify and escalates.
+- **Environment preflight.** The layers run unattended in this Claude Code session, under its sandbox. Run
+  `aidw doctor <id>` now: it checks the binaries of every quality command, the package manager, the package
+  store and registry, Chrome CDP and the Vercel login and link. Settle every FAIL with the user before approval and
+  record the WARNs under the Summary's risks: a layer that cannot run here fails in verify and escalates. Also
+  check `npx lighthouse --version` yourself when the profile has a `performance` layer.
 - **E2E browser.** Claude Code's sandbox usually blocks launching Chromium, so the default is **Chrome over
   CDP**: the user runs Chrome outside the sandbox with a debugging port, and Playwright connects to it (setup
   and fixture in the quality-layers profile, "E2E browser over CDP"). Check now that this session reaches it:

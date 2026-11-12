@@ -15,6 +15,8 @@ All progress lives in `.aidw/` and git, so resuming needs no memory of the previ
 
 1. `aidw status` (one call; skip it when the prompt already names the change and its state is known). Pick the change (`$ARGUMENTS`, or the single active one) and report where it stands:
    state, paused reason, tasks done/total.
+   A resumed run may be on another machine state (Chrome closed, login expired): run `aidw doctor <id>` and
+   settle FAIL lines before continuing.
 2. By state:
    - `paused`: `aidw transition <id> resume` (returns to the state it paused from).
    - `escalated`: show the user why (the escalation reason and the task's evidence) and ask what to do:

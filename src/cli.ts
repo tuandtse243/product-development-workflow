@@ -28,6 +28,7 @@ import { findProject, pathsFor, rel, type Paths } from "./project.js";
 import { converge } from "./converge.js";
 import { formatCost, readSessions } from "./cost.js";
 import { detectProject } from "./detect.js";
+import { doctor, doctorText } from "./doctor.js";
 import { runLoop } from "./runner.js";
 import { deliver } from "./deliver.js";
 import { deploy, recordLayerReview, verify } from "./quality.js";
@@ -111,6 +112,8 @@ const HELP = `aidw ${VERSION} - deterministic core of the AI Fullstack Autonomou
 Usage: aidw <command> [args] [--json] [--root <dir>]
 
   init                                   create .aidw/ in the current directory (or --root); detects brownfield
+  doctor [<id>]                          check the machine for the run: binaries of the quality commands, package store, registry,
+                                         Chrome CDP, Vercel login and link; exit 1 on a blocking problem
   detect                                 what the existing code uses (stack, package manager, suggested layers)
   baseline <capability> [--change <id>]  brownfield: skeleton spec of a capability's current behavior
   change new <id> [--title T] [--input-type ${INPUT_TYPES.join("|")}]
@@ -669,6 +672,21 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           }${d.warnings.map((w) => `  WARNING ${w}\n`).join("")}`,
         );
         return 0;
+      }
+
+      case "doctor": {
+        const p = project();
+        let id: string | null = rest[0] ?? null;
+        if (!id) {
+          try {
+            id = resolveChangeId(p, undefined);
+          } catch {
+            id = null; // no change yet: machine checks only
+          }
+        }
+        const checks = doctor(p, id, env);
+        emit({ ok: !checks.some((c) => c.status === "fail"), change: id, checks }, doctorText(checks));
+        return checks.some((c) => c.status === "fail") ? 1 : 0;
       }
 
       case "detect": {
