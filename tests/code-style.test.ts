@@ -33,3 +33,14 @@ describe("code style profile", () => {
     expect(read("agents/implementer.md")).toMatch(/formatter[^\n]*finish by running it/);
   });
 });
+
+describe("user guide and skills agree on how to run", () => {
+  const guide = readFileSync(join(__dirname, "..", "docs", "user-guide.md"), "utf8");
+  it("explains task, session and worktree, and leads with aidw run", () => {
+    expect(guide).toMatch(/## Task, phiên và worktree/);
+    for (const h of ["### Task", "### Phiên", "### Worktree"]) expect(guide).toContain(h);
+    expect(guide).toMatch(/## 7\. Chạy không cần trông: `aidw run` \(cách chạy khuyên dùng\)/);
+    expect(read("skills/approve/SKILL.md")).toMatch(/recommended build[\s\S]*aidw run <id>/);
+    expect(read("skills/run/SKILL.md")).toMatch(/recommend the runner first/);
+  });
+});

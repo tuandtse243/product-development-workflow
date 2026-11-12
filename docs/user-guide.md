@@ -116,6 +116,88 @@ Hai trường hợp đặc biệt:
   code đã merge.
 - **Task chỉ thêm test** (do converge sinh ra) mà checkpoint xanh thì tự pass review, không cần reviewer.
 
+## Task, phiên và worktree: ba khái niệm cần phân biệt
+
+Ba thứ này hay bị nhầm vì đều liên quan tới "một đơn vị công việc". Chúng ở ba tầng khác nhau.
+
+| Khái niệm | Là gì | Sống ở đâu | Sống bao lâu |
+|---|---|---|---|
+| **Task** | một lát việc hoàn chỉnh (ví dụ "thêm, sửa, xóa danh mục") do bạn duyệt ở cổng | `.aidw/changes/<id>/tasks.yaml` và git | suốt change, cho tới khi xong |
+| **Phiên (session)** | một cuộc trò chuyện của Claude: nó đọc context rồi hành động | bộ nhớ của Claude (transcript) | từ lúc mở tới lúc đóng hoặc hết ngữ cảnh |
+| **Worktree** | một bản checkout git riêng của repo, để một task chạy song song mà không giẫm lên task khác | `.aidw/run/worktrees/<change>/<task>/` | từ lúc task bắt đầu tới lúc merge |
+
+Nguyên tắc nền: **mọi thứ cần nhớ nằm ở `.aidw/` và git, không nằm trong phiên.** Phiên nào cũng có thể chết, bị ngắt hoặc thay bằng phiên mới mà không mất gì.
+
+### Task
+
+Một task là một lát dọc (vertical slice): mang cả API, giao diện và test của một hành vi. Mỗi task trong `tasks.yaml` có:
+
+- `id` (T01...), `title`, `type` (feat/fix/...: dùng cho commit message), `role`;
+- `specs` và `scenarios`: yêu cầu nó phải làm cho đúng. Mỗi scenario phải có một test mang đúng id của nó;
+- `depends_on`: task nào phải xong trước;
+- `touches`: các file nó được phép sửa. Đây là hàng rào: file ngoài danh sách bị báo ở checkpoint;
+- `risk`: `high` (đăng nhập, thanh toán, migration) thì luôn chạy một mình;
+- `verify`: các lệnh chứng minh nó chạy được.
+
+Vòng đời của một task (cột `status`):
+
+```
+pending -> running -> review -> done
+              ^          |
+              |          v
+              +------- failed ----(sau 3 lần thử)----> escalated
+```
+
+- `running`: có implementer đang làm. Nếu phiên chết giữa chừng, task kẹt ở `running`; `aidw next` gọi nó là *interrupted* và phiên sau làm tiếp từ phần code đã có.
+- `review`: checkpoint đã xanh, đang chờ reviewer độc lập.
+- `failed`: checkpoint đỏ hoặc reviewer đòi sửa. Ghi chú lỗi đi vào brief của lần thử kế tiếp. Tối đa 3 lần (`max_attempts`), sau đó `escalated`: cần bạn quyết định.
+- `done`: đã review xong và **đã commit**: một task, một commit, dạng `type(capability): title`.
+
+Có bốn nguồn gốc (`origin`): `plan` (bạn đã duyệt), `converge` (thêm test cho scenario còn thiếu), `quality` (sửa một lớp chất lượng bị fail) và `integration` (sửa chỗ code của các task song song không khớp nhau). Ba loại sau do aidw thêm, nên không làm hash duyệt bị lệch.
+
+Cần sửa task đã xong: `aidw task reopen T02 [--revert]`. Sửa kế hoạch sau khi duyệt: duyệt lại, task không đổi giữ nguyên.
+
+### Phiên
+
+Có ba kiểu "người làm" khác nhau, đừng gộp:
+
+1. **Orchestrator**: phiên Claude điều phối. Nó chỉ làm việc cơ học: gọi `aidw task start`, giao việc cho subagent, gọi `aidw checkpoint`, `aidw verdict`. Nó không viết code. Đó là phiên bạn đang chat, hoặc một phiên không giao diện do `aidw run` mở.
+2. **Subagent**: Claude con, mỗi cái một context mới, chỉ biết brief của nó. *Implementer* viết code của một task. *Reviewer* chỉ đọc và đánh giá. Xong việc thì biến mất; kết quả nằm trong file và git, không nằm trong trí nhớ của ai.
+3. **Runner** (`aidw run`): không phải Claude, chỉ là một chương trình lặp lại việc mở phiên orchestrator mới.
+
+Một phiên orchestrator dài là phần tốn token nhất: mỗi lượt nó đọc lại toàn bộ cuộc trò chuyện, nên context càng lớn thì mỗi lượt càng đắt (trial-3A: phiên chính chiếm 57% chi phí, lớn dần tới 300K token). Vì thế `aidw run` mở **phiên mới sau mỗi task hoặc wave**: phiên mới đọc `.aidw/`, biết task nào xong, và tiếp tục. Sau khi một task commit, lệnh của aidw in "END THIS SESSION", phiên đó dừng, runner mở phiên kế.
+
+Hai phiên **không bao giờ chạy cùng lúc**. Runner chờ phiên này kết thúc rồi mới mở phiên sau. Song song chỉ xảy ra *bên trong* một phiên, giữa các subagent, qua worktree.
+
+### Worktree
+
+Hai task cùng sửa một thư mục làm việc sẽ giẫm lên nhau. Git worktree cho mỗi task một bản checkout riêng của cùng một repo (cùng lịch sử, khác thư mục và khác nhánh), nên chúng chạy song song an toàn.
+
+Khi nào dùng: aidw xếp các task thành một **wave** khi (1) `depends_on` đã xong, (2) `touches` không giao nhau, (3) không có task `risk: high` hay `touches: ["**"]` (chúng chạy một mình), (4) tối đa một task dùng trình duyệt (chung cổng e2e), (5) không quá `parallel.max` (mặc định 3). Task đứng một mình chạy thẳng trong thư mục chính, không cần worktree.
+
+Vòng đời trong một wave:
+
+1. `aidw task start T02 --worktree` tạo thư mục `.aidw/run/worktrees/<change>/T02/` trên nhánh `aidw/<change>.T02`, bắt đầu từ commit hiện tại của nhánh change. aidw tự nối `node_modules` của repo chính vào đó (không bị git thấy).
+2. Implementer chỉ làm việc trong thư mục đó. Cổng bảo vệ không cho nó sửa thư mục chính hay `.aidw/` của worktree. Checkpoint chạy trong đó.
+3. Reviewer pass: aidw commit trong worktree, rồi **merge vào nhánh change** (`--no-ff`), từng task một, cùng với trạng thái `.aidw/`. Worktree và nhánh `.T02` bị xóa. Kết quả: nhánh change có một commit cho mỗi task, y như chạy tuần tự.
+4. Sau cả wave, `aidw integrate` chạy lệnh verify của các task trong wave và lớp `code` trên **code đã gộp**. Nếu hai task không khớp nhau, nó thêm một task sửa (`origin: integration`) và dừng wave kế tiếp cho tới khi xong.
+
+**Xung đột.** Nếu lúc merge hai task sửa cùng một chỗ: aidw hủy merge, xóa nhánh của task đó, đánh `sequential` và chạy lại nó một mình trên code mới nhất. Không có ai phải giải quyết conflict bằng tay, và không mất công việc của task kia. Cách phòng tốt nhất là `touches` thật hẹp (cho nên `aidw plan` và `analyze` cảnh báo).
+
+### Gộp lại: một change chạy ra sao
+
+```
+bạn: aidw run <id>   (một lần, ở terminal của bạn)
+ └─ runner mở phiên orchestrator #1  ── đọc .aidw/, thấy T01 pending
+     ├─ task start T01 → implementer(T01) → checkpoint → reviewer(T01) → verdict → commit
+     └─ "END THIS SESSION"
+ └─ runner mở phiên #2 ── thấy T01 done; T02, T03 ready (wave)
+     ├─ worktree T02 ┐  implementer ×2 song song, mỗi cái trong worktree riêng
+     ├─ worktree T03 ┘  checkpoint, reviewer, verdict, merge từng task, integrate
+     └─ "END THIS SESSION"
+ └─ ... phiên #n ── mọi task xong → verify các lớp chất lượng → deploy → bàn giao → archive
+```
+
 ## 6. Ba hook bảo vệ
 
 Xem [`diagrams/components.html`](diagrams/components.html).
@@ -134,23 +216,25 @@ duyệt; bậc 3 (tốn tiền, production, push) luôn hỏi bạn; bậc x (se
 bậc 2 chưa nằm trong danh sách cũng hỏi. Hộp thoại lặp lại quá nhiều là dấu hiệu lệnh bị nhận nhầm: kiểm bằng
 `grep '"ask"' ~/<tên project>-hooks.jsonl` rồi báo lại.
 
-## 7. Chạy không cần trông: `aidw run`
+## 7. Chạy không cần trông: `aidw run` (cách chạy khuyên dùng)
 
-Chạy ở **terminal của bạn** (không chạy trong Claude Code), sau khi đã approve:
+Bạn gõ **một lệnh, một lần**, ở **terminal của bạn** (không phải trong Claude Code), sau khi đã approve. Sau đó có thể đi làm việc khác:
 
 ```bash
+aidw doctor <id>        # kiểm máy trước: Chrome CDP, đăng nhập Vercel, store pnpm...
 aidw run <id> --permission-mode auto -- --plugin-dir /đường/dẫn/plugins/aidw
 ```
 
-- Lặp `claude -p "/aidw:resume <id>"` cho tới khi archive. **Mỗi task một session mới**, bắt đầu khoảng 55K token,
-  thay vì một session dài cứ phình ra.
-- Hết quota: chờ tới giờ reset trong thông báo lỗi, không có thì chờ 5, 10, 20, 40, 60 phút.
-- Dừng khi escalated, hoặc hai session liền không tiến triển. Log ở `.aidw/run/runner.log`.
-- Câu hỏi cần bạn trả lời không thể hỏi lúc chạy này: nó thành một escalation.
+(Cần `aidw` trong PATH: xem mục 2.) Lệnh là một vòng lặp tự động, không phải chạy từng task bằng tay:
 
-Dùng `/aidw:run` tương tác vẫn được. Nên gõ `/clear` trước (cuộc trò chuyện phân tích dài, mỗi lượt sau đều đọc
-lại toàn bộ). Giữ session quá dài là nguyên nhân chính khiến tốn token: lần đo ở `aidw-trial-3b` cho thấy 91%
-token là của session chính (đo bằng `aidw cost`, 319 lượt và 103.7M token đọc cache ở session chính của `aidw-trial-3b`).
+- Nó mở `claude -p "/aidw:resume <id>"`, chờ phiên đó xong, rồi mở phiên mới, cho tới khi change được archive. Cách các phiên nối tiếp nhau và vì sao không xung đột: xem mục "Task, phiên và worktree" ở trên.
+- **Rẻ hơn khoảng bốn lần** so với `/aidw:run` trong Claude Code: mỗi phiên bắt đầu khoảng 55K token thay vì một phiên phình tới 300K. Nó cũng bỏ các MCP server khỏi phiên (thêm `--keep-mcp` để giữ).
+- Hết quota: chờ tới giờ reset trong thông báo lỗi, không có thì chờ 5, 10, 20, 40, 60 phút.
+- Dừng khi escalated, hoặc hai phiên liền không tiến triển. Log ở `.aidw/run/runner.log`.
+- Nó không hỏi bạn được giữa chừng: câu hỏi cần bạn trả lời thành một escalation. Xử lý xong thì chạy lại đúng lệnh trên; nó tiếp tục từ chỗ dừng.
+- Nếu muốn tạm dừng: Ctrl+C. Chạy lại lệnh sau là tiếp tục. Không mất gì.
+
+Dùng `/aidw:run` tương tác trong Claude Code vẫn được, dành cho việc ngắn hoặc khi bạn muốn xem từng bước. Hãy gõ `/clear` trước (cuộc trò chuyện phân tích dài, mỗi lượt sau đều đọc lại toàn bộ).
 
 ### Đo token: `aidw cost`
 

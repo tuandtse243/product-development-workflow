@@ -25,7 +25,11 @@ The user has asked to approve. This is the single human gate of the workflow (Q2
      `aidw transition <id> escalated`, then `analyzing`, then a new approval;
    - autonomous execution starts with `/aidw:run` (one fresh implementer per task, checkpoint evidence,
      independent review, a commit per task); after an interruption, `/aidw:resume`;
-   - the cheapest way to run it: the analysis conversation above is long and every later turn re-reads it.
+   - **recommended build: tell the user to type one command in their own terminal and walk away**:
+     `aidw doctor <id>` then `aidw run <id> --permission-mode auto` (the CLI prints the full path; it loops
+     automatically, one fresh session per task or wave, never two sessions at once, resumable after Ctrl+C). It costs
+     about a quarter of `/aidw:run` and drops MCP servers. Concepts: user guide, "Task, phiên và worktree".
+   - the alternative inside Claude Code: the analysis conversation above is long and every later turn re-reads it.
      Either type `/clear` and then `/aidw:run`, or run `aidw run <id> --permission-mode auto` in a separate
      terminal (a fresh session per task, no MCP servers, waits out usage limits; about a quarter of the tokens, and
      it needs `aidw` on PATH: see the user guide, section 2). Say this in two lines; do not start the run

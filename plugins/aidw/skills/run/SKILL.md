@@ -56,9 +56,10 @@ that aidw creates; everything else runs sequentially on the main checkout.
      T01's `package.json` exists, or to allow the path; do not let T01 sit waiting.
    - `vercel project` WARN (not linked): run `vercel link --yes` now (creating a free project is covered by the
      `vercel-preview` permission). Without it the first deploy is forced to Production, which is tier 3.
-4. Not running under the runner (`echo $AIDW_RUNNER` is empty) and more than 3 tasks remain: tell the user once,
-   in one line, that `aidw run <id>` in their own terminal does the same with a fresh session per task and costs
-   about a quarter of the tokens of this long session; then continue here if they do not switch.
+4. Not running under the runner (`echo $AIDW_RUNNER` is empty) and more than 3 tasks remain: **recommend the runner first**:
+   tell the user once, in one line, that typing `aidw doctor <id>` and then `aidw run <id> --permission-mode auto` in
+   their own terminal builds everything by itself, one fresh session per task, for about a quarter of the tokens of
+   this long session. Then continue here if they do not switch.
 
 ## Token discipline (this session re-reads its whole context on every turn)
 
