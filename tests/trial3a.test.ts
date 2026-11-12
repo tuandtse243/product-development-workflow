@@ -117,3 +117,59 @@ describe("deploy hints", () => {
     expect(deployHint('{"reason": "first_deployment_production"}')).toMatch(/vercel link --yes/);
   });
 });
+
+describe("re-approval keeps done work and tasks can be reopened", () => {
+  const TWO = `tasks:
+  - id: T01
+    title: First
+    role: backend-engineer
+    type: feat
+    scenarios: [${SCENARIO}]
+    touches: ["lib/a/**"]
+    verify: ['node -e "process.exit(0)"']
+    status: pending
+  - id: T02
+    title: Second
+    role: backend-engineer
+    type: feat
+    depends_on: [T01]
+    touches: ["lib/b/**"]
+    verify: ['node -e "process.exit(0)"']
+    status: pending
+`;
+  const complete = (root: string, t: string, file: string) => {
+    cli(root, "task", "start", t);
+    write(root, file, "1;\n");
+    if (t === "T01") write(root, "tests/t01.test.ts", `test("${SCENARIO}: works", () => {})\n`);
+    expect(cli(root, "checkpoint", t).out).toMatch(/^PASS/);
+    expect(cli(root, "review", t, "pass").code).toBe(0);
+  };
+  const tasksOf = (root: string) => readFileSync(join(root, ".aidw/changes", ID, "tasks.yaml"), "utf8");
+
+  it("keeps an unchanged done task and reruns an edited one after re-approval", () => {
+    const root = project({ git: true, tasks: TWO });
+    approve(root);
+    complete(root, "T01", "lib/a/x.js");
+    complete(root, "T02", "lib/b/y.js");
+    expect(cli(root, "transition", ID, "escalated").code).toBe(0);
+    expect(cli(root, "transition", ID, "analyzing").code).toBe(0);
+    write(root, `.aidw/changes/${ID}/tasks.yaml`, tasksOf(root).replace("title: Second", "title: Second, changed"));
+    for (const s of ["awaiting_approval"]) expect(cli(root, "transition", ID, s).err).toBe("");
+    const r = cli(root, "approve", ID, "--json").json();
+    expect(r).toMatchObject({ kept: ["T01"], reopened: ["T02"] });
+    expect(tasksOf(root)).toMatch(/id: T01[\s\S]*status: done[\s\S]*id: T02[\s\S]*status: pending/);
+  });
+
+  it("reopens a done task, optionally reverting its commit", () => {
+    const root = project({ git: true, tasks: TWO });
+    approve(root);
+    complete(root, "T01", "lib/a/x.js");
+    expect(cli(root, "task", "reopen", "T02").err).toMatch(/only done tasks can be reopened/);
+    const r = cli(root, "task", "reopen", "T01", "--revert", "--json").json();
+    expect(r).toMatchObject({ ok: true, task: "T01", dependents: [] });
+    expect(existsSync(join(root, "lib/a/x.js"))).toBe(false);
+    expect(g(root, "log", "-1", "--format=%s")).toBe("revert(config): first");
+    expect(tasksOf(root)).toMatch(/id: T01[\s\S]*status: pending/);
+    expect(cli(root, "next", "--json").json()).toMatchObject({ action: "implement", task: "T01" });
+  });
+});

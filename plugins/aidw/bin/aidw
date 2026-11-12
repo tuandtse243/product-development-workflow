@@ -7495,11 +7495,12 @@ var import_node_fs14 = require("node:fs");
 var import_node_path15 = require("node:path");
 
 // src/approval.ts
-var import_node_crypto = require("node:crypto");
+var import_node_crypto2 = require("node:crypto");
 var import_node_fs3 = require("node:fs");
 var import_node_path3 = require("node:path");
 
 // src/tasks.ts
+var import_node_crypto = require("node:crypto");
 var import_yaml2 = __toESM(require_dist(), 1);
 
 // src/diag.ts
@@ -7587,7 +7588,9 @@ var RUNTIME_FIELDS = [
   "worktree",
   "branch",
   "merged_at",
-  "sequential"
+  "sequential",
+  // re-approval keeps done work: the plan the task was finished against
+  "plan_sha"
 ];
 var DEFAULT_MAX_ATTEMPTS = 3;
 var ADDED_ORIGINS = ["converge", "quality", "integration"];
@@ -7682,6 +7685,11 @@ function canonicalTasks(text) {
   });
   return stableStringify(planned);
 }
+function planSha(t) {
+  const copy = { ...t };
+  for (const f of RUNTIME_FIELDS) delete copy[f];
+  return (0, import_node_crypto.createHash)("sha256").update(stableStringify(copy)).digest("hex").slice(0, 16);
+}
 function stableStringify(v) {
   if (Array.isArray(v)) return `[${v.map(stableStringify).join(",")}]`;
   if (v && typeof v === "object") {
@@ -7704,7 +7712,7 @@ function baseSpecFiles(p, change) {
   }
   return [...out];
 }
-var sha256 = (s) => (0, import_node_crypto.createHash)("sha256").update(s).digest("hex");
+var sha256 = (s) => (0, import_node_crypto2.createHash)("sha256").update(s).digest("hex");
 var normalize = (s) => s.replace(/\r\n?/g, "\n");
 function computeApprovalHash(p, change) {
   const entries = [];
@@ -9332,6 +9340,7 @@ function recordReview(p, id, taskId, verdict, notes, opts = {}) {
     setField(tf, i, "branch", null);
   }
   setField(tf, i, "status", "done");
+  setField(tf, i, "plan_sha", planSha(t));
   setField(tf, i, "notes", null);
   setField(tf, i, "finished_at", now2());
   saveTasks(tf);
@@ -9355,6 +9364,64 @@ function recordReview(p, id, taskId, verdict, notes, opts = {}) {
     throw new OpError(`task ${taskId} passed review but the commit failed: ${commit.err || commit.out}`);
   }
   return { task: taskId, verdict, status: "done", commit: headCommit(p.project) };
+}
+var RESET_FIELDS = ["worktree", "branch", "base", "started_at", "finished_at", "merged_at", "plan_sha", "evidence", "sequential"];
+function resetTask(tf, i, note) {
+  for (const f of RESET_FIELDS) setField(tf, i, f, null);
+  setField(tf, i, "status", "pending");
+  setField(tf, i, "attempts", 0);
+  setField(tf, i, "notes", note);
+}
+function reconcileDoneTasks(p, id) {
+  const tf = loadTasks(p, id);
+  const kept = [];
+  const reopened = [];
+  tf.tasks.forEach((t, i) => {
+    if (statusOf2(t) !== "done" || typeof t.plan_sha !== "string") return;
+    if (t.plan_sha === planSha(t)) kept.push(t.id);
+    else {
+      resetTask(tf, i, "the plan changed at re-approval; runs again");
+      reopened.push(t.id);
+    }
+  });
+  if (reopened.length) saveTasks(tf);
+  return { kept, reopened };
+}
+function reopenTask(p, id, taskId, opts = {}) {
+  const tf0 = loadTasks(p, id);
+  const t0 = tf0.tasks[indexOf(tf0, taskId)];
+  if (statusOf2(t0) !== "done") throw new OpError(`task ${taskId} is "${statusOf2(t0)}"; only done tasks can be reopened`);
+  const state = stateOf(tf0.change);
+  if (state && ["verifying", "converging", "escalated"].includes(state)) transition(p, id, "executing", {});
+  else if (state !== "executing") throw new OpError(`change "${id}" is "${String(state)}"; reopen a task while it is executing, verifying, converging or escalated`);
+  let reverted = null;
+  if (opts.revert) {
+    if (!isGitRepo(p.project)) throw new OpError("--revert needs a git repository");
+    const r = git(p.project, ["log", "--first-parent", "--format=%H", "-n", "1", "--grep", `^Task: ${taskId}$`, "--grep", `^Change: ${id}$`, "--all-match"]);
+    const sha = r.ok ? r.out : "";
+    if (!sha) throw new OpError(`no commit found for ${taskId}; reopen without --revert`);
+    const isMerge = git(p.project, ["rev-list", "--parents", "-n", "1", sha]).out.split(" ").length > 2;
+    const rv = git(p.project, ["revert", "--no-commit", ...isMerge ? ["-m", "1"] : [], sha]);
+    if (!rv.ok) {
+      git(p.project, ["revert", "--abort"]);
+      throw new OpError(`git revert of ${sha.slice(0, 8)} failed (${(rv.err || rv.out).split("\n")[0]}); resolve by hand, then reopen without --revert`);
+    }
+    git(p.project, ["restore", "--source=HEAD", "--staged", "--worktree", "--", ".aidw"]);
+    const msg = `${header("revert", scopeOf(t0), String(t0.title ?? ""))}
+
+Change: ${id}
+Task: ${taskId}
+Reverts: ${sha}`;
+    const c = git(p.project, ["commit", "-q", "-m", msg]);
+    if (!c.ok) throw new OpError(`could not commit the revert: ${c.err || c.out}`);
+    reverted = sha;
+  }
+  const tf = loadTasks(p, id);
+  resetTask(tf, indexOf(tf, taskId), opts.revert ? "reopened by the user; its commit was reverted" : "reopened by the user");
+  saveTasks(tf);
+  resetQualitySummary(tf.change);
+  const dependents = tf.tasks.filter((x) => statusOf2(x) === "done" && list3(x.depends_on).includes(taskId)).map((x) => x.id);
+  return { task: taskId, reverted, dependents };
 }
 function parseVerdict(text) {
   const first = text.split("\n").find((l) => l.trim() !== "") ?? "";
@@ -10886,6 +10953,9 @@ function recordLayerResult(change, summary, name, result) {
   writeJson(summaryFile(change), summary);
   appendHistory((0, import_node_path14.join)(qualityDir(change), `${name}.json`), result);
 }
+function resetQualitySummary(change) {
+  writeJson(summaryFile(change), { layers: {} });
+}
 function readSummary(change) {
   const f = summaryFile(change);
   if (!(0, import_node_fs13.existsSync)(f)) return { layers: {} };
@@ -11713,7 +11783,7 @@ function formatCost(sessions) {
 
 // src/runner.ts
 var import_node_child_process4 = require("node:child_process");
-var import_node_crypto2 = require("node:crypto");
+var import_node_crypto3 = require("node:crypto");
 var import_node_fs17 = require("node:fs");
 var import_node_path18 = require("node:path");
 var MINUTE = 6e4;
@@ -11771,7 +11841,7 @@ function fingerprint(p, id) {
     const parts = [String(c.data.state)];
     for (const f of ["tasks.yaml", "evidence/quality/summary.json", "evidence/converge.json", "evidence/deploy.json", "evidence/integration.json"]) {
       const file = (0, import_node_path18.join)(c.dir, f);
-      parts.push((0, import_node_fs17.existsSync)(file) ? (0, import_node_crypto2.createHash)("sha1").update((0, import_node_fs17.readFileSync)(file, "utf8").replace(ISO_TIME, "")).digest("hex").slice(0, 12) : "-");
+      parts.push((0, import_node_fs17.existsSync)(file) ? (0, import_node_crypto3.createHash)("sha1").update((0, import_node_fs17.readFileSync)(file, "utf8").replace(ISO_TIME, "")).digest("hex").slice(0, 12) : "-");
     }
     return parts.join("|");
   } catch {
@@ -11947,6 +12017,7 @@ Unattended (in your own terminal, not inside Claude Code):
                                          loop \`claude -p "/aidw:resume <id>"\` until archived; waits out usage
                                          limits (stated reset time or 5-60 min backoff); stops on escalation
   task retry <task>                      user-granted fresh attempt budget for an escalated/failed task
+  task reopen <task> [--revert]          a done task was wrong: back to pending (and git revert its commit with --revert)
   brief <task> [--for implement|review]  write the context packet for a fresh subagent; prints its path
   skills <task> [--for implement|review] vendored skills selected for the task
   checkpoint <task> [--timeout <sec>]    evidence: a test per scenario id + every verify command passes
@@ -12128,9 +12199,19 @@ function run(argv, env, cwd, io) {
         return 0;
       }
       case "task": {
-        if (rest[0] !== "start" && rest[0] !== "retry") throw new UsageError("usage: aidw task start|retry <task>");
+        if (rest[0] !== "start" && rest[0] !== "retry" && rest[0] !== "reopen") throw new UsageError("usage: aidw task start|retry|reopen <task>");
         const p = project();
         const id = resolveChangeId(p, str(args.flags.change));
+        if (rest[0] === "reopen") {
+          const r2 = reopenTask(p, id, need(rest[1], "task id"), { revert: args.flags.revert === true });
+          emit(
+            { ok: true, change: id, ...r2 },
+            `${r2.task} reopened (pending, fresh attempt budget; quality results dropped)${r2.reverted ? `; its commit ${r2.reverted.slice(0, 8)} was reverted` : ""}
+${r2.dependents.length ? `WARNING: done task(s) ${r2.dependents.join(", ")} depend on it; reopen them too if they relied on the old code
+` : ""}`
+          );
+          return 0;
+        }
         if (rest[0] === "retry") {
           const r2 = retryTask(p, id, need(rest[1], "task id"));
           emit({ ok: true, change: id, ...r2 }, `${r2.task}: retry granted (fresh attempt budget)
@@ -12528,10 +12609,16 @@ ${d.kind === "brownfield" ? `${d.signals.map((s) => `  signal  ${s}
         const p = project();
         const id = resolveChangeId(p, rest[0]);
         const { hash, files } = approve(p, id);
-        emit({ ok: true, id, hash, files }, `approved ${id}
+        const { kept, reopened } = reconcileDoneTasks(p, id);
+        emit(
+          { ok: true, id, hash, files, kept, reopened },
+          `approved ${id}
   ${hash}
   covers ${files.length} file(s)
-`);
+${kept.length ? `  done work kept: ${kept.join(", ")}
+` : ""}${reopened.length ? `  edited tasks run again: ${reopened.join(", ")}
+` : ""}`
+        );
         return 0;
       }
       case "approval": {

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import YAML from "yaml";
 import { Diags } from "./diag.js";
 import { typeProblem } from "./commit.js";
@@ -23,6 +24,8 @@ export const RUNTIME_FIELDS = [
   "branch",
   "merged_at",
   "sequential",
+  // re-approval keeps done work: the plan the task was finished against
+  "plan_sha",
 ] as const;
 
 export const DEFAULT_MAX_ATTEMPTS = 3;
@@ -150,6 +153,13 @@ export function canonicalTasks(text: string): string {
       return copy;
     });
   return stableStringify(planned);
+}
+
+/** Hash of a task's planned fields (everything the user approved about it), to tell an edited task from a finished one. */
+export function planSha(t: Task): string {
+  const copy: Record<string, unknown> = { ...t };
+  for (const f of RUNTIME_FIELDS) delete copy[f];
+  return createHash("sha256").update(stableStringify(copy)).digest("hex").slice(0, 16);
 }
 
 export function stableStringify(v: unknown): string {

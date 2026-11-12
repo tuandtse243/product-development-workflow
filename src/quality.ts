@@ -251,6 +251,11 @@ export function recordLayerResult(change: Change, summary: QualitySummary, name:
   appendHistory(join(qualityDir(change), `${name}.json`), result);
 }
 
+/** Forgets every layer result (code changed under them); the per-layer history files stay. */
+export function resetQualitySummary(change: Change): void {
+  writeJson(summaryFile(change), { layers: {} });
+}
+
 export function readSummary(change: Change): QualitySummary {
   const f = summaryFile(change);
   if (!existsSync(f)) return { layers: {} };

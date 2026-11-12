@@ -18,15 +18,15 @@ import { decisionsToHonor, requirementsAfterChange } from "./analyze.js";
 import { approvalStatus } from "./approval.js";
 import { loadChange, stateOf, type Change } from "./change.js";
 import { hardcodedColors, loadTokens, missingTokens, shotsDir, taskShots, tokensFile, tokensTable } from "./design.js";
-import { taskCommitMessage } from "./commit.js";
+import { header as commitHeader, scopeOf, taskCommitMessage } from "./commit.js";
 import { changedSince, git, headCommit, isGitRepo, junkMessage, stagedJunk } from "./git.js";
 import { matchesAny } from "./glob.js";
-import { OpError } from "./ops.js";
+import { OpError, transition } from "./ops.js";
 import { readText, rel, walkFiles, type Paths } from "./project.js";
 import { ensureWorktree, integrate, mergeWorktree, parallelConfig, pendingIntegration, planWave, removeWorktree, taskDir, type IntegrateResult } from "./parallel.js";
-import { parseQuality, qualityFile } from "./quality.js";
+import { parseQuality, qualityFile, resetQualitySummary } from "./quality.js";
 import { selectSkills, touchesUi, isSecuritySensitive, type BriefKind } from "./skills.js";
-import { DEFAULT_MAX_ATTEMPTS, parseTasks, validateTasksText, type Task } from "./tasks.js";
+import { DEFAULT_MAX_ATTEMPTS, parseTasks, planSha, validateTasksText, type Task } from "./tasks.js";
 
 const now = () => new Date().toISOString();
 const list = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : []);
@@ -515,6 +515,7 @@ export function recordReview(
     setField(tf, i, "branch", null);
   }
   setField(tf, i, "status", "done");
+  setField(tf, i, "plan_sha", planSha(t));
   setField(tf, i, "notes", null);
   setField(tf, i, "finished_at", now());
   saveTasks(tf);
@@ -540,6 +541,75 @@ export function recordReview(
     throw new OpError(`task ${taskId} passed review but the commit failed: ${commit.err || commit.out}`);
   }
   return { task: taskId, verdict, status: "done", commit: headCommit(p.project) };
+}
+
+const RESET_FIELDS = ["worktree", "branch", "base", "started_at", "finished_at", "merged_at", "plan_sha", "evidence", "sequential"];
+
+function resetTask(tf: TaskFile, i: number, note: string): void {
+  for (const f of RESET_FIELDS) setField(tf, i, f, null);
+  setField(tf, i, "status", "pending");
+  setField(tf, i, "attempts", 0);
+  setField(tf, i, "notes", note);
+}
+
+/**
+ * Re-approval keeps done work (docs/roadmap.md): after the user approves a revised Analysis, a done task whose
+ * planned fields still match what it was finished against stays done with its evidence; an edited one runs again.
+ */
+export function reconcileDoneTasks(p: Paths, id: string): { kept: string[]; reopened: string[] } {
+  const tf = loadTasks(p, id);
+  const kept: string[] = [];
+  const reopened: string[] = [];
+  tf.tasks.forEach((t, i) => {
+    if (statusOf(t) !== "done" || typeof t.plan_sha !== "string") return;
+    if (t.plan_sha === planSha(t)) kept.push(t.id);
+    else {
+      resetTask(tf, i, "the plan changed at re-approval; runs again");
+      reopened.push(t.id);
+    }
+  });
+  if (reopened.length) saveTasks(tf);
+  return { kept, reopened };
+}
+
+/**
+ * User or orchestrator: a done task turned out wrong. It goes back to pending with a fresh attempt budget and the
+ * quality results are dropped (they described code that is changing). With `revert` its commit is reverted first.
+ */
+export function reopenTask(p: Paths, id: string, taskId: string, opts: { revert?: boolean } = {}): { task: string; reverted: string | null; dependents: string[] } {
+  const tf0 = loadTasks(p, id);
+  const t0 = tf0.tasks[indexOf(tf0, taskId)] as Task;
+  if (statusOf(t0) !== "done") throw new OpError(`task ${taskId} is "${statusOf(t0)}"; only done tasks can be reopened`);
+  const state = stateOf(tf0.change);
+  if (state && ["verifying", "converging", "escalated"].includes(state)) transition(p, id, "executing", {});
+  else if (state !== "executing") throw new OpError(`change "${id}" is "${String(state)}"; reopen a task while it is executing, verifying, converging or escalated`);
+
+  let reverted: string | null = null;
+  if (opts.revert) {
+    if (!isGitRepo(p.project)) throw new OpError("--revert needs a git repository");
+    // The task commit carries "Task:" and "Change:" footers; first-parent finds the merge commit of a wave task.
+    const r = git(p.project, ["log", "--first-parent", "--format=%H", "-n", "1", "--grep", `^Task: ${taskId}$`, "--grep", `^Change: ${id}$`, "--all-match"]);
+    const sha = r.ok ? r.out : "";
+    if (!sha) throw new OpError(`no commit found for ${taskId}; reopen without --revert`);
+    const isMerge = git(p.project, ["rev-list", "--parents", "-n", "1", sha]).out.split(" ").length > 2;
+    const rv = git(p.project, ["revert", "--no-commit", ...(isMerge ? ["-m", "1"] : []), sha]);
+    if (!rv.ok) {
+      git(p.project, ["revert", "--abort"]);
+      throw new OpError(`git revert of ${sha.slice(0, 8)} failed (${(rv.err || rv.out).split("\n")[0]}); resolve by hand, then reopen without --revert`);
+    }
+    // The task commit also carried .aidw/ state and evidence; the revert must undo the code only.
+    git(p.project, ["restore", "--source=HEAD", "--staged", "--worktree", "--", ".aidw"]);
+    const msg = `${commitHeader("revert", scopeOf(t0), String(t0.title ?? ""))}\n\nChange: ${id}\nTask: ${taskId}\nReverts: ${sha}`;
+    const c = git(p.project, ["commit", "-q", "-m", msg]);
+    if (!c.ok) throw new OpError(`could not commit the revert: ${c.err || c.out}`);
+    reverted = sha;
+  }
+  const tf = loadTasks(p, id);
+  resetTask(tf, indexOf(tf, taskId), opts.revert ? "reopened by the user; its commit was reverted" : "reopened by the user");
+  saveTasks(tf);
+  resetQualitySummary(tf.change);
+  const dependents = tf.tasks.filter((x) => statusOf(x) === "done" && list(x.depends_on).includes(taskId)).map((x) => x.id);
+  return { task: taskId, reverted, dependents };
 }
 
 /** `VERDICT: pass|fix` on the first non-empty line of a reviewer's verdict; null when it is not there. */

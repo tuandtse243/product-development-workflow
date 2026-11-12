@@ -31,6 +31,7 @@ import { detectProject } from "./detect.js";
 import { runLoop } from "./runner.js";
 import { deliver } from "./deliver.js";
 import { deploy, recordLayerReview, verify } from "./quality.js";
+import { reconcileDoneTasks, reopenTask } from "./run.js";
 import { autoReview, buildBrief, checkpoint, integrateChange, nextAction, parseVerdict, recordReview, retryTask, startTask, type NextAction } from "./run.js";
 import { VERSION } from "./version.js";
 
@@ -136,6 +137,7 @@ Unattended (in your own terminal, not inside Claude Code):
                                          loop \`claude -p "/aidw:resume <id>"\` until archived; waits out usage
                                          limits (stated reset time or 5-60 min backoff); stops on escalation
   task retry <task>                      user-granted fresh attempt budget for an escalated/failed task
+  task reopen <task> [--revert]          a done task was wrong: back to pending (and git revert its commit with --revert)
   brief <task> [--for implement|review]  write the context packet for a fresh subagent; prints its path
   skills <task> [--for implement|review] vendored skills selected for the task
   checkpoint <task> [--timeout <sec>]    evidence: a test per scenario id + every verify command passes
@@ -358,9 +360,17 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
       }
 
       case "task": {
-        if (rest[0] !== "start" && rest[0] !== "retry") throw new UsageError("usage: aidw task start|retry <task>");
+        if (rest[0] !== "start" && rest[0] !== "retry" && rest[0] !== "reopen") throw new UsageError("usage: aidw task start|retry|reopen <task>");
         const p = project();
         const id = resolveChangeId(p, str(args.flags.change));
+        if (rest[0] === "reopen") {
+          const r = reopenTask(p, id, need(rest[1], "task id"), { revert: args.flags.revert === true });
+          emit(
+            { ok: true, change: id, ...r },
+            `${r.task} reopened (pending, fresh attempt budget; quality results dropped)${r.reverted ? `; its commit ${r.reverted.slice(0, 8)} was reverted` : ""}\n${r.dependents.length ? `WARNING: done task(s) ${r.dependents.join(", ")} depend on it; reopen them too if they relied on the old code\n` : ""}`,
+          );
+          return 0;
+        }
         if (rest[0] === "retry") {
           const r = retryTask(p, id, need(rest[1], "task id"));
           emit({ ok: true, change: id, ...r }, `${r.task}: retry granted (fresh attempt budget)\n`);
@@ -740,7 +750,11 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const p = project();
         const id = resolveChangeId(p, rest[0]);
         const { hash, files } = approve(p, id);
-        emit({ ok: true, id, hash, files }, `approved ${id}\n  ${hash}\n  covers ${files.length} file(s)\n`);
+        const { kept, reopened } = reconcileDoneTasks(p, id);
+        emit(
+          { ok: true, id, hash, files, kept, reopened },
+          `approved ${id}\n  ${hash}\n  covers ${files.length} file(s)\n${kept.length ? `  done work kept: ${kept.join(", ")}\n` : ""}${reopened.length ? `  edited tasks run again: ${reopened.join(", ")}\n` : ""}`,
+        );
         return 0;
       }
 
