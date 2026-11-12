@@ -51,10 +51,37 @@ Cột "Kết quả" để trống cho tới khi chạy.
 Đo token: ghi `aidw cost` của 3A và so với mốc trial-3b (#31). Đợt 1 thêm ít token (một dòng trong brief, một skill chỉ nạp
 cho task tạo module), nên mức tăng đáng kể là dấu hiệu bất thường.
 
+## Trial-3C: kiểm các sửa sau 3A và batch 2
+
+Chạy một change **nhỏ** trên project mới (hoặc `aidw-trial-3` sau `git switch master`): brief gợi ý "app ghi chú một
+trang: thêm, xoá, tìm ghi chú; có nút Xuất JSON". Cài plugin bằng marketplace, bật `aidwc` như cũ, và cho phép
+`vercel.com`, `*.vercel.com` trong sandbox trước. Cột "Kết quả" để trống cho tới khi chạy.
+
+| # | Điều cần kiểm | Cách biết | Kết quả |
+|---|---|---|---|
+| 47 | `aidw doctor` chạy ở `start` (§8) và `run` (§0): in ok/WARN/FAIL cho pnpm, store, registry, CDP, vercel | transcript; `aidw doctor --json` | |
+| 48 | `vercel link --yes` chạy trước task đầu; lần deploy đầu **không** đòi `--prod` | transcript; `.vercel/project.json`; `deploy.json` | |
+| 49 | Mọi task trong `tasks.yaml` có `type`; thiếu thì `aidw analyze` báo lỗi | `tasks.yaml`; thử xoá một `type` rồi `aidw analyze` | |
+| 50 | Commit của task dạng `type(capability): title` kèm footer `Change:`, `Task:`, `Evidence:`; không có `T01:` hay `(worktree)` | `git log --format=%B -n 5` | |
+| 51 | Scaffold có `commitlint.config.js`, `.husky/commit-msg`; commit tay sai chuẩn bị từ chối | `ls -a`; `git commit --allow-empty -m "bad"` | |
+| 52 | `.github/workflows/ci.yml` có, mirror các lệnh `code`/`unit`/`integration` của `quality.yaml` | đọc file | |
+| 53 | `.gitignore` có `.pnpm-store/`, `.vitest/` ngay từ T01 | `cat .gitignore` | |
+| 54 | Worktree của wave có symlink `node_modules`; checkpoint không lỗi "command not found"; `git status` không thấy nó | `ls -la .aidw/run/worktrees/*/*/node_modules` giữa wave | |
+| 55 | Playwright config có reporter JUnit; layer e2e/a11y ghi `test-results/*.xml`; quality report không còn "declared report(s) missing" | `playwright.config.ts`; `delivery/quality-report.md` | |
+| 56 | Scenario có WHEN là thao tác UI ("bấm Xuất JSON") có task chạm file UI sở hữu nó; `aidw analyze` không cảnh báo "triggered from the UI" | `aidw analyze` | |
+| 57 | `Size: small` ở Summary; `analyze` giới hạn 3 task, cảnh báo layer thừa và deploy | `analysis.md`; thử thêm task thứ 4 | |
+| 58 | Task `type: fix`: brief có dòng "regression test ... FAIL on the current code" | đọc brief implement | |
+| 59 | Sửa `tasks.yaml` sau approve (đổi title một task done) rồi duyệt lại: task đó chạy lại, task khác giữ `done` | output `aidw approve`: "done work kept" / "edited tasks run again" | |
+| 60 | `aidw task reopen T02 --revert`: có commit `revert(...)`, task về pending, kết quả quality bị xoá | `git log`; `tasks.yaml`; `evidence/quality/summary.json` | |
+| 61 | Handoff có `## Merge danger`; `aidw pr` in tiêu đề, summary, evidence, merge danger (migration, env, dependency) | `delivery/handoff.md`; output `aidw pr` | |
+| 62 | `aidw pr --create` luôn hiện hộp thoại hỏi quyền; không tự chạy | transcript (cần remote và `gh`; không có thì bỏ qua) | |
+| 63 | Reviewer dialog: nhận xét về focus trap / Escape / tên truy cập nếu dialog thiếu; handoff liệt kê hết nhận xét non-blocking | `quality-report.md`; `handoff.md` | |
+| 64 | Không còn implementer treo chờ tiến trình nền quá 5 phút | thời gian từng task (`aidw cost`) | |
+
 ## 0. Chuẩn bị
 
 ```bash
-cd ~/Desktop/Learning/product-development-workflow && npm test     # bin mới, 176 test pass (chạy ngoài sandbox của Claude Code)
+cd ~/Desktop/Learning/product-development-workflow && npm test     # bin mới, 207 test pass (chạy ngoài sandbox của Claude Code)
 alias aidwc='AIDW_HOOK_LOG=$HOME/$(basename "$PWD")-hooks.jsonl claude --plugin-dir ~/Desktop/Learning/product-development-workflow/plugins/aidw'
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
   --remote-debugging-port=9222 --user-data-dir="$HOME/.aidw-chrome" --no-first-run about:blank &

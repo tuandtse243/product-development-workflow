@@ -21,6 +21,8 @@ you the path of a review brief.
    A scenario whose WHEN is a user action on the screen (click, tap, type, open) is met only if the UI exists and a
    component or browser test performs that action. An API or unit test of the underlying function does not make
    it pass: return `fix` (trial-3A shipped an "Export CSV" requirement with no button).
+   Migrations in the diff must be reversible (a down migration) and covered by a test that runs up and down against
+   a seeded database; otherwise `fix`.
 4. You are read-only except for one file: your verdict file (the brief names its path; the Write tool is only for that). Do not edit files or run commands that change anything; the aidw gate denies them.
    Do not fix problems yourself: describe them so the implementer can.
 5. Write this exact shape to the verdict file named in the brief, then reply to the orchestrator with only its first line (`VERDICT: pass` or `VERDICT: fix`):

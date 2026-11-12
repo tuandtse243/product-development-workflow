@@ -87,7 +87,9 @@ aidw ids [<id>]                              requirement / scenario ids after th
 aidw vendor-path <upstream>/<skill>          path of a vendored SKILL.md
 aidw plugin-path <path>                      path of a plugin file
 aidw next [--change <id>]                    orchestrator's next step: implement | review | escalate | complete
-aidw task start|retry <task>                 running (attempts, base commit) | user-granted retry
+aidw task start|retry|reopen <task>          running (attempts, base commit) | user-granted retry | done task back to pending (--revert)
+aidw doctor [<id>]                           check the machine for the run (binaries, store, registry, CDP, Vercel)
+aidw pr [<id>] [--create]                    pull request body from evidence; --create pushes and opens it (asks)
 aidw brief <task> [--for implement|review]   context packet for a fresh subagent (prints its path)
 aidw skills <task> [--for implement|review]  vendored skills selected for the task
 aidw checkpoint <task> [--timeout <sec>]     a test per scenario id + every verify command passes

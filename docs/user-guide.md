@@ -59,6 +59,26 @@ Bạn chỉ gõ các lệnh `/aidw:...` trong Claude Code. CLI `aidw` do Claude 
 | `/aidw:status` | bất cứ lúc nào | trạng thái, drift, task nào xong, việc cần bạn |
 | `/aidw:deliver` | `run` tự gọi ở cuối | tạo gói bàn giao (README, handoff, báo cáo chất lượng) và archive |
 
+Các lệnh CLI hữu ích khi bạn tự gõ `aidw` (xem mục 2 để đưa nó vào PATH):
+
+| Lệnh | Việc nó làm |
+|---|---|
+| `aidw doctor [<id>]` | kiểm máy trước khi chạy: binary của các lệnh chất lượng, pnpm store, registry, Chrome CDP, đăng nhập và liên kết Vercel. Thoát mã 1 nếu có FAIL |
+| `aidw task reopen <T> [--revert]` | task đã xong nhưng sai: về pending; `--revert` hoàn tác commit của nó (chỉ code, `.aidw/` giữ nguyên) |
+| `aidw pr [<id>] [--create]` | sau bàn giao: in nội dung PR; `--create` push nhánh và mở PR bằng `gh` (luôn hỏi bạn trước) |
+
+**Change nhỏ.** `start` đề xuất `Size: small` cho bugfix hoặc chỉnh một hành vi; bạn xác nhận ở cổng duyệt. Nhỏ nghĩa là tối đa
+3 task, chỉ lớp `code` + `unit` (+ `e2e` nếu có UI), không deploy nếu bạn không yêu cầu, và bugfix phải có test tái hiện lỗi
+chạy fail trước khi sửa.
+
+**Sửa kế hoạch sau khi đã duyệt.** `escalated` → `analyzing` → sửa → duyệt lại. Task đã `done` mà không bị sửa thì được giữ nguyên
+cùng bằng chứng; task bị sửa hoặc mới sẽ chạy lại (output `aidw approve` liệt kê hai nhóm).
+
+**Commit.** Mọi commit theo Conventional Commits (`docs/commit-guide.md`). aidw tự dựng message `type(capability): title` từ trường
+`type` của task.
+
+**Stack pack.** Công cụ theo ngôn ngữ nằm ở `plugins/aidw/profiles/stacks/<ngôn ngữ>.md` (hiện có `node.md`); thêm ngôn ngữ mới là thêm một file.
+
 ## 4. Đường đi của một change
 
 Sơ đồ: mở [`diagrams/lifecycle.html`](diagrams/lifecycle.html) trong trình duyệt để xem (có chế độ sáng/tối, zoom).

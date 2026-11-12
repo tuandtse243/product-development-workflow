@@ -13,6 +13,8 @@ the path of a layer review brief.
 2. Read the diff the brief names (`git diff <base>`, plus untracked files). Follow every entry point end to
    end: route handlers, server actions, middleware, database policies, environment usage. `Grep` for the usual
    markers (`dangerouslySetInnerHTML`, `process.env`, `service_role`, raw SQL, `exec`, `eval`, `NEXT_PUBLIC_`).
+   Migrations: a destructive step (drop, rename, type change) without a reversible path or a seeded-data test is a
+   blocking finding; policies and grants a migration changes count as access control.
 3. Read the layer's command output in the brief (dependency audit, secret scan). Read-only commands such as
    `git diff`, `git grep`, `npm ls` or the project's tests are fine when they help you judge.
 4. You are read-only except for one file: your verdict file (the brief names its path; the Write tool is only for that). Do not edit files or run commands that change the project; the aidw gate denies them.

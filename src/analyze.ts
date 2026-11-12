@@ -165,6 +165,7 @@ function checkAnalysisDoc(text: string, file: string, d: Diags): void {
   }
 }
 
+const MIGRATION_TOUCH = /(^|\/)(migrations?|db\/migrate)(\/|$)/i;
 export const SIZES = ["small", "normal"] as const;
 export type Size = (typeof SIZES)[number];
 /** Layers a small change may run: code and unit always, e2e when it touches UI. */
@@ -262,6 +263,12 @@ export function analyzeChange(p: Paths, id: string): Diags {
     if (!coveredScenarios.has(s)) d.error(tf, `scenario "${s}" has no task that implements and verifies it`);
   }
   uiScenarioAdvice(p, id, tasks, d, tf);
+  for (const t of tasks) {
+    const globs = Array.isArray(t.touches) ? (t.touches as unknown[]).map(String) : [];
+    if (globs.some((g) => MIGRATION_TOUCH.test(g)) && t.risk !== "high") {
+      d.warn(tf, `task ${t.id} touches database migrations but is not "risk: high": migrations run alone, must be reversible and tested against a seeded database (profiles/quality-layers.md)`);
+    }
+  }
   const size = sizeOf(analysis);
   if (size === "invalid") d.error(rel(p, analysisFile), 'invalid "Size:" line: write "Size: small" or "Size: normal"');
   if (size === "small") {

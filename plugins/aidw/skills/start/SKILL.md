@@ -234,6 +234,8 @@ tasks:
   language-neutral rules are in `$(aidw plugin-path profiles/code-style.md)`); put those files in its `touches`
   and tell it to follow both. A stack without a pack gets the language's usual equivalents. Brownfield projects keep
   their own tooling.
+- **Migrations.** A task that adds or changes a database migration is `risk: high` and follows the migration rule
+  in `$(aidw plugin-path profiles/quality-layers.md)` (reversible, tested against a seeded database, additive first).
 - **CI.** A greenfield project that will live on GitHub also gets `.github/workflows/ci.yml` from the scaffold task,
   mirroring the `code`, `unit` and `integration` layers (`$(aidw plugin-path profiles/ci.md)`). Brownfield keeps its own.
 - **Test reports.** Every layer in quality.yaml with `reports:` needs its runner configured to write that JUnit file

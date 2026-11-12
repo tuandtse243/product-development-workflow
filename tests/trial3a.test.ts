@@ -240,3 +240,19 @@ describe("pull request at delivery", () => {
     expect(AIDW_STATE_COMMAND.test("aidw pr --create")).toBe(true);
   });
 });
+
+describe("migration rule", () => {
+  it("warns when a task touches migrations without risk: high", () => {
+    const task = (risk: string) => `tasks:\n  - id: T01\n    title: Add column\n    role: database-engineer\n    type: feat\n    scenarios: [${SCENARIO}]\n    touches: ["db/migrations/**", "lib/**"]\n${risk}    verify: ['node -e "process.exit(0)"']\n    status: pending\n`;
+    expect(cli(project({ tasks: task("") }), "analyze", ID, "--json").out).toMatch(/touches database migrations but is not \\"risk: high\\"/);
+    expect(cli(project({ tasks: task("    risk: high\n") }), "analyze", ID, "--json").out).not.toMatch(/database migrations/);
+  });
+
+  it("is in the profile and both reviewers", () => {
+    const plugin = join(__dirname, "..", "plugins", "aidw");
+    const read = (f: string) => readFileSync(join(plugin, f), "utf8");
+    expect(read("profiles/quality-layers.md")).toMatch(/## Database migrations[\s\S]*reversible[\s\S]*seeded database/);
+    expect(read("agents/reviewer.md")).toMatch(/Migrations in the diff must be reversible/);
+    expect(read("agents/security-reviewer.md")).toMatch(/Migrations:/);
+  });
+});

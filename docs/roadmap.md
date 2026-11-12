@@ -36,9 +36,9 @@ batch 2 (features). Tick items as they land.
 
 ## Trial-3A
 
-- [ ] Run trial-3A and record pass/fail with evidence for every check in `docs/trial-3.md`, including waves,
-  the runner, the ui/security reviewers and the new code-style scaffold (`.husky/`, `.prettierrc`,
-  `format:check`).
+- [x] Run trial-3A. It ran end to end on 2026-11-12 (8 tasks, 7 layers, deploy, archive); the run's findings are fixed
+  ("fixes from trial-3A"). The pass/fail table in `docs/trial-3.md` was not filled in; the checks that matter are
+  repeated in trial-3C.
 
 ## Batch 2: features (after trial-3A)
 
@@ -48,11 +48,11 @@ batch 2 (features). Tick items as they land.
   report fails; `analyze` warns when a UI scenario has no UI owner (and the reviewer checks it); `.pnpm-store` and
   `.vitest` count as junk; deploy hints for sandbox network and first-deploy-is-production; run preflight for
   installs and `vercel link`; implementers never idle on background work.
-- [ ] **Stack packs** ([ADR-0001](adr/0001-stack-packs.md)).
+- [x] **Stack packs** ([ADR-0001](adr/0001-stack-packs.md)).
   - Create `profiles/stacks/node.md` and move the JS knowledge there (`code-style.md` merges in).
   - `src/git.ts` reads junk paths per stack.
   - Python and Go packs come when a real project needs them.
-- [ ] **`aidw doctor`.** Checks:
+- [x] **`aidw doctor`.** Checks:
   - the binary of each `quality.yaml` command and the package manager;
   - CDP 9222 when a layer needs a browser;
   - `vercel whoami` for preview deploys;
@@ -60,22 +60,25 @@ batch 2 (features). Tick items as they land.
   - a clean tree on the change branch.
 
   Called from `start` §8, `run` §0, `resume` and the runner. It replaces the prose preflight.
-- [ ] **Small path.** `start` proposes `size: small | normal` and the user confirms at the gate. Small means:
+- [x] **Small path.** `start` proposes `size: small | normal` and the user confirms at the gate. Small means:
   - at most 3 grilling questions;
   - no domain modelling, design tokens or ADRs;
   - at most 3 tasks;
   - layers `code` + `unit`, plus `e2e` when UI is touched;
   - a bugfix needs a regression test that fails first;
   - no deploy unless asked.
-- [ ] **Re-approval keeps done work.** Going back to `analyzing` after approval keeps done tasks and their
+- [x] **Re-approval keeps done work.** Going back to `analyzing` after approval keeps done tasks and their
   evidence. Only new or edited tasks run. Document the flow.
-- [ ] **`aidw task reopen <T> [--revert]`.** It runs `git revert` on the task commit, sets the task back to
+- [x] **`aidw task reopen <T> [--revert]`.** It runs `git revert` on the task commit, sets the task back to
   pending and drops the evidence of layers that ran after it. Only the user or the orchestrator may call it.
-- [ ] **PR at deliver (opt-in, tier 3).** Push the change branch and run `gh pr create`, with the body
+- [x] **PR at deliver (opt-in, tier 3).** Push the change branch and run `gh pr create`, with the body
   following vendored `pocock/pr` (Summary, Evidence from checkpoints and screenshots, Merge Danger). Add
   Merge Danger to `handoff.md`.
-- [ ] **CI scaffold.** A workflow that mirrors the `code` and `unit` layers.
-- [ ] **Migration rule.** DB migrations must be reversible and tested against a seeded DB.
+- [x] **CI scaffold.** A workflow that mirrors the `code` and `unit` layers.
+- [x] **Migration rule.** DB migrations must be reversible and tested against a seeded DB.
+
+- [ ] **Trial-3C.** Run the checks #47–64 of `docs/trial-3.md` on a small change.
+- [ ] Vendor `pocock/pr` (the sandbox blocked `api.github.com`; `aidw pr` builds the body itself meanwhile): `node scripts/vendor.mjs pocock` after adding `pr` to `scripts/vendor.config.json`.
 
 ## Backlog
 

@@ -107,6 +107,22 @@ creating or deleting Supabase projects, other hosts).
 Use the package manager the project uses; pin nothing here that the constitution decides otherwise.
 The `format:check` script comes from the stack pack `profiles/stacks/node.md` (greenfield); a brownfield project uses its own.
 
+## Database migrations
+
+A task that adds or changes a migration is `risk: high` (it runs alone; `aidw analyze` warns otherwise) and must:
+
+- be **reversible**: ship the down migration (or state in the Analysis why it cannot be undone, and make the user
+  accept it at the gate);
+- be **tested against a seeded database**: a test applies up, checks the seeded rows survive and the new shape
+  works, applies down, and checks the old shape is back (SQLite or Docker Postgres for local runs, the project's
+  local Supabase for Supabase);
+- be **additive first** for anything live: add the column nullable, backfill, then tighten in a later task
+  (expand-contract), never a rename or drop in one step;
+- never run against a remote database from an unattended run: that is tier 2 or 3 and asks.
+
+The reviewer and the security reviewer check these items on every migration in the diff; a missing down migration or
+seeded test is a `fix`. The PR's Merge danger lists migration files (`aidw pr`).
+
 ## E2E browser over CDP
 
 Claude Code's sandbox usually blocks launching Chromium, so Playwright connects to a Chrome the user runs

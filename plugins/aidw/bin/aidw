@@ -11528,6 +11528,7 @@ function checkAnalysisDoc(text, file, d) {
     d.error(file, '"## Permissions" must list each tier-2 resource as a bullet, or say "None"', perms.line);
   }
 }
+var MIGRATION_TOUCH = /(^|\/)(migrations?|db\/migrate)(\/|$)/i;
 var SIZES = ["small", "normal"];
 var SMALL_LAYERS = /* @__PURE__ */ new Set(["code", "unit", "integration", "e2e"]);
 var SMALL_MAX_TASKS = 3;
@@ -11608,6 +11609,12 @@ function analyzeChange(p, id) {
     if (!coveredScenarios.has(s)) d.error(tf, `scenario "${s}" has no task that implements and verifies it`);
   }
   uiScenarioAdvice(p, id, tasks, d, tf);
+  for (const t of tasks) {
+    const globs = Array.isArray(t.touches) ? t.touches.map(String) : [];
+    if (globs.some((g) => MIGRATION_TOUCH.test(g)) && t.risk !== "high") {
+      d.warn(tf, `task ${t.id} touches database migrations but is not "risk: high": migrations run alone, must be reversible and tested against a seeded database (profiles/quality-layers.md)`);
+    }
+  }
   const size = sizeOf(analysis);
   if (size === "invalid") d.error(rel(p, analysisFile), 'invalid "Size:" line: write "Size: small" or "Size: normal"');
   if (size === "small") {
