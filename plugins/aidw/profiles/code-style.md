@@ -1,69 +1,34 @@
-# Code style: prettier, eslint, husky, commitlint
+# Code style and commits: what the scaffold task sets up
 
 `/aidw:start` step 7 makes the scaffold task (usually T01) set this up, so every file the plugin generates
-follows one convention. It applies to **greenfield JS/TS projects** (Next.js, Vite + React, NestJS/Express)
-using pnpm.
+follows one convention and every commit follows Conventional Commits. The tools are per language: the
+**stack pack** `profiles/stacks/<lang>.md` (today only `node.md`) names them, with exact configs
+(`$(aidw plugin-path profiles/stacks/node.md)`). This file holds what is the same for every language.
 
-- **Brownfield** (`## Existing system`): keep the project's own formatter, linter and hooks. Never add or
-  replace them on your own (Q9). The `code` layer then runs whatever format check the project already has.
-- **Other stacks** (Python, Go...): the scaffold task picks the equivalent formatter (ruff/black, gofmt) and
-  applies the same three parts below. husky is not required.
+- **Brownfield** (`## Existing system`): keep the project's own formatter, linter, hooks and commit rules. Never
+  add or replace them on your own (Q9). The `code` layer then runs whatever format check the project already has.
+- **Greenfield with a stack pack**: set up everything the pack lists.
+- **Greenfield without a pack** (Python, Go...): pick the language's usual equivalents (ruff/black, gofmt) and set
+  up the same parts below; say so in the Analysis. Add the pack when a second project needs it.
 
-## What the scaffold task sets up
+## The parts
 
-1. **Dev dependencies**: `prettier`, `eslint` (the stack's usual config), `husky`, `lint-staged`.
-2. **`.prettierrc`** (default; the constitution may override it when the client requires another style):
-
-   ```json
-   { "semi": true, "singleQuote": true, "printWidth": 100, "trailingComma": "all" }
-   ```
-
-   plus a `.prettierignore` with `node_modules`, build output (`.next`, `dist`), `pnpm-lock.yaml`,
-   `test-results`, and `.aidw`.
-3. **`package.json` scripts**: `"format": "prettier --write ."`, `"format:check": "prettier --check ."`,
-   `"prepare": "husky"`.
-4. **lint-staged** (in `package.json`): `"*.{ts,tsx,js,jsx,mjs,cjs}": ["prettier --write", "eslint --fix"]` and
-   `"*.{json,md,css,yml,yaml}": ["prettier --write"]`.
-5. **`.husky/pre-commit`** containing `pnpm exec lint-staged`. The hook runs only on staged files and does not
-   run tsc, build or tests: the quality layers own those.
-6. **`.gitignore` and `.prettierignore`** also list `.pnpm-store/` (the sandbox puts the pnpm store in the project
-   root, 200 MB) and `.vitest/`, next to `node_modules`, build output and `.env*`.
-7. Run `pnpm exec prettier --write .` once at the end of the scaffold task so the first commit is already clean.
+1. A **formatter** with a check command and a write command, ignoring generated output and `.aidw`.
+2. A **linter** and, where the language has one, a typecheck.
+3. A **pre-commit hook** that formats and lints staged files only (no build, no tests: the quality layers own those).
+4. **Commit message lint** (Conventional Commits, header at most 72 characters; `docs/commit-guide.md`).
+5. **`.gitignore` and the formatter's ignore file** covering the pack's "paths never committed".
+6. A first run of the formatter at the end of the scaffold task, so the first commit is already clean.
 
 ## Quality gate
 
-The `code` layer includes `pnpm format:check` (or `pnpm exec prettier --check .`), so code that is not
-formatted becomes a fix task. This is the real guarantee: the hook is a convenience.
-
-## Commit messages (commitlint)
-
-The scaffold task also sets up Conventional Commits, so people committing by hand follow the same rules as aidw:
-
-1. Dev dependencies `@commitlint/cli` and `@commitlint/config-conventional`.
-2. `commitlint.config.js`:
-
-   ```js
-   export default {
-     extends: ['@commitlint/config-conventional'],
-     rules: {
-       'header-max-length': [2, 'always', 72],
-       'subject-case': [0],
-       'body-max-line-length': [0],
-       'footer-max-line-length': [0],
-     },
-   };
-   ```
-
-   (`subject-case` and the line limits are off because aidw footers carry long evidence paths and titles may start
-   with an acronym.)
-3. `.husky/commit-msg` containing `pnpm exec commitlint --edit $1`.
-
-aidw builds its own messages with `type(capability): title` and checks them itself, because this hook does not
-run in a worktree. Brownfield keeps its own commit rules.
+The `code` layer includes the format check (`pnpm format:check` for Node), so code that is not formatted becomes a
+fix task. This is the real guarantee: the hook is a convenience.
 
 ## Hooks and aidw commits
 
-aidw commits with a plain `git commit`, so the pre-commit hook runs on every task commit and prettier may
+aidw commits with a plain `git commit`, so the pre-commit hook runs on every task commit and the formatter may
 rewrite staged files; the commit still goes through. In a parallel-wave **worktree** the hook does not run
-(`.husky/_` is generated by `prepare` and is not committed), so implementers run `pnpm exec prettier --write`
-on the files they changed before they finish, and the `code` layer catches anything left.
+(`.husky/_` is generated by `prepare` and is not committed), so implementers run the formatter on the files they
+changed before they finish, and the `code` layer catches anything left. aidw builds its own commit messages as
+`type(capability): title` and checks them itself for the same reason.

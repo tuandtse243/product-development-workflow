@@ -229,16 +229,20 @@ tasks:
   dependency is real.
 - The first tasks usually scaffold the project with the approved stack and set up the test harness, the
   JUnit reporters of quality.yaml, and `.env.example` for every environment variable (names only).
-- **Code style.** For a greenfield JS/TS project the scaffold task also sets up prettier, eslint, husky and
-  lint-staged as described in `$(aidw plugin-path profiles/code-style.md)`; put those files in its `touches`
-  and tell it to follow that profile. Brownfield projects keep their own tooling.
+- **Code style and commits.** For a greenfield project the scaffold task also sets up the formatter, linter, hooks
+  and commit lint of the project's **stack pack** (`$(aidw plugin-path profiles/stacks/node.md)` for JS/TS; the
+  language-neutral rules are in `$(aidw plugin-path profiles/code-style.md)`); put those files in its `touches`
+  and tell it to follow both. A stack without a pack gets the language's usual equivalents. Brownfield projects keep
+  their own tooling.
+- **CI.** A greenfield project that will live on GitHub also gets `.github/workflows/ci.yml` from the scaffold task,
+  mirroring the `code`, `unit` and `integration` layers (`$(aidw plugin-path profiles/ci.md)`). Brownfield keeps its own.
 - **Test reports.** Every layer in quality.yaml with `reports:` needs its runner configured to write that JUnit file
   (Playwright `reporter: [['list'], ['junit', { outputFile: process.env.PLAYWRIGHT_JUNIT_OUTPUT_NAME ?? '...' }]]`).
   Put it in the scaffold task's brief: a layer that passes without writing its report now fails verify.
 - **Commits.** Every planned task states a `type` (analysis fails without one). The task commit becomes
   `type(capability): title`, the scope being the capability of its first spec (`config` when it has none), so
   a task spanning several capabilities lists the main one first. Add `breaking: true` only for a breaking change.
-  Greenfield scaffolds commitlint with the same rules (`profiles/code-style.md`); see `docs/commit-guide.md`.
+  Greenfield scaffolds commitlint with the same rules (the stack pack); see `docs/commit-guide.md`.
 
 ## 8. Quality, deploy and permissions
 

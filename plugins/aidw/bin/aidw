@@ -9,9 +9,9 @@ var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __commonJS = (cb, mod) => function __require() {
   return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
 };
-var __export = (target, all) => {
-  for (var name in all)
-    __defProp(target, name, { get: all[name], enumerable: true });
+var __export = (target, all2) => {
+  for (var name in all2)
+    __defProp(target, name, { get: all2[name], enumerable: true });
 };
 var __copyProps = (to, from, except, desc) => {
   if (from && typeof from === "object" || typeof from === "function") {
@@ -8457,7 +8457,20 @@ function git(cwd, args) {
 function isGitRepo(cwd) {
   return git(cwd, ["rev-parse", "--is-inside-work-tree"]).out === "true";
 }
-var GENERATED_PATH = /(^|\/)(node_modules|\.next|\.nuxt|\.svelte-kit|\.turbo|\.vercel|\.pnpm-store|\.vitest|coverage|playwright-report|test-results)\/|(^|\/)(next-env\.d\.ts|\.DS_Store)$|\.tsbuildinfo$/;
+var STACK_JUNK = {
+  common: { dirs: ["coverage", "test-results"], files: [".DS_Store"], suffixes: [] },
+  node: {
+    dirs: ["node_modules", ".next", ".nuxt", ".svelte-kit", ".turbo", ".vercel", ".pnpm-store", ".vitest", "playwright-report"],
+    files: ["next-env.d.ts"],
+    suffixes: [".tsbuildinfo"]
+  },
+  python: { dirs: ["__pycache__", ".venv", "venv", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".tox"], files: [], suffixes: [".pyc"] }
+};
+var escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+var all = Object.values(STACK_JUNK);
+var GENERATED_PATH = new RegExp(
+  `(^|/)(${all.flatMap((s) => s.dirs).map(escape).join("|")})/|(^|/)(${all.flatMap((s) => s.files).map(escape).join("|")})$|(${all.flatMap((s) => s.suffixes).map(escape).join("|")})$`
+);
 var ENV_FILE = /(^|\/)\.env(?:\.(?!example$)[\w.-]+)?$/;
 var JUNK_PATH = { test: (f) => GENERATED_PATH.test(f) || ENV_FILE.test(f) };
 var isGeneratedPath = (f) => GENERATED_PATH.test(f);
@@ -9185,9 +9198,9 @@ function walkProject(dir, root, out) {
   }
 }
 function testFiles(project) {
-  const all = [];
-  walkProject(project, project, all);
-  return all.filter((f) => TEST_FILE.test(f));
+  const all2 = [];
+  walkProject(project, project, all2);
+  return all2.filter((f) => TEST_FILE.test(f));
 }
 var SKIPPED_LINE = /\.(skip|todo|fixme)\s*\(|\b(xit|xtest|xdescribe)\s*\(/;
 function findScenarioTests(project, ids) {
@@ -10249,7 +10262,7 @@ function detectProject(dir) {
     else if (stack["e2e tests"]?.startsWith("Playwright")) layers.push({ name: "e2e", run: [c.exec("playwright test")] });
     else if (stack["e2e tests"]?.startsWith("Cypress")) layers.push({ name: "e2e", run: [c.exec("cypress run")] });
   }
-  return { kind, signals, packageManager: pm, languages: [...languages], stack, scripts, layers, codeFiles, warnings: repoWarnings(dir, pkg !== null) };
+  return { kind, signals, packageManager: pm, languages: [...languages], stackPack: pkg ? "node" : null, stack, scripts, layers, codeFiles, warnings: repoWarnings(dir, pkg !== null) };
 }
 
 // src/ops.ts
@@ -11338,8 +11351,8 @@ function checkChange(p, id, opts = {}) {
 // src/plan.ts
 var list4 = (v) => Array.isArray(v) ? v.map(String) : [];
 var isPlanned = (t) => t.origin === void 0 || t.origin === "plan";
-function planShape(all) {
-  const tasks = all.filter(isPlanned);
+function planShape(all2) {
+  const tasks = all2.filter(isPlanned);
   const byId = new Map(tasks.map((t) => [t.id, t]));
   const level = /* @__PURE__ */ new Map();
   const depth = (id, seen) => {
@@ -11375,8 +11388,8 @@ function planShape(all) {
   };
 }
 var MIN_TASKS = 4;
-function planAdvice(all) {
-  const s = planShape(all);
+function planAdvice(all2) {
+  const s = planShape(all2);
   if (s.tasks < MIN_TASKS) return [];
   const out = [];
   if (s.width === 1) {
@@ -12636,9 +12649,9 @@ ${[...r.runs, ...r.smoke].find((x) => x.exit !== 0)?.tail ?? r.runs[0]?.tail ?? 
           scenarios = [...r.ids.scenarios].sort();
           changed = { requirements: [...r.changed.requirements].sort(), scenarios: [...r.changed.scenarios].sort() };
         } else {
-          const all = mainSpecIds(p);
-          requirements = [...all.requirements].sort();
-          scenarios = [...all.scenarios].sort();
+          const all2 = mainSpecIds(p);
+          requirements = [...all2.requirements].sort();
+          scenarios = [...all2.scenarios].sort();
         }
         const mark = (x, set) => set?.includes(x) ? "* " : "  ";
         const text = [

@@ -18,6 +18,8 @@ export interface Detection {
   signals: string[];
   packageManager: PackageManager | null;
   languages: string[];
+  /** the stack pack (plugins/aidw/profiles/stacks/<pack>.md) that covers this project, or null: pick usual equivalents */
+  stackPack: string | null;
   /** role -> what was found, e.g. framework: "Next.js 15.2" */
   stack: Record<string, string>;
   scripts: Record<string, string>;
@@ -242,5 +244,5 @@ export function detectProject(dir: string): Detection {
     else if (stack["e2e tests"]?.startsWith("Playwright")) layers.push({ name: "e2e", run: [c.exec("playwright test")] });
     else if (stack["e2e tests"]?.startsWith("Cypress")) layers.push({ name: "e2e", run: [c.exec("cypress run")] });
   }
-  return { kind, signals, packageManager: pm, languages: [...languages], stack, scripts, layers, codeFiles, warnings: repoWarnings(dir, pkg !== null) };
+  return { kind, signals, packageManager: pm, languages: [...languages], stackPack: pkg ? "node" : null, stack, scripts, layers, codeFiles, warnings: repoWarnings(dir, pkg !== null) };
 }

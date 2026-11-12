@@ -16,8 +16,22 @@ export function isGitRepo(cwd: string): boolean {
 }
 
 /** Dependency and build-output folders that must never be committed (aidw commits with `git add -A`). */
-const GENERATED_PATH =
-  /(^|\/)(node_modules|\.next|\.nuxt|\.svelte-kit|\.turbo|\.vercel|\.pnpm-store|\.vitest|coverage|playwright-report|test-results)\/|(^|\/)(next-env\.d\.ts|\.DS_Store)$|\.tsbuildinfo$/;
+// Per stack (profiles/stacks/<lang>.md "Paths never committed"): directories, files and suffixes. A directory that
+// is junk in one language is never source in another, so all of them apply to every project.
+export const STACK_JUNK: Record<string, { dirs: string[]; files: string[]; suffixes: string[] }> = {
+  common: { dirs: ["coverage", "test-results"], files: [".DS_Store"], suffixes: [] },
+  node: {
+    dirs: ["node_modules", ".next", ".nuxt", ".svelte-kit", ".turbo", ".vercel", ".pnpm-store", ".vitest", "playwright-report"],
+    files: ["next-env.d.ts"],
+    suffixes: [".tsbuildinfo"],
+  },
+  python: { dirs: ["__pycache__", ".venv", "venv", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".tox"], files: [], suffixes: [".pyc"] },
+};
+const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const all = Object.values(STACK_JUNK);
+const GENERATED_PATH = new RegExp(
+  `(^|/)(${all.flatMap((s) => s.dirs).map(escape).join("|")})/|(^|/)(${all.flatMap((s) => s.files).map(escape).join("|")})$|(${all.flatMap((s) => s.suffixes).map(escape).join("|")})$`,
+);
 /** Secrets files: never committed either, but a write to one is not "generated" for the backstop. */
 const ENV_FILE = /(^|\/)\.env(?:\.(?!example$)[\w.-]+)?$/;
 const JUNK_PATH = { test: (f: string) => GENERATED_PATH.test(f) || ENV_FILE.test(f) };
