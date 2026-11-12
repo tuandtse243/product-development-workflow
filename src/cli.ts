@@ -31,6 +31,7 @@ import { formatCost, parallelSavings, readSessions } from "./cost.js";
 import { detectProject } from "./detect.js";
 import { doctor, doctorText } from "./doctor.js";
 import { createPr, planPr } from "./pr.js";
+import { planAdvice, planShape, planSummary } from "./plan.js";
 import { runLoop } from "./runner.js";
 import { deliver } from "./deliver.js";
 import { deploy, recordLayerReview, verify } from "./quality.js";
@@ -127,6 +128,7 @@ const HELP = `aidw ${VERSION} - deterministic core of the AI Fullstack Autonomou
 Usage: aidw <command> [args] [--json] [--root <dir>]
 
   init                                   create .aidw/ in the current directory (or --root); detects brownfield
+  plan [<id>]                            shape of the task graph: stages and widest wave, advice to widen it
   pr [<id>] [--base B] [--create] [--draft]
                                          after delivery: print the pull request (title, summary, evidence, merge danger);
                                          --create pushes the change branch and opens it with gh (asks first)
@@ -694,6 +696,15 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
               : ""
           }${d.warnings.map((w) => `  WARNING ${w}\n`).join("")}`,
         );
+        return 0;
+      }
+
+      case "plan": {
+        const p = project();
+        const id = resolveChangeId(p, rest[0]);
+        const tasks = parseTasks(readText(join(loadChange(p, id).dir, "tasks.yaml")) ?? "").tasks;
+        const shape = planShape(tasks);
+        emit({ change: id, ...shape, summary: planSummary(tasks), advice: planAdvice(tasks) }, `${planSummary(tasks)}\n${planAdvice(tasks).map((a) => `  advice: ${a}\n`).join("")}`);
         return 0;
       }
 

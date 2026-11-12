@@ -54,3 +54,20 @@ describe("planAdvice", () => {
     expect(advice.join(" ")).toMatch(/T04 touch "\*\*"/);
   });
 });
+
+describe("heavy tasks and the summary line", () => {
+  const sc = (n: number) => Array.from({ length: n }, (_, i) => `a/b/s${i}`);
+  it("warns about a task carrying a third of the scenarios", () => {
+    const advice = planAdvice([
+      t("T01", ["a/**"], [], { scenarios: sc(2) }),
+      t("T02", ["b/**"], ["T01"], { scenarios: sc(10) }),
+      t("T03", ["c/**"], ["T01"], { scenarios: sc(2) }),
+      t("T04", ["d/**"], ["T02", "T03"], { scenarios: sc(2) }),
+    ]);
+    expect(advice.join("\n")).toMatch(/T02 \(10 of 16 scenarios\) carry a third of the plan/);
+  });
+  it("summarizes stages and the widest one", async () => {
+    const { planSummary } = await import("../src/plan.js");
+    expect(planSummary([t("T01", ["a/**"]), t("T02", ["b/**"], ["T01"]), t("T03", ["c/**"], ["T01"])])).toBe("3 task(s) in 2 stage(s), widest stage 2: T01 -> T02+T03");
+  });
+});

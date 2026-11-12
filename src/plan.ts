@@ -63,6 +63,12 @@ export function planShape(all: Task[]): PlanShape {
   };
 }
 
+/** One line for the user at the gate: how long the plan is when run in waves. */
+export function planSummary(all: Task[]): string {
+  const s = planShape(all);
+  return `${s.tasks} task(s) in ${s.levels.length} stage(s), widest stage ${s.width}: ${s.levels.map((l) => l.join("+")).join(" -> ")}`;
+}
+
 /** Plans smaller than this have nothing worth parallelizing. */
 const MIN_TASKS = 4;
 
@@ -84,6 +90,13 @@ export function planAdvice(all: Task[]): string[] {
     const pairs = s.independentPairs.slice(0, 4).map((p) => `${p.task} on ${p.on}`);
     out.push(`the plan runs at most ${s.width} task(s) at once; depends_on without overlapping touches: ${pairs.join(", ")}. Drop each one the later task does not truly need.`);
   }
+  // One heavy task is the critical path of its level: in trial-3A T05 had 15 of 48 scenarios and took 454 s while its
+  // wave partner took 181 s, so the whole level waited. Splitting it (list / create / edit-delete) lets both halves overlap.
+  const planned = all.filter(isPlanned);
+  const counts = planned.map((t) => ({ id: t.id, n: list(t.scenarios).length }));
+  const total = counts.reduce((n, c) => n + c.n, 0);
+  const heavy = counts.filter((c) => total >= 8 && c.n >= 8 && c.n / total >= 0.3);
+  if (heavy.length) out.push(`task(s) ${heavy.map((c) => `${c.id} (${c.n} of ${total} scenarios)`).join(", ")} carry a third of the plan: they set the pace of their wave. Split each into slices that touch different files (for example list, create, edit and delete) so the pieces can run side by side.`);
   if (s.catchAll.length) out.push(`task(s) ${s.catchAll.join(", ")} touch "**", so they always run alone; list the folders they really change.`);
   return out;
 }

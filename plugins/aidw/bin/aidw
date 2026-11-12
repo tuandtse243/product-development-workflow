@@ -11408,6 +11408,10 @@ function planShape(all2) {
     highRisk: tasks.filter((t) => t.risk === "high").map((t) => t.id)
   };
 }
+function planSummary(all2) {
+  const s = planShape(all2);
+  return `${s.tasks} task(s) in ${s.levels.length} stage(s), widest stage ${s.width}: ${s.levels.map((l) => l.join("+")).join(" -> ")}`;
+}
 var MIN_TASKS = 4;
 function planAdvice(all2) {
   const s = planShape(all2);
@@ -11422,6 +11426,11 @@ function planAdvice(all2) {
     const pairs = s.independentPairs.slice(0, 4).map((p) => `${p.task} on ${p.on}`);
     out.push(`the plan runs at most ${s.width} task(s) at once; depends_on without overlapping touches: ${pairs.join(", ")}. Drop each one the later task does not truly need.`);
   }
+  const planned = all2.filter(isPlanned);
+  const counts = planned.map((t) => ({ id: t.id, n: list4(t.scenarios).length }));
+  const total = counts.reduce((n, c) => n + c.n, 0);
+  const heavy = counts.filter((c) => total >= 8 && c.n >= 8 && c.n / total >= 0.3);
+  if (heavy.length) out.push(`task(s) ${heavy.map((c) => `${c.id} (${c.n} of ${total} scenarios)`).join(", ")} carry a third of the plan: they set the pace of their wave. Split each into slices that touch different files (for example list, create, edit and delete) so the pieces can run side by side.`);
   if (s.catchAll.length) out.push(`task(s) ${s.catchAll.join(", ")} touch "**", so they always run alone; list the folders they really change.`);
   return out;
 }
@@ -12324,6 +12333,7 @@ var HELP = `aidw ${VERSION} - deterministic core of the AI Fullstack Autonomous 
 Usage: aidw <command> [args] [--json] [--root <dir>]
 
   init                                   create .aidw/ in the current directory (or --root); detects brownfield
+  plan [<id>]                            shape of the task graph: stages and widest wave, advice to widen it
   pr [<id>] [--base B] [--create] [--draft]
                                          after delivery: print the pull request (title, summary, evidence, merge danger);
                                          --create pushes the change branch and opens it with gh (asks first)
@@ -12875,6 +12885,16 @@ ${d.kind === "brownfield" ? `${d.signals.map((s) => `  signal  ${s}
 ` : ""}${d.warnings.map((w) => `  WARNING ${w}
 `).join("")}`
         );
+        return 0;
+      }
+      case "plan": {
+        const p = project();
+        const id = resolveChangeId(p, rest[0]);
+        const tasks = parseTasks(readText((0, import_node_path21.join)(loadChange(p, id).dir, "tasks.yaml")) ?? "").tasks;
+        const shape = planShape(tasks);
+        emit({ change: id, ...shape, summary: planSummary(tasks), advice: planAdvice(tasks) }, `${planSummary(tasks)}
+${planAdvice(tasks).map((a) => `  advice: ${a}
+`).join("")}`);
         return 0;
       }
       case "pr": {

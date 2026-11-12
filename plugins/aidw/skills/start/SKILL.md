@@ -218,6 +218,10 @@ tasks:
   run together, and list shared files (`package.json`, the root layout, a shared schema) only in the task
   that really changes them. `risk: high` (auth, payments, migrations, wide refactors) always runs alone. At
   most one task per wave may drive a browser (UI or e2e verify), since they share the e2e port.
+- **Check the shape before the gate.** Run `aidw plan <id>`: it prints the stages (tasks that can run side by side
+  are joined with `+`) and advice. Aim for a widest stage of 3 where the work allows. Split a task that carries a
+  third of the scenarios (list / create / edit / delete are separate slices touching different files), and quote the
+  one-line shape in the Summary so the user sees how long the build will take.
 - **Every UI scenario has a UI owner.** A scenario whose WHEN is a user action on a screen ("the user clicks Export CSV")
   must be listed by a task that touches the UI files (and the API task may list it too). `aidw analyze` warns when
   its only owners touch no UI files; fix the plan, do not leave the button to chance.
