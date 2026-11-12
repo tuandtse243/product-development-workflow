@@ -86,7 +86,7 @@ describe("aidw workflow", () => {
     // neither is a converge-added task
     writeFileSync(
       tasks,
-      `${readFileSync(tasks, "utf8")}  - id: T03\n    title: gap\n    role: qa-engineer\n    origin: converge\n    touches: ["e2e/**"]\n    verify: ["x"]\n`,
+      `${readFileSync(tasks, "utf8")}  - id: T03\n    title: gap\n    role: qa-engineer\n    type: feat\n    origin: converge\n    touches: ["e2e/**"]\n    verify: ["x"]\n`,
     );
     expect(cli(root, "approval", "check", ID).code).toBe(0);
     expect(cli(root, "validate", ID).code).toBe(0);

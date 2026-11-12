@@ -20,6 +20,7 @@ const TASKS = `tasks:
   - id: T01
     title: Booking page
     role: frontend-engineer
+    type: feat
     specs: [booking/reschedule-appointment]
     scenarios: [${SCENARIO}]
     touches: ["app/(site)/book/**", "app/globals.css", "tests/**"]

@@ -51,7 +51,7 @@ function project(quality: string): string {
   write(
     root,
     `${c}/tasks.yaml`,
-    `tasks:\n  - id: T01\n    title: Reschedule and waitlist\n    role: fullstack-engineer\n    scenarios: [${S1}, ${S2}]\n    touches: ["lib/**", "tests/**"]\n    verify: ['node -e "process.exit(0)"']\n    status: pending\n`,
+    `tasks:\n  - id: T01\n    title: Reschedule and waitlist\n    role: fullstack-engineer\n    type: feat\n    scenarios: [${S1}, ${S2}]\n    touches: ["lib/**", "tests/**"]\n    verify: ['node -e "process.exit(0)"']\n    status: pending\n`,
   );
   write(root, "junit.js", "const fs=require('fs');fs.mkdirSync('test-results',{recursive:true});fs.copyFileSync('cases.xml','test-results/junit.xml');\n");
   for (const s of ["intake", "analyzing", "awaiting_approval"]) expect(cli(root, "transition", ID, s).err).toBe("");

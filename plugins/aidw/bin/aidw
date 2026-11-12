@@ -1315,9 +1315,9 @@ ${indent}`) + "'";
         start = start.replace(/\n+/g, `$&${indent}`);
       }
       const indentSize = indent ? "2" : "1";
-      let header = (startWithSpace ? indentSize : "") + chomp;
+      let header2 = (startWithSpace ? indentSize : "") + chomp;
       if (comment) {
-        header += " " + commentString(comment.replace(/ ?[\r\n]+/g, " "));
+        header2 += " " + commentString(comment.replace(/ ?[\r\n]+/g, " "));
         if (onComment)
           onComment();
       }
@@ -1332,11 +1332,11 @@ ${indent}`) + "'";
         }
         const body = foldFlowLines.foldFlowLines(`${start}${foldedValue}${end}`, indent, foldFlowLines.FOLD_BLOCK, foldOptions);
         if (!literalFallback)
-          return `>${header}
+          return `>${header2}
 ${indent}${body}`;
       }
       value = value.replace(/\n+/g, `$&${indent}`);
-      return `|${header}
+      return `|${header2}
 ${indent}${start}${value}${end}`;
     }
     function plainString(item, ctx, onComment, onChompKeep) {
@@ -4428,10 +4428,10 @@ var require_resolve_block_scalar = __commonJS({
     var Scalar = require_Scalar();
     function resolveBlockScalar(ctx, scalar, onError) {
       const start = scalar.offset;
-      const header = parseBlockScalarHeader(scalar, ctx.options.strict, onError);
-      if (!header)
+      const header2 = parseBlockScalarHeader(scalar, ctx.options.strict, onError);
+      if (!header2)
         return { value: "", type: null, comment: "", range: [start, start, start] };
-      const type = header.mode === ">" ? Scalar.Scalar.BLOCK_FOLDED : Scalar.Scalar.BLOCK_LITERAL;
+      const type = header2.mode === ">" ? Scalar.Scalar.BLOCK_FOLDED : Scalar.Scalar.BLOCK_LITERAL;
       const lines = scalar.source ? splitLines(scalar.source) : [];
       let chompStart = lines.length;
       for (let i = lines.length - 1; i >= 0; --i) {
@@ -4442,26 +4442,26 @@ var require_resolve_block_scalar = __commonJS({
           break;
       }
       if (chompStart === 0) {
-        const value2 = header.chomp === "+" && lines.length > 0 ? "\n".repeat(Math.max(1, lines.length - 1)) : "";
-        let end2 = start + header.length;
+        const value2 = header2.chomp === "+" && lines.length > 0 ? "\n".repeat(Math.max(1, lines.length - 1)) : "";
+        let end2 = start + header2.length;
         if (scalar.source)
           end2 += scalar.source.length;
-        return { value: value2, type, comment: header.comment, range: [start, end2, end2] };
+        return { value: value2, type, comment: header2.comment, range: [start, end2, end2] };
       }
-      let trimIndent = scalar.indent + header.indent;
-      let offset = scalar.offset + header.length;
+      let trimIndent = scalar.indent + header2.indent;
+      let offset = scalar.offset + header2.length;
       let contentStart = 0;
       for (let i = 0; i < chompStart; ++i) {
         const [indent, content] = lines[i];
         if (content === "" || content === "\r") {
-          if (header.indent === 0 && indent.length > trimIndent)
+          if (header2.indent === 0 && indent.length > trimIndent)
             trimIndent = indent.length;
         } else {
           if (indent.length < trimIndent) {
             const message = "Block scalars with more-indented leading empty lines must use an explicit indentation indicator";
             onError(offset + indent.length, "MISSING_CHAR", message);
           }
-          if (header.indent === 0)
+          if (header2.indent === 0)
             trimIndent = indent.length;
           contentStart = i;
           if (trimIndent === 0 && !ctx.atRoot) {
@@ -4488,7 +4488,7 @@ var require_resolve_block_scalar = __commonJS({
         if (crlf)
           content = content.slice(0, -1);
         if (content && indent.length < trimIndent) {
-          const src = header.indent ? "explicit indentation indicator" : "first line";
+          const src = header2.indent ? "explicit indentation indicator" : "first line";
           const message = `Block scalar lines must not be less indented than their ${src}`;
           onError(offset - content.length - (crlf ? 2 : 1), "BAD_INDENT", message);
           indent = "";
@@ -4515,7 +4515,7 @@ var require_resolve_block_scalar = __commonJS({
           prevMoreIndented = false;
         }
       }
-      switch (header.chomp) {
+      switch (header2.chomp) {
         case "-":
           break;
         case "+":
@@ -4527,8 +4527,8 @@ var require_resolve_block_scalar = __commonJS({
         default:
           value += "\n";
       }
-      const end = start + header.length + scalar.source.length;
-      return { value, type, comment: header.comment, range: [start, end, end] };
+      const end = start + header2.length + scalar.source.length;
+      return { value, type, comment: header2.comment, range: [start, end, end] };
     }
     function parseBlockScalarHeader({ offset, props }, strict, onError) {
       if (props[0].type !== "block-scalar-header") {
@@ -5358,10 +5358,10 @@ var require_cst_scalar = __commonJS({
             type = "QUOTE_DOUBLE";
             break;
           case "block-scalar": {
-            const header = token.props[0];
-            if (header.type !== "block-scalar-header")
+            const header2 = token.props[0];
+            if (header2.type !== "block-scalar-header")
               throw new Error("Invalid block scalar header");
-            type = header.source[0] === ">" ? "BLOCK_FOLDED" : "BLOCK_LITERAL";
+            type = header2.source[0] === ">" ? "BLOCK_FOLDED" : "BLOCK_LITERAL";
             break;
           }
           default:
@@ -5393,10 +5393,10 @@ var require_cst_scalar = __commonJS({
       const head = source.substring(0, he);
       const body = source.substring(he + 1) + "\n";
       if (token.type === "block-scalar") {
-        const header = token.props[0];
-        if (header.type !== "block-scalar-header")
+        const header2 = token.props[0];
+        if (header2.type !== "block-scalar-header")
           throw new Error("Invalid block scalar header");
-        header.source = head;
+        header2.source = head;
         token.source = body;
       } else {
         const { offset } = token;
@@ -7525,6 +7525,54 @@ var Diags = class {
   }
 };
 
+// src/commit.ts
+var COMMIT_TYPES = ["feat", "fix", "docs", "style", "refactor", "perf", "test", "build", "ci", "chore", "revert"];
+var HEADER_MAX = 72;
+var DEFAULT_SCOPE = "config";
+var ORIGIN_TYPE = { converge: "test", quality: "fix", integration: "fix" };
+var isType = (v) => typeof v === "string" && COMMIT_TYPES.includes(v);
+function typeProblem(t) {
+  if (t.type === void 0 && ORIGIN_TYPE[String(t.origin)]) return null;
+  if (!isType(t.type)) return `needs "type": one of ${COMMIT_TYPES.join(", ")} (Conventional Commits)`;
+  if (t.breaking !== void 0 && typeof t.breaking !== "boolean") return '"breaking" must be true or false';
+  return null;
+}
+function scopeOf(t) {
+  const spec = Array.isArray(t.specs) ? String(t.specs[0] ?? "") : "";
+  const cap = spec.split("/").slice(0, -1).join("-").toLowerCase();
+  return KEBAB_SEGMENT.test(cap) ? cap : DEFAULT_SCOPE;
+}
+function subjectOf(title, max) {
+  let s = title.replace(/\s+/g, " ").trim().replace(/[.\s]+$/, "");
+  const first = /^\S+/.exec(s)?.[0] ?? "";
+  if (first && !/[A-Z].*[A-Z]/.test(first) && !/\d/.test(first)) s = first.toLowerCase() + s.slice(first.length);
+  if (s.length > max) {
+    const cut = s.slice(0, max);
+    const at = cut.lastIndexOf(" ");
+    s = (at > max / 2 ? cut.slice(0, at) : cut).replace(/[.,;:\s-]+$/, "");
+  }
+  return s || "update";
+}
+function header(type, scope, subject, breaking = false) {
+  const head = `${type}(${scope})${breaking ? "!" : ""}: `;
+  return head + subjectOf(subject, HEADER_MAX - head.length);
+}
+function taskCommitMessage(t, changeId, evidence) {
+  const type = isType(t.type) ? t.type : ORIGIN_TYPE[String(t.origin)] ?? "chore";
+  const h = header(type, scopeOf(t), String(t.title ?? ""), t.breaking === true);
+  return `${h}
+
+Change: ${changeId}
+Task: ${t.id}
+Evidence: ${evidence}`;
+}
+function aidwCommitMessage(subject, footer) {
+  return `${header("chore", "aidw", subject)}
+
+${footer}`;
+}
+var HEADER_RE = new RegExp(`^(${COMMIT_TYPES.join("|")})(\\([a-z0-9]+(?:-[a-z0-9]+)*\\))?!?: \\S.*$`);
+
 // src/tasks.ts
 var TASK_STATUSES = ["pending", "running", "review", "done", "failed", "blocked", "escalated"];
 var RUNTIME_FIELDS = [
@@ -7582,6 +7630,8 @@ function validateTasksText(text, file) {
     if (t.max_attempts !== void 0 && !(Number.isInteger(t.max_attempts) && Number(t.max_attempts) >= 1)) {
       d.error(file, `${where}: "max_attempts" must be a positive integer`);
     }
+    const tp = typeProblem(t);
+    if (tp) d.error(file, `${where} ${tp}`);
     if (t.risk !== void 0 && t.risk !== "normal" && t.risk !== "high") d.error(file, `${where}: "risk" must be normal or high`);
     if (t.status !== void 0 && !TASK_STATUSES.includes(String(t.status))) {
       d.error(file, `${where}: unknown status "${String(t.status)}" (expected ${TASK_STATUSES.join(", ")})`);
@@ -7733,8 +7783,8 @@ function parseRequirementBlocks(lines, start, end) {
   return { blocks, preamble };
 }
 function parseBlock(block) {
-  const header = block[0];
-  const name = (header.text.match(REQ)?.[1] ?? "").trim();
+  const header2 = block[0];
+  const name = (header2.text.match(REQ)?.[1] ?? "").trim();
   const issues = [];
   const scenarios = [];
   const descLines = [];
@@ -7768,7 +7818,7 @@ function parseBlock(block) {
   return {
     name,
     key: normalizeKey(name),
-    line: header.no,
+    line: header2.no,
     raw,
     description: joinTrim(descLines).trim(),
     scenarios,
@@ -8858,7 +8908,7 @@ function mergeWorktree(p, t, message) {
     throw new OpError(`${t.id}: ${junkMessage(junk)}`);
   }
   if (!git(wt, ["diff", "--cached", "--quiet"]).ok) {
-    const c = git(wt, ["commit", "-q", "-m", message.replace(/^([^:]+):/, "$1 (worktree):")]);
+    const c = git(wt, ["commit", "-q", "-m", message]);
     if (!c.ok) throw new OpError(`commit in the worktree of ${t.id} failed: ${c.err || c.out}`);
   }
   const m = git(p.project, ["merge", "--no-ff", "--no-commit", "-q", branch]);
@@ -9234,9 +9284,7 @@ function recordReview(p, id, taskId, verdict, notes, opts = {}) {
     saveTasks(tf);
     return { task: taskId, verdict, status: exhausted ? "escalated" : "failed", commit: null };
   }
-  const msg = `${taskId}: ${String(t.title ?? "")}
-
-aidw change ${id}, task ${taskId}. Checkpoint and review evidence: .aidw/changes/${id}/${evidenceRel(taskId)}`;
+  const msg = taskCommitMessage(t, id, `.aidw/changes/${id}/${evidenceRel(taskId)}`);
   const inWorktree = typeof t.worktree === "string" && t.worktree !== "";
   if (inWorktree) {
     const m = mergeWorktree(p, t, msg);
@@ -9357,7 +9405,7 @@ ${req.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`;
   const shots = shotsDir(p, id, taskId);
   const reportFile = (0, import_node_path8.join)(p.run, `report-${taskId}.md`);
   if (kind === "implement") (0, import_node_fs7.rmSync)(reportFile, { force: true });
-  const header = [
+  const header2 = [
     `# ${kind === "implement" ? "Task" : "Review"} brief: ${taskId} - ${String(t.title ?? "")}`,
     "",
     `Change \`${id}\` \xB7 role ${String(t.role ?? "?")} \xB7 attempt ${attemptsOf(t) || 1} of ${maxAttemptsOf(t)}`,
@@ -9451,7 +9499,7 @@ ${req.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`;
       ...shared
     ];
   }
-  const text = [...header, ...body].join("\n").replace(/\n{3,}/g, "\n\n");
+  const text = [...header2, ...body].join("\n").replace(/\n{3,}/g, "\n\n");
   const dir = (0, import_node_path8.join)(p.run, "briefs", id);
   (0, import_node_fs7.mkdirSync)(dir, { recursive: true });
   const path = (0, import_node_path8.join)(dir, `${taskId}.${kind}.md`);
@@ -10407,9 +10455,7 @@ function transition(p, id, to, opts) {
   change.doc.set("state", target);
   saveChange(change);
   if (target === "delivered") {
-    const commit = commitAidw(p, `aidw: ${id} delivered
-
-Quality layer and deploy evidence: .aidw/changes/${id}/evidence/`);
+    const commit = commitAidw(p, aidwCommitMessage(`${id} delivered`, `Evidence: .aidw/changes/${id}/evidence/`));
     return { from, to: target, ...commit ? { commit } : {}, ...notes.length ? { notes } : {} };
   }
   return { from, to: target, ...notes.length ? { notes } : {} };
@@ -10509,9 +10555,7 @@ function archiveChange(p, id) {
   saveChange(change);
   (0, import_node_fs11.mkdirSync)(p.archive, { recursive: true });
   (0, import_node_fs11.renameSync)(change.dir, target);
-  const commit = commitAidw(p, `aidw: archive ${id}
-
-Delta specs merged into .aidw/specs; change moved to ${rel(p, target)}.`, { delivery: true });
+  const commit = commitAidw(p, aidwCommitMessage(`archive ${id}`, `Moved-to: ${rel(p, target)}`), { delivery: true });
   return { target, merges, ...commit ? { commit } : {} };
 }
 function projectStatus(p, only) {
@@ -10619,7 +10663,7 @@ function buildLayerBrief(p, id, layer, runs, vendorDir) {
     ...kind === "ui" ? [pointer2(p, p.design, "design direction and assets (direction.md first)")] : [],
     pointer2(p, (0, import_node_path13.join)(change.dir, "analysis.md"), "the approved Analysis (scope, decisions, quality profile)")
   ].filter((x) => x !== null);
-  const header = [
+  const header2 = [
     `# Layer review brief: ${layer.name} (${kind} review) - ${String(change.data.title ?? id)}`,
     "",
     `Change \`${id}\`. You are an independent **${kind} reviewer** in a fresh context. You did not write this code.`,
@@ -10670,7 +10714,7 @@ function buildLayerBrief(p, id, layer, runs, vendorDir) {
     ...h("Read first (context pointers; read only what you need)", pointers),
     ...h("Skills (read each SKILL.md and apply it)", skills)
   ];
-  const text = [...header, ...body].join("\n").replace(/\n{3,}/g, "\n\n");
+  const text = [...header2, ...body].join("\n").replace(/\n{3,}/g, "\n\n");
   const dir = (0, import_node_path13.join)(p.run, "briefs", id);
   (0, import_node_fs12.mkdirSync)(dir, { recursive: true });
   const path = (0, import_node_path13.join)(dir, `${layer.name}.layer-review.md`);

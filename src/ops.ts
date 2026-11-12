@@ -17,6 +17,7 @@ import { analyzeChange, PLACEHOLDER } from "./analyze.js";
 import { recordBaseline } from "./backstop.js";
 import { checkChange, deltaFiles } from "./check.js";
 import { Diags } from "./diag.js";
+import { aidwCommitMessage } from "./commit.js";
 import { capabilityOf, findProject, isDir, KEBAB_SEGMENT, pathsFor, projectKind, readText, rel, walkFiles, type Paths } from "./project.js";
 import { applyDelta, type MergeSummary } from "./spec/merge.js";
 import { parseSpec } from "./spec/parse.js";
@@ -383,7 +384,7 @@ export function transition(p: Paths, id: string, to: string, opts: { reason?: st
   saveChange(change);
   if (target === "delivered") {
     // Quality and deploy evidence plus the final state belong in history; only .aidw/ is committed.
-    const commit = commitAidw(p, `aidw: ${id} delivered\n\nQuality layer and deploy evidence: .aidw/changes/${id}/evidence/`);
+    const commit = commitAidw(p, aidwCommitMessage(`${id} delivered`, `Evidence: .aidw/changes/${id}/evidence/`));
     return { from, to: target, ...(commit ? { commit } : {}), ...(notes.length ? { notes } : {}) };
   }
   return { from, to: target, ...(notes.length ? { notes } : {}) };
@@ -524,7 +525,7 @@ export function archiveChange(p: Paths, id: string): { target: string; merges: C
   saveChange(change);
   mkdirSync(p.archive, { recursive: true });
   renameSync(change.dir, target);
-  const commit = commitAidw(p, `aidw: archive ${id}\n\nDelta specs merged into .aidw/specs; change moved to ${rel(p, target)}.`, { delivery: true });
+  const commit = commitAidw(p, aidwCommitMessage(`archive ${id}`, `Moved-to: ${rel(p, target)}`), { delivery: true });
   return { target, merges, ...(commit ? { commit } : {}) };
 }
 

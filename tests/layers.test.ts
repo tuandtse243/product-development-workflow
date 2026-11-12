@@ -41,6 +41,7 @@ const TASKS = `tasks:
   - id: T01
     title: Booking page
     role: frontend-engineer
+    type: feat
     scenarios: [${SCENARIO}]
     touches: ["app/**", "tests/**"]
     verify: ['node -e "process.exit(0)"']

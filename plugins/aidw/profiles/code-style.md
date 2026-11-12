@@ -1,4 +1,4 @@
-# Code style: prettier, eslint, husky
+# Code style: prettier, eslint, husky, commitlint
 
 `/aidw:start` step 7 makes the scaffold task (usually T01) set this up, so every file the plugin generates
 follows one convention. It applies to **greenfield JS/TS projects** (Next.js, Vite + React, NestJS/Express)
@@ -32,6 +32,32 @@ using pnpm.
 
 The `code` layer includes `pnpm format:check` (or `pnpm exec prettier --check .`), so code that is not
 formatted becomes a fix task. This is the real guarantee: the hook is a convenience.
+
+## Commit messages (commitlint)
+
+The scaffold task also sets up Conventional Commits, so people committing by hand follow the same rules as aidw:
+
+1. Dev dependencies `@commitlint/cli` and `@commitlint/config-conventional`.
+2. `commitlint.config.js`:
+
+   ```js
+   export default {
+     extends: ['@commitlint/config-conventional'],
+     rules: {
+       'header-max-length': [2, 'always', 72],
+       'subject-case': [0],
+       'body-max-line-length': [0],
+       'footer-max-line-length': [0],
+     },
+   };
+   ```
+
+   (`subject-case` and the line limits are off because aidw footers carry long evidence paths and titles may start
+   with an acronym.)
+3. `.husky/commit-msg` containing `pnpm exec commitlint --edit $1`.
+
+aidw builds its own messages with `type(capability): title` and checks them itself, because this hook does not
+run in a worktree. Brownfield keeps its own commit rules.
 
 ## Hooks and aidw commits
 

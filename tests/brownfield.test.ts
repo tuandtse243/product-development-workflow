@@ -126,7 +126,7 @@ describe("brownfield analysis and baseline specs", () => {
     write(root, ".aidw/specs/todos/spec.md", BASELINE);
     write(root, `.aidw/changes/${ID}/analysis.md`, ANALYSIS_MD.replace("## Domain", `${EXISTING}\n## Domain`));
     write(root, `.aidw/changes/${ID}/specs/todos/spec.md`, DELTA);
-    write(root, `.aidw/changes/${ID}/tasks.yaml`, `tasks:\n  - id: T01\n    title: Due dates\n    role: fullstack-engineer\n    scenarios: [todos/add-a-todo/trimmed-title]\n    touches: ["lib/**", "tests/**"]\n    verify: ["pnpm test"]\n    status: pending\n`);
+    write(root, `.aidw/changes/${ID}/tasks.yaml`, `tasks:\n  - id: T01\n    title: Due dates\n    role: fullstack-engineer\n    type: feat\n    scenarios: [todos/add-a-todo/trimmed-title]\n    touches: ["lib/**", "tests/**"]\n    verify: ["pnpm test"]\n    status: pending\n`);
     write(root, `.aidw/changes/${ID}/quality.yaml`, "layers:\n  - name: code\n    run: [pnpm lint]\n  - name: unit\n    run: [pnpm test]\n  - name: e2e\n    run: [pnpm test:e2e]\ndeploy:\n  target: none\n");
     expect(errors(root)).toEqual([]);
     expect(cli(root, "transition", ID, "awaiting_approval").code).toBe(0);
@@ -184,7 +184,7 @@ describe("repo hygiene (aidw commits with git add -A)", () => {
     cli(root, "change", "new", ID);
     write(root, `.aidw/changes/${ID}/analysis.md`, ANALYSIS_MD.replace("## Domain", `${EXISTING}\n## Domain`));
     write(root, `.aidw/changes/${ID}/specs/notes/spec.md`, `## Purpose\nNotes attached to todos, kept next to the todo they describe.\n\n## ADDED Requirements\n\n${REQ("Note works")}`);
-    write(root, `.aidw/changes/${ID}/tasks.yaml`, `tasks:\n  - id: T01\n    title: x\n    role: fullstack-engineer\n    scenarios: [notes/note-works/note-works-works]\n    touches: ["lib/**", "tests/**"]\n    verify: ['node -e "process.exit(0)"']\n    status: pending\n`);
+    write(root, `.aidw/changes/${ID}/tasks.yaml`, `tasks:\n  - id: T01\n    title: x\n    role: fullstack-engineer\n    type: feat\n    scenarios: [notes/note-works/note-works-works]\n    touches: ["lib/**", "tests/**"]\n    verify: ['node -e "process.exit(0)"']\n    status: pending\n`);
     write(root, `.aidw/changes/${ID}/quality.yaml`, "layers:\n  - name: code\n    run: ['node -e \"process.exit(0)\"']\ndeploy:\n  target: none\n");
     g(root, "init", "-q");
     g(root, "add", "-A");

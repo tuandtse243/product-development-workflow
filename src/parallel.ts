@@ -119,8 +119,8 @@ export function mergeWorktree(p: Paths, t: Task, message: string): MergeOutcome 
     throw new OpError(`${t.id}: ${junkMessage(junk)}`);
   }
   if (!git(wt, ["diff", "--cached", "--quiet"]).ok) {
-    // The merge commit carries "<task>: <title>"; the branch commit says where the work was done.
-    const c = git(wt, ["commit", "-q", "-m", message.replace(/^([^:]+):/, "$1 (worktree):")]);
+    // Same message as the merge commit: the branch commit and the merge commit describe one task.
+    const c = git(wt, ["commit", "-q", "-m", message]);
     if (!c.ok) throw new OpError(`commit in the worktree of ${t.id} failed: ${c.err || c.out}`);
   }
   const m = git(p.project, ["merge", "--no-ff", "--no-commit", "-q", branch]);

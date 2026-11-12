@@ -18,6 +18,7 @@ import { decisionsToHonor, requirementsAfterChange } from "./analyze.js";
 import { approvalStatus } from "./approval.js";
 import { loadChange, stateOf, type Change } from "./change.js";
 import { hardcodedColors, loadTokens, missingTokens, shotsDir, taskShots, tokensFile, tokensTable } from "./design.js";
+import { taskCommitMessage } from "./commit.js";
 import { changedSince, git, headCommit, isGitRepo, junkMessage, stagedJunk } from "./git.js";
 import { matchesAny } from "./glob.js";
 import { OpError } from "./ops.js";
@@ -494,7 +495,7 @@ export function recordReview(
     return { task: taskId, verdict, status: exhausted ? "escalated" : "failed", commit: null };
   }
 
-  const msg = `${taskId}: ${String(t.title ?? "")}\n\naidw change ${id}, task ${taskId}. Checkpoint and review evidence: .aidw/changes/${id}/${evidenceRel(taskId)}`;
+  const msg = taskCommitMessage(t, id, `.aidw/changes/${id}/${evidenceRel(taskId)}`);
   const inWorktree = typeof t.worktree === "string" && t.worktree !== "";
   if (inWorktree) {
     const m = mergeWorktree(p, t, msg);

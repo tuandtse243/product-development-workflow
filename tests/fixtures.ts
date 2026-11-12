@@ -142,6 +142,7 @@ export const TASKS_YAML = `tasks:
   - id: T01
     title: Booking API
     role: backend-engineer
+    type: feat
     specs: [booking/reschedule-appointment]
     scenarios: [booking/reschedule-appointment/reschedule-appointment-works]
     depends_on: []
@@ -151,6 +152,7 @@ export const TASKS_YAML = `tasks:
   - id: T02
     title: Booking page
     role: frontend-engineer
+    type: feat
     depends_on: [T01]
     touches: ["app/(site)/book/**"]
     verify: ["pnpm playwright test booking"]

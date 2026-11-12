@@ -188,6 +188,7 @@ tasks:
   - id: T01
     title: <end-to-end behavior this slice makes work>
     role: fullstack-engineer   # fullstack-engineer | frontend-engineer | backend-engineer | database-engineer | qa-engineer | architect
+    type: feat                 # Conventional Commits type of the task commit: feat fix refactor test docs style perf build ci chore revert
     specs: [<capability>/<requirement-id>]                 # from `aidw ids <id>`
     scenarios: [<capability>/<requirement-id>/<scenario-id>]
     depends_on: []             # blocking edges
@@ -215,6 +216,10 @@ tasks:
 - **Code style.** For a greenfield JS/TS project the scaffold task also sets up prettier, eslint, husky and
   lint-staged as described in `$(aidw plugin-path profiles/code-style.md)`; put those files in its `touches`
   and tell it to follow that profile. Brownfield projects keep their own tooling.
+- **Commits.** Every planned task states a `type` (analysis fails without one). The task commit becomes
+  `type(capability): title`, the scope being the capability of its first spec (`config` when it has none), so
+  a task spanning several capabilities lists the main one first. Add `breaking: true` only for a breaking change.
+  Greenfield scaffolds commitlint with the same rules (`profiles/code-style.md`); see `docs/commit-guide.md`.
 
 ## 8. Quality, deploy and permissions
 

@@ -38,6 +38,7 @@ const TASKS = `tasks:
   - id: T01
     title: Reschedule an appointment
     role: fullstack-engineer
+    type: feat
     scenarios: [${SCENARIO}]
     touches: ["lib/**", "tests/**"]
     verify: ['node -e "process.exit(0)"']
@@ -248,7 +249,7 @@ describe("verify -> fix -> deploy (exit criterion [6])", () => {
     cli(root, "transition", ID, "deploying");
     cli(root, "deploy");
     expect(cli(root, "transition", ID, "delivered", "--json").json().commit).toMatch(/^[0-9a-f]{40}$/);
-    expect(g("log", "-1", "--format=%s").trim()).toBe(`aidw: ${ID} delivered`);
+    expect(g("log", "-1", "--format=%s").trim()).toBe(`chore(aidw): ${ID} delivered`);
     expect(g("show", "--name-only", "--format=", "HEAD")).toContain("evidence/deploy.json");
     expect(g("status", "--porcelain").trim()).toBe("?? notes-of-the-user.md");
   });

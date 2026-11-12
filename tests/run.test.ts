@@ -20,6 +20,7 @@ const RUN_TASKS = (t2Verify = OK) => `tasks:
   - id: T01
     title: Reschedule an appointment
     role: fullstack-engineer
+    type: feat
     specs: [booking/reschedule-appointment]
     scenarios: [${SCENARIO}]
     depends_on: []
@@ -29,6 +30,7 @@ const RUN_TASKS = (t2Verify = OK) => `tasks:
   - id: T02
     title: Staff calendar
     role: fullstack-engineer
+    type: feat
     depends_on: [T01]
     touches: ["app/(staff)/**"]
     verify: ['${t2Verify}']
@@ -260,7 +262,7 @@ describe("with git (checkpoint per task)", () => {
     const r = cli(root, "review", "T01", "pass", "--json").json();
     expect(r.commit).toMatch(/^[0-9a-f]{40}$/);
     const log = execFileSync("git", ["log", "--format=%s", "-n", "1"], { cwd: root, encoding: "utf8" });
-    expect(log.trim()).toBe("T01: Reschedule an appointment");
+    expect(log.trim()).toBe("feat(booking): reschedule an appointment");
     // code, tasks.yaml and evidence land in the same commit; run/ stays out of git
     expect(gitDirtyPaths(root)).toEqual([]);
     const files = execFileSync("git", ["show", "--name-only", "--format=", "HEAD"], { cwd: root, encoding: "utf8" });
@@ -303,7 +305,7 @@ describe("scenario evidence", () => {
 });
 
 describe("skill selection", () => {
-  const base = { id: "T", title: "x", role: "fullstack-engineer", verify: ["pnpm vitest"] };
+  const base = { id: "T", title: "x", role: "fullstack-engineer", type: "feat", verify: ["pnpm vitest"] };
   const ids = (t: Record<string, unknown>, kind: "implement" | "review" = "implement", retry = false) =>
     selectSkills({ ...base, ...t } as never, kind, { retry }).map((s) => s.id.replace("addy/", ""));
 

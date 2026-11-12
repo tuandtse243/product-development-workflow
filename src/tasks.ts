@@ -1,5 +1,6 @@
 import YAML from "yaml";
 import { Diags } from "./diag.js";
+import { typeProblem } from "./commit.js";
 
 /**
  * pending -> running -> review -> done        (implement, checkpoint, independent review)
@@ -88,6 +89,8 @@ export function validateTasksText(text: string, file: string): Diags {
     if (t.max_attempts !== undefined && !(Number.isInteger(t.max_attempts) && Number(t.max_attempts) >= 1)) {
       d.error(file, `${where}: "max_attempts" must be a positive integer`);
     }
+    const tp = typeProblem(t);
+    if (tp) d.error(file, `${where} ${tp}`);
     if (t.risk !== undefined && t.risk !== "normal" && t.risk !== "high") d.error(file, `${where}: "risk" must be normal or high`);
     if (t.status !== undefined && !(TASK_STATUSES as readonly string[]).includes(String(t.status))) {
       d.error(file, `${where}: unknown status "${String(t.status)}" (expected ${TASK_STATUSES.join(", ")})`);

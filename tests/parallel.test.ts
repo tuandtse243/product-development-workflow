@@ -29,6 +29,7 @@ const TASKS = (extra = "") => `tasks:
   - id: T01
     title: Booking logic
     role: backend-engineer
+    type: feat
     scenarios: [${SCENARIO}]
     touches: ["lib/a/**", "tests/a/**"]
     verify: ['${ok}']
@@ -36,12 +37,14 @@ const TASKS = (extra = "") => `tasks:
   - id: T02
     title: Reports
     role: backend-engineer
+    type: feat
     touches: ["lib/b/**"]
     verify: ['node check.js lib/b/report.js']
     status: pending
   - id: T03
     title: Booking helper
     role: backend-engineer
+    type: feat
     touches: ["lib/a/helper.js"]
     verify: ['${ok}']
     status: pending
@@ -201,8 +204,8 @@ describe("a wave in worktrees (git)", () => {
     expect(next(root)).toMatchObject({ action: "review", task: "T01" });
     expect(cli(root, "review", "T01", "pass").out).toMatch(/T01: review pass -> done \(commit [0-9a-f]{8}\)/);
     expect(cli(root, "review", "T02", "pass").code).toBe(0);
-    expect(g(root, "log", "--first-parent", "--format=%s", "-3").split("\n")).toEqual(["T02: Reports", "T01: Booking logic", "base"]);
-    expect(g(root, "log", "--format=%s").split("\n")).toContain("T01 (worktree): Booking logic");
+    expect(g(root, "log", "--first-parent", "--format=%s", "-3").split("\n")).toEqual(["feat(config): reports", "feat(config): booking logic", "base"]);
+    expect(g(root, "log", "--format=%s").split("\n")).toContain("feat(config): booking logic");
     expect(readFileSync(join(root, "lib/a/booking.js"), "utf8")).toBe("module.exports = 1;\n");
     expect(existsSync(wt1)).toBe(false);
     expect(g(root, "branch", "--list", "aidw/*.*")).toBe(""); // task branches gone; the change branch stays

@@ -89,7 +89,7 @@ describe("a converge task that only adds tests skips the reviewer subagent", () 
     doc.tasks = [
       { ...(doc.tasks[0] as object), status: "done" },
       { ...(doc.tasks[1] as object), status: "done" },
-      { id: "C01", title: "Cover scenario", role: "fullstack-engineer", origin: "converge", scenarios: [SCENARIO], depends_on: [], touches: ["**"], verify: ['node -e "process.exit(0)"'], status: "pending", ...extra },
+      { id: "C01", title: "Cover scenario", role: "fullstack-engineer", type: "feat", origin: "converge", scenarios: [SCENARIO], depends_on: [], touches: ["**"], verify: ['node -e "process.exit(0)"'], status: "pending", ...extra },
     ];
     write(root, `.aidw/changes/${ID}/tasks.yaml`, YAML.stringify(doc));
   }
@@ -104,7 +104,7 @@ describe("a converge task that only adds tests skips the reviewer subagent", () 
     const cp = cli(root, {}, "checkpoint", "C01");
     expect(cp.out).toMatch(/review C01: auto-passed/);
     expect(cp.out).not.toMatch(/SPAWN aidw:reviewer/);
-    expect(execFileSync("git", ["log", "-1", "--format=%s"], { cwd: root, encoding: "utf8" }).trim()).toMatch(/^C01:/);
+    expect(execFileSync("git", ["log", "-1", "--format=%s"], { cwd: root, encoding: "utf8" }).trim()).toMatch(/^feat\(config\): cover scenario/);
   });
 
   it("still goes to a reviewer when it touched product code", () => {

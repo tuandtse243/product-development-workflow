@@ -42,6 +42,8 @@ batch 2 (features). Tick items as they land.
 
 ## Batch 2: features (after trial-3A)
 
+- [x] **Conventional commits.** aidw builds `type(capability): title` itself (`src/commit.ts`), every planned task has a
+  `type`, and greenfield scaffolds commitlint ([ADR-0002](adr/0002-conventional-commits.md)).
 - [ ] **Stack packs** ([ADR-0001](adr/0001-stack-packs.md)).
   - Create `profiles/stacks/node.md` and move the JS knowledge there (`code-style.md` merges in).
   - `src/git.ts` reads junk paths per stack.

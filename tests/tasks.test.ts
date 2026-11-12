@@ -12,12 +12,14 @@ describe("validateTasksText", () => {
   - id: A
     title: a
     role: backend-engineer
+    type: feat
     depends_on: [C]
     touches: ["a/**"]
     verify: ["x"]
   - id: B
     title: b
     role: backend-engineer
+    type: feat
     depends_on: [A, Z]
     touches: []
     verify: ["x"]
@@ -25,6 +27,7 @@ describe("validateTasksText", () => {
   - id: C
     title: c
     role: qa-engineer
+    type: feat
     depends_on: [B]
     touches: ["c/**"]
 `;
@@ -44,7 +47,7 @@ describe("validateTasksText", () => {
 describe("canonicalTasks", () => {
   it("ignores runtime fields and converge-added tasks", () => {
     const progressed = TASKS_YAML.replace("status: pending", "status: done\n    attempts: 2\n    evidence: evidence/tasks/T01.md").concat(
-      `  - id: T03\n    title: gap\n    role: qa-engineer\n    origin: converge\n    touches: ["e2e/**"]\n    verify: ["x"]\n`,
+      `  - id: T03\n    title: gap\n    role: qa-engineer\n    type: feat\n    origin: converge\n    touches: ["e2e/**"]\n    verify: ["x"]\n`,
     );
     expect(canonicalTasks(progressed)).toBe(canonicalTasks(TASKS_YAML));
   });

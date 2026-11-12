@@ -15,6 +15,12 @@ describe("code style profile", () => {
     for (const w of ["prettier", "eslint", "husky", "lint-staged", ".husky/pre-commit", "Brownfield"]) expect(p).toContain(w);
   });
 
+  it("scaffolds commitlint and tasks state a commit type", () => {
+    const p = read("profiles/code-style.md");
+    for (const w of ["@commitlint/config-conventional", ".husky/commit-msg", "header-max-length"]) expect(p).toContain(w);
+    expect(read("skills/start/SKILL.md")).toMatch(/type: feat/);
+  });
+
   it("the code layer checks formatting for every stack", () => {
     const rows = read("profiles/quality-layers.md").split("\n").filter((l) => /^\| (Next\.js|Vite|NestJS)/.test(l));
     expect(rows).toHaveLength(3);
