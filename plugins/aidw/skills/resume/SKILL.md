@@ -13,6 +13,7 @@ The `aidw` CLI ships with this plugin as `${CLAUDE_PLUGIN_ROOT}/bin/aidw`. If a 
 
 All progress lives in `.aidw/` and git, so resuming needs no memory of the previous session.
 
+0. Under `AIDW_RUNNER=1` the runner already ran `aidw doctor` for this session: skip `aidw doctor` below, and go to `aidw next` (it reports the state too, so skip `aidw status` as well).
 1. `aidw status` (one call; skip it when the prompt already names the change and its state is known). Pick the change (`$ARGUMENTS`, or the single active one) and report where it stands:
    state, paused reason, tasks done/total.
    A resumed run may be on another machine state (Chrome closed, login expired): run `aidw doctor <id>` and

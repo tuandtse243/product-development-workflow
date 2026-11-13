@@ -23,6 +23,17 @@ describe("conventional commits", () => {
     expect(h.endsWith(" ")).toBe(false);
     expect(isConventional(h)).toBe(true);
   });
+  it("does not end the subject on a word that needs a continuation (trial-3C)", () => {
+    const h = header("test", "config", "End-to-end, accessibility and screenshot suites for the assembled page");
+    expect(h).toBe("test(config): end-to-end, accessibility and screenshot suites");
+    expect(subjectOf("Add the expense form with the totals and the", 22)).not.toMatch(/\b(the|and|with)$/);
+  });
+  it("scopes a quality fix by its layer and says what the layer found", () => {
+    const m = taskCommitMessage({ id: "Q01", title: "Fix the security quality layer", origin: "quality", layer: "security", problem: 'Quality layer "security" failed: `pnpm audit` exited 1.\n\n┌──' }, "c", "e");
+    expect(m.split("\n")[0]).toBe("fix(security): resolve the security layer findings");
+    expect(m).toContain('\n\nQuality layer "security" failed: `pnpm audit` exited 1.\n\nChange: c');
+    expect(isConventional(m)).toBe(true);
+  });
   it("types tasks added after approval from their origin", () => {
     expect(taskCommitMessage({ id: "C01", title: "Cover x", origin: "converge" }, "c", "e").startsWith("test(config):")).toBe(true);
     expect(typeProblem({ id: "C01", origin: "quality" })).toBeNull();

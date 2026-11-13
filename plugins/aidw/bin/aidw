@@ -7539,10 +7539,12 @@ function typeProblem(t) {
   return null;
 }
 function scopeOf(t) {
+  if (t.origin === "quality" && KEBAB_SEGMENT.test(String(t.layer ?? ""))) return String(t.layer);
   const spec = Array.isArray(t.specs) ? String(t.specs[0] ?? "") : "";
   const cap = spec.split("/").slice(0, -1).join("-").toLowerCase();
   return KEBAB_SEGMENT.test(cap) ? cap : DEFAULT_SCOPE;
 }
+var DANGLING = /* @__PURE__ */ new Set(["a", "an", "the", "and", "or", "but", "for", "to", "of", "in", "on", "at", "by", "with", "from", "into", "as", "than", "that", "so", "its", "their", "is", "are"]);
 function subjectOf(title, max) {
   let s = title.replace(/\s+/g, " ").trim().replace(/[.\s]+$/, "");
   const first = /^\S+/.exec(s)?.[0] ?? "";
@@ -7551,6 +7553,9 @@ function subjectOf(title, max) {
     const cut = s.slice(0, max);
     const at = cut.lastIndexOf(" ");
     s = (at > max / 2 ? cut.slice(0, at) : cut).replace(/[.,;:\s-]+$/, "");
+    for (let words = s.split(" "); words.length > 2 && DANGLING.has(words[words.length - 1].toLowerCase()); words = s.split(" ")) {
+      s = words.slice(0, -1).join(" ").replace(/[.,;:\s-]+$/, "");
+    }
   }
   return s || "update";
 }
@@ -7558,12 +7563,18 @@ function header(type, scope, subject, breaking = false) {
   const head = `${type}(${scope})${breaking ? "!" : ""}: `;
   return head + subjectOf(subject, HEADER_MAX - head.length);
 }
+var firstLine = (s) => (s.split("\n").find((l) => l.trim()) ?? "").replace(/\s+/g, " ").trim().slice(0, 200);
 function taskCommitMessage(t, changeId, evidence) {
   const type = isType(t.type) ? t.type : ORIGIN_TYPE[String(t.origin)] ?? "chore";
-  const h = header(type, scopeOf(t), String(t.title ?? ""), t.breaking === true);
+  const quality = t.origin === "quality" && KEBAB_SEGMENT.test(String(t.layer ?? ""));
+  const subject = quality ? `resolve the ${String(t.layer)} layer findings` : String(t.title ?? "");
+  const h = header(type, scopeOf(t), subject, t.breaking === true);
+  const why = quality ? firstLine(String(t.problem ?? "")) : "";
   return `${h}
 
-Change: ${changeId}
+${why ? `${why}
+
+` : ""}Change: ${changeId}
 Task: ${t.id}
 Evidence: ${evidence}`;
 }
@@ -11426,6 +11437,9 @@ function planAdvice(all2) {
     const pairs = s.independentPairs.slice(0, 4).map((p) => `${p.task} on ${p.on}`);
     out.push(`the plan runs at most ${s.width} task(s) at once; depends_on without overlapping touches: ${pairs.join(", ")}. Drop each one the later task does not truly need.`);
   }
+  if (s.width > 1 && s.width <= 2 && s.tasks >= 6 && !out.length) {
+    out.push(`the ${s.tasks} tasks run at most ${s.width} at once (stages: ${s.levels.map((l) => l.join("+")).join(" -> ")}). If a stage is a long single-task chain, check whether each depends_on is a real data dependency, and whether tasks share one big file (they then cannot overlap): slice by file ownership.`);
+  }
   const planned = all2.filter(isPlanned);
   const counts = planned.map((t) => ({ id: t.id, n: list4(t.scenarios).length }));
   const total = counts.reduce((n, c) => n + c.n, 0);
@@ -11436,6 +11450,8 @@ function planAdvice(all2) {
 }
 
 // src/analyze.ts
+var TITLE_ADVISED = 60;
+var isPlanned2 = (t) => t.origin === void 0 || t.origin === "plan";
 var ANALYSIS_SECTIONS = [
   "Summary",
   "Decisions to honor",
@@ -11635,6 +11651,9 @@ function analyzeChange(p, id) {
   }
   uiScenarioAdvice(p, id, tasks, d, tf);
   for (const t of tasks) {
+    if (isPlanned2(t) && String(t.title ?? "").length > TITLE_ADVISED) {
+      d.warn(tf, `task ${t.id} title is ${String(t.title).length} characters: it becomes the commit subject (72 characters with the prefix). Keep it under ${TITLE_ADVISED}`);
+    }
     const globs = Array.isArray(t.touches) ? t.touches.map(String) : [];
     if (globs.some((g) => MIGRATION_TOUCH.test(g)) && t.risk !== "high") {
       d.warn(tf, `task ${t.id} touches database migrations but is not "risk: high": migrations run alone, must be reversible and tested against a seeded database (profiles/quality-layers.md)`);
@@ -12004,6 +12023,12 @@ function doctor(p, id, env = process.env, probe = shellProbe) {
     add("vercel login", who.ok ? "ok" : "fail", who.ok ? who.out.split("\n").pop() ?? "" : `${who.out.split("\n").pop() ?? "not logged in"}: run \`vercel login\` in your own terminal and allow vercel.com and *.vercel.com in the sandbox`);
     const linked = (0, import_node_fs17.existsSync)((0, import_node_path18.join)(p.project, ".vercel", "project.json"));
     add("vercel project", linked ? "ok" : "warn", linked ? "linked" : "not linked: the first deploy would be Production (tier 3). Run `vercel link --yes` first");
+    if (linked && who.ok) {
+      const ls = probe("vercel", ["ls"], p.project, 3e4);
+      if (ls.ok && /no deployments found/i.test(ls.out)) {
+        add("vercel deployments", "fail", "none yet, and a project's first deployment is Production (tier 3, a decision for you): the preview deploy will fail. Deploy once yourself with `vercel deploy --yes --prod`, or set the deploy target to none");
+      }
+    }
   }
   return out;
 }
@@ -12121,6 +12146,7 @@ var MINUTE = 6e4;
 var BACKOFF_MINUTES = [5, 10, 20, 40, 60];
 var LIMIT_TEXT = /rate[ _-]?limit|usage limit|quota|overloaded|\b429\b|\b529\b|limit (?:will )?reset/i;
 var DRIVABLE = /* @__PURE__ */ new Set(["approved", "executing", "verifying", "converging", "deploying", "delivered", "paused"]);
+var NOISE = /^Permission allow rule \(/;
 var sleepSync = (ms) => {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 };
@@ -12216,6 +12242,10 @@ function runLoop(p, id, opts = {}) {
       record(`paused (${reason || "no reason"}): waiting ${Math.round(w.ms / MINUTE)} min, ${w.why}`);
       sleep(w.ms);
     }
+    if (opts.preflight && (runs === 0 || state === "deploying")) {
+      const problem = opts.preflight(state);
+      if (problem) return result("needs_user", state, problem);
+    }
     if (runs >= maxRuns) return result("max_runs", state, `${runs} sessions ran; raise --max-runs to continue`);
     const prompt = state === "delivered" ? `/aidw:deliver ${id}` : `/aidw:resume ${id}`;
     const args = ["-p", prompt, "--permission-mode", mode, ...opts.keepMcp ? [] : ["--strict-mcp-config"], ...opts.extraArgs ?? []];
@@ -12230,7 +12260,7 @@ function runLoop(p, id, opts = {}) {
     runs++;
     const output = `${r.stdout ?? ""}
 ${r.stderr ?? ""}`.trim();
-    const tail = output.split("\n").slice(-8).join("\n");
+    const tail = output.split("\n").filter((l) => !NOISE.test(l)).slice(-8).join("\n");
     record(`session ${runs} ended: exit ${r.status ?? r.error?.message ?? "?"}${tail ? `
 ${tail.replace(/^/gm, "  | ")}` : ""}`);
     if (r.error && r.error.code === "ENOENT") {
@@ -12720,6 +12750,10 @@ parallel waves: ${saved.reduce((n, s) => n + s.wave, 0)} task(s) took ${Math.rou
           ...str(args.flags["permission-mode"]) ? { permissionMode: str(args.flags["permission-mode"]) } : {},
           ...maxRuns ? { maxRuns: Number(maxRuns) } : {},
           ...args.flags["keep-mcp"] === true ? { keepMcp: true } : {},
+          preflight: () => {
+            const bad = doctor(p, id, env).filter((c) => c.status === "fail");
+            return bad.length ? `fix this first, then run the same command again: ${bad.map((c) => `${c.name}: ${c.detail}`).join("; ")}` : null;
+          },
           extraArgs: passthrough,
           env,
           log: json ? () => {

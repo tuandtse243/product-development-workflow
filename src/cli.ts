@@ -539,6 +539,10 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           ...(str(args.flags["permission-mode"]) ? { permissionMode: str(args.flags["permission-mode"]) as string } : {}),
           ...(maxRuns ? { maxRuns: Number(maxRuns) } : {}),
           ...(args.flags["keep-mcp"] === true ? { keepMcp: true } : {}),
+          preflight: () => {
+            const bad = doctor(p, id, env).filter((c) => c.status === "fail");
+            return bad.length ? `fix this first, then run the same command again: ${bad.map((c) => `${c.name}: ${c.detail}`).join("; ")}` : null;
+          },
           extraArgs: passthrough,
           env,
           log: json ? () => {} : (line) => io.out(`[aidw run] ${line}\n`),

@@ -24,6 +24,11 @@ export interface RunnerOptions {
   keepMcp?: boolean;
   /** extra arguments for every claude call (after `--` on the aidw command line), e.g. --plugin-dir */
   extraArgs?: string[];
+  /**
+   * Machine check before the first session and before every deploy session: a message means the run needs the user
+   * (a failed `aidw doctor` check), so no session is spent finding that out (trial-3C: six sessions at "deploying").
+   */
+  preflight?: (state: string) => string | null;
   maxRuns?: number;
   /** per-session limit; a hung session is killed and counts as a run */
   sessionTimeoutMs?: number;
@@ -48,6 +53,8 @@ export const BACKOFF_MINUTES = [5, 10, 20, 40, 60] as const;
 const LIMIT_TEXT = /rate[ _-]?limit|usage limit|quota|overloaded|\b429\b|\b529\b|limit (?:will )?reset/i;
 /** States the runner can drive; anything else needs the user. */
 const DRIVABLE = new Set(["approved", "executing", "verifying", "converging", "deploying", "delivered", "paused"]);
+
+const NOISE = /^Permission allow rule \(/;
 
 const sleepSync = (ms: number) => {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
@@ -158,6 +165,10 @@ export function runLoop(p: Paths, id: string, opts: RunnerOptions = {}): RunnerR
       record(`paused (${reason || "no reason"}): waiting ${Math.round(w.ms / MINUTE)} min, ${w.why}`);
       sleep(w.ms);
     }
+    if (opts.preflight && (runs === 0 || state === "deploying")) {
+      const problem = opts.preflight(state);
+      if (problem) return result("needs_user", state, problem);
+    }
     if (runs >= maxRuns) return result("max_runs", state, `${runs} sessions ran; raise --max-runs to continue`);
 
     const prompt = state === "delivered" ? `/aidw:deliver ${id}` : `/aidw:resume ${id}`;
@@ -172,7 +183,8 @@ export function runLoop(p: Paths, id: string, opts: RunnerOptions = {}): RunnerR
     });
     runs++;
     const output = `${r.stdout ?? ""}\n${r.stderr ?? ""}`.trim();
-    const tail = output.split("\n").slice(-8).join("\n");
+    // the user's own settings warnings repeat in every session and bury the answer
+    const tail = output.split("\n").filter((l) => !NOISE.test(l)).slice(-8).join("\n");
     record(`session ${runs} ended: exit ${r.status ?? r.error?.message ?? "?"}${tail ? `\n${tail.replace(/^/gm, "  | ")}` : ""}`);
     if (r.error && (r.error as NodeJS.ErrnoException).code === "ENOENT") {
       return result("claude_failed", state, `cannot run "${claude}": install Claude Code or pass --claude <path>`);

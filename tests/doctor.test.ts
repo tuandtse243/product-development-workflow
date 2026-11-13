@@ -50,6 +50,15 @@ describe("aidw doctor", () => {
     expect(checks.map((c) => c.name)).toEqual(expect.arrayContaining(["pnpm", "chrome cdp", "vercel login", "vercel project", "vercel"]));
   });
 
+  it("fails when a linked Vercel project has no deployment yet (the first one is Production)", () => {
+    const root = project();
+    write(root, ".vercel/project.json", "{}");
+    const none: Probe = (cmd, args) => (cmd === "vercel" && args[0] === "ls" ? { ok: true, out: "No deployments found" } : probe({})(cmd, args, root));
+    const by = Object.fromEntries(doctor(pathsFor(root), ID, {}, none).map((c) => [c.name, c]));
+    expect(by["vercel deployments"]).toMatchObject({ status: "fail" });
+    expect(by["vercel deployments"]?.detail).toMatch(/--prod/);
+  });
+
   it("fails on a closed CDP port, a missing login and warns about an unlinked project", () => {
     const root = project();
     const checks = doctor(pathsFor(root), ID, {}, probe({ "curl -sS -m 5": false, vercel: false }));

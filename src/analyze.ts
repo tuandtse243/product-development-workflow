@@ -15,6 +15,9 @@ import { parseQuality } from "./quality.js";
 import { loadTokens, tokensFile } from "./design.js";
 import { touchesUi } from "./skills.js";
 import { planAdvice } from "./plan.js";
+
+const TITLE_ADVISED = 60;
+const isPlanned = (t: { origin?: unknown }): boolean => t.origin === undefined || t.origin === "plan";
 import { parseTasks, type Task } from "./tasks.js";
 
 /** Sections every Analysis package must contain (headings are matched case-insensitively). */
@@ -264,6 +267,9 @@ export function analyzeChange(p: Paths, id: string): Diags {
   }
   uiScenarioAdvice(p, id, tasks, d, tf);
   for (const t of tasks) {
+    if (isPlanned(t) && String(t.title ?? "").length > TITLE_ADVISED) {
+      d.warn(tf, `task ${t.id} title is ${String(t.title).length} characters: it becomes the commit subject (72 characters with the prefix). Keep it under ${TITLE_ADVISED}`);
+    }
     const globs = Array.isArray(t.touches) ? (t.touches as unknown[]).map(String) : [];
     if (globs.some((g) => MIGRATION_TOUCH.test(g)) && t.risk !== "high") {
       d.warn(tf, `task ${t.id} touches database migrations but is not "risk: high": migrations run alone, must be reversible and tested against a seeded database (profiles/quality-layers.md)`);

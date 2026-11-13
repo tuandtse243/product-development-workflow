@@ -153,6 +153,13 @@ export function doctor(p: Paths, id: string | null, env: NodeJS.ProcessEnv = pro
     add("vercel login", who.ok ? "ok" : "fail", who.ok ? who.out.split("\n").pop() ?? "" : `${who.out.split("\n").pop() ?? "not logged in"}: run \`vercel login\` in your own terminal and allow vercel.com and *.vercel.com in the sandbox`);
     const linked = existsSync(join(p.project, ".vercel", "project.json"));
     add("vercel project", linked ? "ok" : "warn", linked ? "linked" : "not linked: the first deploy would be Production (tier 3). Run `vercel link --yes` first");
+    if (linked && who.ok) {
+      // trial-3C: a linked project with no deployment yet cannot take a preview: the first one is always Production
+      const ls = probe("vercel", ["ls"], p.project, 30_000);
+      if (ls.ok && /no deployments found/i.test(ls.out)) {
+        add("vercel deployments", "fail", "none yet, and a project's first deployment is Production (tier 3, a decision for you): the preview deploy will fail. Deploy once yourself with `vercel deploy --yes --prod`, or set the deploy target to none");
+      }
+    }
   }
   return out;
 }

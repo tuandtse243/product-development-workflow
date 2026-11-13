@@ -199,12 +199,12 @@ blocking edges, prefactor first, expand-contract for wide refactors), with this 
 ```yaml
 tasks:
   - id: T01
-    title: <end-to-end behavior this slice makes work>
+    title: <end-to-end behavior this slice makes work, under 60 characters: it becomes the commit subject>
     role: fullstack-engineer   # fullstack-engineer | frontend-engineer | backend-engineer | database-engineer | qa-engineer | architect
     type: feat                 # Conventional Commits type of the task commit: feat fix refactor test docs style perf build ci chore revert
     specs: [<capability>/<requirement-id>]                 # from `aidw ids <id>`
     scenarios: [<capability>/<requirement-id>/<scenario-id>]
-    depends_on: []             # blocking edges
+    depends_on: []             # blocking edges: only a real data dependency (trial-3C: a near-chain ran with no wave)
     touches: ["app/(site)/booking/**", "lib/booking/**"]   # file globs this task may change
     risk: normal               # normal | high (high never runs in parallel)
     verify:

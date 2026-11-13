@@ -67,6 +67,21 @@ describe("waitMs", () => {
   });
 });
 
+describe("aidw run preflight", () => {
+  it("stops before spending a session when the machine check fails, and filters settings noise from the log", () => {
+    const t = setup("deploying", [{ state: "deploying", progress: true }]);
+    const r = t.go({ preflight: () => "vercel deployments: none yet" });
+    expect(r).toMatchObject({ outcome: "needs_user", runs: 0, message: "vercel deployments: none yet" });
+    expect(t.calls()).toEqual([]);
+  });
+  it("checks once at the start, and again only before deploy sessions", () => {
+    const t = setup("executing", [{ state: "executing", progress: true }, { state: "deploying", progress: true }, { state: "archived", progress: true, archive: true }]);
+    const seen: string[] = [];
+    t.go({ preflight: (s: string) => (seen.push(s), null) });
+    expect(seen).toEqual(["executing", "deploying"]);
+  });
+});
+
 describe("aidw run", () => {
   it("waits out a pause, resumes headless with the permission mode and extra args, and stops on escalation", () => {
     const t = setup("paused", [{ state: "paused", paused: "rate_limit", progress: true }, { state: "escalated", progress: true }], "rate_limit: retry after 30 seconds");

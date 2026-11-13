@@ -90,6 +90,9 @@ export function planAdvice(all: Task[]): string[] {
     const pairs = s.independentPairs.slice(0, 4).map((p) => `${p.task} on ${p.on}`);
     out.push(`the plan runs at most ${s.width} task(s) at once; depends_on without overlapping touches: ${pairs.join(", ")}. Drop each one the later task does not truly need.`);
   }
+  if (s.width > 1 && s.width <= 2 && s.tasks >= 6 && !out.length) {
+    out.push(`the ${s.tasks} tasks run at most ${s.width} at once (stages: ${s.levels.map((l) => l.join("+")).join(" -> ")}). If a stage is a long single-task chain, check whether each depends_on is a real data dependency, and whether tasks share one big file (they then cannot overlap): slice by file ownership.`);
+  }
   // One heavy task is the critical path of its level: in trial-3A T05 had 15 of 48 scenarios and took 454 s while its
   // wave partner took 181 s, so the whole level waited. Splitting it (list / create / edit-delete) lets both halves overlap.
   const planned = all.filter(isPlanned);

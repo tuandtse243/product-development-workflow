@@ -28,12 +28,15 @@ export function typeProblem(t: Task): string | null {
   return null;
 }
 
-/** `<capability>/<requirement-id>` of the first spec -> kebab-case capability; no spec -> "config". */
+/** `<capability>/<requirement-id>` of the first spec -> kebab-case capability; a quality fix -> its layer; else "config". */
 export function scopeOf(t: Task): string {
+  if (t.origin === "quality" && KEBAB_SEGMENT.test(String(t.layer ?? ""))) return String(t.layer);
   const spec = Array.isArray(t.specs) ? String(t.specs[0] ?? "") : "";
   const cap = spec.split("/").slice(0, -1).join("-").toLowerCase();
   return KEBAB_SEGMENT.test(cap) ? cap : DEFAULT_SCOPE;
 }
+
+const DANGLING = new Set(["a", "an", "the", "and", "or", "but", "for", "to", "of", "in", "on", "at", "by", "with", "from", "into", "as", "than", "that", "so", "its", "their", "is", "are"]);
 
 /** Lowercase first word (acronyms such as API are kept), no trailing period, no line breaks. */
 export function subjectOf(title: string, max: number): string {
@@ -44,6 +47,10 @@ export function subjectOf(title: string, max: number): string {
     const cut = s.slice(0, max);
     const at = cut.lastIndexOf(" ");
     s = (at > max / 2 ? cut.slice(0, at) : cut).replace(/[.,;:\s-]+$/, "");
+    // never end on a word that needs a continuation ("... suites for the")
+    for (let words = s.split(" "); words.length > 2 && DANGLING.has((words[words.length - 1] as string).toLowerCase()); words = s.split(" ")) {
+      s = words.slice(0, -1).join(" ").replace(/[.,;:\s-]+$/, "");
+    }
   }
   return s || "update";
 }
@@ -53,11 +60,17 @@ export function header(type: string, scope: string, subject: string, breaking = 
   return head + subjectOf(subject, HEADER_MAX - head.length);
 }
 
+const firstLine = (s: string): string => (s.split("\n").find((l) => l.trim()) ?? "").replace(/\s+/g, " ").trim().slice(0, 200);
+
 /** Message of a task commit. `evidence` is the project-relative evidence file. */
 export function taskCommitMessage(t: Task, changeId: string, evidence: string): string {
   const type = isType(t.type) ? t.type : (ORIGIN_TYPE[String(t.origin)] ?? "chore");
-  const h = header(type, scopeOf(t), String(t.title ?? ""), t.breaking === true);
-  return `${h}\n\nChange: ${changeId}\nTask: ${t.id}\nEvidence: ${evidence}`;
+  // a quality fix is titled after the layer; the commit says what the layer found
+  const quality = t.origin === "quality" && KEBAB_SEGMENT.test(String(t.layer ?? ""));
+  const subject = quality ? `resolve the ${String(t.layer)} layer findings` : String(t.title ?? "");
+  const h = header(type, scopeOf(t), subject, t.breaking === true);
+  const why = quality ? firstLine(String(t.problem ?? "")) : "";
+  return `${h}\n\n${why ? `${why}\n\n` : ""}Change: ${changeId}\nTask: ${t.id}\nEvidence: ${evidence}`;
 }
 
 /** Message of an aidw bookkeeping commit (delivered, archive). */
