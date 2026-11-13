@@ -114,7 +114,7 @@ import { deployHint } from "../src/quality.js";
 describe("deploy hints", () => {
   it("explains the sandbox network block and the first-deploy-is-production rule", () => {
     expect(deployHint("Error: An unexpected error occurred in deploy: TypeError: fetch failed")).toMatch(/sandbox blocked the network/);
-    expect(deployHint("Error: Can't create a Preview deployment. This project has no deployments yet")).toMatch(/vercel deploy --yes --prod/);
+    expect(deployHint("Error: Can't create a Preview deployment. This project has no deployments yet")).toMatch(/aidw first-deploy --yes/);
   });
 });
 

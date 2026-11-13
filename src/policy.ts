@@ -49,6 +49,7 @@ export const ASK_COMMANDS: Rule[] = [
   { re: /\b(npm|pnpm|yarn)\s+publish\b/, why: "publishes a package" },
   { re: /\b(terraform\s+(apply|destroy)|pulumi\s+(up|destroy)|kubectl\s+(apply|delete)|docker\s+push)\b/, why: "changes infrastructure" },
   { re: /\bgh\s+(repo\s+(create|delete)|pr\s+(create|merge)|release\s+create)\b/, why: "changes GitHub state" },
+  { re: /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+first-deploy\b/, why: "deploys the app to Vercel Production (public)" },
   { re: /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+pr\b[^|;&]*--create\b/, why: "pushes the change branch and opens a pull request" },
   // a key literal (sk_live_ + 8 or more characters), not a search pattern such as `grep "sk_live_[0-9a-z]{24}"` in a secret scan
   { re: /\bstripe\b[^|;&]*--live\b|\bsk_live_[A-Za-z0-9]{8,}/, why: "uses live payment credentials" },
@@ -139,4 +140,4 @@ export const SHELL_CHAINING = /[;&|`<>]|\$\(/;
 
 /** aidw commands that record progress or change state: the orchestrator's job, never a subagent's. */
 export const AIDW_STATE_COMMAND =
-  /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+(?:task|checkpoint|review|layer-review|verify|integrate|converge|deploy|deliver|transition|approve|archive|merge|init|change|brief|pr)\b/;
+  /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+(?:task|checkpoint|review|layer-review|verify|integrate|converge|deploy|first-deploy|deliver|transition|approve|archive|merge|init|change|brief|pr)\b/;

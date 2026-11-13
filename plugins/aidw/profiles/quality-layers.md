@@ -69,7 +69,7 @@ parallel:                       # waves of tasks with disjoint touches, each in 
   nothing was deployed.
 - **Vercel specifics.** Pass `--environment=preview` so later deployments are previews. A project with no deployment at all
   cannot take a preview whatever the flag says: Vercel makes the first deployment Production (trial-3C), so the user
-  deploys once with `vercel deploy --yes --prod` in their own terminal, or the target is none. `aidw doctor` checks this. Previews have Deployment Protection on by default, so smoke checks use `vercel curl`, which
+  runs `aidw first-deploy --yes` once in their own terminal (a public Production deployment), or the target is none. `aidw doctor` checks this. Previews have Deployment Protection on by default, so smoke checks use `vercel curl`, which
   bypasses it for the logged-in user; plain `curl` gets 401. The CLI adds `.vercel` to `.gitignore`; the
   archive commit includes it. When its login token expires, the CLI must rewrite its auth file, which the
   sandbox blocks (error `The value of "err" is out of range`); the user runs `vercel whoami` in their own

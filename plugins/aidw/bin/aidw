@@ -8215,6 +8215,7 @@ var ASK_COMMANDS = [
   { re: /\b(npm|pnpm|yarn)\s+publish\b/, why: "publishes a package" },
   { re: /\b(terraform\s+(apply|destroy)|pulumi\s+(up|destroy)|kubectl\s+(apply|delete)|docker\s+push)\b/, why: "changes infrastructure" },
   { re: /\bgh\s+(repo\s+(create|delete)|pr\s+(create|merge)|release\s+create)\b/, why: "changes GitHub state" },
+  { re: /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+first-deploy\b/, why: "deploys the app to Vercel Production (public)" },
   { re: /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+pr\b[^|;&]*--create\b/, why: "pushes the change branch and opens a pull request" },
   // a key literal (sk_live_ + 8 or more characters), not a search pattern such as `grep "sk_live_[0-9a-z]{24}"` in a secret scan
   { re: /\bstripe\b[^|;&]*--live\b|\bsk_live_[A-Za-z0-9]{8,}/, why: "uses live payment credentials" },
@@ -8274,7 +8275,7 @@ var APPROVE_COMMAND = /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+approve\b/
 var RUNNER_COMMAND = /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+run\b/;
 var AIDW_COMMAND = /^\s*["']?(?:[^\s;&|"']*\/)?aidw["']?\s/;
 var SHELL_CHAINING = /[;&|`<>]|\$\(/;
-var AIDW_STATE_COMMAND = /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+(?:task|checkpoint|review|layer-review|verify|integrate|converge|deploy|deliver|transition|approve|archive|merge|init|change|brief|pr)\b/;
+var AIDW_STATE_COMMAND = /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+(?:task|checkpoint|review|layer-review|verify|integrate|converge|deploy|first-deploy|deliver|transition|approve|archive|merge|init|change|brief|pr)\b/;
 
 // src/gate.ts
 var OPEN_STATES = /* @__PURE__ */ new Set(["approved", "executing", "verifying", "converging", "deploying"]);
@@ -11276,7 +11277,7 @@ var DEPLOY_HINTS = [
   },
   {
     re: /first_deployment_production|has no deployments yet|first deployment is assigned to Production/i,
-    hint: "a Vercel project's first deployment is always Production, and `--environment=preview` (or `vercel link`) does not change that. This is the user's decision (tier 3): either they deploy once themselves in their own terminal (`vercel deploy --yes --prod`; the app is then public, so only with non-sensitive data) and `aidw deploy` works after that, or the deploy target is set to none. Never use --prod yourself."
+    hint: "a Vercel project's first deployment is always Production, and `--environment=preview` (or `vercel link`) does not change that. This is the user's decision (tier 3): either they run `aidw first-deploy --yes` in their own terminal (one public Production deployment, so only for non-sensitive data) and `aidw deploy` works after that, or the deploy target is set to none. Never use --prod yourself."
   },
   {
     re: /No existing credentials found|not logged in|vercel login/i,
@@ -12026,7 +12027,7 @@ function doctor(p, id, env = process.env, probe = shellProbe) {
     if (linked && who.ok) {
       const ls = probe("vercel", ["ls"], p.project, 3e4);
       if (ls.ok && /no deployments found/i.test(ls.out)) {
-        add("vercel deployments", "fail", "none yet, and a project's first deployment is Production (tier 3, a decision for you): the preview deploy will fail. Deploy once yourself with `vercel deploy --yes --prod`, or set the deploy target to none");
+        add("vercel deployments", "fail", "none yet, and a project's first deployment is Production (tier 3, a decision for you): the preview deploy will fail. Run `aidw first-deploy --yes` in your own terminal (it deploys the app publicly, once), or set the deploy target to none");
       }
     }
   }
@@ -12298,6 +12299,29 @@ function loadChangeState(p, id) {
   }
 }
 
+// src/firstdeploy.ts
+var import_node_child_process7 = require("node:child_process");
+function productionCommand(command) {
+  const swapped = command.replace(/\s--(?:environment|target)(?:=|\s+)preview\b/, " --prod");
+  return /\s--prod\b/.test(swapped) ? swapped : `${swapped} --prod`;
+}
+function firstDeploy(p, id, yes, run2 = import_node_child_process7.spawnSync) {
+  const text = readText(qualityFile(loadChange(p, id)));
+  const q = text === null ? null : parseQuality(text, "quality.yaml").config;
+  if (!q?.deploy.command || !/\bvercel\b/.test(q.deploy.command)) throw new OpError("first-deploy is for Vercel projects: quality.yaml has no vercel deploy command");
+  const command = productionCommand(q.deploy.command);
+  const ls = run2("vercel", ["ls"], { cwd: p.project, encoding: "utf8", timeout: 3e4 });
+  const out = `${ls.stdout ?? ""}${ls.stderr ?? ""}`;
+  if (ls.status !== 0 && !/no deployments found/i.test(out)) throw new OpError(`cannot list the Vercel deployments (${out.trim().split("\n").pop() ?? "vercel failed"}): run \`vercel login\` and \`vercel link --yes\` first`);
+  const needed = /no deployments found/i.test(out);
+  if (!needed) return { command, needed, ran: false, ok: true, output: "the project already has a deployment: previews work, nothing to do" };
+  if (!yes) return { command, needed, ran: false, ok: false, output: `this deploys the app to PRODUCTION (public URL, no login in front of it unless you added one).
+If that is fine, run: aidw first-deploy ${id} --yes
+The command will be: ${command}` };
+  const r = run2("sh", ["-c", command], { cwd: p.project, encoding: "utf8", timeout: 20 * 6e4, maxBuffer: 16 * 1024 * 1024 });
+  return { command, needed, ran: true, ok: r.status === 0, output: `${r.stdout ?? ""}${r.stderr ?? ""}`.trim().split("\n").slice(-12).join("\n") };
+}
+
 // src/cli.ts
 function reviewLine(r, verdict, notes) {
   return `${r.task}: review ${r.verdict} -> ${r.status}${r.commit ? ` (commit ${r.commit.slice(0, 8)})` : ""}${r.warning ? `
@@ -12408,6 +12432,7 @@ Unattended (in your own terminal, not inside Claude Code):
   layer-review <layer> [pass|fix] [--notes-file F | --notes T]   no verdict: read .aidw/run/layer-review-<layer>.md
                                          (verifying) record the layer reviewer's verdict; fix adds a fix task
   converge                               (converging) every changed scenario has a passing test; gaps become tasks
+  first-deploy [<id>] [--yes]            once per new Vercel project: the first deployment must be Production; you run it
   deploy                                 (deploying) approved preview deploy + smoke checks, or record target none/local
   deliver [--check]                      (delivered) write the delivery package and check its checklist
 
@@ -12817,6 +12842,15 @@ ${r.url ? `  url ${r.url}
 ${[...r.runs, ...r.smoke].find((x) => x.exit !== 0)?.tail ?? r.runs[0]?.tail ?? ""}
 `;
         emit({ change: id, ...r }, text);
+        return r.ok ? 0 : 1;
+      }
+      case "first-deploy": {
+        const p = project();
+        const id = resolveChangeId(p, str(args.flags.change) ?? rest[0]);
+        const r = firstDeploy(p, id, args.flags.yes === true);
+        emit({ change: id, ...r }, `${r.ran ? `${r.ok ? "DEPLOYED" : "FAILED"} (${r.command})
+` : ""}${r.output}
+${r.ok && r.ran ? "Previews work from now on: run aidw deploy.\n" : ""}`);
         return r.ok ? 0 : 1;
       }
       case "review": {

@@ -157,7 +157,7 @@ export function doctor(p: Paths, id: string | null, env: NodeJS.ProcessEnv = pro
       // trial-3C: a linked project with no deployment yet cannot take a preview: the first one is always Production
       const ls = probe("vercel", ["ls"], p.project, 30_000);
       if (ls.ok && /no deployments found/i.test(ls.out)) {
-        add("vercel deployments", "fail", "none yet, and a project's first deployment is Production (tier 3, a decision for you): the preview deploy will fail. Deploy once yourself with `vercel deploy --yes --prod`, or set the deploy target to none");
+        add("vercel deployments", "fail", "none yet, and a project's first deployment is Production (tier 3, a decision for you): the preview deploy will fail. Run `aidw first-deploy --yes` in your own terminal (it deploys the app publicly, once), or set the deploy target to none");
       }
     }
   }

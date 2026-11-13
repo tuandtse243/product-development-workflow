@@ -35,6 +35,7 @@ import { planAdvice, planShape, planSummary } from "./plan.js";
 import { runLoop } from "./runner.js";
 import { deliver } from "./deliver.js";
 import { deploy, recordLayerReview, verify } from "./quality.js";
+import { firstDeploy } from "./firstdeploy.js";
 import { reconcileDoneTasks, reopenTask } from "./run.js";
 import { autoReview, buildBrief, checkpoint, integrateChange, nextAction, parseVerdict, recordReview, retryTask, startTask, type NextAction } from "./run.js";
 import { VERSION } from "./version.js";
@@ -173,6 +174,7 @@ Unattended (in your own terminal, not inside Claude Code):
   layer-review <layer> [pass|fix] [--notes-file F | --notes T]   no verdict: read .aidw/run/layer-review-<layer>.md
                                          (verifying) record the layer reviewer's verdict; fix adds a fix task
   converge                               (converging) every changed scenario has a passing test; gaps become tasks
+  first-deploy [<id>] [--yes]            once per new Vercel project: the first deployment must be Production; you run it
   deploy                                 (deploying) approved preview deploy + smoke checks, or record target none/local
   deliver [--check]                      (delivered) write the delivery package and check its checklist
 
@@ -595,6 +597,14 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
             ? `deployed ${r.url}\n${r.smoke.map((s) => `  ok      smoke ${s.command}`).join("\n")}\n`
             : `DEPLOY FAILED: ${r.error}\n${r.url ? `  url ${r.url}\n` : ""}\n${[...r.runs, ...r.smoke].find((x) => x.exit !== 0)?.tail ?? r.runs[0]?.tail ?? ""}\n`;
         emit({ change: id, ...r }, text);
+        return r.ok ? 0 : 1;
+      }
+
+      case "first-deploy": {
+        const p = project();
+        const id = resolveChangeId(p, str(args.flags.change) ?? rest[0]);
+        const r = firstDeploy(p, id, args.flags.yes === true);
+        emit({ change: id, ...r }, `${r.ran ? `${r.ok ? "DEPLOYED" : "FAILED"} (${r.command})\n` : ""}${r.output}\n${r.ok && r.ran ? "Previews work from now on: run aidw deploy.\n" : ""}`);
         return r.ok ? 0 : 1;
       }
 

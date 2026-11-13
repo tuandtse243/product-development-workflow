@@ -297,6 +297,7 @@ hành vi, thay vì chia theo tầng.
 | Change `escalated` | task hết lượt thử, lớp chất lượng fail mãi, cần quyết định | đọc lý do ở `/aidw:status`, xử lý, `/aidw:resume` |
 | `aidw run` dừng `no_progress` | hai session liền không đổi gì | đọc `.aidw/run/runner.log`, chạy `/aidw:status` |
 | `aidw run` dừng `needs_user` ngay phiên đầu hoặc trước deploy | `aidw doctor` có FAIL (chưa đăng nhập Vercel, project chưa có deployment nào nên lần deploy đầu là Production, Chrome CDP đóng) | làm theo dòng in ra rồi chạy lại đúng lệnh |
+| `vercel ... has no deployments yet` / doctor `vercel deployments` FAIL | project Vercel mới: deployment đầu tiên luôn là Production, không tạo được preview | chạy `aidw first-deploy --yes` trong terminal của bạn (deploy công khai một lần), rồi `aidw deploy`; hoặc đặt deploy target `none` |
 | `refusing to commit dependency or build output` | thiếu `.gitignore` | thêm mục ignore, `git rm -r --cached <path>`, thử lại |
 | Deploy báo cần đăng nhập Vercel | token hết hạn | chạy `vercel whoami` ở terminal của bạn, rồi chạy lại |
 | Subagent bị từ chối: "input bị đổi sau khi duyệt" (auto mode) | plugin khác (context-mode) sửa prompt của Agent bằng hook | tắt hook PreToolUse của plugin đó cho tool Agent, hoặc tắt plugin khi chạy aidw |

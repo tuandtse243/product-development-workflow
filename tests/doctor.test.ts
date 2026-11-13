@@ -56,7 +56,7 @@ describe("aidw doctor", () => {
     const none: Probe = (cmd, args) => (cmd === "vercel" && args[0] === "ls" ? { ok: true, out: "No deployments found" } : probe({})(cmd, args, root));
     const by = Object.fromEntries(doctor(pathsFor(root), ID, {}, none).map((c) => [c.name, c]));
     expect(by["vercel deployments"]).toMatchObject({ status: "fail" });
-    expect(by["vercel deployments"]?.detail).toMatch(/--prod/);
+    expect(by["vercel deployments"]?.detail).toMatch(/aidw first-deploy/);
   });
 
   it("fails on a closed CDP port, a missing login and warns about an unlinked project", () => {
@@ -78,5 +78,26 @@ describe("aidw doctor", () => {
     expect(r.checks.some((c) => c.name === "node")).toBe(true);
     expect(r.checks.find((c) => c.name === "chrome cdp")?.status).toBe("fail");
     expect(code).toBe(1);
+  });
+});
+
+import { productionCommand, firstDeploy } from "../src/firstdeploy.js";
+
+describe("aidw first-deploy", () => {
+  it("turns the preview flag into --prod", () => {
+    expect(productionCommand("pnpm dlx vercel deploy --yes --environment=preview")).toBe("pnpm dlx vercel deploy --yes --prod");
+    expect(productionCommand("vercel deploy --yes")).toBe("vercel deploy --yes --prod");
+  });
+  it("asks for --yes, deploys only then, and does nothing when a deployment exists", () => {
+    const root = project();
+    const calls: string[] = [];
+    const fake = (empty: boolean) => ((cmd: string, args: string[]) => (calls.push(`${cmd} ${args.join(" ")}`), cmd === "vercel" ? { status: 0, stdout: empty ? "No deployments found" : "dpl_1", stderr: "" } : { status: 0, stdout: "https://x.vercel.app", stderr: "" })) as never;
+    const ask = firstDeploy(pathsFor(root), ID, false, fake(true));
+    expect(ask).toMatchObject({ needed: true, ran: false, ok: false });
+    expect(ask.output).toContain(`aidw first-deploy ${ID} --yes`);
+    expect(calls).toEqual(["vercel ls"]);
+    expect(firstDeploy(pathsFor(root), ID, true, fake(true))).toMatchObject({ ran: true, ok: true });
+    expect(calls.at(-1)).toMatch(/^sh -c .*--prod$/);
+    expect(firstDeploy(pathsFor(root), ID, true, fake(false))).toMatchObject({ needed: false, ran: false, ok: true });
   });
 });

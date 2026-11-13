@@ -650,7 +650,7 @@ const DEPLOY_HINTS: { re: RegExp; hint: string }[] = [
   },
   {
     re: /first_deployment_production|has no deployments yet|first deployment is assigned to Production/i,
-    hint: "a Vercel project's first deployment is always Production, and `--environment=preview` (or `vercel link`) does not change that. This is the user's decision (tier 3): either they deploy once themselves in their own terminal (`vercel deploy --yes --prod`; the app is then public, so only with non-sensitive data) and `aidw deploy` works after that, or the deploy target is set to none. Never use --prod yourself.",
+    hint: "a Vercel project's first deployment is always Production, and `--environment=preview` (or `vercel link`) does not change that. This is the user's decision (tier 3): either they run `aidw first-deploy --yes` in their own terminal (one public Production deployment, so only for non-sensitive data) and `aidw deploy` works after that, or the deploy target is set to none. Never use --prod yourself.",
   },
   {
     re: /No existing credentials found|not logged in|vercel login/i,
