@@ -73,6 +73,32 @@ export function otherPlugins(env: NodeJS.ProcessEnv): string[] {
   }
 }
 
+const FRAMEWORKS: { dep: string; id: string }[] = [
+  { dep: "next", id: "nextjs" },
+  { dep: "nuxt", id: "nuxtjs" },
+  { dep: "@sveltejs/kit", id: "sveltekit-1" },
+  { dep: "astro", id: "astro" },
+  { dep: "vite", id: "vite" },
+];
+
+function frameworkOf(root: string): { dep: string; id: string } | null {
+  try {
+    const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as Record<string, Record<string, string> | undefined>;
+    const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+    return FRAMEWORKS.find((f) => f.dep in deps) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function vercelJsonFramework(root: string): boolean {
+  try {
+    return typeof (JSON.parse(readFileSync(join(root, "vercel.json"), "utf8")) as { framework?: unknown }).framework === "string";
+  } catch {
+    return false;
+  }
+}
+
 export function doctor(p: Paths, id: string | null, env: NodeJS.ProcessEnv = process.env, probe: Probe = shellProbe): Check[] {
   const out: Check[] = [];
   const add = (name: string, status: CheckStatus, detail: string) => out.push({ name, status, detail });
@@ -153,6 +179,12 @@ export function doctor(p: Paths, id: string | null, env: NodeJS.ProcessEnv = pro
     add("vercel login", who.ok ? "ok" : "fail", who.ok ? who.out.split("\n").pop() ?? "" : `${who.out.split("\n").pop() ?? "not logged in"}: run \`vercel login\` in your own terminal and allow vercel.com and *.vercel.com in the sandbox`);
     const linked = existsSync(join(p.project, ".vercel", "project.json"));
     add("vercel project", linked ? "ok" : "warn", linked ? "linked" : "not linked: the first deploy would be Production (tier 3). Run `vercel link --yes` first");
+    // trial-3C: `vercel link` ran in an empty folder, so the project was saved with preset "Other" and the Next.js build
+    // failed with STATIC_BUILD_NO_OUT_DIR. A committed vercel.json with the framework overrides the saved preset.
+    const framework = frameworkOf(p.project);
+    if (linked && framework && !vercelJsonFramework(p.project)) {
+      add("vercel framework", "warn", `package.json uses ${framework.dep} but vercel.json does not set "framework": "${framework.id}". A project linked before the scaffold exists is saved as "Other" and fails with STATIC_BUILD_NO_OUT_DIR. Commit vercel.json with {"framework": "${framework.id}"}`);
+    }
     if (linked && who.ok) {
       // trial-3C: a linked project with no deployment yet cannot take a preview: the first one is always Production
       const ls = probe("vercel", ["ls"], p.project, 30_000);

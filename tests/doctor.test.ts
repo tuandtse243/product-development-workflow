@@ -101,3 +101,15 @@ describe("aidw first-deploy", () => {
     expect(firstDeploy(pathsFor(root), ID, true, fake(false))).toMatchObject({ needed: false, ran: false, ok: true });
   });
 });
+
+describe("vercel framework", () => {
+  it("warns when a Next.js app has no framework in vercel.json (project saved as Other)", () => {
+    const root = project();
+    write(root, ".vercel/project.json", "{}");
+    write(root, "package.json", JSON.stringify({ dependencies: { next: "15.0.0" } }));
+    const w = doctor(pathsFor(root), ID, {}, probe({})).find((c) => c.name === "vercel framework");
+    expect(w).toMatchObject({ status: "warn" });
+    write(root, "vercel.json", JSON.stringify({ framework: "nextjs" }));
+    expect(doctor(pathsFor(root), ID, {}, probe({})).find((c) => c.name === "vercel framework")).toBeUndefined();
+  });
+});

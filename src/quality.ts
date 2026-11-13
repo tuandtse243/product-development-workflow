@@ -649,6 +649,10 @@ const DEPLOY_HINTS: { re: RegExp; hint: string }[] = [
     hint: "the sandbox blocked the network. The user allows the deploy host (for Vercel: vercel.com and *.vercel.com) in the sandbox network settings, or runs the command in their own terminal, then `aidw deploy` again.",
   },
   {
+    re: /STATIC_BUILD_NO_OUT_DIR|No Output Directory named/i,
+    hint: 'Vercel does not know the framework: the project was linked before the app existed and was saved with preset "Other". Commit a vercel.json with {"framework": "nextjs"} (or the framework in use) and deploy again.',
+  },
+  {
     re: /first_deployment_production|has no deployments yet|first deployment is assigned to Production/i,
     hint: "a Vercel project's first deployment is always Production, and `--environment=preview` (or `vercel link`) does not change that. This is the user's decision (tier 3): either they run `aidw first-deploy --yes` in their own terminal (one public Production deployment, so only for non-sensitive data) and `aidw deploy` works after that, or the deploy target is set to none. Never use --prod yourself.",
   },

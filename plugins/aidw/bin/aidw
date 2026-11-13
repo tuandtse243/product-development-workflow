@@ -11276,6 +11276,10 @@ var DEPLOY_HINTS = [
     hint: "the sandbox blocked the network. The user allows the deploy host (for Vercel: vercel.com and *.vercel.com) in the sandbox network settings, or runs the command in their own terminal, then `aidw deploy` again."
   },
   {
+    re: /STATIC_BUILD_NO_OUT_DIR|No Output Directory named/i,
+    hint: 'Vercel does not know the framework: the project was linked before the app existed and was saved with preset "Other". Commit a vercel.json with {"framework": "nextjs"} (or the framework in use) and deploy again.'
+  },
+  {
     re: /first_deployment_production|has no deployments yet|first deployment is assigned to Production/i,
     hint: "a Vercel project's first deployment is always Production, and `--environment=preview` (or `vercel link`) does not change that. This is the user's decision (tier 3): either they run `aidw first-deploy --yes` in their own terminal (one public Production deployment, so only for non-sensitive data) and `aidw deploy` works after that, or the deploy target is set to none. Never use --prod yourself."
   },
@@ -11956,6 +11960,29 @@ function otherPlugins(env) {
     return [];
   }
 }
+var FRAMEWORKS = [
+  { dep: "next", id: "nextjs" },
+  { dep: "nuxt", id: "nuxtjs" },
+  { dep: "@sveltejs/kit", id: "sveltekit-1" },
+  { dep: "astro", id: "astro" },
+  { dep: "vite", id: "vite" }
+];
+function frameworkOf(root) {
+  try {
+    const pkg = JSON.parse((0, import_node_fs17.readFileSync)((0, import_node_path18.join)(root, "package.json"), "utf8"));
+    const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+    return FRAMEWORKS.find((f) => f.dep in deps) ?? null;
+  } catch {
+    return null;
+  }
+}
+function vercelJsonFramework(root) {
+  try {
+    return typeof JSON.parse((0, import_node_fs17.readFileSync)((0, import_node_path18.join)(root, "vercel.json"), "utf8")).framework === "string";
+  } catch {
+    return false;
+  }
+}
 function doctor(p, id, env = process.env, probe = shellProbe) {
   const out = [];
   const add = (name, status, detail) => out.push({ name, status, detail });
@@ -12024,6 +12051,10 @@ function doctor(p, id, env = process.env, probe = shellProbe) {
     add("vercel login", who.ok ? "ok" : "fail", who.ok ? who.out.split("\n").pop() ?? "" : `${who.out.split("\n").pop() ?? "not logged in"}: run \`vercel login\` in your own terminal and allow vercel.com and *.vercel.com in the sandbox`);
     const linked = (0, import_node_fs17.existsSync)((0, import_node_path18.join)(p.project, ".vercel", "project.json"));
     add("vercel project", linked ? "ok" : "warn", linked ? "linked" : "not linked: the first deploy would be Production (tier 3). Run `vercel link --yes` first");
+    const framework = frameworkOf(p.project);
+    if (linked && framework && !vercelJsonFramework(p.project)) {
+      add("vercel framework", "warn", `package.json uses ${framework.dep} but vercel.json does not set "framework": "${framework.id}". A project linked before the scaffold exists is saved as "Other" and fails with STATIC_BUILD_NO_OUT_DIR. Commit vercel.json with {"framework": "${framework.id}"}`);
+    }
     if (linked && who.ok) {
       const ls = probe("vercel", ["ls"], p.project, 3e4);
       if (ls.ok && /no deployments found/i.test(ls.out)) {
@@ -12319,7 +12350,11 @@ function firstDeploy(p, id, yes, run2 = import_node_child_process7.spawnSync) {
 If that is fine, run: aidw first-deploy ${id} --yes
 The command will be: ${command}` };
   const r = run2("sh", ["-c", command], { cwd: p.project, encoding: "utf8", timeout: 20 * 6e4, maxBuffer: 16 * 1024 * 1024 });
-  return { command, needed, ran: true, ok: r.status === 0, output: `${r.stdout ?? ""}${r.stderr ?? ""}`.trim().split("\n").slice(-12).join("\n") };
+  const all2 = `${r.stdout ?? ""}${r.stderr ?? ""}`.trim();
+  const hint = r.status === 0 ? null : deployHint(all2);
+  return { command, needed, ran: true, ok: r.status === 0, output: `${all2.split("\n").slice(-12).join("\n")}${hint ? `
+
+Hint: ${hint}` : ""}` };
 }
 
 // src/cli.ts

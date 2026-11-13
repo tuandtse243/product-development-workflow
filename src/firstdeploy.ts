@@ -7,7 +7,7 @@ import { spawnSync } from "node:child_process";
 import { loadChange } from "./change.js";
 import { OpError } from "./ops.js";
 import { readText, type Paths } from "./project.js";
-import { parseQuality, qualityFile } from "./quality.js";
+import { deployHint, parseQuality, qualityFile } from "./quality.js";
 
 export interface FirstDeploy {
   command: string;
@@ -35,5 +35,7 @@ export function firstDeploy(p: Paths, id: string, yes: boolean, run: typeof spaw
   if (!needed) return { command, needed, ran: false, ok: true, output: "the project already has a deployment: previews work, nothing to do" };
   if (!yes) return { command, needed, ran: false, ok: false, output: `this deploys the app to PRODUCTION (public URL, no login in front of it unless you added one).\nIf that is fine, run: aidw first-deploy ${id} --yes\nThe command will be: ${command}` };
   const r = run("sh", ["-c", command], { cwd: p.project, encoding: "utf8", timeout: 20 * 60_000, maxBuffer: 16 * 1024 * 1024 });
-  return { command, needed, ran: true, ok: r.status === 0, output: `${r.stdout ?? ""}${r.stderr ?? ""}`.trim().split("\n").slice(-12).join("\n") };
+  const all = `${r.stdout ?? ""}${r.stderr ?? ""}`.trim();
+  const hint = r.status === 0 ? null : deployHint(all);
+  return { command, needed, ran: true, ok: r.status === 0, output: `${all.split("\n").slice(-12).join("\n")}${hint ? `\n\nHint: ${hint}` : ""}` };
 }
