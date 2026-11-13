@@ -32,7 +32,7 @@ import { detectProject } from "./detect.js";
 import { doctor, doctorText } from "./doctor.js";
 import { createPr, planPr } from "./pr.js";
 import { planAdvice, planShape, planSummary } from "./plan.js";
-import { runLoop } from "./runner.js";
+import { detachRun, runLoop, runnerPid, stopRunner } from "./runner.js";
 import { deliver } from "./deliver.js";
 import { deploy, recordLayerReview, verify } from "./quality.js";
 import { firstDeploy } from "./firstdeploy.js";
@@ -157,7 +157,8 @@ Execution (state executing; add --change <id> when several changes are active):
   integrate                              after a wave: verify the merged code; a failure adds a fix task
 
 Unattended (in your own terminal, not inside Claude Code):
-  run [<id>] [--permission-mode M] [--max-runs N] [--claude BIN] [--keep-mcp] [-- <claude args>]
+  run [<id>] [--detach] [--permission-mode M] [--max-runs N] [--claude BIN] [--keep-mcp] [-- <claude args>]
+  run --status | --stop                  the background runner started with --detach
                                          loop \`claude -p "/aidw:resume <id>"\` until archived; waits out usage
                                          limits (stated reset time or 5-60 min backoff); stops on escalation
   task retry <task>                      user-granted fresh attempt budget for an escalated/failed task
@@ -529,11 +530,28 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
       }
 
       case "run": {
-        if (env.CLAUDECODE === "1" && env.AIDW_RUNNER !== "1") {
-          throw new OpError("`aidw run` starts Claude Code headless in a loop; run it in your own terminal, outside a Claude Code session");
+        const background = args.flags.detach === true || args.flags.stop === true || args.flags.status === true;
+        if (env.CLAUDECODE === "1" && env.AIDW_RUNNER !== "1" && !background) {
+          throw new OpError("`aidw run` starts Claude Code headless in a loop; run it in your own terminal, or in the background from here with `! aidw run <id> --detach`");
         }
         const p = project();
+        if (args.flags.stop === true) {
+          const pid = stopRunner(p);
+          emit({ stopped: pid }, pid ? `stopped the background runner (pid ${pid}); run the same command again to continue\n` : "no background runner is running here\n");
+          return 0;
+        }
+        if (args.flags.status === true) {
+          const pid = runnerPid(p);
+          emit({ running: pid }, pid ? `runner running (pid ${pid}); follow it: tail -f .aidw/run/runner.log\n` : "no background runner is running here\n");
+          return 0;
+        }
         const id = resolveChangeId(p, rest[0]);
+        if (args.flags.detach === true) {
+          const strip = argv.filter((a) => a !== "--detach");
+          const d = detachRun(p, [...strip, ...(dashdash >= 0 ? ["--", ...passthrough] : [])], env);
+          emit({ change: id, ...d }, `runner started in the background (pid ${d.pid}) for ${id}.\nFollow it: tail -f ${d.log}\nStatus: aidw run --status   Stop: aidw run --stop   (it also stops by itself when it needs you)\n`);
+          return 0;
+        }
         const maxRuns = str(args.flags["max-runs"]);
         if (maxRuns !== undefined && !(Number.isInteger(Number(maxRuns)) && Number(maxRuns) >= 1)) throw new UsageError("--max-runs must be a positive integer");
         const r = runLoop(p, id, {

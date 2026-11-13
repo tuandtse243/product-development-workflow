@@ -10,9 +10,9 @@
  * Each session starts fresh: everything needed to continue lives in .aidw/ and git, so a new session costs
  * less than resuming a long one (`--resume <session>` would reload its whole context).
  */
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { listChangeIds, loadChange, stateOf } from "./change.js";
 import type { Paths } from "./project.js";
@@ -134,6 +134,7 @@ export function runLoop(p: Paths, id: string, opts: RunnerOptions = {}): RunnerR
   const sleep = opts.sleep ?? sleepSync;
   const log = opts.log ?? (() => {});
   const now = opts.now ?? (() => new Date());
+  const env = opts.env ?? process.env;
   const logFile = join(p.run, "runner.log");
   mkdirSync(p.run, { recursive: true });
   const record = (line: string) => {
@@ -147,6 +148,7 @@ export function runLoop(p: Paths, id: string, opts: RunnerOptions = {}): RunnerR
   let idle = 0;
   let last = fingerprint(p, id);
   const result = (outcome: RunnerOutcome, state: string, message: string): RunnerResult => {
+    if (env.AIDW_RUN_DETACHED === "1") rmSync(pidFile(p), { force: true });
     record(`stop: ${outcome}: ${message}`);
     return { outcome, runs, waits, state, message };
   };
@@ -222,4 +224,57 @@ function loadChangeState(p: Paths, id: string): string {
   } catch {
     return "?";
   }
+}
+
+const pidFile = (p: Paths): string => join(p.run, "runner.pid");
+
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** pid of the background runner of this project, or null (a stale file is ignored). */
+export function runnerPid(p: Paths): number | null {
+  try {
+    const pid = Number(readFileSync(pidFile(p), "utf8").trim());
+    return Number.isInteger(pid) && pid > 0 && alive(pid) ? pid : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * `aidw run --detach`: the same loop in a background process, so the user starts the unattended build with one line
+ * in the window they are already in (`! aidw run <id> --detach`) and keeps the window. The child does not carry
+ * CLAUDECODE: its headless sessions are real top-level Claude Code runs, outside the session that started it.
+ */
+export function detachRun(p: Paths, argv: string[], env: NodeJS.ProcessEnv): { pid: number; log: string } {
+  const running = runnerPid(p);
+  if (running) throw new Error(`a runner is already running here (pid ${running}); stop it with \`aidw run --stop\``);
+  mkdirSync(p.run, { recursive: true });
+  const log = join(p.run, "runner.log");
+  const fd = openSync(log, "a");
+  const clean = { ...env, AIDW_RUN_DETACHED: "1" } as NodeJS.ProcessEnv;
+  delete clean.CLAUDECODE;
+  const child = spawn(process.execPath, [process.argv[1] as string, ...argv], { cwd: p.project, detached: true, stdio: ["ignore", fd, fd], env: clean });
+  child.unref();
+  writeFileSync(pidFile(p), String(child.pid));
+  return { pid: child.pid as number, log };
+}
+
+/** `aidw run --stop`: ends the background runner (a session in progress is killed; its task resumes later). */
+export function stopRunner(p: Paths): number | null {
+  const pid = runnerPid(p);
+  if (!pid) return null;
+  try {
+    process.kill(-pid, "SIGTERM"); // the whole group: the runner and its claude session
+  } catch {
+    process.kill(pid, "SIGTERM");
+  }
+  rmSync(pidFile(p), { force: true });
+  return pid;
 }

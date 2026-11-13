@@ -218,7 +218,10 @@ bậc 2 chưa nằm trong danh sách cũng hỏi. Hộp thoại lặp lại quá
 
 ## 7. Chạy không cần trông: `aidw run` (cách chạy khuyên dùng)
 
-Bạn gõ **một lệnh, một lần**, ở **terminal của bạn** (không phải trong Claude Code), sau khi đã approve. Sau đó có thể đi làm việc khác:
+Bạn gõ **một lệnh, một lần**, sau khi đã approve. Sau đó có thể đi làm việc khác. AI không tự mở được tab terminal khác (sandbox chặn Claude Code lồng nhau gọi mạng và đăng nhập), nên có hai cách gõ:
+
+- **Ngay trong cửa sổ Claude Code đang mở:** `! aidw run <id> --detach --permission-mode auto`. Lệnh trả về ngay, vòng lặp chạy nền. Theo dõi: `tail -f .aidw/run/runner.log`; xem trạng thái: `aidw run --status`; dừng: `aidw run --stop`.
+- **Ở terminal riêng** (chạy nổi, thấy log trực tiếp):
 
 ```bash
 aidw doctor <id>        # kiểm máy trước: Chrome CDP, đăng nhập Vercel, store pnpm...

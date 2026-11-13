@@ -1,7 +1,7 @@
 /**
  * S9 (D-30): `aidw run`, the headless auto-resume runner. A fake `claude` plays the sessions from a script.
  */
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
@@ -134,3 +134,24 @@ describe("aidw run", () => {
 
 void mkdirSync;
 void renameSync;
+
+import { runnerPid, stopRunner } from "../src/runner.js";
+
+describe("aidw run --detach helpers", () => {
+  it("ignores a stale pid file, sees a live one, and refuses a foreground loop inside a session but not --status", () => {
+    const t = setup("executing", []);
+    const p = pathsFor(t.root);
+    write(t.root, ".aidw/run/runner.pid", "999999");
+    expect(runnerPid(p)).toBeNull();
+    write(t.root, ".aidw/run/runner.pid", String(process.pid));
+    expect(runnerPid(p)).toBe(process.pid);
+    rmSync(join(t.root, ".aidw/run/runner.pid"));
+    expect(stopRunner(p)).toBeNull();
+    const out: string[] = [];
+    const io = { out: (s: string) => out.push(s), err: (s: string) => out.push(s) };
+    expect(run(["run", "--status", "--root", t.root], { CLAUDECODE: "1" }, t.root, io)).toBe(0);
+    expect(out.join("")).toMatch(/no background runner/);
+    expect(run(["run", ID, "--root", t.root], { CLAUDECODE: "1" }, t.root, io)).toBe(1);
+    expect(out.join("")).toMatch(/--detach/);
+  });
+});

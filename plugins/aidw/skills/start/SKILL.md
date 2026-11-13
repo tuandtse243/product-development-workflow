@@ -225,6 +225,15 @@ tasks:
 - **Every UI scenario has a UI owner.** A scenario whose WHEN is a user action on a screen ("the user clicks Export CSV")
   must be listed by a task that touches the UI files (and the API task may list it too). `aidw analyze` warns when
   its only owners touch no UI files; fix the plan, do not leave the button to chance.
+- **One shared file is a chain.** When every slice must edit the same central file (the page shell or main component),
+  the slices cannot overlap and no wave runs (trial-3C: T04 and T05 both edited `components/notes-app.tsx` outside
+  their `touches`). Build that file in the first slice with a clear extension point (a list of sections, a router
+  table), and list it in the `touches` of every slice that adds to it, so the plan shows the real conflict.
+- **Vercel needs its framework in the repo.** When the deploy target is Vercel, the scaffold task must commit a
+  `vercel.json` with `{"framework": "nextjs"}` (or the framework in use) and put it in its `touches`: a project
+  linked before the app exists is saved as preset "Other" and fails with `STATIC_BUILD_NO_OUT_DIR`. Add that line to
+  the scaffold task's scenarios or verify command. A brand-new project's first deployment is Production
+  (`aidw first-deploy --yes`, run by the user), so tell the user at the gate.
 - **Slice vertically, not by layer.** A plan that is one `depends_on` chain (T01 types, T02 API, T03 UI, T04
   tests...) can never run a wave. After scaffolding, cut the work into slices that each carry their own API,
   UI and tests for one behavior; give a task `depends_on` only for something it truly needs (a shared type or

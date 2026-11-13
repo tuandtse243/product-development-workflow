@@ -25,12 +25,16 @@ The user has asked to approve. This is the single human gate of the workflow (Q2
      `aidw transition <id> escalated`, then `analyzing`, then a new approval;
    - autonomous execution starts with `/aidw:run` (one fresh implementer per task, checkpoint evidence,
      independent review, a commit per task); after an interruption, `/aidw:resume`;
-   - **recommended build: tell the user to type one command in their own terminal and walk away**:
-     `aidw doctor <id>` then `aidw run <id> --permission-mode auto` (the CLI prints the full path; it loops
-     automatically, one fresh session per task or wave, never two sessions at once, resumable after Ctrl+C). It costs
-     about a quarter of `/aidw:run` and drops MCP servers. Concepts: user guide, "Task, phiên và worktree".
-   - the alternative inside Claude Code: the analysis conversation above is long and every later turn re-reads it.
-     Either type `/clear` and then `/aidw:run`, or run `aidw run <id> --permission-mode auto` in a separate
-     terminal (a fresh session per task, no MCP servers, waits out usage limits; about a quarter of the tokens, and
-     it needs `aidw` on PATH: see the user guide, section 2). Say this in two lines; do not start the run
-     yourself unless the user asks.
+   - **how to build, two ways; offer both in a few lines and let the user pick.** An agent cannot open another
+     terminal tab or start `aidw run` itself (the sandbox blocks a nested Claude Code from the network and the
+     login, and the gate denies it), so the cheap way is one line the user types in this same window:
+     - **A. Background run (measured: about half the tokens per task of an in-session run)**: `! aidw run <id> --detach --permission-mode auto`
+       (the `!` runs it in the user's own shell; the CLI prints the full path; if `aidw` is not on PATH, use the
+       plugin's `bin/aidw` path). It returns at once and loops in the background: one fresh session per task or
+       wave, no MCP servers, waits out usage limits, stops by itself when it needs the user (escalation, a failed
+       `aidw doctor`). Follow: `tail -f .aidw/run/runner.log`, `aidw run --status`, `aidw run --stop`. Run
+       `aidw doctor <id>` first.
+     - **B. In this session**: the user says "go" and you start `/aidw:run`: subagents work automatically, but this
+       session's long context is re-read on every turn (trial-3A in session: 0.82M tokens per task; trial-3C with the runner: 0.40M). Tell the user to
+       `/clear` first if they can, since a fresh session starts leaner.
+     Concepts: user guide, "Task, phiên và worktree". Do not start either yourself until the user picks.

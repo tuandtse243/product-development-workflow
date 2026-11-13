@@ -36,7 +36,7 @@ quality report.
 - `## Environment`: every variable the code reads (search for `process.env.` / `import.meta.env.`), what it is
   for, where its value comes from. If there are any, make sure the project root has `.env.example` with the
   names and **no real values**; create it if missing. If none, write `None`.
-- `## Deploy`: what was deployed (target, URL from the quality report) and how the client deploys to
+- `## Deploy`: list every deploy that happened, from `evidence/deploy.json` and anything the user ran by hand (for example `aidw first-deploy`, a failed `--prod`). Never write "Production was not touched" unless you checked (`vercel ls`): the user may have deployed by hand. What was deployed (target, URL from the quality report) and how the client deploys to
   production themselves. Production was not touched by this workflow.
 - `## Usage`: the main user flows, referencing the screenshots.
 - `## Known issues`: be honest. Include every item of the quality report's "Reviewer remarks (non-blocking)" (trial-3A dropped most of them, among them a missing focus trap), grouped by screen.

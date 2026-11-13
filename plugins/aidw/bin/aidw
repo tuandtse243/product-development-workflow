@@ -12245,6 +12245,7 @@ function runLoop(p, id, opts = {}) {
   const log = opts.log ?? (() => {
   });
   const now6 = opts.now ?? (() => /* @__PURE__ */ new Date());
+  const env = opts.env ?? process.env;
   const logFile = (0, import_node_path20.join)(p.run, "runner.log");
   (0, import_node_fs19.mkdirSync)(p.run, { recursive: true });
   const record = (line) => {
@@ -12258,6 +12259,7 @@ function runLoop(p, id, opts = {}) {
   let idle = 0;
   let last = fingerprint(p, id);
   const result = (outcome, state, message) => {
+    if (env.AIDW_RUN_DETACHED === "1") (0, import_node_fs19.rmSync)(pidFile(p), { force: true });
     record(`stop: ${outcome}: ${message}`);
     return { outcome, runs, waits, state, message };
   };
@@ -12328,6 +12330,47 @@ function loadChangeState(p, id) {
   } catch {
     return "?";
   }
+}
+var pidFile = (p) => (0, import_node_path20.join)(p.run, "runner.pid");
+function alive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function runnerPid(p) {
+  try {
+    const pid = Number((0, import_node_fs19.readFileSync)(pidFile(p), "utf8").trim());
+    return Number.isInteger(pid) && pid > 0 && alive(pid) ? pid : null;
+  } catch {
+    return null;
+  }
+}
+function detachRun(p, argv, env) {
+  const running = runnerPid(p);
+  if (running) throw new Error(`a runner is already running here (pid ${running}); stop it with \`aidw run --stop\``);
+  (0, import_node_fs19.mkdirSync)(p.run, { recursive: true });
+  const log = (0, import_node_path20.join)(p.run, "runner.log");
+  const fd = (0, import_node_fs19.openSync)(log, "a");
+  const clean = { ...env, AIDW_RUN_DETACHED: "1" };
+  delete clean.CLAUDECODE;
+  const child = (0, import_node_child_process6.spawn)(process.execPath, [process.argv[1], ...argv], { cwd: p.project, detached: true, stdio: ["ignore", fd, fd], env: clean });
+  child.unref();
+  (0, import_node_fs19.writeFileSync)(pidFile(p), String(child.pid));
+  return { pid: child.pid, log };
+}
+function stopRunner(p) {
+  const pid = runnerPid(p);
+  if (!pid) return null;
+  try {
+    process.kill(-pid, "SIGTERM");
+  } catch {
+    process.kill(pid, "SIGTERM");
+  }
+  (0, import_node_fs19.rmSync)(pidFile(p), { force: true });
+  return pid;
 }
 
 // src/firstdeploy.ts
@@ -12450,7 +12493,8 @@ Execution (state executing; add --change <id> when several changes are active):
   integrate                              after a wave: verify the merged code; a failure adds a fix task
 
 Unattended (in your own terminal, not inside Claude Code):
-  run [<id>] [--permission-mode M] [--max-runs N] [--claude BIN] [--keep-mcp] [-- <claude args>]
+  run [<id>] [--detach] [--permission-mode M] [--max-runs N] [--claude BIN] [--keep-mcp] [-- <claude args>]
+  run --status | --stop                  the background runner started with --detach
                                          loop \`claude -p "/aidw:resume <id>"\` until archived; waits out usage
                                          limits (stated reset time or 5-60 min backoff); stops on escalation
   task retry <task>                      user-granted fresh attempt budget for an escalated/failed task
@@ -12798,11 +12842,33 @@ parallel waves: ${saved.reduce((n, s) => n + s.wave, 0)} task(s) took ${Math.rou
         return 0;
       }
       case "run": {
-        if (env.CLAUDECODE === "1" && env.AIDW_RUNNER !== "1") {
-          throw new OpError("`aidw run` starts Claude Code headless in a loop; run it in your own terminal, outside a Claude Code session");
+        const background = args.flags.detach === true || args.flags.stop === true || args.flags.status === true;
+        if (env.CLAUDECODE === "1" && env.AIDW_RUNNER !== "1" && !background) {
+          throw new OpError("`aidw run` starts Claude Code headless in a loop; run it in your own terminal, or in the background from here with `! aidw run <id> --detach`");
         }
         const p = project();
+        if (args.flags.stop === true) {
+          const pid = stopRunner(p);
+          emit({ stopped: pid }, pid ? `stopped the background runner (pid ${pid}); run the same command again to continue
+` : "no background runner is running here\n");
+          return 0;
+        }
+        if (args.flags.status === true) {
+          const pid = runnerPid(p);
+          emit({ running: pid }, pid ? `runner running (pid ${pid}); follow it: tail -f .aidw/run/runner.log
+` : "no background runner is running here\n");
+          return 0;
+        }
         const id = resolveChangeId(p, rest[0]);
+        if (args.flags.detach === true) {
+          const strip = argv.filter((a) => a !== "--detach");
+          const d = detachRun(p, [...strip, ...dashdash >= 0 ? ["--", ...passthrough] : []], env);
+          emit({ change: id, ...d }, `runner started in the background (pid ${d.pid}) for ${id}.
+Follow it: tail -f ${d.log}
+Status: aidw run --status   Stop: aidw run --stop   (it also stops by itself when it needs you)
+`);
+          return 0;
+        }
         const maxRuns = str(args.flags["max-runs"]);
         if (maxRuns !== void 0 && !(Number.isInteger(Number(maxRuns)) && Number(maxRuns) >= 1)) throw new UsageError("--max-runs must be a positive integer");
         const r = runLoop(p, id, {
