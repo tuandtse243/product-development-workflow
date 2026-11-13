@@ -649,8 +649,8 @@ const DEPLOY_HINTS: { re: RegExp; hint: string }[] = [
     hint: "the sandbox blocked the network. The user allows the deploy host (for Vercel: vercel.com and *.vercel.com) in the sandbox network settings, or runs the command in their own terminal, then `aidw deploy` again.",
   },
   {
-    re: /first_deployment_production/,
-    hint: "the Vercel project does not exist yet, and a project's first deployment is always Production. Run `vercel link --yes` once (creating a free project is covered by the vercel-preview permission), then `aidw deploy`. Never use --prod without the user's explicit yes.",
+    re: /first_deployment_production|has no deployments yet|first deployment is assigned to Production/i,
+    hint: "a Vercel project's first deployment is always Production, and `--environment=preview` (or `vercel link`) does not change that. This is the user's decision (tier 3): either they deploy once themselves in their own terminal (`vercel deploy --yes --prod`; the app is then public, so only with non-sensitive data) and `aidw deploy` works after that, or the deploy target is set to none. Never use --prod yourself.",
   },
   {
     re: /No existing credentials found|not logged in|vercel login/i,
