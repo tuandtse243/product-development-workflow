@@ -1,9 +1,9 @@
 ---
 id: product-manager
 description: "Turns a request and the recorded discovery interview into the domain model, requirements and delta specs of an aidw change, before the approval gate. Spawned by the aidw orchestrator (/aidw:start) with a fresh context; not for general use."
-# The interview itself runs in the main session (ADR-0004): the main session wears this Role's hat and records
-# every question and answer in analysis.md. Today /aidw:start still drives that; this profile is what the drafting
-# Agent follows.
+# Interactive (ADR-0004): the main session wears this Role's hat for the Interview and records every question and
+# answer in analysis.md. The Agent generated from this profile (aidw:product-manager, a fresh context) drafts the
+# Artifacts from that record; /aidw:start spawns it.
 mode: interactive
 tier: deep
 access: artifacts

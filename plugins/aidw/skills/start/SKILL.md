@@ -69,17 +69,23 @@ system before asking anything; the grilling then asks only what the code cannot 
 
 ## 1c. Size, 2. Discovery (grilling + clarify)
 
-These two steps are the **Interview** of the Product Manager Role. Read
-`$(aidw plugin-path roles/product-manager/role.md)` and follow its "Interview (main session)" section: it decides the
-size (`Size: small|normal` in the Summary, which the user confirms at the gate), runs the grilling and the clarify
-categories, and records every round in `analysis.md`. Start with `aidw transition <id> analyzing`.
+These two steps are the **Interview** of the Product Manager Role, and they stay in this session because only you can
+talk with the user. Read `$(aidw plugin-path roles/product-manager/role.md)` and follow its "Interview (main session)"
+section: it decides the size (`Size: small|normal` in the Summary, which the user confirms at the gate), runs the
+grilling and the clarify categories, and records every round in `analysis.md`. Start with
+`aidw transition <id> analyzing`. The interview ends when the record is complete on disk: the drafting Agents below
+read that record, not this conversation.
 
-## 3. Domain model, 4. Requirements and specs
+## 3. Domain model, 4. Requirements and specs (drafting Agent)
 
-The Product Manager Role's "Procedure (drafting)" in `$(aidw plugin-path roles/product-manager/role.md)` covers both:
-the domain model (`.aidw/domain/model.md`, ADRs in `.aidw/decisions/`), `.aidw/requirements/<id>.md`, and the delta specs
-(its `delta-spec` skill holds the strict grammar), including the brownfield baseline specs. Follow it, then run
-`aidw validate <id>` and fix every error.
+Spawn the **`aidw:product-manager`** Agent with this prompt and nothing else:
+`Change <id>. The discovery interview is recorded in .aidw/changes/<id>/analysis.md. Draft the domain model, the requirements and the delta specs as your Procedure says, run aidw validate <id>, and reply with the paths you wrote and every decision still open.`
+
+It drafts in a fresh context from the recorded interview (its "Procedure (drafting)" in
+`$(aidw plugin-path roles/product-manager/role.md)`: the domain model, ADRs, `.aidw/requirements/<id>.md`, the delta
+specs and the brownfield baselines). Do not redo its work or read the artifacts back in full. Run
+`aidw validate <id>`; for each open decision in its reply, ask the user, record the answer in `analysis.md`'s
+discovery appendix and spawn the Agent again with the answer, until validation is clean and nothing is open.
 
 ## 5. Design decision (Q3)
 
@@ -102,16 +108,28 @@ the user the token table (name, value, use) as part of the Design discussion.
 
 ## 6. Architecture and stack
 
-Read `$(aidw plugin-path roles/software-architect/role.md)` and follow its Procedure: the stack by the
-client > AI within the pool > fallback priority, `.aidw/architecture/overview.md`, ADRs, `.aidw/constitution.md`, and the
-`stack:` and `design_mode:` fields of `.aidw/project.yaml`.
+**Interview (this session).** The architecture is mostly decided from the requirements and the stack pool, so ask the
+user only what they cannot answer: a stack the client requires, hosting, auth or payment providers, integrations,
+limits. Read `$(aidw plugin-path roles/software-architect/references/stack-pool.md)` and put each question with your
+recommendation. Record the answers under `## Stack` in `analysis.md` (`Source: client|ai|fallback` and why) before
+drafting.
+
+**Drafting Agent.** Spawn **`aidw:software-architect`** with this prompt and nothing else:
+`Change <id>. The requirements and specs are drafted; the stack decisions are in .aidw/changes/<id>/analysis.md under "## Stack". Draft the architecture, ADRs, constitution and project fields as your Procedure says, run aidw validate <id>, and reply with the paths you wrote and every decision still open.`
+
+Its Procedure (`$(aidw plugin-path roles/software-architect/role.md)`) holds the stack priority
+(client > AI within the pool > fallback), `.aidw/architecture/overview.md`, ADRs, `.aidw/constitution.md` and the
+`stack:` and `design_mode:` fields of `.aidw/project.yaml`. Handle its open decisions as in step 3.
 
 ## 7. Plan (task graph)
 
-Read `$(aidw plugin-path roles/technical-planner/role.md)` and follow its Procedure: it holds the `tasks.yaml` format, who
-owns a task, and the rules of a good plan (vertical slices, parallel waves, `aidw plan` shape, UI owners, commit
-types). When the plan scaffolds a new project, also read its `scaffold-tasks` skill; when a task adds a migration, its
-`migration-tasks` skill (`aidw plugin-path roles/technical-planner/skills/<name>.md`).
+Spawn **`aidw:technical-planner`** with this prompt and nothing else:
+`Change <id>. Requirements, specs, design, architecture and constitution are drafted. Break them into .aidw/changes/<id>/tasks.yaml as your Procedure says, run aidw plan and aidw analyze <id>, and reply with the number of tasks and waves and every decision still open.`
+
+Its Procedure (`$(aidw plugin-path roles/technical-planner/role.md)`) holds the `tasks.yaml` format, who owns a task,
+and the rules of a good plan (vertical slices, parallel waves, `aidw plan` shape, UI owners, commit types); its
+`scaffold-tasks` and `migration-tasks` skills cover a new project and a migration. Handle its open decisions as in
+step 3.
 
 ## 8. Quality, deploy and permissions
 

@@ -1,8 +1,10 @@
 ---
 id: software-architect
 description: "Chooses the stack and writes the architecture, ADRs and constitution of an aidw change, before the approval gate. Spawned by the aidw orchestrator (/aidw:start) with a fresh context; not for general use."
-# The architecture is mostly decided from the requirements and the stack pool, with the user approving at the gate,
-# so the Role drafts rather than interviews; the main session wears its hat for the questions that remain.
+# Interactive (ADR-0004): the architecture is mostly decided from the requirements and the stack pool, so the main
+# session wears this Role's hat only for the questions the user must answer (the "Interview (main session)" below) and
+# records them under `## Stack` in analysis.md. The Agent generated from this profile (aidw:software-architect, a
+# fresh context) drafts the Artifacts; /aidw:start spawns it.
 mode: interactive
 tier: deep
 access: artifacts
@@ -26,7 +28,14 @@ Designer Roles are active you also carry their work: the data model outline and 
 - Writes: `.aidw/architecture/overview.md`, `.aidw/decisions/NNNN-<slug>.md`, `.aidw/constitution.md`, and the
   `stack:` and `design_mode:` fields of `.aidw/project.yaml`.
 
-## Procedure
+## Interview (main session)
+
+Ask the user only what the requirements and the stack pool cannot answer: a stack the client requires, hosting, auth
+or payment providers, integrations, limits. Put each question with your recommended answer, and record the answers
+under `## Stack` in `analysis.md` (`Source: client|ai|fallback` and why). The drafting Agent reads that record; it
+cannot ask the user.
+
+## Procedure (drafting)
 
 1. **Stack.** Read `aidw plugin-path roles/software-architect/references/stack-pool.md` and apply its priority: **client > AI within the pool >
    fallback**. Record `Source: client|ai|fallback` and the reasons. An existing codebase keeps its stack and

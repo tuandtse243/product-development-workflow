@@ -19,7 +19,14 @@ Designer Roles are active you also carry their work: the data model outline and 
 - Writes: `.aidw/architecture/overview.md`, `.aidw/decisions/NNNN-<slug>.md`, `.aidw/constitution.md`, and the
   `stack:` and `design_mode:` fields of `.aidw/project.yaml`.
 
-## Procedure
+## Interview (main session)
+
+Ask the user only what the requirements and the stack pool cannot answer: a stack the client requires, hosting, auth
+or payment providers, integrations, limits. Put each question with your recommended answer, and record the answers
+under `## Stack` in `analysis.md` (`Source: client|ai|fallback` and why). The drafting Agent reads that record; it
+cannot ask the user.
+
+## Procedure (drafting)
 
 1. **Stack.** Read `aidw plugin-path roles/software-architect/references/stack-pool.md` and apply its priority: **client > AI within the pool >
    fallback**. Record `Source: client|ai|fallback` and the reasons. An existing codebase keeps its stack and

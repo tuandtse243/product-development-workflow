@@ -106,14 +106,17 @@ aidw becomes a software factory with a Roster of Roles, Workflows as data and de
   - [x] Profiles for the 12 Planned Roles (responsibility, boundaries, what to write before activating).
   - [x] `profiles/`, `policies/`, `vendor/` moved: stack packs to `stacks/`, permissions to `company/`, shared text and
     `vendor/` to `library/`, and the references each Role uses to `roles/<id>/references/`.
-- [ ] **Step 2.** `product` and `feature` Workflows as YAML drive `aidw next`; `artifacts.yaml`; interview in the
+- [x] **Step 2.** `product` and `feature` Workflows as YAML drive `aidw next`; `artifacts.yaml`; interview in the
   main session, drafting in worker Agents.
   - [x] A: `artifacts.yaml` and `reads` / `writes` in the profiles; `aidw roster` checks owners and what each Role writes.
   - [x] B: `workflows/product.yaml` and `feature.yaml` describe the flow that exists today (no new stage);
     `aidw roster` checks them against the roster, `artifacts.yaml` and the state machine. The CLI now reads the Change
     state machine (`transitions:`) and the Agents it spawns (build stage `agents:`) from `product.yaml`; the task
     order of `aidw next` is scheduling and stays in code.
-  - [ ] Interview in the main session, drafting in worker Agents (needs the run modes of section 12, point 1).
+  - [x] Interview in the main session, drafting in worker Agents: `/aidw:start` interviews as the Product Manager and the
+    Software Architect (answers recorded in `analysis.md`), then spawns `aidw:product-manager`, `aidw:software-architect`
+    and `aidw:technical-planner` to draft. Design (step 5 of the skill) and the brownfield assessment stay in the main
+    session. Not yet run end to end: a run on `~/aidw-demo` is the check.
 - [ ] **Step 3.** Decision Points, triage, Slice shape; `bugfix` and `audit` Workflows.
 - [ ] **Step 4.** Activate Planned Roles one at a time with their evals; Next.js and NestJS framework packs.
 
