@@ -25,7 +25,7 @@ describe("role evals", () => {
   });
 
   it("each case states its situation and criteria that say must or must not", () => {
-    const c = loadEvalCases(plugin, "code-reviewer").cases[0]!;
+    const c = loadEvalCases(plugin, "code-reviewer").cases.find((x) => x.name === "placeholder-test-is-not-a-pass")!;
     expect(c.name).toBe("placeholder-test-is-not-a-pass");
     expect(c.input).toMatch(/expect\(true\)/);
     expect(c.criteria[0]).toMatch(/^must start the verdict file with exactly `VERDICT: fix`/);

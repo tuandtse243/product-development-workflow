@@ -10562,6 +10562,8 @@ ${req.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`;
       ...decisions.length ? ["4. Every **Decision to honor** below is kept exactly (names, keys, formats, tools). A silent deviation is a blocking issue."] : [],
       ...tokens.length ? ["5. Design: look at every screenshot. Each token is used where its **Use** says (e.g. the accent color really appears on what it names), the layout matches the design direction, and no stray colors. A visible mismatch is a blocking issue."] : [],
       ...isSecuritySensitive(t) ? ["6. Security: authorization on every path, input validation, secrets handling, data exposure (security skill below)."] : [],
+      "7. Tests are independent: each one sets up its own data and passes alone and in any order. A test that only passes after another test ran (shared in-memory state, a list the previous test filled) is a blocking issue: it breaks when the tests are reordered or run in parallel.",
+      ...touchesUi(t) ? ["8. Accessibility (no a11y layer may cover this change): controls have readable accessible names, a keyboard user can reach and operate them, dialogs and menus move and return focus, and state is not shown by color alone."] : [],
       "",
       "## Verdict",
       "",
