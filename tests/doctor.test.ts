@@ -29,7 +29,7 @@ const probe = (answers: Record<string, boolean>): Probe => (cmd, args) => {
   const key = [cmd, ...args].join(" ");
   const hit = Object.keys(answers).find((k) => key.startsWith(k));
   const ok = hit ? (answers[hit] as boolean) : true;
-  return { ok, out: ok ? (cmd === "curl" && key.includes("9222") ? '{"Browser":"Chrome/1"}' : "ok-output") : "boom" };
+  return { ok, out: ok ? (cmd === "curl" && key.includes("/json/version") ? '{"Browser":"Chrome/1"}' : "ok-output") : "boom" };
 };
 
 describe("binaryOf", () => {
@@ -45,7 +45,7 @@ describe("aidw doctor", () => {
   it("passes when the machine has everything", () => {
     const root = project();
     write(root, ".vercel/project.json", "{}");
-    const checks = doctor(pathsFor(root), ID, {}, probe({}));
+    const checks = doctor(pathsFor(root), ID, { E2E_CDP_URL: "http://127.0.0.1:41000" }, probe({}));
     expect(checks.filter((c) => c.status === "fail")).toEqual([]);
     expect(checks.map((c) => c.name)).toEqual(expect.arrayContaining(["pnpm", "chrome cdp", "vercel login", "vercel project", "vercel"]));
   });
@@ -67,6 +67,17 @@ describe("aidw doctor", () => {
     expect(by["vercel login"]).toMatchObject({ status: "fail" });
     expect(by["vercel project"]).toMatchObject({ status: "warn" });
     expect(doctorText(checks)).toMatch(/FAIL chrome cdp[\s\S]*problem\(s\) to fix/);
+  });
+
+  it("has no default CDP port: it asks for the project's test browser, or uses the one recorded or set", () => {
+    const root = project();
+    const find = (env: NodeJS.ProcessEnv) => doctor(pathsFor(root), ID, env, probe({})).find((c) => c.name === "chrome cdp");
+    expect(find({})).toMatchObject({ status: "fail" });
+    expect(find({})?.detail).toMatch(/aidw browser start/);
+    expect(find({})?.detail).not.toMatch(/9222/);
+    expect(find({ E2E_CDP_URL: "http://127.0.0.1:41000" })).toMatchObject({ status: "ok", detail: "http://127.0.0.1:41000" });
+    write(root, ".aidw/run/browser.json", JSON.stringify({ port: 42000, url: "http://127.0.0.1:42000", pid: 1, profile: "x", headless: true, started_at: "now" }));
+    expect(find({})).toMatchObject({ status: "ok", detail: "http://127.0.0.1:42000" });
   });
 
   it("is a CLI command with a failing exit code", () => {

@@ -126,13 +126,19 @@ seeded test is a `fix`. The PR's Merge danger lists migration files (`aidw pr`).
 
 ## E2E browser over CDP
 
-Claude Code's sandbox usually blocks launching Chromium, so Playwright connects to a Chrome the user runs
-outside the sandbox. The user starts it once per session, in their own terminal, with a separate profile:
+Claude Code's sandbox usually blocks launching Chromium, so Playwright connects to a Chrome that runs outside
+it. aidw owns that Chrome and never uses a fixed port (9222 is where the user's own Chrome and other tools listen):
 
 ```bash
-"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
-  --remote-debugging-port=9222 --user-data-dir="$HOME/.aidw-chrome" --no-first-run about:blank
+aidw browser start      # headless Chrome on a free port it picks itself, one profile per project
+aidw browser status     # is it up, and where
+aidw browser stop
 ```
+
+The endpoint is recorded in `.aidw/run/browser.json`, and every command aidw runs for a layer or a checkpoint gets
+it as `E2E_CDP_URL` (and `E2E_CDP_PORT`). In your own shell: `export E2E_CDP_URL=$(aidw browser url)`. If the
+sandbox blocks the launch, run `aidw browser start` in your own terminal once; `aidw doctor` checks it. To use a
+browser you manage yourself, set `E2E_CDP_URL` and aidw uses that instead. `--headed` shows the window.
 
 The scaffold task writes a fixture that every e2e test imports instead of `@playwright/test`. Each test gets its
 own browser context, so tests stay isolated and never touch the user's tabs:
@@ -141,13 +147,15 @@ own browser context, so tests stay isolated and never touch the user's tabs:
 // e2e/fixtures.ts
 import { test as base, chromium, type Browser, type BrowserContext, type Page } from "@playwright/test";
 
-const cdpUrl = process.env.E2E_CDP_URL ?? "http://127.0.0.1:9222";
+// No default port: aidw passes the project's test browser as E2E_CDP_URL (`aidw browser start`).
+const cdpUrl = process.env.E2E_CDP_URL;
 
 export const test = base.extend<{ context: BrowserContext; page: Page }, { cdpBrowser: Browser }>({
   cdpBrowser: [
     async ({}, use) => {
+      if (!cdpUrl) throw new Error("E2E_CDP_URL is not set. Run `aidw browser start`, then `export E2E_CDP_URL=$(aidw browser url)`.");
       const browser = await chromium.connectOverCDP(cdpUrl, { timeout: 5000 }).catch(() => {
-        throw new Error(`Cannot reach Chrome at ${cdpUrl}. Start Chrome with --remote-debugging-port=9222.`);
+        throw new Error(`Cannot reach Chrome at ${cdpUrl}. Run \`aidw browser start\`.`);
       });
       await use(browser);
       await browser.close(); // disconnects; the user's Chrome keeps running
@@ -253,14 +261,14 @@ Commands first (dependency audit and a secret scan; both exit non-zero on a find
 
 ### performance
 
-Lighthouse attaches to the CDP Chrome (`--port=9222`), so it runs inside the sandbox. The app must be running:
+Lighthouse attaches to the CDP Chrome (`--port=$E2E_CDP_PORT`, set by aidw), so it runs inside the sandbox. The app must be running:
 `start-server-and-test` starts the built app, runs Lighthouse, then stops it. A small script asserts budgets.
 
 ```yaml
   - name: performance
     run:
       - "pnpm build"
-      - "pnpm exec start-server-and-test 'pnpm start -- -p 3100' http://localhost:3100 'pnpm exec lighthouse http://localhost:3100 --port=9222 --quiet --output=json --output-path=test-results/lighthouse.json --only-categories=performance,accessibility,best-practices && node scripts/lh-budget.mjs test-results/lighthouse.json'"
+      - "pnpm exec start-server-and-test 'pnpm start -- -p 3100' http://localhost:3100 'pnpm exec lighthouse http://localhost:3100 --port=$E2E_CDP_PORT --quiet --output=json --output-path=test-results/lighthouse.json --only-categories=performance,accessibility,best-practices && node scripts/lh-budget.mjs test-results/lighthouse.json'"
     artifacts: ["test-results/lighthouse.json"]
 ```
 

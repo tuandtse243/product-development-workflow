@@ -7,6 +7,7 @@ import { spawnSync } from "node:child_process";
 import { accessSync, constants, existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { loadChange } from "./change.js";
+import { readBrowser } from "./browser.js";
 import { claudeHome } from "./cost.js";
 import { isDefaultBranch } from "./ops.js";
 import { git, isGitRepo } from "./git.js";
@@ -169,9 +170,15 @@ export function doctor(p: Paths, id: string | null, env: NodeJS.ProcessEnv = pro
   }
 
   if (drivesBrowser(quality)) {
-    const url = env.E2E_CDP_URL ?? "http://127.0.0.1:9222";
-    const r = probe("curl", ["-sS", "-m", "5", `${url}/json/version`], p.project, 8_000);
-    add("chrome cdp", r.ok && /Browser/.test(r.out) ? "ok" : "fail", r.ok && /Browser/.test(r.out) ? url : `${url} does not answer: start Chrome with --remote-debugging-port=9222 (see roles/qa/references/quality-layers.md)`);
+    // No fixed port: the endpoint is the one the user set, or the project's own test browser (`aidw browser start`).
+    const url = env.E2E_CDP_URL ?? readBrowser(p)?.url;
+    if (!url) {
+      add("chrome cdp", "fail", "no test browser for this project: run `aidw browser start` (it picks a free port; in your own terminal when the sandbox blocks launching Chrome)");
+    } else {
+      const r = probe("curl", ["-sS", "-m", "5", `${url}/json/version`], p.project, 8_000);
+      const up = r.ok && /Browser/.test(r.out);
+      add("chrome cdp", up ? "ok" : "fail", up ? url : `${url} does not answer: run \`aidw browser start\` (see roles/qa/references/quality-layers.md)`);
+    }
   }
 
   if (quality.deploy.target !== "none" && /\bvercel\b/.test(quality.deploy.command ?? "")) {

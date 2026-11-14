@@ -6,6 +6,7 @@ import { runBackstop } from "./backstop.js";
 import { ChangeError, isState, listChangeIds, loadChange, NEEDS_ANALYSIS, resolveChangeId, stateOf, STATES } from "./change.js";
 import { runGate } from "./gate.js";
 import { pluginRoot } from "./plugin.js";
+import { BrowserError, browserEnv, browserStatus, startBrowser, stopBrowser } from "./browser.js";
 import { AGENTS, checkRoster, rosterTable, writeAgents } from "./roles.js";
 import { checkChange, checkSpecs } from "./check.js";
 import { Diags, type Diagnostic } from "./diag.js";
@@ -135,6 +136,10 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
   pr [<id>] [--base B] [--create] [--draft]
                                          after delivery: print the pull request (title, summary, evidence, merge danger);
                                          --create pushes the change branch and opens it with gh (asks first)
+  browser start [--headed] | status | url | stop
+                                         the project's own test browser for the e2e, a11y, ui-ux and performance layers:
+                                         Chrome on a free port it picks itself, one profile per project; layers get it
+                                         as E2E_CDP_URL and E2E_CDP_PORT (no fixed 9222)
   doctor [<id>]                          check the machine for the run: binaries of the quality commands, package store, registry,
                                          Chrome CDP, Vercel login and link; exit 1 on a blocking problem
   detect                                 what the existing code uses (stack, package manager, suggested layers)
@@ -302,6 +307,8 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
     if (!dir) throw new OpError("no .aidw/ found in this directory or its parents; run `aidw init`");
     const p = pathsFor(dir);
     assertProject(p);
+    // The commands that run layer or verify commands pass the project's test browser on to them (no fixed port).
+    if (env === process.env) for (const [k, v] of Object.entries(browserEnv(p))) if (!process.env[k]) process.env[k] = v;
     return p;
   };
   const need = (v: string | undefined, what: string): string => {
@@ -765,6 +772,33 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         return 0;
       }
 
+      case "browser": {
+        const p = project();
+        const sub = rest[0];
+        if (sub === "start") {
+          const r = startBrowser(p, { headed: args.flags.headed === true, env });
+          emit({ ok: true, started: r.started, ...r.record }, `${r.started ? "started" : "already running"}: ${r.record?.url} (${r.browser}, pid ${r.record?.pid}, ${r.record?.headless ? "headless" : "headed"})\nlayers get it as E2E_CDP_URL and E2E_CDP_PORT; for your own shell: export E2E_CDP_URL=$(aidw browser url)\n`);
+          return 0;
+        }
+        if (sub === "status") {
+          const s = browserStatus(p);
+          emit({ ok: s.running, ...s }, s.running ? `running: ${s.record?.url} (${s.browser}, pid ${s.record?.pid})\n` : s.record ? `not running: ${s.stale}\n` : "no test browser: run `aidw browser start`\n");
+          return s.running ? 0 : 1;
+        }
+        if (sub === "url") {
+          const s = browserStatus(p);
+          if (!s.running || !s.record) throw new OpError("no test browser is running: run `aidw browser start`");
+          emit({ url: s.record.url, port: s.record.port }, `${s.record.url}\n`);
+          return 0;
+        }
+        if (sub === "stop") {
+          const stopped = stopBrowser(p);
+          emit({ ok: true, stopped }, stopped ? "test browser stopped\n" : "no test browser was running\n");
+          return 0;
+        }
+        throw new UsageError("browser needs start, status, url or stop");
+      }
+
       case "doctor": {
         const p = project();
         let id: string | null = rest[0] ?? null;
@@ -936,7 +970,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
       io.err(`aidw: ${e.message}\n\n${HELP}`);
       return 2;
     }
-    if (e instanceof OpError || e instanceof ChangeError) {
+    if (e instanceof OpError || e instanceof ChangeError || e instanceof BrowserError) {
       const d = e instanceof OpError ? e.diags : undefined;
       if (json) io.out(`${JSON.stringify({ ok: false, error: e.message, ...(d ? diagsJson(d) : {}) }, null, 2)}\n`);
       else io.err(`aidw: ${e.message}\n${d ? printDiags(d) : ""}`);

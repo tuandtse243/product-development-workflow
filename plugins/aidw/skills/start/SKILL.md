@@ -135,11 +135,11 @@ Read `$(aidw plugin-path roles/qa/references/quality-layers.md)` and `$(aidw plu
   check `npx lighthouse --version` yourself when the profile has a `performance` layer.
 - **E2E browser.** Claude Code's sandbox usually blocks launching Chromium, so the default is **Chrome over
   CDP**: the user runs Chrome outside the sandbox with a debugging port, and Playwright connects to it (setup
-  and fixture in the quality-layers profile, "E2E browser over CDP"). Check now that this session reaches it:
-  `node -e "fetch('http://127.0.0.1:9222/json/version').then(r=>r.json()).then(j=>console.log(j.Browser))"`.
-  If it fails, give the user the Chrome command from the profile and check again. Write the CDP setup into the
-  e2e layer and a Decision to honor (`E2E connects to Chrome over CDP at E2E_CDP_URL, default
-  http://127.0.0.1:9222`). Use a launched browser instead only if the user prefers it and a real launch works
+  and fixture in the quality-layers profile, "E2E browser over CDP"). There is no fixed port: run
+  `aidw browser start` (Chrome on a free port it picks, one profile per project) and check with `aidw browser status`.
+  If the sandbox blocks the launch, ask the user to run `aidw browser start` in their own terminal and check again.
+  Write the CDP setup into the e2e layer and a Decision to honor (`E2E connects to Chrome over CDP at E2E_CDP_URL,
+  which aidw sets from aidw browser start; no default port`). Use a launched browser instead only if the user prefers it and a real launch works
   in this session.
 - **Parallel.** `parallel: { max: 3 }` in quality.yaml is the default (1 turns waves off). A wave task runs in
   `.aidw/run/worktrees/<change>/<task>`, inside the project, so dependencies resolve from the main checkout's

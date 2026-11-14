@@ -7329,8 +7329,8 @@ __export(cli_exports, {
   run: () => run
 });
 module.exports = __toCommonJS(cli_exports);
-var import_node_fs22 = require("node:fs");
-var import_node_path23 = require("node:path");
+var import_node_fs23 = require("node:fs");
+var import_node_path24 = require("node:path");
 
 // src/analyze.ts
 var import_node_fs17 = require("node:fs");
@@ -11974,6 +11974,167 @@ function uiScenarioAdvice(p, id, tasks, d, tf) {
   }
 }
 
+// src/browser.ts
+var import_node_child_process4 = require("node:child_process");
+var import_node_crypto3 = require("node:crypto");
+var import_node_fs18 = require("node:fs");
+var import_node_os = require("node:os");
+var import_node_path19 = require("node:path");
+var browserFile = (p) => (0, import_node_path19.join)(p.run, "browser.json");
+function readBrowser(p) {
+  try {
+    const r = JSON.parse((0, import_node_fs18.readFileSync)(browserFile(p), "utf8"));
+    return typeof r.port === "number" && typeof r.url === "string" && typeof r.pid === "number" ? r : null;
+  } catch {
+    return null;
+  }
+}
+function browserEnv(p) {
+  const r = readBrowser(p);
+  return r ? { E2E_CDP_URL: r.url, E2E_CDP_PORT: String(r.port) } : {};
+}
+var profileDir = (p, home = (0, import_node_os.homedir)()) => (0, import_node_path19.join)(home, ".aidw-chrome", (0, import_node_crypto3.createHash)("sha1").update(p.project).digest("hex").slice(0, 10));
+function usableProfile(p, home, tmp) {
+  for (const dir of [profileDir(p, home), (0, import_node_path19.join)(tmp, "aidw-chrome", (0, import_node_crypto3.createHash)("sha1").update(p.project).digest("hex").slice(0, 10))]) {
+    try {
+      (0, import_node_fs18.mkdirSync)(dir, { recursive: true });
+      return dir;
+    } catch {
+    }
+  }
+  throw new BrowserError("cannot create a browser profile under the home directory or the temp directory");
+}
+var CHROME_CANDIDATES = [
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  "/Applications/Chromium.app/Contents/MacOS/Chromium",
+  "/usr/bin/google-chrome",
+  "/usr/bin/google-chrome-stable",
+  "/usr/bin/chromium",
+  "/usr/bin/chromium-browser"
+];
+var realBrowserDeps = {
+  probe: (url) => {
+    const r = (0, import_node_child_process4.spawnSync)("curl", ["-sS", "-m", "3", `${url}/json/version`], { encoding: "utf8", timeout: 6e3 });
+    if (r.status !== 0) return null;
+    try {
+      const b = JSON.parse(r.stdout).Browser;
+      return typeof b === "string" ? b : null;
+    } catch {
+      return null;
+    }
+  },
+  launch: (bin, args, log) => {
+    const fd = (0, import_node_fs18.openSync)(log, "w");
+    try {
+      const child = (0, import_node_child_process4.spawn)(bin, args, { detached: true, stdio: ["ignore", fd, fd] });
+      let failed = false;
+      child.on("error", () => {
+        failed = true;
+      });
+      child.unref();
+      return failed ? null : child.pid ?? null;
+    } finally {
+      (0, import_node_fs18.closeSync)(fd);
+    }
+  },
+  alive: (pid) => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  },
+  kill: (pid) => {
+    try {
+      process.kill(pid, "SIGTERM");
+    } catch {
+    }
+  },
+  sleep: (ms) => void Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms),
+  chrome: (env) => env.AIDW_CHROME ? env.AIDW_CHROME : CHROME_CANDIDATES.find((c) => (0, import_node_fs18.existsSync)(c)) ?? null,
+  home: (0, import_node_os.homedir)()
+};
+var BrowserError = class extends Error {
+};
+function browserStatus(p, deps = realBrowserDeps) {
+  const record = readBrowser(p);
+  if (!record) return { running: false, record: null };
+  const browser = deps.probe(record.url);
+  if (browser) return { running: true, record, browser };
+  return { running: false, record, stale: deps.alive(record.pid) ? `pid ${record.pid} is alive but ${record.url} does not answer` : `pid ${record.pid} has exited` };
+}
+function activePort(profile) {
+  try {
+    const first = (0, import_node_fs18.readFileSync)((0, import_node_path19.join)(profile, "DevToolsActivePort"), "utf8").split("\n")[0] ?? "";
+    const n = Number(first.trim());
+    return Number.isInteger(n) && n > 0 ? n : null;
+  } catch {
+    return null;
+  }
+}
+function startBrowser(p, opts = {}, deps = realBrowserDeps) {
+  const current = browserStatus(p, deps);
+  if (current.running) return { ...current, started: false };
+  const bin = deps.chrome(opts.env ?? process.env);
+  if (!bin) throw new BrowserError("no Chrome found: install Google Chrome or Chromium, or set AIDW_CHROME to its binary");
+  const profile = usableProfile(p, deps.home, deps.tmp ?? (0, import_node_os.tmpdir)());
+  (0, import_node_fs18.rmSync)((0, import_node_path19.join)(profile, "DevToolsActivePort"), { force: true });
+  if (current.record && deps.alive(current.record.pid)) deps.kill(current.record.pid);
+  const headless = !opts.headed;
+  const args = [
+    "--remote-debugging-port=0",
+    "--remote-debugging-address=127.0.0.1",
+    `--user-data-dir=${profile}`,
+    "--no-first-run",
+    "--no-default-browser-check",
+    ...headless ? ["--headless=new"] : [],
+    "about:blank"
+  ];
+  const log = (0, import_node_path19.join)(profile, "chrome.log");
+  const pid = deps.launch(bin, args, log);
+  if (pid === null) throw new BrowserError(`could not start ${bin}: the sandbox may block launching a browser; run \`aidw browser start\` in your own terminal`);
+  const deadline = (opts.timeoutMs ?? 2e4) / 250;
+  for (let i = 0; i < deadline; i++) {
+    const port = activePort(profile);
+    if (port) {
+      const url = `http://127.0.0.1:${port}`;
+      const browser = deps.probe(url);
+      if (browser) {
+        const record = { port, url, pid, profile, headless, started_at: (/* @__PURE__ */ new Date()).toISOString() };
+        (0, import_node_fs18.mkdirSync)(p.run, { recursive: true });
+        (0, import_node_fs18.writeFileSync)(browserFile(p), `${JSON.stringify(record, null, 2)}
+`);
+        return { running: true, record, browser, started: true };
+      }
+    }
+    if (!deps.alive(pid)) break;
+    deps.sleep(250);
+  }
+  if (deps.alive(pid)) deps.kill(pid);
+  throw new BrowserError(`Chrome did not open a debugging port.${whyChromeFailed(log)} Run \`aidw browser start\` in your own terminal (profile ${profile}, log ${log}).`);
+}
+function whyChromeFailed(log) {
+  let text = "";
+  try {
+    text = (0, import_node_fs18.readFileSync)(log, "utf8");
+  } catch {
+    return "";
+  }
+  if (/Permission denied|Operation not permitted|bootstrap_check_in/.test(text)) return " The sandbox of this session does not let Chrome start (macOS denies it registering its processes).";
+  if (/ProcessSingleton|profile directory/.test(text)) return " Another Chrome is using this profile: close it.";
+  const last = text.split("\n").map((l) => l.trim()).filter(Boolean).pop();
+  return last ? ` Chrome said: ${last.slice(0, 160)}` : "";
+}
+function stopBrowser(p, deps = realBrowserDeps) {
+  const record = readBrowser(p);
+  if (!record) return false;
+  if (deps.alive(record.pid)) deps.kill(record.pid);
+  (0, import_node_fs18.rmSync)(browserFile(p), { force: true });
+  (0, import_node_fs18.rmSync)((0, import_node_path19.join)(record.profile, "DevToolsActivePort"), { force: true });
+  return true;
+}
+
 // src/pause.ts
 function runStopFailure(stdin, env) {
   let input = {};
@@ -12001,9 +12162,9 @@ function runStopFailure(stdin, env) {
 }
 
 // src/cost.ts
-var import_node_fs18 = require("node:fs");
-var import_node_os = require("node:os");
-var import_node_path19 = require("node:path");
+var import_node_fs19 = require("node:fs");
+var import_node_os2 = require("node:os");
+var import_node_path20 = require("node:path");
 var emptyUsage = () => ({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
 function addUsage(a, b) {
   return { input: a.input + b.input, output: a.output + b.output, cacheRead: a.cacheRead + b.cacheRead, cacheWrite: a.cacheWrite + b.cacheWrite };
@@ -12017,7 +12178,7 @@ function readTranscript(file) {
   const seenTool = /* @__PURE__ */ new Set();
   let firstAt = null;
   let lastAt = null;
-  for (const raw of (0, import_node_fs18.readFileSync)(file, "utf8").split("\n")) {
+  for (const raw of (0, import_node_fs19.readFileSync)(file, "utf8").split("\n")) {
     if (!raw.trim()) continue;
     let line;
     try {
@@ -12070,30 +12231,30 @@ function readTranscript(file) {
 }
 var projectSlug = (projectDir) => projectDir.replace(/[^A-Za-z0-9]/g, "-");
 function claudeHome(env) {
-  return env.CLAUDE_CONFIG_DIR || (0, import_node_path19.join)(env.HOME || (0, import_node_os.homedir)(), ".claude");
+  return env.CLAUDE_CONFIG_DIR || (0, import_node_path20.join)(env.HOME || (0, import_node_os2.homedir)(), ".claude");
 }
 function transcriptDir(projectDir, env) {
-  return (0, import_node_path19.join)(claudeHome(env), "projects", projectSlug(projectDir));
+  return (0, import_node_path20.join)(claudeHome(env), "projects", projectSlug(projectDir));
 }
 function readSessions(projectDir, env) {
   const dir = transcriptDir(projectDir, env);
-  if (!(0, import_node_fs18.existsSync)(dir)) return [];
+  if (!(0, import_node_fs19.existsSync)(dir)) return [];
   const out = [];
-  for (const name of (0, import_node_fs18.readdirSync)(dir)) {
+  for (const name of (0, import_node_fs19.readdirSync)(dir)) {
     if (!name.endsWith(".jsonl")) continue;
     const id = name.slice(0, -".jsonl".length);
-    const main = readTranscript((0, import_node_path19.join)(dir, name));
+    const main = readTranscript((0, import_node_path20.join)(dir, name));
     if (main.turns === 0) continue;
-    const subDir = (0, import_node_path19.join)(dir, id, "subagents");
+    const subDir = (0, import_node_path20.join)(dir, id, "subagents");
     let subs = { count: 0, turns: 0, usage: emptyUsage(), roles: {} };
-    if ((0, import_node_fs18.existsSync)(subDir)) {
-      for (const f of (0, import_node_fs18.readdirSync)(subDir)) {
+    if ((0, import_node_fs19.existsSync)(subDir)) {
+      for (const f of (0, import_node_fs19.readdirSync)(subDir)) {
         if (!f.endsWith(".jsonl")) continue;
-        const t = readTranscript((0, import_node_path19.join)(subDir, f));
+        const t = readTranscript((0, import_node_path20.join)(subDir, f));
         if (t.turns === 0) continue;
         let role = "subagent";
         try {
-          role = String(JSON.parse((0, import_node_fs18.readFileSync)((0, import_node_path19.join)(subDir, f.replace(/\.jsonl$/, ".meta.json")), "utf8")).agentType ?? role);
+          role = String(JSON.parse((0, import_node_fs19.readFileSync)((0, import_node_path20.join)(subDir, f.replace(/\.jsonl$/, ".meta.json")), "utf8")).agentType ?? role);
         } catch {
         }
         const r = subs.roles[role] ?? { count: 0, turns: 0, usage: emptyUsage(), firstContext: 0 };
@@ -12187,11 +12348,11 @@ function formatCost(sessions) {
 }
 
 // src/doctor.ts
-var import_node_child_process4 = require("node:child_process");
-var import_node_fs19 = require("node:fs");
-var import_node_path20 = require("node:path");
+var import_node_child_process5 = require("node:child_process");
+var import_node_fs20 = require("node:fs");
+var import_node_path21 = require("node:path");
 var shellProbe = (cmd2, args, cwd, timeoutMs = 15e3) => {
-  const r = (0, import_node_child_process4.spawnSync)(cmd2, args, { cwd, encoding: "utf8", timeout: timeoutMs });
+  const r = (0, import_node_child_process5.spawnSync)(cmd2, args, { cwd, encoding: "utf8", timeout: timeoutMs });
   return { ok: r.status === 0 && !r.error, out: `${r.stdout ?? ""}${r.stderr ?? ""}`.trim() };
 };
 var SHELL_WORDS = /* @__PURE__ */ new Set(["!", "cd", "echo", "test", "[", "true", "false", "export", "set", "exit", "sh", "bash", "git"]);
@@ -12208,13 +12369,13 @@ var commandsOf = (q) => [...q.layers.flatMap((l) => [...l.setup, ...l.run]), ...
 var drivesBrowser2 = (q) => q.layers.some((l) => ["e2e", "a11y", "ui-ux"].includes(l.name) || l.run.some((c) => /playwright|cypress/i.test(c)));
 function writable(path) {
   let dir = path;
-  while (!(0, import_node_fs19.existsSync)(dir)) {
-    const up = (0, import_node_path20.dirname)(dir);
+  while (!(0, import_node_fs20.existsSync)(dir)) {
+    const up = (0, import_node_path21.dirname)(dir);
     if (up === dir) return false;
     dir = up;
   }
   try {
-    (0, import_node_fs19.accessSync)(dir, import_node_fs19.constants.W_OK);
+    (0, import_node_fs20.accessSync)(dir, import_node_fs20.constants.W_OK);
     return true;
   } catch {
     return false;
@@ -12222,7 +12383,7 @@ function writable(path) {
 }
 function otherPlugins(env) {
   try {
-    const s = JSON.parse((0, import_node_fs19.readFileSync)((0, import_node_path20.join)(claudeHome(env), "settings.json"), "utf8"));
+    const s = JSON.parse((0, import_node_fs20.readFileSync)((0, import_node_path21.join)(claudeHome(env), "settings.json"), "utf8"));
     return Object.entries(s.enabledPlugins ?? {}).filter(([name, on]) => on === true && !/^aidw(@|$)/.test(name)).map(([name]) => name.split("@")[0]);
   } catch {
     return [];
@@ -12237,7 +12398,7 @@ var FRAMEWORKS = [
 ];
 function frameworkOf(root) {
   try {
-    const pkg = JSON.parse((0, import_node_fs19.readFileSync)((0, import_node_path20.join)(root, "package.json"), "utf8"));
+    const pkg = JSON.parse((0, import_node_fs20.readFileSync)((0, import_node_path21.join)(root, "package.json"), "utf8"));
     const deps = { ...pkg.dependencies, ...pkg.devDependencies };
     return FRAMEWORKS.find((f) => f.dep in deps) ?? null;
   } catch {
@@ -12246,7 +12407,7 @@ function frameworkOf(root) {
 }
 function vercelJsonFramework(root) {
   try {
-    return typeof JSON.parse((0, import_node_fs19.readFileSync)((0, import_node_path20.join)(root, "vercel.json"), "utf8")).framework === "string";
+    return typeof JSON.parse((0, import_node_fs20.readFileSync)((0, import_node_path21.join)(root, "vercel.json"), "utf8")).framework === "string";
   } catch {
     return false;
   }
@@ -12286,7 +12447,7 @@ function doctor(p, id, env = process.env, probe = shellProbe) {
     add(pm, v.ok ? "ok" : "fail", v.ok ? v.out.split("\n")[0] ?? "" : `not runnable: ${v.out.split("\n")[0] ?? "command not found"}`);
   }
   const seen = new Set(pm ? [pm] : []);
-  const hasModules = (0, import_node_fs19.existsSync)((0, import_node_path20.join)(p.project, "node_modules"));
+  const hasModules = (0, import_node_fs20.existsSync)((0, import_node_path21.join)(p.project, "node_modules"));
   for (const c of cmds) {
     const b = binaryOf(c);
     if (!b) continue;
@@ -12295,7 +12456,7 @@ function doctor(p, id, env = process.env, probe = shellProbe) {
     seen.add(key);
     if (b.sub) {
       if (!hasModules) add(key, "ok", "installed by the scaffold task (no node_modules yet)");
-      else add(key, (0, import_node_fs19.existsSync)((0, import_node_path20.join)(p.project, "node_modules", ".bin", b.sub)) ? "ok" : "warn", (0, import_node_fs19.existsSync)((0, import_node_path20.join)(p.project, "node_modules", ".bin", b.sub)) ? "in node_modules/.bin" : "not in node_modules/.bin");
+      else add(key, (0, import_node_fs20.existsSync)((0, import_node_path21.join)(p.project, "node_modules", ".bin", b.sub)) ? "ok" : "warn", (0, import_node_fs20.existsSync)((0, import_node_path21.join)(p.project, "node_modules", ".bin", b.sub)) ? "in node_modules/.bin" : "not in node_modules/.bin");
       continue;
     }
     const w = probe("which", [b.bin], p.project);
@@ -12310,14 +12471,19 @@ function doctor(p, id, env = process.env, probe = shellProbe) {
     add("npm registry", reg.ok ? "ok" : "warn", reg.ok ? "reachable" : "not reachable from here: installs will fail until the network is allowed");
   }
   if (drivesBrowser2(quality)) {
-    const url = env.E2E_CDP_URL ?? "http://127.0.0.1:9222";
-    const r = probe("curl", ["-sS", "-m", "5", `${url}/json/version`], p.project, 8e3);
-    add("chrome cdp", r.ok && /Browser/.test(r.out) ? "ok" : "fail", r.ok && /Browser/.test(r.out) ? url : `${url} does not answer: start Chrome with --remote-debugging-port=9222 (see roles/qa/references/quality-layers.md)`);
+    const url = env.E2E_CDP_URL ?? readBrowser(p)?.url;
+    if (!url) {
+      add("chrome cdp", "fail", "no test browser for this project: run `aidw browser start` (it picks a free port; in your own terminal when the sandbox blocks launching Chrome)");
+    } else {
+      const r = probe("curl", ["-sS", "-m", "5", `${url}/json/version`], p.project, 8e3);
+      const up = r.ok && /Browser/.test(r.out);
+      add("chrome cdp", up ? "ok" : "fail", up ? url : `${url} does not answer: run \`aidw browser start\` (see roles/qa/references/quality-layers.md)`);
+    }
   }
   if (quality.deploy.target !== "none" && /\bvercel\b/.test(quality.deploy.command ?? "")) {
     const who = probe("vercel", ["whoami"], p.project, 2e4);
     add("vercel login", who.ok ? "ok" : "fail", who.ok ? who.out.split("\n").pop() ?? "" : `${who.out.split("\n").pop() ?? "not logged in"}: run \`vercel login\` in your own terminal and allow vercel.com and *.vercel.com in the sandbox`);
-    const linked = (0, import_node_fs19.existsSync)((0, import_node_path20.join)(p.project, ".vercel", "project.json"));
+    const linked = (0, import_node_fs20.existsSync)((0, import_node_path21.join)(p.project, ".vercel", "project.json"));
     add("vercel project", linked ? "ok" : "warn", linked ? "linked" : "not linked: the first deploy would be Production (tier 3). Run `vercel link --yes` first");
     const framework = frameworkOf(p.project);
     if (linked && framework && !vercelJsonFramework(p.project)) {
@@ -12342,9 +12508,9 @@ ${bad ? `${bad} problem(s) to fix before the run` : warn ? `no blocking problem,
 }
 
 // src/pr.ts
-var import_node_child_process5 = require("node:child_process");
-var import_node_fs20 = require("node:fs");
-var import_node_path21 = require("node:path");
+var import_node_child_process6 = require("node:child_process");
+var import_node_fs21 = require("node:fs");
+var import_node_path22 = require("node:path");
 var import_yaml8 = __toESM(require_dist(), 1);
 var MIGRATION = /(^|\/)(migrations?|prisma\/migrations|supabase\/migrations|db\/migrate)\//i;
 var DEP_FILES = /(^|\/)(package\.json|pnpm-lock\.yaml|package-lock\.json|yarn\.lock|requirements\.txt|pyproject\.toml|go\.mod|Cargo\.toml)$/;
@@ -12360,7 +12526,7 @@ function mergeDanger(p, id, tasks, base, head) {
   const env = git(p.project, ["diff", `${base}...${head}`, "--", ".env.example"]);
   const newVars = env.ok ? [...env.out.matchAll(/^\+([A-Z][A-Z0-9_]*)=/gm)].map((m) => m[1]) : [];
   if (newVars.length) out.push(`New environment variables to set before deploy: ${newVars.join(", ")}.`);
-  const handoff = readText((0, import_node_path21.join)(loadAny(p, id).dir, "delivery", "handoff.md"));
+  const handoff = readText((0, import_node_path22.join)(loadAny(p, id).dir, "delivery", "handoff.md"));
   const section = handoff ? sections(handoff).find((s) => /^merge danger$/i.test(s.name)) : void 0;
   if (section?.body && !/^\s*none\b/i.test(section.body)) out.push(...section.body.split("\n").filter((l) => /^\s*[-*]\s/.test(l)).map((l) => l.replace(/^\s*[-*]\s+/, "")));
   return out;
@@ -12369,10 +12535,10 @@ function loadAny(p, id) {
   try {
     return loadChange(p, id);
   } catch (e) {
-    const dir = (0, import_node_path21.join)(p.archive, id);
-    const file = (0, import_node_path21.join)(dir, "change.yaml");
-    if (!(e instanceof ChangeError) || !(0, import_node_fs20.existsSync)(file)) throw e;
-    const doc = import_yaml8.default.parseDocument((0, import_node_fs20.readFileSync)(file, "utf8"));
+    const dir = (0, import_node_path22.join)(p.archive, id);
+    const file = (0, import_node_path22.join)(dir, "change.yaml");
+    if (!(e instanceof ChangeError) || !(0, import_node_fs21.existsSync)(file)) throw e;
+    const doc = import_yaml8.default.parseDocument((0, import_node_fs21.readFileSync)(file, "utf8"));
     return { id, dir, file, doc, data: doc.toJS() ?? {} };
   }
 }
@@ -12381,16 +12547,16 @@ function planPr(p, id, opts = {}) {
   const run2 = change.data.run ?? {};
   const head = run2.branch ?? `aidw/${id}`;
   const base = opts.base ?? run2.base_branch ?? "main";
-  const tasks = parseTasks(readText((0, import_node_path21.join)(change.dir, "tasks.yaml")) ?? "").tasks;
+  const tasks = parseTasks(readText((0, import_node_path22.join)(change.dir, "tasks.yaml")) ?? "").tasks;
   const planned = tasks.filter((t) => !t.origin);
   const allFix = planned.length > 0 && planned.every((t) => t.type === "fix");
   const first = planned[0];
   const title = header(allFix ? "fix" : "feat", first ? scopeOf(first) : "config", String(change.data.title ?? id));
-  const analysis = readText((0, import_node_path21.join)(change.dir, "analysis.md"));
+  const analysis = readText((0, import_node_path22.join)(change.dir, "analysis.md"));
   const summary = analysis ? sections(analysis).find((s) => s.name.toLowerCase() === "summary")?.body ?? "" : "";
   const layers = Object.entries(readSummary(change).layers).map(([n, r]) => `- ${n}: ${r.status}${r.review ? ` (review: ${r.review.verdict})` : ""}`);
   const deploy2 = lastDeploy(change);
-  const shots = (0, import_node_path21.join)(change.dir, "delivery", "screenshots");
+  const shots = (0, import_node_path22.join)(change.dir, "delivery", "screenshots");
   const taskRows = tasks.map((t) => `- ${t.id} ${String(t.title ?? "")} (${String(t.status ?? "pending")})`);
   const danger = mergeDanger(p, id, tasks, base, head);
   const body = [
@@ -12406,7 +12572,7 @@ function planPr(p, id, opts = {}) {
     "",
     ...layers.length ? layers : ["- no quality layers recorded"],
     ...deploy2?.url ? [`- preview: ${deploy2.url}${deploy2.ok ? "" : " (deploy failed)"}`] : [],
-    ...(0, import_node_fs20.existsSync)(shots) ? ["- screenshots: .aidw/changes/" + id + "/delivery/screenshots/"] : [],
+    ...(0, import_node_fs21.existsSync)(shots) ? ["- screenshots: .aidw/changes/" + id + "/delivery/screenshots/"] : [],
     `- full evidence: .aidw/changes/${id}/evidence/ and delivery/quality-report.md`,
     "",
     "## Merge danger",
@@ -12414,7 +12580,7 @@ function planPr(p, id, opts = {}) {
     ...danger.length ? danger.map((d) => `- ${d}`) : ["None found: no migrations, dependency or environment changes, no breaking tasks."],
     ""
   ].join("\n");
-  const bodyFile = (0, import_node_path21.join)(p.run, `pr-${id}.md`);
+  const bodyFile = (0, import_node_path22.join)(p.run, `pr-${id}.md`);
   const commands = [`git push -u origin ${head}`, `gh pr create --base ${base} --head ${head} --title "${title}" --body-file ${rel(p, bodyFile)}`];
   return { title, body, head, base, bodyFile, commands };
 }
@@ -12424,24 +12590,24 @@ function createPr(p, id, opts = {}) {
   if (st !== "delivered" && st !== "archived") throw new OpError(`change "${id}" is "${String(st)}"; open the PR after delivery`);
   if (!git(p.project, ["remote", "get-url", "origin"]).ok) throw new OpError("no git remote named origin: add one (git remote add origin <url>) and run this again");
   const plan = planPr(p, id, opts);
-  (0, import_node_fs20.mkdirSync)(p.run, { recursive: true });
-  (0, import_node_fs20.writeFileSync)(plan.bodyFile, plan.body);
+  (0, import_node_fs21.mkdirSync)(p.run, { recursive: true });
+  (0, import_node_fs21.writeFileSync)(plan.bodyFile, plan.body);
   const push = git(p.project, ["push", "-u", "origin", plan.head]);
   if (!push.ok) throw new OpError(`git push failed: ${(push.err || push.out).split("\n")[0]}`);
   const r = ghCreate(p, plan, opts.draft === true);
   return { url: r, plan };
 }
 function ghCreate(p, plan, draft) {
-  const r = (0, import_node_child_process5.spawnSync)("gh", ["pr", "create", "--base", plan.base, "--head", plan.head, "--title", plan.title, "--body-file", plan.bodyFile, ...draft ? ["--draft"] : []], { cwd: p.project, encoding: "utf8" });
+  const r = (0, import_node_child_process6.spawnSync)("gh", ["pr", "create", "--base", plan.base, "--head", plan.head, "--title", plan.title, "--body-file", plan.bodyFile, ...draft ? ["--draft"] : []], { cwd: p.project, encoding: "utf8" });
   if (r.error || r.status !== 0) throw new OpError(`gh pr create failed: ${(r.stderr || String(r.error ?? "")).trim().split("\n")[0]} (the branch is pushed; open the PR by hand with the body in ${rel(p, plan.bodyFile)})`);
   return r.stdout.trim().split("\n").pop() ?? "";
 }
 
 // src/runner.ts
-var import_node_child_process6 = require("node:child_process");
-var import_node_crypto3 = require("node:crypto");
-var import_node_fs21 = require("node:fs");
-var import_node_path22 = require("node:path");
+var import_node_child_process7 = require("node:child_process");
+var import_node_crypto4 = require("node:crypto");
+var import_node_fs22 = require("node:fs");
+var import_node_path23 = require("node:path");
 var MINUTE = 6e4;
 var BACKOFF_MINUTES = [5, 10, 20, 40, 60];
 var LIMIT_TEXT = /rate[ _-]?limit|usage limit|quota|overloaded|\b429\b|\b529\b|limit (?:will )?reset/i;
@@ -12481,11 +12647,11 @@ function waitMs(reason, attempt, now6 = /* @__PURE__ */ new Date()) {
   return { ms: minutes * MINUTE, why: `no reset time given: backoff ${minutes} min` };
 }
 function archived(p, id) {
-  return !listChangeIds(p).includes(id) && (0, import_node_fs21.existsSync)(p.archive) && readdirNames(p.archive).some((n) => n.endsWith(id));
+  return !listChangeIds(p).includes(id) && (0, import_node_fs22.existsSync)(p.archive) && readdirNames(p.archive).some((n) => n.endsWith(id));
 }
 function readdirNames(dir) {
   try {
-    return (0, import_node_fs21.readdirSync)(dir);
+    return (0, import_node_fs22.readdirSync)(dir);
   } catch {
     return [];
   }
@@ -12497,8 +12663,8 @@ function fingerprint(p, id) {
     const c = loadChange(p, id);
     const parts = [String(c.data.state)];
     for (const f of ["tasks.yaml", "evidence/quality/summary.json", "evidence/converge.json", "evidence/deploy.json", "evidence/integration.json"]) {
-      const file = (0, import_node_path22.join)(c.dir, f);
-      parts.push((0, import_node_fs21.existsSync)(file) ? (0, import_node_crypto3.createHash)("sha1").update((0, import_node_fs21.readFileSync)(file, "utf8").replace(ISO_TIME, "")).digest("hex").slice(0, 12) : "-");
+      const file = (0, import_node_path23.join)(c.dir, f);
+      parts.push((0, import_node_fs22.existsSync)(file) ? (0, import_node_crypto4.createHash)("sha1").update((0, import_node_fs22.readFileSync)(file, "utf8").replace(ISO_TIME, "")).digest("hex").slice(0, 12) : "-");
     }
     return parts.join("|");
   } catch {
@@ -12514,11 +12680,11 @@ function runLoop(p, id, opts = {}) {
   });
   const now6 = opts.now ?? (() => /* @__PURE__ */ new Date());
   const env = opts.env ?? process.env;
-  const logFile = (0, import_node_path22.join)(p.run, "runner.log");
-  (0, import_node_fs21.mkdirSync)(p.run, { recursive: true });
+  const logFile = (0, import_node_path23.join)(p.run, "runner.log");
+  (0, import_node_fs22.mkdirSync)(p.run, { recursive: true });
   const record = (line) => {
     log(line);
-    (0, import_node_fs21.appendFileSync)(logFile, `${now6().toISOString()} ${line}
+    (0, import_node_fs22.appendFileSync)(logFile, `${now6().toISOString()} ${line}
 `);
   };
   let runs = 0;
@@ -12527,7 +12693,7 @@ function runLoop(p, id, opts = {}) {
   let idle = 0;
   let last = fingerprint(p, id);
   const result = (outcome, state, message) => {
-    if (env.AIDW_RUN_DETACHED === "1") (0, import_node_fs21.rmSync)(pidFile(p), { force: true });
+    if (env.AIDW_RUN_DETACHED === "1") (0, import_node_fs22.rmSync)(pidFile(p), { force: true });
     record(`stop: ${outcome}: ${message}`);
     return { outcome, runs, waits, state, message };
   };
@@ -12552,7 +12718,7 @@ function runLoop(p, id, opts = {}) {
     const prompt = state === "delivered" ? `/aidw:deliver ${id}` : `/aidw:resume ${id}`;
     const args = ["-p", prompt, "--permission-mode", mode, ...opts.keepMcp ? [] : ["--strict-mcp-config"], ...opts.extraArgs ?? []];
     record(`session ${runs + 1}: ${claude} ${args.map((a) => /\s/.test(a) ? JSON.stringify(a) : a).join(" ")}`);
-    const r = (0, import_node_child_process6.spawnSync)(claude, args, {
+    const r = (0, import_node_child_process7.spawnSync)(claude, args, {
       cwd: p.project,
       encoding: "utf8",
       env: { ...process.env, ...opts.env ?? {}, AIDW_RUNNER: "1" },
@@ -12599,7 +12765,7 @@ function loadChangeState(p, id) {
     return "?";
   }
 }
-var pidFile = (p) => (0, import_node_path22.join)(p.run, "runner.pid");
+var pidFile = (p) => (0, import_node_path23.join)(p.run, "runner.pid");
 function alive(pid) {
   try {
     process.kill(pid, 0);
@@ -12610,7 +12776,7 @@ function alive(pid) {
 }
 function runnerPid(p) {
   try {
-    const pid = Number((0, import_node_fs21.readFileSync)(pidFile(p), "utf8").trim());
+    const pid = Number((0, import_node_fs22.readFileSync)(pidFile(p), "utf8").trim());
     return Number.isInteger(pid) && pid > 0 && alive(pid) ? pid : null;
   } catch {
     return null;
@@ -12619,14 +12785,14 @@ function runnerPid(p) {
 function detachRun(p, argv, env) {
   const running = runnerPid(p);
   if (running) throw new Error(`a runner is already running here (pid ${running}); stop it with \`aidw run --stop\``);
-  (0, import_node_fs21.mkdirSync)(p.run, { recursive: true });
-  const log = (0, import_node_path22.join)(p.run, "runner.log");
-  const fd = (0, import_node_fs21.openSync)(log, "a");
+  (0, import_node_fs22.mkdirSync)(p.run, { recursive: true });
+  const log = (0, import_node_path23.join)(p.run, "runner.log");
+  const fd = (0, import_node_fs22.openSync)(log, "a");
   const clean = { ...env, AIDW_RUN_DETACHED: "1" };
   delete clean.CLAUDECODE;
-  const child = (0, import_node_child_process6.spawn)(process.execPath, [process.argv[1], ...argv], { cwd: p.project, detached: true, stdio: ["ignore", fd, fd], env: clean });
+  const child = (0, import_node_child_process7.spawn)(process.execPath, [process.argv[1], ...argv], { cwd: p.project, detached: true, stdio: ["ignore", fd, fd], env: clean });
   child.unref();
-  (0, import_node_fs21.writeFileSync)(pidFile(p), String(child.pid));
+  (0, import_node_fs22.writeFileSync)(pidFile(p), String(child.pid));
   return { pid: child.pid, log };
 }
 function stopRunner(p) {
@@ -12637,17 +12803,17 @@ function stopRunner(p) {
   } catch {
     process.kill(pid, "SIGTERM");
   }
-  (0, import_node_fs21.rmSync)(pidFile(p), { force: true });
+  (0, import_node_fs22.rmSync)(pidFile(p), { force: true });
   return pid;
 }
 
 // src/firstdeploy.ts
-var import_node_child_process7 = require("node:child_process");
+var import_node_child_process8 = require("node:child_process");
 function productionCommand(command) {
   const swapped = command.replace(/\s--(?:environment|target)(?:=|\s+)preview\b/, " --prod");
   return /\s--prod\b/.test(swapped) ? swapped : `${swapped} --prod`;
 }
-function firstDeploy(p, id, yes, run2 = import_node_child_process7.spawnSync) {
+function firstDeploy(p, id, yes, run2 = import_node_child_process8.spawnSync) {
   const text = readText(qualityFile(loadChange(p, id)));
   const q = text === null ? null : parseQuality(text, "quality.yaml").config;
   if (!q?.deploy.command || !/\bvercel\b/.test(q.deploy.command)) throw new OpError("first-deploy is for Vercel projects: quality.yaml has no vercel deploy command");
@@ -12699,9 +12865,9 @@ function compactNote(cwd, env) {
 function changeTasks(p) {
   const out = [];
   for (const base of [p.changes, p.archive]) {
-    if (!(0, import_node_fs22.existsSync)(base)) continue;
-    for (const d of (0, import_node_fs22.readdirSync)(base)) {
-      const text = readText((0, import_node_path23.join)(base, d, "tasks.yaml"));
+    if (!(0, import_node_fs23.existsSync)(base)) continue;
+    for (const d of (0, import_node_fs23.readdirSync)(base)) {
+      const text = readText((0, import_node_path24.join)(base, d, "tasks.yaml"));
       if (text !== null) out.push(parseTasks(text).tasks);
     }
   }
@@ -12737,6 +12903,10 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
   pr [<id>] [--base B] [--create] [--draft]
                                          after delivery: print the pull request (title, summary, evidence, merge danger);
                                          --create pushes the change branch and opens it with gh (asks first)
+  browser start [--headed] | status | url | stop
+                                         the project's own test browser for the e2e, a11y, ui-ux and performance layers:
+                                         Chrome on a free port it picks itself, one profile per project; layers get it
+                                         as E2E_CDP_URL and E2E_CDP_PORT (no fixed 9222)
   doctor [<id>]                          check the machine for the run: binaries of the quality commands, package store, registry,
                                          Chrome CDP, Vercel login and link; exit 1 on a blocking problem
   detect                                 what the existing code uses (stack, package manager, suggested layers)
@@ -12823,12 +12993,12 @@ var UsageError = class extends Error {
 function addBinToPath(env) {
   const file = env.CLAUDE_ENV_FILE;
   if (!file) return false;
-  const bin = (0, import_node_path23.join)(pluginRoot(env), "bin");
+  const bin = (0, import_node_path24.join)(pluginRoot(env), "bin");
   if (bin.includes("'")) return false;
   const line = `export PATH="$PATH":'${bin}'`;
-  const current = (0, import_node_fs22.existsSync)(file) ? (0, import_node_fs22.readFileSync)(file, "utf8") : "";
+  const current = (0, import_node_fs23.existsSync)(file) ? (0, import_node_fs23.readFileSync)(file, "utf8") : "";
   if (current.split("\n").includes(line)) return false;
-  (0, import_node_fs22.appendFileSync)(file, `${current && !current.endsWith("\n") ? "\n" : ""}${line}
+  (0, import_node_fs23.appendFileSync)(file, `${current && !current.endsWith("\n") ? "\n" : ""}${line}
 `);
   return true;
 }
@@ -12841,7 +13011,7 @@ function logHook(env, hook, input, output) {
       parsed = JSON.parse(input);
     } catch {
     }
-    (0, import_node_fs22.appendFileSync)(file, `${JSON.stringify({ at: (/* @__PURE__ */ new Date()).toISOString(), hook, input: parsed, output: output || null })}
+    (0, import_node_fs23.appendFileSync)(file, `${JSON.stringify({ at: (/* @__PURE__ */ new Date()).toISOString(), hook, input: parsed, output: output || null })}
 `);
   } catch {
   }
@@ -12876,6 +13046,9 @@ function run(argv, env, cwd, io) {
     if (!dir) throw new OpError("no .aidw/ found in this directory or its parents; run `aidw init`");
     const p = pathsFor(dir);
     assertProject(p);
+    if (env === process.env) {
+      for (const [k, v] of Object.entries(browserEnv(p))) if (!process.env[k]) process.env[k] = v;
+    }
     return p;
   };
   const need = (v, what) => {
@@ -12965,7 +13138,7 @@ ${r2.dependents.length ? `WARNING: done task(s) ${r2.dependents.join(", ")} depe
           return 0;
         }
         const r = startTask(p, id, need(rest[1], "task id"), { worktree: args.flags.worktree === true });
-        const brief = buildBrief(p, id, r.task, "implement", (0, import_node_path23.join)(pluginRoot(env), "library", "vendor"));
+        const brief = buildBrief(p, id, r.task, "implement", (0, import_node_path24.join)(pluginRoot(env), "library", "vendor"));
         emit(
           { ok: true, change: id, ...r, brief: brief.path },
           `${r.task} running: attempt ${r.attempt} of ${r.maxAttempts}${r.resumed ? " (resumed)" : ""}${r.base ? `, base ${r.base.slice(0, 8)}` : ""}${r.worktree ? `, worktree ${r.worktree}` : ""}
@@ -12982,7 +13155,7 @@ SPAWN ${AGENTS.implement} with: Task brief: ${brief.path}. Read it and implement
         const taskId = need(rest[0], "task id");
         const kind = str(args.flags.for) ?? "implement";
         if (kind !== "implement" && kind !== "review") throw new UsageError('--for must be "implement" or "review"');
-        const b = buildBrief(p, id, taskId, kind, (0, import_node_path23.join)(pluginRoot(env), "library", "vendor"));
+        const b = buildBrief(p, id, taskId, kind, (0, import_node_path24.join)(pluginRoot(env), "library", "vendor"));
         if (cmd2 === "skills") {
           emit({ change: id, task: taskId, for: kind, skills: b.skills }, b.skills.map((s) => `${s.path}  # ${s.reason}
 `).join(""));
@@ -13015,7 +13188,7 @@ SPAWN ${AGENTS.implement} with: Task brief: ${brief.path}. Read it and implement
             after = `review ${auto.task}: auto-passed (converge tests, or a layer fix its own reviewer judges again)${auto.commit ? ` (commit ${auto.commit.slice(0, 8)})` : ""}
 ${nextLine(p, id)}${sessionEnd(env, p, id)}`;
           } else {
-            reviewBrief = buildBrief(p, id, r.task, "review", (0, import_node_path23.join)(pluginRoot(env), "library", "vendor")).path;
+            reviewBrief = buildBrief(p, id, r.task, "review", (0, import_node_path24.join)(pluginRoot(env), "library", "vendor")).path;
             after = `review brief ${reviewBrief}
 SPAWN ${AGENTS.taskReview} with: ${REVIEWER_PROMPT(reviewBrief)}
 Then: aidw verdict ${r.task}
@@ -13040,7 +13213,7 @@ ${failed.tail}
           ...str(args.flags.layer) ? { layer: str(args.flags.layer) } : {},
           fresh: args.flags.fresh === true,
           ...timeout ? { timeoutMs: Number(timeout) * 1e3 } : {},
-          vendorDir: (0, import_node_path23.join)(pluginRoot(env), "library", "vendor")
+          vendorDir: (0, import_node_path24.join)(pluginRoot(env), "library", "vendor")
         });
         const lines = r.layers.map((l) => {
           const bad = l.runs.find((x) => x.exit !== 0);
@@ -13071,14 +13244,14 @@ ${failed.tail}
         let verdict = rest[1];
         let notesFile = str(args.flags["notes-file"]);
         if (verdict === void 0 || verdict === "auto") {
-          notesFile = notesFile ?? (0, import_node_path23.join)(p.run, `layer-review-${layer}.md`);
-          if (!(0, import_node_fs22.existsSync)(notesFile)) throw new OpError(`no verdict file at ${notesFile}: the reviewer did not write it. Spawn a fresh reviewer, or save its reply there and run this again`);
-          const parsed = parseVerdict((0, import_node_fs22.readFileSync)(notesFile, "utf8"));
+          notesFile = notesFile ?? (0, import_node_path24.join)(p.run, `layer-review-${layer}.md`);
+          if (!(0, import_node_fs23.existsSync)(notesFile)) throw new OpError(`no verdict file at ${notesFile}: the reviewer did not write it. Spawn a fresh reviewer, or save its reply there and run this again`);
+          const parsed = parseVerdict((0, import_node_fs23.readFileSync)(notesFile, "utf8"));
           if (!parsed) throw new OpError(`${notesFile} does not start with "VERDICT: pass" or "VERDICT: fix"; spawn a fresh reviewer once more`);
           verdict = parsed;
         }
         if (verdict !== "pass" && verdict !== "fix") throw new UsageError('verdict must be "pass" or "fix"');
-        const notes = notesFile ? (0, import_node_fs22.readFileSync)(notesFile, "utf8") : str(args.flags.notes) ?? "";
+        const notes = notesFile ? (0, import_node_fs23.readFileSync)(notesFile, "utf8") : str(args.flags.notes) ?? "";
         if (verdict === "fix" && !notes.trim()) throw new UsageError("a fix verdict needs --notes or --notes-file");
         const r = recordLayerReview(p, id, layer, verdict, notes);
         emit(
@@ -13225,7 +13398,7 @@ ${r.ok && r.ran ? "Previews work from now on: run aidw deploy.\n" : ""}`);
         const verdict = need(rest[1], "verdict (pass|fix)");
         if (verdict !== "pass" && verdict !== "fix") throw new UsageError('verdict must be "pass" or "fix"');
         const notesFile = str(args.flags["notes-file"]);
-        const notes = notesFile ? (0, import_node_fs22.readFileSync)(notesFile, "utf8") : str(args.flags.notes) ?? "";
+        const notes = notesFile ? (0, import_node_fs23.readFileSync)(notesFile, "utf8") : str(args.flags.notes) ?? "";
         if (verdict === "fix" && !notes.trim()) throw new UsageError("a fix verdict needs --notes or --notes-file");
         const r = recordReview(p, id, taskId, verdict, notes, { commit: args.flags["no-commit"] !== true });
         emit(
@@ -13238,9 +13411,9 @@ ${r.ok && r.ran ? "Previews work from now on: run aidw deploy.\n" : ""}`);
         const p = project();
         const id = resolveChangeId(p, str(args.flags.change));
         const taskId = need(rest[0], "task id");
-        const file = str(args.flags["notes-file"]) ?? (0, import_node_path23.join)(p.run, `review-${taskId}.md`);
-        if (!(0, import_node_fs22.existsSync)(file)) throw new OpError(`no verdict file at ${file}: the reviewer did not write it. Spawn a fresh reviewer, or save its reply there and run this again`);
-        const notes = (0, import_node_fs22.readFileSync)(file, "utf8");
+        const file = str(args.flags["notes-file"]) ?? (0, import_node_path24.join)(p.run, `review-${taskId}.md`);
+        if (!(0, import_node_fs23.existsSync)(file)) throw new OpError(`no verdict file at ${file}: the reviewer did not write it. Spawn a fresh reviewer, or save its reply there and run this again`);
+        const notes = (0, import_node_fs23.readFileSync)(file, "utf8");
         const verdict = parseVerdict(notes);
         if (!verdict) throw new OpError(`${file} does not start with "VERDICT: pass" or "VERDICT: fix"; spawn a fresh reviewer once more, and if it is still unclear record it with \`aidw review ${taskId} fix --notes-file\``);
         const r = recordReview(p, id, taskId, verdict, notes, { commit: args.flags["no-commit"] !== true });
@@ -13253,8 +13426,8 @@ ${r.ok && r.ran ? "Previews work from now on: run aidw deploy.\n" : ""}`);
       case "vendor-path": {
         const ref = need(rest[0], "<upstream>/<skill>");
         if (!/^[a-z0-9-]+\/[a-z0-9-]+$/.test(ref)) throw new UsageError(`invalid vendored skill "${ref}"`);
-        const file = (0, import_node_path23.join)(pluginRoot(env), "library", "vendor", ...ref.split("/"), "SKILL.md");
-        if (!(0, import_node_fs22.existsSync)(file)) throw new OpError(`vendored skill "${ref}" not found at ${file}`);
+        const file = (0, import_node_path24.join)(pluginRoot(env), "library", "vendor", ...ref.split("/"), "SKILL.md");
+        if (!(0, import_node_fs23.existsSync)(file)) throw new OpError(`vendored skill "${ref}" not found at ${file}`);
         emit({ path: file }, `${file}
 `);
         return 0;
@@ -13264,8 +13437,8 @@ ${r.ok && r.ran ? "Previews work from now on: run aidw deploy.\n" : ""}`);
         if (!/^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/.test(ref) || ref.split("/").includes("..")) {
           throw new UsageError(`invalid plugin path "${ref}"`);
         }
-        const file = (0, import_node_path23.join)(pluginRoot(env), ...ref.split("/"));
-        if (!(0, import_node_fs22.existsSync)(file)) throw new OpError(`"${ref}" not found in the plugin (${file})`);
+        const file = (0, import_node_path24.join)(pluginRoot(env), ...ref.split("/"));
+        if (!(0, import_node_fs23.existsSync)(file)) throw new OpError(`"${ref}" not found in the plugin (${file})`);
         emit({ path: file }, `${file}
 `);
         return 0;
@@ -13337,7 +13510,7 @@ ${d.kind === "brownfield" ? `${d.signals.map((s) => `  signal  ${s}
       case "plan": {
         const p = project();
         const id = resolveChangeId(p, rest[0]);
-        const tasks = parseTasks(readText((0, import_node_path23.join)(loadChange(p, id).dir, "tasks.yaml")) ?? "").tasks;
+        const tasks = parseTasks(readText((0, import_node_path24.join)(loadChange(p, id).dir, "tasks.yaml")) ?? "").tasks;
         const shape = planShape(tasks);
         emit({ change: id, ...shape, summary: planSummary(tasks), advice: planAdvice(tasks) }, `${planSummary(tasks)}
 ${planAdvice(tasks).map((a) => `  advice: ${a}
@@ -13361,6 +13534,37 @@ ${plan.body}
 To open it (asks first): aidw pr --create [--base <branch>] [--draft]
 `);
         return 0;
+      }
+      case "browser": {
+        const p = project();
+        const sub = rest[0];
+        if (sub === "start") {
+          const r = startBrowser(p, { headed: args.flags.headed === true, env });
+          emit({ ok: true, started: r.started, ...r.record }, `${r.started ? "started" : "already running"}: ${r.record?.url} (${r.browser}, pid ${r.record?.pid}, ${r.record?.headless ? "headless" : "headed"})
+layers get it as E2E_CDP_URL and E2E_CDP_PORT; for your own shell: export E2E_CDP_URL=$(aidw browser url)
+`);
+          return 0;
+        }
+        if (sub === "status") {
+          const s = browserStatus(p);
+          emit({ ok: s.running, ...s }, s.running ? `running: ${s.record?.url} (${s.browser}, pid ${s.record?.pid})
+` : s.record ? `not running: ${s.stale}
+` : "no test browser: run `aidw browser start`\n");
+          return s.running ? 0 : 1;
+        }
+        if (sub === "url") {
+          const s = browserStatus(p);
+          if (!s.running || !s.record) throw new OpError("no test browser is running: run `aidw browser start`");
+          emit({ url: s.record.url, port: s.record.port }, `${s.record.url}
+`);
+          return 0;
+        }
+        if (sub === "stop") {
+          const stopped = stopBrowser(p);
+          emit({ ok: true, stopped }, stopped ? "test browser stopped\n" : "no test browser was running\n");
+          return 0;
+        }
+        throw new UsageError("browser needs start, status, url or stop");
       }
       case "doctor": {
         const p = project();
@@ -13461,7 +13665,7 @@ To open it (asks first): aidw pr --create [--base <branch>] [--draft]
   covers ${files.length} file(s)
 ${kept.length ? `  done work kept: ${kept.join(", ")}
 ` : ""}${reopened.length ? `  edited tasks run again: ${reopened.join(", ")}
-` : ""}  cheapest build (about a quarter of the tokens): in your own terminal, ${(0, import_node_path23.join)(pluginRoot(env), "bin", "aidw")} run ${id} --permission-mode auto
+` : ""}  cheapest build (about a quarter of the tokens): in your own terminal, ${(0, import_node_path24.join)(pluginRoot(env), "bin", "aidw")} run ${id} --permission-mode auto
 `
         );
         return 0;
@@ -13539,7 +13743,7 @@ ${lines.join("\n")}
 ${HELP}`);
       return 2;
     }
-    if (e instanceof OpError || e instanceof ChangeError) {
+    if (e instanceof OpError || e instanceof ChangeError || e instanceof BrowserError) {
       const d = e instanceof OpError ? e.diags : void 0;
       if (json) io.out(`${JSON.stringify({ ok: false, error: e.message, ...d ? diagsJson(d) : {} }, null, 2)}
 `);
@@ -13556,7 +13760,7 @@ if (typeof require !== "undefined" && require.main === module) {
     err: (s) => process.stderr.write(s),
     stdin: () => {
       try {
-        return (0, import_node_fs22.readFileSync)(0, "utf8");
+        return (0, import_node_fs23.readFileSync)(0, "utf8");
       } catch {
         return "";
       }

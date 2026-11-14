@@ -92,6 +92,7 @@ aidw plugin-path <path>                      path of a plugin file
 aidw next [--change <id>]                    orchestrator's next step: implement | review | escalate | complete
 aidw task start|retry|reopen <task>          running (attempts, base commit) | user-granted retry | done task back to pending (--revert)
 aidw doctor [<id>]                           check the machine for the run (binaries, store, registry, CDP, Vercel)
+aidw browser start|status|url|stop           the project's own test browser (Chrome on a free port it picks; layers get E2E_CDP_URL)
 aidw pr [<id>] [--create]                    pull request body from evidence; --create pushes and opens it (asks)
 aidw brief <task> [--for implement|review]   context packet for a fresh subagent (prints its path)
 aidw skills <task> [--for implement|review]  vendored skills selected for the task
