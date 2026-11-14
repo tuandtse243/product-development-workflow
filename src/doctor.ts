@@ -188,6 +188,8 @@ export function doctor(p: Paths, id: string | null, env: NodeJS.ProcessEnv = pro
   }
 
   if (quality.deploy.target !== "none" && /\bvercel\b/.test(quality.deploy.command ?? "")) {
+    // `vercel whoami` is not read-only: with an expired token the CLI refreshes it and, when the refresh fails,
+    // logs out by deleting its auth file. A failure here can therefore leave the user logged out.
     const who = probe("vercel", ["whoami"], p.project, 20_000);
     add("vercel login", who.ok ? "ok" : "fail", who.ok ? who.out.split("\n").pop() ?? "" : `${who.out.split("\n").pop() ?? "not logged in"}: run \`vercel login\` in your own terminal and allow vercel.com and *.vercel.com in the sandbox`);
     const linked = existsSync(join(p.project, ".vercel", "project.json"));
