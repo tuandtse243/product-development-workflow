@@ -13,6 +13,7 @@ import { buildAuditBrief, chosenLenses, compileReport, lensRoles, pickFindings }
 import { DecisionError, readDecisions, recordDecision, workflowOfChange } from "./decisions.js";
 import { machineOf } from "./machine.js";
 import { packsFor } from "./stackpacks.js";
+import { checkEvals } from "./evals.js";
 import { checkWorkflows, loadWorkflow, workflowIds } from "./workflow.js";
 import { agentForTask, AGENTS, checkRoster, rosterTable, writeAgents } from "./roles.js";
 import { checkChange, checkSpecs } from "./check.js";
@@ -756,6 +757,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const d = checkRoster(root);
         d.add(checkArtifacts(root));
         d.add(checkWorkflows(root));
+        d.add(checkEvals(root));
         const table = d.errors.length ? "" : rosterTable(root);
         const summary = `${d.errors.length ? "FAILED" : "OK"}: ${d.errors.length} error(s), ${d.warnings.length} warning(s)\n`;
         emit(
