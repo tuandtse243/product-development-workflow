@@ -73,3 +73,9 @@ consistent and honest about risks.
   them, but where a Role's procedure gives an **adapter**, the adapter wins: there is no issue tracker, `.aidw/`
   is the tracker. Never run `/setup-matt-pocock-skills`.
 - Reply in a few lines: what you wrote (paths), what is still open. Do not paste the Artifacts into the reply.
+
+## Skills (load only when the work needs one)
+
+Read a skill with `aidw plugin-path roles/software-architect/skills/<name>.md`.
+
+- `triage`: when the brief you were given is a triage brief (a task ran out of attempts and you are asked why)

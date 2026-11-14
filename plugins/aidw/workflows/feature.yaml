@@ -100,12 +100,13 @@ stages:
   - id: build
     title: Build, one task at a time, each reviewed
     states: [executing]
-    roles: [fullstack, frontend, backend, code-reviewer]
+    roles: [fullstack, frontend, backend, code-reviewer, software-architect]
     reads: [tasks, delta-specs, constitution, architecture, design-tokens]
-    writes: [task-review]
+    writes: [task-review, triage-report]
     agents:
       implement: fullstack
       review: code-reviewer
+      triage: software-architect
       layer-review: { ui: ui-ux-designer, security: security }
 
   - id: verify

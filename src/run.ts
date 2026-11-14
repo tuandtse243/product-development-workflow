@@ -73,7 +73,10 @@ function setField(tf: TaskFile, i: number, key: string, value: unknown): void {
 
 const statusOf = (t: Task) => String(t.status ?? "pending");
 const attemptsOf = (t: Task) => (Number.isInteger(t.attempts) ? Number(t.attempts) : 0);
-const maxAttemptsOf = (t: Task) => (Number.isInteger(t.max_attempts) ? Number(t.max_attempts) : DEFAULT_MAX_ATTEMPTS);
+/** The planned attempts (`max_attempts` is part of the approved plan), plus the one a triage of cause `implementation` grants. */
+const maxAttemptsOf = (t: Task) =>
+  (Number.isInteger(t.max_attempts) ? Number(t.max_attempts) : DEFAULT_MAX_ATTEMPTS) +
+  (typeof t.triage === "object" && t.triage !== null && (t.triage as { cause?: unknown }).cause === "implementation" ? 1 : 0);
 
 /** Tasks only run while the change is executing with a valid approval. */
 function requireExecuting(p: Paths, change: Change): void {
@@ -99,6 +102,7 @@ export type NextAction =
   | { action: "wave"; tasks: { task: string; title: string }[] }
   | { action: "integrate"; tasks: string[] }
   | { action: "review"; task: string; title: string }
+  | { action: "triage"; task: string; title: string; reason: string }
   | { action: "escalate"; task?: string; reason: string }
   | { action: "complete"; done: number };
 
@@ -117,6 +121,8 @@ export function nextAction(p: Paths, id: string): NextAction {
   for (const t of tf.tasks) {
     if (statusOf(t) !== "failed") continue;
     if (attemptsOf(t) >= maxAttemptsOf(t)) {
+      // A task that ran out of attempts is diagnosed once by an independent Agent before the user hears about it.
+      if (t.triage === undefined) return { action: "triage", task: t.id, title: title(t), reason: `task ${t.id} used ${attemptsOf(t)} of ${maxAttemptsOf(t)} attempts: ${String(t.notes ?? "")}` };
       return { action: "escalate", task: t.id, reason: `task ${t.id} failed ${attemptsOf(t)} of ${maxAttemptsOf(t)} attempts: ${String(t.notes ?? "")}` };
     }
     return { action: "implement", task: t.id, title: title(t), reason: "retry" };
@@ -767,6 +773,10 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
       if (failedCheckpoint.design && failedCheckpoint.design.screenshots.length === 0) previous.push(`- No fresh screenshot in \`${shots}\``);
     }
     if (fixReview) previous.push("- The reviewer asked for fixes:", "", fixReview.notes.split("\n").map((l) => `  ${l}`).join("\n"));
+    const triaged = readTriage(p, taskId);
+    if (triaged && isRecord(t.triage) && t.triage.cause === "implementation") {
+      previous.push("- The attempts ran out and an independent architect diagnosed the cause as the implementation. Its diagnosis (follow it; this is your last attempt):", "", triaged.diagnosis.split("\n").map((l) => `  ${l}`).join("\n"));
+    }
     body = [
       "You are the implementer of exactly this task, in a fresh context. Work from this brief and the files it points to.",
       "",
@@ -850,4 +860,140 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
   const path = join(dir, `${taskId}.${kind}.md`);
   writeFileSync(path, text);
   return { kind, task: taskId, path, text, skills };
+}
+
+// ---------------------------------------------------------------- triage
+
+/**
+ * Why a task ran out of attempts (docs/factory-architecture.md, section 7). One independent Agent (the Software Architect
+ * with its triage skill) reads the evidence and names the cause; the CLI decides what follows:
+ *   implementation  one further attempt, with the diagnosis in the brief; if that fails too the task escalates
+ *   environment     escalates with the exact thing the user must fix
+ *   plan, spec, architecture  escalates: the approved package would change, so the user decides
+ */
+export const TRIAGE_CAUSES = ["implementation", "environment", "plan", "spec", "architecture"] as const;
+export type TriageCause = (typeof TRIAGE_CAUSES)[number];
+
+const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+export const triageFile = (p: Paths, taskId: string) => join(p.run, `triage-${taskId}.md`);
+
+/** `CAUSE: <cause>` on the first line, then the diagnosis. Null when the first line is not one. */
+export function parseTriage(text: string): { cause: TriageCause; diagnosis: string } | null {
+  const m = /^\s*CAUSE:\s*([a-z]+)\s*\n?([\s\S]*)$/.exec(text);
+  if (!m || !(TRIAGE_CAUSES as readonly string[]).includes(m[1] as string)) return null;
+  return { cause: m[1] as TriageCause, diagnosis: (m[2] ?? "").trim() };
+}
+
+function readTriage(p: Paths, taskId: string): { cause: TriageCause; diagnosis: string } | null {
+  const text = readText(triageFile(p, taskId));
+  return text === null ? null : parseTriage(text);
+}
+
+/** The context packet of the triage Agent: the evidence of every attempt, the spec it was held to, and how to answer. */
+export function buildTriageBrief(p: Paths, id: string, taskId: string): { path: string; text: string } {
+  const tf = loadTasks(p, id);
+  const t = tf.tasks[indexOf(tf, taskId)] as Task;
+  if (statusOf(t) !== "failed" || attemptsOf(t) < maxAttemptsOf(t)) throw new OpError(`task ${taskId} is "${statusOf(t)}" with ${attemptsOf(t)} of ${maxAttemptsOf(t)} attempts: triage is for a failed task that ran out of attempts`);
+  if (t.triage !== undefined) throw new OpError(`task ${taskId} was already triaged: one triage per task`);
+  const ev = readEvidence(tf.change, t);
+  const reqs = requirementsAfterChange(p, id);
+  const scenarioIds = list(t.scenarios);
+  const reqIds = [...new Set([...list(t.specs), ...scenarioIds.map((s) => s.split("/").slice(0, -1).join("/"))])];
+  const reqBlocks = reqIds.map((r) => (reqs.get(r) ? `<!-- ${r} -->\n${reqs.get(r)!.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`));
+  const attempts = ev.checkpoints.map((c, i) => {
+    const failed = c.verify.find((v) => v.exit !== 0);
+    return [
+      `### Checkpoint ${i + 1}: ${c.ok ? "passed" : "failed"}`,
+      ...(c.missing_scenarios.length ? [`- Missing scenario tests: ${c.missing_scenarios.map((s) => `\`${s}\``).join(", ")}`] : []),
+      ...(failed ? [`- \`${failed.command}\` failed${failed.timedOut ? " (timed out)" : ` with exit ${failed.exit}`}:`, "", "```", failed.tail, "```"] : []),
+    ].join("\n");
+  });
+  const reviews = ev.reviews.map((r, i) => `### Review ${i + 1}: ${r.verdict}\n${r.notes.trim()}`);
+  const out = triageFile(p, taskId);
+  const pointers = [
+    pointer(p, p.constitution, "engineering principles"),
+    pointer(p, join(p.architecture, "overview.md"), "architecture"),
+    pointer(p, join(p.requirements, `${id}.md`), "requirements"),
+    pointer(p, join(tf.change.dir, "tasks.yaml"), "the plan (this task and its neighbours)"),
+  ].filter((x): x is string => x !== null);
+  const text = [
+    `# Triage brief: ${taskId} - ${String(t.title ?? "")}`,
+    "",
+    `Change \`${id}\` · role ${String(t.role ?? "?")} · ${attemptsOf(t)} of ${maxAttemptsOf(t)} attempts used, all unsuccessful.`,
+    "",
+    "You are the Software Architect in a fresh context, asked once to say WHY this task keeps failing. You did not write this code. You may read files and run read-only commands; you edit nothing. Write only the file named at the end.",
+    "",
+    "## Task",
+    "",
+    `- Scenarios: ${scenarioIds.length ? scenarioIds.map((s) => `\`${s}\``).join(", ") : "(none)"}`,
+    `- Touches: ${list(t.touches).map((g) => `\`${g}\``).join(", ")}`,
+    `- Verify: ${list(t.verify).map((v) => `\`${v}\``).join(", ")}`,
+    `- Depends on: ${list(t.depends_on).join(", ") || "nothing"}`,
+    ...(t.notes ? [`- Last note: ${String(t.notes)}`] : []),
+    "",
+    "## Requirements the task was held to (spec text after this change)",
+    "",
+    ...(reqBlocks.length ? ["```markdown", reqBlocks.join("\n\n"), "```"] : ["(none)"]),
+    "",
+    "## What happened",
+    "",
+    ...(attempts.length ? attempts : ["(no checkpoint recorded)"]),
+    ...(reviews.length ? ["", ...reviews] : []),
+    "",
+    "## Read if you need it",
+    "",
+    ...pointers,
+    `- the task's changes: \`git diff ${typeof t.base === "string" ? t.base : "HEAD"}\``,
+    "",
+    "## Decide the cause: exactly one",
+    "",
+    "- `implementation`: the plan, spec and architecture are sound and the code is wrong or incomplete. A fresh attempt with your diagnosis can fix it.",
+    "- `environment`: the machine, not the code: a missing binary, package registry, credential, port, browser, permission or network. Say the exact thing the user must fix.",
+    "- `plan`: the task cannot succeed as planned (wrong `touches`, missing dependency, scope too big or too small, `verify` that cannot pass).",
+    "- `spec`: a scenario contradicts another, cannot be observed or tested, or asks for something the requirement text does not support.",
+    "- `architecture`: the approved architecture or a Decision to honor cannot be met together with the requirements.",
+    "",
+    "Judge from the evidence above, not from the number of failures. Prefer `implementation` only when you can say concretely what to change.",
+    "",
+    "## Answer",
+    "",
+    `**Write the answer to \`${out}\` with the Write tool** (the only file you may write): the first line is exactly \`CAUSE: <one of implementation, environment, plan, spec, architecture>\`, then the diagnosis: the evidence that shows it (file, command, error), and what must change. For \`implementation\` say what to do differently; for \`environment\` the exact fix for the user; for \`plan\`, \`spec\` or \`architecture\` what the user must decide. Reply with only the first line.`,
+    "",
+  ].join("\n");
+  const dir = join(p.run, "briefs", id);
+  mkdirSync(dir, { recursive: true });
+  const path = join(dir, `${taskId}.triage.md`);
+  writeFileSync(path, text);
+  return { path, text };
+}
+
+export interface TriageResult {
+  task: string;
+  cause: TriageCause;
+  /** retry: one further attempt was granted; escalate: the task stopped for the user */
+  outcome: "retry" | "escalate";
+  diagnosis: string;
+}
+
+/** Records the triage Agent's answer and applies the rule of its cause. One triage per task. */
+export function recordTriage(p: Paths, id: string, taskId: string, text: string): TriageResult {
+  const tf = loadTasks(p, id);
+  requireExecuting(p, tf.change);
+  const i = indexOf(tf, taskId);
+  const t = tf.tasks[i] as Task;
+  if (statusOf(t) !== "failed" || attemptsOf(t) < maxAttemptsOf(t)) throw new OpError(`task ${taskId} is "${statusOf(t)}" with ${attemptsOf(t)} of ${maxAttemptsOf(t)} attempts: triage is for a failed task that ran out of attempts`);
+  if (t.triage !== undefined) throw new OpError(`task ${taskId} was already triaged: one triage per task`);
+  const parsed = parseTriage(text);
+  if (!parsed) throw new OpError(`the triage answer must start with "CAUSE: ${TRIAGE_CAUSES.join("|")}"; spawn the triage Agent once more`);
+  const { cause, diagnosis } = parsed;
+  const gist = diagnosis.split("\n").find((l) => l.trim()) ?? "";
+  setField(tf, i, "triage", { cause, at: now() });
+  if (cause === "implementation") {
+    setField(tf, i, "notes", `triage: implementation, one more attempt: ${gist}`.slice(0, 500));
+  } else {
+    setField(tf, i, "status", "escalated");
+    setField(tf, i, "notes", `triage: ${cause}. ${gist} (full diagnosis: .aidw/run/triage-${taskId}.md)`.slice(0, 500));
+  }
+  saveTasks(tf);
+  return { task: taskId, cause, outcome: cause === "implementation" ? "retry" : "escalate", diagnosis };
 }

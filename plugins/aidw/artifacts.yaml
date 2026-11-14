@@ -158,6 +158,10 @@ task-review:
   path: run/review-<T>.md
   owner: code-reviewer
   validate: none
+triage-report:
+  path: run/triage-<T>.md
+  owner: software-architect
+  validate: none
 layer-review-security:
   path: run/layer-review-security.md
   owner: security

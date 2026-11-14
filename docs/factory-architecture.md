@@ -210,8 +210,9 @@ A Decision Point in a Workflow:
 
 The deciding Role writes its answer and reason as an Artifact. The CLI rejects an answer outside `options`.
 
-**Triage.** When a task runs out of attempts, a fresh `software-architect` Agent (read-only) classifies the
-cause from the evidence:
+**Triage.** When a task runs out of attempts, a fresh `software-architect` Agent classifies the cause from the
+evidence. It writes only its answer (`.aidw/run/triage-<task>.md`): the gate keeps the approved package and the
+project files closed to it. One triage per task; `implementation` grants one further attempt, then the task escalates:
 
 | Cause | What the CLI does |
 |---|---|

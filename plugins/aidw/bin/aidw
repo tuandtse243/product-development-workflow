@@ -7625,7 +7625,9 @@ var RUNTIME_FIELDS = [
   "merged_at",
   "sequential",
   // re-approval keeps done work: the plan the task was finished against
-  "plan_sha"
+  "plan_sha",
+  // the one triage of a task that ran out of attempts: { cause, at }
+  "triage"
 ];
 var DEFAULT_MAX_ATTEMPTS = 3;
 var ADDED_ORIGINS = ["converge", "quality", "integration"];
@@ -8222,11 +8224,11 @@ function loadAgents() {
   const stages = Array.isArray(data?.stages) ? data.stages : [];
   const agents = stages.map((s) => s?.agents).find(isRecord);
   const layer = isRecord(agents?.["layer-review"]) ? agents["layer-review"] : {};
-  const [implement, review, ui, security] = [agents?.implement, agents?.review, layer.ui, layer.security];
-  for (const v of [implement, review, ui, security]) {
-    if (typeof v !== "string" || !ROLE_ID.test(v)) throw new Error(`the Agents are missing: ${file || "plugin root not found"} needs a stage with agents: implement, review and layer-review ui and security`);
+  const [implement, review, triage, ui, security] = [agents?.implement, agents?.review, agents?.triage, layer.ui, layer.security];
+  for (const v of [implement, review, triage, ui, security]) {
+    if (typeof v !== "string" || !ROLE_ID.test(v)) throw new Error(`the Agents are missing: ${file || "plugin root not found"} needs a stage with agents: implement, review, triage and layer-review ui and security`);
   }
-  return { implement: `aidw:${implement}`, taskReview: `aidw:${review}`, layerReview: { ui: `aidw:${ui}`, security: `aidw:${security}` } };
+  return { implement: `aidw:${implement}`, taskReview: `aidw:${review}`, triage: `aidw:${triage}`, layerReview: { ui: `aidw:${ui}`, security: `aidw:${security}` } };
 }
 var oneOf = (list5, v) => typeof v === "string" && list5.includes(v);
 var rosterFile = (root) => (0, import_node_path5.join)(root, "roster.yaml");
@@ -9380,7 +9382,7 @@ function setField(tf, i, key, value) {
 }
 var statusOf2 = (t) => String(t.status ?? "pending");
 var attemptsOf = (t) => Number.isInteger(t.attempts) ? Number(t.attempts) : 0;
-var maxAttemptsOf = (t) => Number.isInteger(t.max_attempts) ? Number(t.max_attempts) : DEFAULT_MAX_ATTEMPTS;
+var maxAttemptsOf = (t) => (Number.isInteger(t.max_attempts) ? Number(t.max_attempts) : DEFAULT_MAX_ATTEMPTS) + (typeof t.triage === "object" && t.triage !== null && t.triage.cause === "implementation" ? 1 : 0);
 function requireExecuting(p, change) {
   const state = stateOf(change);
   if (state !== "executing") {
@@ -9404,6 +9406,7 @@ function nextAction(p, id) {
   for (const t of tf.tasks) {
     if (statusOf2(t) !== "failed") continue;
     if (attemptsOf(t) >= maxAttemptsOf(t)) {
+      if (t.triage === void 0) return { action: "triage", task: t.id, title: title(t), reason: `task ${t.id} used ${attemptsOf(t)} of ${maxAttemptsOf(t)} attempts: ${String(t.notes ?? "")}` };
       return { action: "escalate", task: t.id, reason: `task ${t.id} failed ${attemptsOf(t)} of ${maxAttemptsOf(t)} attempts: ${String(t.notes ?? "")}` };
     }
     return { action: "implement", task: t.id, title: title(t), reason: "retry" };
@@ -9867,6 +9870,10 @@ ${req.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`;
       if (failedCheckpoint.design && failedCheckpoint.design.screenshots.length === 0) previous.push(`- No fresh screenshot in \`${shots}\``);
     }
     if (fixReview) previous.push("- The reviewer asked for fixes:", "", fixReview.notes.split("\n").map((l) => `  ${l}`).join("\n"));
+    const triaged = readTriage(p, taskId);
+    if (triaged && isRecord2(t.triage) && t.triage.cause === "implementation") {
+      previous.push("- The attempts ran out and an independent architect diagnosed the cause as the implementation. Its diagnosis (follow it; this is your last attempt):", "", triaged.diagnosis.split("\n").map((l) => `  ${l}`).join("\n"));
+    }
     body = [
       "You are the implementer of exactly this task, in a fresh context. Work from this brief and the files it points to.",
       "",
@@ -9937,6 +9944,117 @@ ${req.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`;
   const path = (0, import_node_path10.join)(dir, `${taskId}.${kind}.md`);
   (0, import_node_fs9.writeFileSync)(path, text);
   return { kind, task: taskId, path, text, skills };
+}
+var TRIAGE_CAUSES = ["implementation", "environment", "plan", "spec", "architecture"];
+var isRecord2 = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+var triageFile = (p, taskId) => (0, import_node_path10.join)(p.run, `triage-${taskId}.md`);
+function parseTriage(text) {
+  const m = /^\s*CAUSE:\s*([a-z]+)\s*\n?([\s\S]*)$/.exec(text);
+  if (!m || !TRIAGE_CAUSES.includes(m[1])) return null;
+  return { cause: m[1], diagnosis: (m[2] ?? "").trim() };
+}
+function readTriage(p, taskId) {
+  const text = readText(triageFile(p, taskId));
+  return text === null ? null : parseTriage(text);
+}
+function buildTriageBrief(p, id, taskId) {
+  const tf = loadTasks(p, id);
+  const t = tf.tasks[indexOf(tf, taskId)];
+  if (statusOf2(t) !== "failed" || attemptsOf(t) < maxAttemptsOf(t)) throw new OpError(`task ${taskId} is "${statusOf2(t)}" with ${attemptsOf(t)} of ${maxAttemptsOf(t)} attempts: triage is for a failed task that ran out of attempts`);
+  if (t.triage !== void 0) throw new OpError(`task ${taskId} was already triaged: one triage per task`);
+  const ev = readEvidence(tf.change, t);
+  const reqs = requirementsAfterChange(p, id);
+  const scenarioIds = list3(t.scenarios);
+  const reqIds = [.../* @__PURE__ */ new Set([...list3(t.specs), ...scenarioIds.map((s) => s.split("/").slice(0, -1).join("/"))])];
+  const reqBlocks = reqIds.map((r) => reqs.get(r) ? `<!-- ${r} -->
+${reqs.get(r).raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`);
+  const attempts = ev.checkpoints.map((c, i) => {
+    const failed = c.verify.find((v) => v.exit !== 0);
+    return [
+      `### Checkpoint ${i + 1}: ${c.ok ? "passed" : "failed"}`,
+      ...c.missing_scenarios.length ? [`- Missing scenario tests: ${c.missing_scenarios.map((s) => `\`${s}\``).join(", ")}`] : [],
+      ...failed ? [`- \`${failed.command}\` failed${failed.timedOut ? " (timed out)" : ` with exit ${failed.exit}`}:`, "", "```", failed.tail, "```"] : []
+    ].join("\n");
+  });
+  const reviews = ev.reviews.map((r, i) => `### Review ${i + 1}: ${r.verdict}
+${r.notes.trim()}`);
+  const out = triageFile(p, taskId);
+  const pointers = [
+    pointer(p, p.constitution, "engineering principles"),
+    pointer(p, (0, import_node_path10.join)(p.architecture, "overview.md"), "architecture"),
+    pointer(p, (0, import_node_path10.join)(p.requirements, `${id}.md`), "requirements"),
+    pointer(p, (0, import_node_path10.join)(tf.change.dir, "tasks.yaml"), "the plan (this task and its neighbours)")
+  ].filter((x) => x !== null);
+  const text = [
+    `# Triage brief: ${taskId} - ${String(t.title ?? "")}`,
+    "",
+    `Change \`${id}\` \xB7 role ${String(t.role ?? "?")} \xB7 ${attemptsOf(t)} of ${maxAttemptsOf(t)} attempts used, all unsuccessful.`,
+    "",
+    "You are the Software Architect in a fresh context, asked once to say WHY this task keeps failing. You did not write this code. You may read files and run read-only commands; you edit nothing. Write only the file named at the end.",
+    "",
+    "## Task",
+    "",
+    `- Scenarios: ${scenarioIds.length ? scenarioIds.map((s) => `\`${s}\``).join(", ") : "(none)"}`,
+    `- Touches: ${list3(t.touches).map((g) => `\`${g}\``).join(", ")}`,
+    `- Verify: ${list3(t.verify).map((v) => `\`${v}\``).join(", ")}`,
+    `- Depends on: ${list3(t.depends_on).join(", ") || "nothing"}`,
+    ...t.notes ? [`- Last note: ${String(t.notes)}`] : [],
+    "",
+    "## Requirements the task was held to (spec text after this change)",
+    "",
+    ...reqBlocks.length ? ["```markdown", reqBlocks.join("\n\n"), "```"] : ["(none)"],
+    "",
+    "## What happened",
+    "",
+    ...attempts.length ? attempts : ["(no checkpoint recorded)"],
+    ...reviews.length ? ["", ...reviews] : [],
+    "",
+    "## Read if you need it",
+    "",
+    ...pointers,
+    `- the task's changes: \`git diff ${typeof t.base === "string" ? t.base : "HEAD"}\``,
+    "",
+    "## Decide the cause: exactly one",
+    "",
+    "- `implementation`: the plan, spec and architecture are sound and the code is wrong or incomplete. A fresh attempt with your diagnosis can fix it.",
+    "- `environment`: the machine, not the code: a missing binary, package registry, credential, port, browser, permission or network. Say the exact thing the user must fix.",
+    "- `plan`: the task cannot succeed as planned (wrong `touches`, missing dependency, scope too big or too small, `verify` that cannot pass).",
+    "- `spec`: a scenario contradicts another, cannot be observed or tested, or asks for something the requirement text does not support.",
+    "- `architecture`: the approved architecture or a Decision to honor cannot be met together with the requirements.",
+    "",
+    "Judge from the evidence above, not from the number of failures. Prefer `implementation` only when you can say concretely what to change.",
+    "",
+    "## Answer",
+    "",
+    `**Write the answer to \`${out}\` with the Write tool** (the only file you may write): the first line is exactly \`CAUSE: <one of implementation, environment, plan, spec, architecture>\`, then the diagnosis: the evidence that shows it (file, command, error), and what must change. For \`implementation\` say what to do differently; for \`environment\` the exact fix for the user; for \`plan\`, \`spec\` or \`architecture\` what the user must decide. Reply with only the first line.`,
+    ""
+  ].join("\n");
+  const dir = (0, import_node_path10.join)(p.run, "briefs", id);
+  (0, import_node_fs9.mkdirSync)(dir, { recursive: true });
+  const path = (0, import_node_path10.join)(dir, `${taskId}.triage.md`);
+  (0, import_node_fs9.writeFileSync)(path, text);
+  return { path, text };
+}
+function recordTriage(p, id, taskId, text) {
+  const tf = loadTasks(p, id);
+  requireExecuting(p, tf.change);
+  const i = indexOf(tf, taskId);
+  const t = tf.tasks[i];
+  if (statusOf2(t) !== "failed" || attemptsOf(t) < maxAttemptsOf(t)) throw new OpError(`task ${taskId} is "${statusOf2(t)}" with ${attemptsOf(t)} of ${maxAttemptsOf(t)} attempts: triage is for a failed task that ran out of attempts`);
+  if (t.triage !== void 0) throw new OpError(`task ${taskId} was already triaged: one triage per task`);
+  const parsed = parseTriage(text);
+  if (!parsed) throw new OpError(`the triage answer must start with "CAUSE: ${TRIAGE_CAUSES.join("|")}"; spawn the triage Agent once more`);
+  const { cause, diagnosis } = parsed;
+  const gist = diagnosis.split("\n").find((l) => l.trim()) ?? "";
+  setField(tf, i, "triage", { cause, at: now2() });
+  if (cause === "implementation") {
+    setField(tf, i, "notes", `triage: implementation, one more attempt: ${gist}`.slice(0, 500));
+  } else {
+    setField(tf, i, "status", "escalated");
+    setField(tf, i, "notes", `triage: ${cause}. ${gist} (full diagnosis: .aidw/run/triage-${taskId}.md)`.slice(0, 500));
+  }
+  saveTasks(tf);
+  return { task: taskId, cause, outcome: cause === "implementation" ? "retry" : "escalate", diagnosis };
 }
 
 // src/converge.ts
@@ -12193,13 +12311,13 @@ var import_node_path20 = require("node:path");
 var import_yaml8 = __toESM(require_dist(), 1);
 var ARTIFACT_VALIDATORS = ["aidw validate", "aidw analyze", "aidw plan", "none"];
 var NAME = /^[a-z0-9]+(-[a-z0-9]+)*$/;
-var isRecord2 = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+var isRecord3 = (v) => !!v && typeof v === "object" && !Array.isArray(v);
 var artifactsFile = (root) => (0, import_node_path20.join)(root, "artifacts.yaml");
 function loadArtifacts(root) {
   const file = artifactsFile(root);
   if (!(0, import_node_fs19.existsSync)(file)) return null;
   const data = import_yaml8.default.parse((0, import_node_fs19.readFileSync)(file, "utf8"));
-  return isRecord2(data) ? data : {};
+  return isRecord3(data) ? data : {};
 }
 function checkArtifacts(root) {
   const d = new Diags();
@@ -12223,7 +12341,7 @@ function checkArtifacts(root) {
   for (const name of names) {
     const e = registry[name];
     if (!NAME.test(name)) d.error(af, `artifact name "${name}" must be lower-case kebab-case`);
-    if (!isRecord2(e)) {
+    if (!isRecord3(e)) {
       d.error(af, `artifact ${name} is not a mapping`);
       continue;
     }
@@ -12285,7 +12403,7 @@ var COMMAND_TRANSITIONS = [
   ["awaiting_approval", "approved"],
   ["delivered", "archived"]
 ];
-var isRecord3 = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+var isRecord4 = (v) => !!v && typeof v === "object" && !Array.isArray(v);
 var strings = (v) => Array.isArray(v) ? v.map(String) : [];
 var KEBAB = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 var workflowsDir = (root) => (0, import_node_path21.join)(root, "workflows");
@@ -12302,8 +12420,8 @@ function loadWorkflow(root, id) {
   } catch {
     return null;
   }
-  if (!isRecord3(data)) return null;
-  const stages = (Array.isArray(data.stages) ? data.stages : []).filter(isRecord3).map(
+  if (!isRecord4(data)) return null;
+  const stages = (Array.isArray(data.stages) ? data.stages : []).filter(isRecord4).map(
     (s) => ({
       id: String(s.id ?? ""),
       title: String(s.title ?? ""),
@@ -12312,7 +12430,7 @@ function loadWorkflow(root, id) {
       reads: strings(s.reads),
       writes: strings(s.writes),
       ...typeof s.gate === "string" ? { gate: s.gate } : {},
-      ...isRecord3(s.agents) ? { agents: s.agents } : {}
+      ...isRecord4(s.agents) ? { agents: s.agents } : {}
     })
   );
   return {
@@ -12424,10 +12542,11 @@ function checkAgents(d, file, at, s, roles) {
   const expect = {
     implement: AGENTS.implement.replace(/^aidw:/, ""),
     review: AGENTS.taskReview.replace(/^aidw:/, ""),
+    triage: AGENTS.triage.replace(/^aidw:/, ""),
     ui: AGENTS.layerReview.ui.replace(/^aidw:/, ""),
     security: AGENTS.layerReview.security.replace(/^aidw:/, "")
   };
-  const got = { implement: a.implement, review: a.review, ui: a["layer-review"]?.ui, security: a["layer-review"]?.security };
+  const got = { implement: a.implement, review: a.review, triage: a.triage, ui: a["layer-review"]?.ui, security: a["layer-review"]?.security };
   for (const k of Object.keys(expect)) {
     if (got[k] !== expect[k]) d.error(file, `${at}: agents ${k} is "${String(got[k])}" but the CLI spawns "${expect[k]}" (the build stage of workflows/product.yaml)`);
     else if (!(expect[k] in roles)) d.error(file, `${at}: agent "${expect[k]}" is not in roster.yaml`);
@@ -13186,7 +13305,7 @@ function changeTasks(p) {
   return out;
 }
 function nextText(n) {
-  return n.action === "implement" ? `implement ${n.task} (${n.reason}): ${n.title}${n.reason === "interrupted" ? " (if an implementer you spawned for it has not reported yet, it is still running: wait for it, do not spawn another)" : ""}` : n.action === "review" ? `review ${n.task}: ${n.title}` : n.action === "escalate" ? `escalate: ${n.reason}` : n.action === "wave" ? `wave of ${n.tasks.length}: ${n.tasks.map((x) => `${x.task} (${x.title})`).join(", ")}` : n.action === "integrate" ? `integrate ${n.tasks.join(", ")}: run \`aidw integrate\` on the merged code` : `complete: all ${n.done} task(s) done`;
+  return n.action === "implement" ? `implement ${n.task} (${n.reason}): ${n.title}${n.reason === "interrupted" ? " (if an implementer you spawned for it has not reported yet, it is still running: wait for it, do not spawn another)" : ""}` : n.action === "review" ? `review ${n.task}: ${n.title}` : n.action === "triage" ? `triage ${n.task} (${n.reason}): \`aidw brief ${n.task} --for triage\`, spawn ${AGENTS.triage} with the brief, then \`aidw triage ${n.task}\`` : n.action === "escalate" ? `escalate: ${n.reason}` : n.action === "wave" ? `wave of ${n.tasks.length}: ${n.tasks.map((x) => `${x.task} (${x.title})`).join(", ")}` : n.action === "integrate" ? `integrate ${n.tasks.join(", ")}: run \`aidw integrate\` on the merged code` : `complete: all ${n.done} task(s) done`;
 }
 function nextLine(p, id) {
   try {
@@ -13250,6 +13369,8 @@ Unattended (in your own terminal, not inside Claude Code):
   run --status | --stop                  the background runner started with --detach
                                          loop \`claude -p "/aidw:resume <id>"\` until archived; waits out usage
                                          limits (stated reset time or 5-60 min backoff); stops on escalation
+  triage <task> [--notes-file F]         a task out of attempts: record the architect's diagnosis from .aidw/run/triage-<task>.md
+                                         (CAUSE: implementation -> one more attempt; anything else escalates with the diagnosis)
   task retry <task>                      user-granted fresh attempt budget for an escalated/failed task
   task reopen <task> [--revert]          a done task was wrong: back to pending (and git revert its commit with --revert)
   brief <task> [--for implement|review]  write the context packet for a fresh subagent; prints its path
@@ -13468,7 +13589,15 @@ SPAWN ${agent} with: Task brief: ${brief.path}. Read it and implement the task.
         const id = resolveChangeId(p, str(args.flags.change));
         const taskId = need(rest[0], "task id");
         const kind = str(args.flags.for) ?? "implement";
-        if (kind !== "implement" && kind !== "review") throw new UsageError('--for must be "implement" or "review"');
+        if (kind === "triage" && cmd2 === "brief") {
+          const tb = buildTriageBrief(p, id, taskId);
+          emit({ change: id, task: taskId, for: kind, path: tb.path }, `${tb.path}
+SPAWN ${AGENTS.triage} with: Triage brief: ${tb.path}. Read it and write your answer as it says.
+Then: aidw triage ${taskId}
+`);
+          return 0;
+        }
+        if (kind !== "implement" && kind !== "review") throw new UsageError('--for must be "implement" or "review" (or "triage" for brief)');
         const b = buildBrief(p, id, taskId, kind, (0, import_node_path26.join)(pluginRoot(env), "library", "vendor"));
         if (cmd2 === "skills") {
           emit({ change: id, task: taskId, for: kind, skills: b.skills }, b.skills.map((s) => `${s.path}  # ${s.reason}
@@ -13741,6 +13870,23 @@ ${r.ok && r.ran ? "Previews work from now on: run aidw deploy.\n" : ""}`);
           { ok: true, change: id, ...r },
           `${reviewLine(r, verdict, notes)}${nextLine(p, id)}${r.status === "done" ? sessionEnd(env, p, id) : ""}`
         );
+        return 0;
+      }
+      case "triage": {
+        const p = project();
+        const id = resolveChangeId(p, str(args.flags.change));
+        const taskId = need(rest[0], "task id");
+        const file = str(args.flags["notes-file"]) ?? triageFile(p, taskId);
+        if (!(0, import_node_fs25.existsSync)(file)) throw new OpError(`no triage answer at ${file}: the Agent did not write it. Spawn it once more with \`aidw brief ${taskId} --for triage\``);
+        const r = recordTriage(p, id, taskId, (0, import_node_fs25.readFileSync)(file, "utf8"));
+        const first = r.diagnosis.split("\n").find((l) => l.trim()) ?? "";
+        const line = r.outcome === "retry" ? `${r.task} triaged: the cause is the implementation. One further attempt is granted with the diagnosis in its brief: ${first}
+` : r.cause === "environment" ? `${r.task} triaged: the cause is the environment, so it escalated. What the user must fix: ${first}
+(full diagnosis: ${rel(p, file)})
+` : `${r.task} triaged: the cause is the ${r.cause}, so it escalated: the approved package would change and the user decides. ${first}
+(full diagnosis: ${rel(p, file)})
+`;
+        emit({ ok: true, change: id, ...r }, `${line}${nextLine(p, id)}`);
         return 0;
       }
       case "verdict": {

@@ -135,6 +135,18 @@ commands and the `code` layer on the merged code.
 - `FAIL` with a fix task `Inn`: loop; `next` returns it before anything else (it runs on the main checkout).
 - Fix rounds exhausted: the change is `escalated`; tell the user (section 2, step 2) and stop.
 
+**`triage <T>`** (the task used all its attempts): an independent diagnosis comes before the user hears about it.
+1. `aidw brief <T> --for triage --change <id>`. It prints the brief path and the `SPAWN` line.
+2. Spawn the Agent named there (`aidw:software-architect`) with the printed prompt and nothing else. It reads the
+   evidence of every attempt and writes `.aidw/run/triage-<T>.md` (first line `CAUSE: ...`).
+3. `aidw triage <T> --change <id>` records it and applies the rule of the cause:
+   - `implementation`: one further attempt with the diagnosis in its brief. Follow the printed `NEXT:`.
+   - `environment`: the task is escalated; the output names what the user must fix.
+   - `plan`, `spec`, `architecture`: the task is escalated; the approved package would change. Do not retry.
+   Escalated: go to *Escalate* and give the user the diagnosis (`.aidw/run/triage-<T>.md`) with its cause.
+4. No clear `CAUSE:` line: spawn it once more; still unclear, escalate with the task's own notes.
+A task is triaged once: if the extra attempt fails too, it escalates without another triage.
+
 **`escalate`**: see below.
 
 **`complete`**: go to *Finish*.
@@ -142,8 +154,8 @@ commands and the `code` layer on the merged code.
 ## 2. Escalate
 
 1. `aidw transition <id> escalated --reason "<short reason>"`.
-2. Tell the user what is blocked and why (task, attempts, the last checkpoint failure or review notes from
-   `.aidw/changes/<id>/evidence/<T>.json`), and the options:
+2. Tell the user what is blocked and why (task, attempts, the triage diagnosis in `.aidw/run/triage-<T>.md` when there is
+   one, else the last checkpoint failure or review notes from `.aidw/changes/<id>/evidence/<T>.json`), and the options:
    - fix the cause yourself or give the missing decision, then `/aidw:resume`;
    - change scope: `aidw transition <id> analyzing`, revise the Analysis, approve again.
 3. Stop.

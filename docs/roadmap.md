@@ -118,6 +118,11 @@ aidw becomes a software factory with a Roster of Roles, Workflows as data and de
     and `aidw:technical-planner` to draft. Design (step 5 of the skill) and the brownfield assessment stay in the main
     session. Not yet run end to end: a run on `~/aidw-demo` is the check.
 - [ ] **Step 3.** Decision Points, triage, Slice shape; `bugfix` and `audit` Workflows.
+  - [x] Slice shape: a task runs with the Agent of its `role` (`aidw:fullstack`, `frontend` or `backend`; a Planned Role runs
+    through the Role that carries it); `aidw analyze` warns when the plan names a Role that cannot run tasks.
+  - [x] Triage (section 12, point 6 and the user's point 4): a task out of attempts is diagnosed once by `aidw:software-architect`
+    (`aidw brief <T> --for triage`, `aidw triage <T>`); `implementation` grants one more attempt, `environment`, `plan`, `spec`
+    and `architecture` escalate with the diagnosis. Not yet run with a real Agent.
 - [ ] **Step 4.** Activate Planned Roles one at a time with their evals; Next.js and NestJS framework packs.
 
 ## Backlog

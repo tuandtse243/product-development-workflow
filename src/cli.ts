@@ -42,7 +42,7 @@ import { deliver } from "./deliver.js";
 import { deploy, parseQuality, qualityFile, recordLayerReview, verify } from "./quality.js";
 import { firstDeploy } from "./firstdeploy.js";
 import { reconcileDoneTasks, reopenTask } from "./run.js";
-import { autoReview, buildBrief, checkpoint, integrateChange, nextAction, parseVerdict, recordReview, retryTask, startTask, type NextAction } from "./run.js";
+import { autoReview, buildBrief, buildTriageBrief, checkpoint, integrateChange, nextAction, parseVerdict, recordReview, recordTriage, retryTask, startTask, triageFile, type NextAction } from "./run.js";
 import { VERSION } from "./version.js";
 
 function reviewLine(r: { task: string; verdict: string; status: string; commit: string | null; warning?: string; conflict?: string }, verdict: string, notes: string): string {
@@ -98,7 +98,9 @@ function nextText(n: NextAction): string {
     ? `implement ${n.task} (${n.reason}): ${n.title}${n.reason === "interrupted" ? " (if an implementer you spawned for it has not reported yet, it is still running: wait for it, do not spawn another)" : ""}`
     : n.action === "review"
       ? `review ${n.task}: ${n.title}`
-      : n.action === "escalate"
+      : n.action === "triage"
+        ? `triage ${n.task} (${n.reason}): \`aidw brief ${n.task} --for triage\`, spawn ${AGENTS.triage} with the brief, then \`aidw triage ${n.task}\``
+        : n.action === "escalate"
         ? `escalate: ${n.reason}`
         : n.action === "wave"
           ? `wave of ${n.tasks.length}: ${n.tasks.map((x) => `${x.task} (${x.title})`).join(", ")}`
@@ -173,6 +175,8 @@ Unattended (in your own terminal, not inside Claude Code):
   run --status | --stop                  the background runner started with --detach
                                          loop \`claude -p "/aidw:resume <id>"\` until archived; waits out usage
                                          limits (stated reset time or 5-60 min backoff); stops on escalation
+  triage <task> [--notes-file F]         a task out of attempts: record the architect's diagnosis from .aidw/run/triage-<task>.md
+                                         (CAUSE: implementation -> one more attempt; anything else escalates with the diagnosis)
   task retry <task>                      user-granted fresh attempt budget for an escalated/failed task
   task reopen <task> [--revert]          a done task was wrong: back to pending (and git revert its commit with --revert)
   brief <task> [--for implement|review]  write the context packet for a fresh subagent; prints its path
@@ -426,7 +430,12 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const id = resolveChangeId(p, str(args.flags.change));
         const taskId = need(rest[0], "task id");
         const kind = str(args.flags.for) ?? "implement";
-        if (kind !== "implement" && kind !== "review") throw new UsageError('--for must be "implement" or "review"');
+        if (kind === "triage" && cmd === "brief") {
+          const tb = buildTriageBrief(p, id, taskId);
+          emit({ change: id, task: taskId, for: kind, path: tb.path }, `${tb.path}\nSPAWN ${AGENTS.triage} with: Triage brief: ${tb.path}. Read it and write your answer as it says.\nThen: aidw triage ${taskId}\n`);
+          return 0;
+        }
+        if (kind !== "implement" && kind !== "review") throw new UsageError('--for must be "implement" or "review" (or "triage" for brief)');
         const b = buildBrief(p, id, taskId, kind, join(pluginRoot(env), "library", "vendor"));
         if (cmd === "skills") {
           emit({ change: id, task: taskId, for: kind, skills: b.skills }, b.skills.map((s) => `${s.path}  # ${s.reason}\n`).join(""));
@@ -670,6 +679,25 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           { ok: true, change: id, ...r },
           `${reviewLine(r, verdict, notes)}${nextLine(p, id)}${r.status === "done" ? sessionEnd(env, p, id) : ""}`,
         );
+        return 0;
+      }
+
+      case "triage": {
+        // The triage Agent wrote its answer to .aidw/run/triage-<task>.md; the rule of its cause is applied here.
+        const p = project();
+        const id = resolveChangeId(p, str(args.flags.change));
+        const taskId = need(rest[0], "task id");
+        const file = str(args.flags["notes-file"]) ?? triageFile(p, taskId);
+        if (!existsSync(file)) throw new OpError(`no triage answer at ${file}: the Agent did not write it. Spawn it once more with \`aidw brief ${taskId} --for triage\``);
+        const r = recordTriage(p, id, taskId, readFileSync(file, "utf8"));
+        const first = r.diagnosis.split("\n").find((l) => l.trim()) ?? "";
+        const line =
+          r.outcome === "retry"
+            ? `${r.task} triaged: the cause is the implementation. One further attempt is granted with the diagnosis in its brief: ${first}\n`
+            : r.cause === "environment"
+              ? `${r.task} triaged: the cause is the environment, so it escalated. What the user must fix: ${first}\n(full diagnosis: ${rel(p, file)})\n`
+              : `${r.task} triaged: the cause is the ${r.cause}, so it escalated: the approved package would change and the user decides. ${first}\n(full diagnosis: ${rel(p, file)})\n`;
+        emit({ ok: true, change: id, ...r }, `${line}${nextLine(p, id)}`);
         return 0;
       }
 

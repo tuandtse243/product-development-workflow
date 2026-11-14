@@ -24,7 +24,7 @@ export interface Stage {
   reads: string[];
   writes: string[];
   gate?: (typeof GATES)[number];
-  agents?: { implement?: string; review?: string; "layer-review"?: Record<string, string> };
+  agents?: { implement?: string; review?: string; triage?: string; "layer-review"?: Record<string, string> };
 }
 
 export interface Workflow {
@@ -212,10 +212,11 @@ function checkAgents(d: Diags, file: string, at: string, s: Stage, roles: Record
   const expect = {
     implement: AGENTS.implement.replace(/^aidw:/, ""),
     review: AGENTS.taskReview.replace(/^aidw:/, ""),
+    triage: AGENTS.triage.replace(/^aidw:/, ""),
     ui: AGENTS.layerReview.ui.replace(/^aidw:/, ""),
     security: AGENTS.layerReview.security.replace(/^aidw:/, ""),
   };
-  const got = { implement: a.implement, review: a.review, ui: a["layer-review"]?.ui, security: a["layer-review"]?.security };
+  const got = { implement: a.implement, review: a.review, triage: a.triage, ui: a["layer-review"]?.ui, security: a["layer-review"]?.security };
   for (const k of Object.keys(expect) as (keyof typeof expect)[]) {
     if (got[k] !== expect[k]) d.error(file, `${at}: agents ${k} is "${String(got[k])}" but the CLI spawns "${expect[k]}" (the build stage of workflows/product.yaml)`);
     else if (!(expect[k] in roles)) d.error(file, `${at}: agent "${expect[k]}" is not in roster.yaml`);

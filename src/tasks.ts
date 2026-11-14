@@ -26,6 +26,8 @@ export const RUNTIME_FIELDS = [
   "sequential",
   // re-approval keeps done work: the plan the task was finished against
   "plan_sha",
+  // the one triage of a task that ran out of attempts: { cause, at }
+  "triage",
 ] as const;
 
 export const DEFAULT_MAX_ATTEMPTS = 3;

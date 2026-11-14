@@ -171,11 +171,13 @@ describe("execution loop (exit criterion [4])", () => {
     expect(task(root, "T02").notes).toMatch(/verify failed: `node -e .*` \(exit 3\)/);
     cli(root, "task", "start", "T02");
     cli(root, "checkpoint", "T02");
+    // out of attempts: one independent triage first (step 3); a spec cause stops for the user
+    expect(cli(root, "next", "--json").json()).toMatchObject({ action: "triage", task: "T02" });
+    write(root, ".aidw/run/triage-T02.md", "CAUSE: spec\nThe THEN of the scenario cannot be observed.\n");
+    expect(cli(root, "triage", "T02").code).toBe(0);
     const n = cli(root, "next", "--json").json();
     expect(n).toMatchObject({ action: "escalate", task: "T02" });
-    expect(n.reason).toMatch(/failed 2 of 2 attempts/);
-    const again = cli(root, "task", "start", "T02");
-    expect(again.err).toMatch(/used all 2 attempts; it is now escalated/);
+    expect(n.reason).toMatch(/triage: spec/);
     expect(task(root, "T02").status).toBe("escalated");
 
     // the orchestrator escalates the change; the user resolves it and grants a retry
