@@ -1,6 +1,6 @@
 ---
 id: ui-ux-designer
-description: Independent, read-only UI/UX review of a whole aidw change for the ui-ux quality layer - design compliance, responsive behavior, states, consistency. Spawned by the aidw orchestrator (/aidw:run) with a fresh context; not for general use.
+description: "Independent, read-only UI/UX review of a whole aidw change for the ui-ux quality layer - design compliance, responsive behavior, states, consistency. Spawned by the aidw orchestrator (/aidw:run) with a fresh context; not for general use."
 # The design side of this Role (design direction and tokens before the Approval Gate) still lives in the
 # start skill and moves here in migration step 2. As a worker Agent the Role only reviews today.
 mode: interactive

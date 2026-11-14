@@ -8208,7 +8208,12 @@ function loadRoster(root) {
 function parseRoleText(text) {
   const m = /^---\n([\s\S]*?)\n---\n?([\s\S]*)$/.exec(text);
   if (!m) return null;
-  const header2 = import_yaml3.default.parse(m[1] ?? "");
+  let header2;
+  try {
+    header2 = import_yaml3.default.parse(m[1] ?? "");
+  } catch {
+    return null;
+  }
   return isRecord(header2) ? { header: header2, body: (m[2] ?? "").trim() } : null;
 }
 function loadRole(root, id) {
@@ -8344,7 +8349,7 @@ function checkRoster(root) {
     }
     const parsed = parseRoleText(read(path));
     if (!parsed) {
-      d.error(file, "expected a YAML header between --- lines");
+      d.error(file, 'expected a valid YAML header between --- lines (quote any value that contains ": ")');
       continue;
     }
     const h = parsed.header;
@@ -11924,7 +11929,7 @@ function analyzeChange(p, id) {
     }
     const globs = Array.isArray(t.touches) ? t.touches.map(String) : [];
     if (globs.some((g) => MIGRATION_TOUCH.test(g)) && t.risk !== "high") {
-      d.warn(tf, `task ${t.id} touches database migrations but is not "risk: high": migrations run alone, must be reversible and tested against a seeded database (profiles/quality-layers.md)`);
+      d.warn(tf, `task ${t.id} touches database migrations but is not "risk: high": migrations run alone, must be reversible and tested against a seeded database (roles/qa/references/quality-layers.md)`);
     }
   }
   const size = sizeOf(analysis);
@@ -12307,7 +12312,7 @@ function doctor(p, id, env = process.env, probe = shellProbe) {
   if (drivesBrowser2(quality)) {
     const url = env.E2E_CDP_URL ?? "http://127.0.0.1:9222";
     const r = probe("curl", ["-sS", "-m", "5", `${url}/json/version`], p.project, 8e3);
-    add("chrome cdp", r.ok && /Browser/.test(r.out) ? "ok" : "fail", r.ok && /Browser/.test(r.out) ? url : `${url} does not answer: start Chrome with --remote-debugging-port=9222 (see profiles/quality-layers.md)`);
+    add("chrome cdp", r.ok && /Browser/.test(r.out) ? "ok" : "fail", r.ok && /Browser/.test(r.out) ? url : `${url} does not answer: start Chrome with --remote-debugging-port=9222 (see roles/qa/references/quality-layers.md)`);
   }
   if (quality.deploy.target !== "none" && /\bvercel\b/.test(quality.deploy.command ?? "")) {
     const who = probe("vercel", ["whoami"], p.project, 2e4);
@@ -12747,7 +12752,7 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
   analyze [<id>]                         pre-gate consistency checks (analysis.md, task coverage)
   ids [<id>]                             requirement and scenario ids (after applying the change)
   vendor-path <upstream>/<skill>         absolute path of a vendored SKILL.md (e.g. pocock/grilling)
-  plugin-path <path>                     absolute path of a plugin file (e.g. profiles/stack-pool.md)
+  plugin-path <path>                     absolute path of a plugin file (e.g. roles/software-architect/references/stack-pool.md)
   roster [--write]                       the factory's Roles; checks roster.yaml, role profiles and the generated
                                          agent files (--write regenerates agents/ from roles/)
 
@@ -12960,7 +12965,7 @@ ${r2.dependents.length ? `WARNING: done task(s) ${r2.dependents.join(", ")} depe
           return 0;
         }
         const r = startTask(p, id, need(rest[1], "task id"), { worktree: args.flags.worktree === true });
-        const brief = buildBrief(p, id, r.task, "implement", (0, import_node_path23.join)(pluginRoot(env), "vendor"));
+        const brief = buildBrief(p, id, r.task, "implement", (0, import_node_path23.join)(pluginRoot(env), "library", "vendor"));
         emit(
           { ok: true, change: id, ...r, brief: brief.path },
           `${r.task} running: attempt ${r.attempt} of ${r.maxAttempts}${r.resumed ? " (resumed)" : ""}${r.base ? `, base ${r.base.slice(0, 8)}` : ""}${r.worktree ? `, worktree ${r.worktree}` : ""}
@@ -12977,7 +12982,7 @@ SPAWN ${AGENTS.implement} with: Task brief: ${brief.path}. Read it and implement
         const taskId = need(rest[0], "task id");
         const kind = str(args.flags.for) ?? "implement";
         if (kind !== "implement" && kind !== "review") throw new UsageError('--for must be "implement" or "review"');
-        const b = buildBrief(p, id, taskId, kind, (0, import_node_path23.join)(pluginRoot(env), "vendor"));
+        const b = buildBrief(p, id, taskId, kind, (0, import_node_path23.join)(pluginRoot(env), "library", "vendor"));
         if (cmd2 === "skills") {
           emit({ change: id, task: taskId, for: kind, skills: b.skills }, b.skills.map((s) => `${s.path}  # ${s.reason}
 `).join(""));
@@ -13010,7 +13015,7 @@ SPAWN ${AGENTS.implement} with: Task brief: ${brief.path}. Read it and implement
             after = `review ${auto.task}: auto-passed (converge tests, or a layer fix its own reviewer judges again)${auto.commit ? ` (commit ${auto.commit.slice(0, 8)})` : ""}
 ${nextLine(p, id)}${sessionEnd(env, p, id)}`;
           } else {
-            reviewBrief = buildBrief(p, id, r.task, "review", (0, import_node_path23.join)(pluginRoot(env), "vendor")).path;
+            reviewBrief = buildBrief(p, id, r.task, "review", (0, import_node_path23.join)(pluginRoot(env), "library", "vendor")).path;
             after = `review brief ${reviewBrief}
 SPAWN ${AGENTS.taskReview} with: ${REVIEWER_PROMPT(reviewBrief)}
 Then: aidw verdict ${r.task}
@@ -13035,7 +13040,7 @@ ${failed.tail}
           ...str(args.flags.layer) ? { layer: str(args.flags.layer) } : {},
           fresh: args.flags.fresh === true,
           ...timeout ? { timeoutMs: Number(timeout) * 1e3 } : {},
-          vendorDir: (0, import_node_path23.join)(pluginRoot(env), "vendor")
+          vendorDir: (0, import_node_path23.join)(pluginRoot(env), "library", "vendor")
         });
         const lines = r.layers.map((l) => {
           const bad = l.runs.find((x) => x.exit !== 0);
@@ -13248,7 +13253,7 @@ ${r.ok && r.ran ? "Previews work from now on: run aidw deploy.\n" : ""}`);
       case "vendor-path": {
         const ref = need(rest[0], "<upstream>/<skill>");
         if (!/^[a-z0-9-]+\/[a-z0-9-]+$/.test(ref)) throw new UsageError(`invalid vendored skill "${ref}"`);
-        const file = (0, import_node_path23.join)(pluginRoot(env), "vendor", ...ref.split("/"), "SKILL.md");
+        const file = (0, import_node_path23.join)(pluginRoot(env), "library", "vendor", ...ref.split("/"), "SKILL.md");
         if (!(0, import_node_fs22.existsSync)(file)) throw new OpError(`vendored skill "${ref}" not found at ${file}`);
         emit({ path: file }, `${file}
 `);

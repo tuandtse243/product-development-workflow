@@ -18,7 +18,7 @@ export interface Detection {
   signals: string[];
   packageManager: PackageManager | null;
   languages: string[];
-  /** the stack pack (plugins/aidw/profiles/stacks/<pack>.md) that covers this project, or null: pick usual equivalents */
+  /** the stack pack (plugins/aidw/stacks/<pack>.md) that covers this project, or null: pick usual equivalents */
   stackPack: string | null;
   /** role -> what was found, e.g. framework: "Next.js 15.2" */
   stack: Record<string, string>;

@@ -1,6 +1,6 @@
 ---
 id: fullstack
-description: Implements exactly one aidw task (a vertical slice) from its brief, test-first. Spawned by the aidw orchestrator (/aidw:run) with a fresh context; not for general use.
+description: "Implements exactly one aidw task (a vertical slice) from its brief, test-first. Spawned by the aidw orchestrator (/aidw:run) with a fresh context; not for general use."
 mode: worker
 tier: deep
 access: write

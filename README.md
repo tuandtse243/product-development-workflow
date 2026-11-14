@@ -44,7 +44,7 @@ See [`docs/roadmap.md`](docs/roadmap.md) for what is planned.
 ## Vendored skills
 
 Selected skills from `mattpocock/skills` and `addyosmani/agent-skills` (both MIT) live verbatim in
-`plugins/aidw/vendor/`; see each `UPSTREAM.md`. Update with `node scripts/vendor.mjs <pocock|addy>` and review
+`plugins/aidw/library/vendor/`; see each `UPSTREAM.md`. Update with `node scripts/vendor.mjs <pocock|addy>` and review
 the diff. They sit outside `skills/`, so Claude Code never auto-loads them; aidw skills load them by path.
 
 ## Layout

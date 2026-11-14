@@ -3,7 +3,7 @@
 Every commit follows [Conventional Commits](https://www.conventionalcommits.org/), checked by
 [commitlint](https://commitlint.js.org/) with `@commitlint/config-conventional`. This applies to this repo, to
 the commits aidw makes while running a change, and to greenfield projects the plugin scaffolds
-(`plugins/aidw/profiles/code-style.md`). Decision: [ADR-0002](adr/0002-conventional-commits.md).
+(`plugins/aidw/library/code-style.md`). Decision: [ADR-0002](adr/0002-conventional-commits.md).
 
 ```
 <type>(<scope>): <subject>

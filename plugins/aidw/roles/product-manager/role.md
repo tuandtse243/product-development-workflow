@@ -1,6 +1,6 @@
 ---
 id: product-manager
-description: Turns a request and the recorded discovery interview into the domain model, requirements and delta specs of an aidw change, before the approval gate. Spawned by the aidw orchestrator (/aidw:start) with a fresh context; not for general use.
+description: "Turns a request and the recorded discovery interview into the domain model, requirements and delta specs of an aidw change, before the approval gate. Spawned by the aidw orchestrator (/aidw:start) with a fresh context; not for general use."
 # The interview itself runs in the main session (ADR-0004): the main session wears this Role's hat and records
 # every question and answer in analysis.md. Today /aidw:start still drives that; this profile is what the drafting
 # Agent follows.

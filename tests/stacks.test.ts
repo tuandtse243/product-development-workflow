@@ -3,7 +3,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { isGeneratedPath } from "../src/git.js";
 
-const profiles = join(__dirname, "..", "plugins", "aidw", "profiles");
+const plugin = join(__dirname, "..", "plugins", "aidw");
+const stacks = join(plugin, "stacks");
 
 /** ADR-0001: every stack pack answers the same questions under the same headings. */
 const HEADINGS = [
@@ -20,20 +21,20 @@ const HEADINGS = [
 ];
 
 describe("stack packs", () => {
-  const packs = readdirSync(join(profiles, "stacks")).filter((f) => f.endsWith(".md"));
+  const packs = readdirSync(stacks).filter((f) => f.endsWith(".md"));
 
   it("has at least the node pack", () => {
     expect(packs).toContain("node.md");
   });
 
   it.each(packs)("%s answers every standard question", (file) => {
-    const text = readFileSync(join(profiles, "stacks", file), "utf8");
+    const text = readFileSync(join(stacks, file), "utf8");
     const got = [...text.matchAll(/^## (.+)$/gm)].map((m) => m[1]);
     for (const h of HEADINGS) expect(got, `${file} lacks "## ${h}"`).toContain(h);
   });
 
   it("the CI profile mirrors the code and unit layers", () => {
-    const ci = readFileSync(join(profiles, "ci.md"), "utf8");
+    const ci = readFileSync(join(plugin, "roles", "devops", "references", "ci.md"), "utf8");
     expect(ci).toMatch(/code.*unit.*integration/s);
     expect(ci).toContain("--frozen-lockfile");
   });

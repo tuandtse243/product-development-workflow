@@ -19,7 +19,7 @@ function copy(): string {
 const messages = (root: string) => checkRoster(root).errors.map((e) => `${e.file}: ${e.message}`);
 
 describe("the roster", () => {
-  it("declares 21 roles in four departments, 9 of them active", () => {
+  it("declares 21 roles in four departments, 9 of them active, every one with a profile", () => {
     const roster = loadRoster(plugin);
     const entries = Object.values(roster.roles);
     expect(entries).toHaveLength(21);
@@ -27,6 +27,10 @@ describe("the roster", () => {
     expect(Object.entries(roster.roles).filter(([, e]) => e.status === "active").map(([id]) => id).sort()).toEqual(
       ["backend", "code-reviewer", "frontend", "fullstack", "product-manager", "security", "software-architect", "technical-planner", "ui-ux-designer"],
     );
+  });
+
+  it("every role of the roster has a profile, active or planned", () => {
+    for (const id of Object.keys(loadRoster(plugin).roles)) expect(loadRole(plugin, id), id).not.toBeNull();
   });
 
   it("passes its own check, with the plugin's agents up to date", () => {
@@ -73,6 +77,13 @@ describe("role profiles", () => {
   it("the roles that draft before approval use the artifacts access, the implementing roles write", () => {
     for (const id of ["product-manager", "software-architect", "technical-planner"]) expect(loadRole(plugin, id), id).toMatchObject({ access: "artifacts" });
     for (const id of ["fullstack", "frontend", "backend"]) expect(loadRole(plugin, id), id).toMatchObject({ access: "write", mode: "worker" });
+  });
+
+  it("reports a header that is not valid YAML instead of crashing", () => {
+    const root = copy();
+    const file = join(root, "roles", "security", "role.md");
+    writeFileSync(file, readFileSync(file, "utf8").replace(/^description: .*$/m, "description: Reviews a change: nothing else"));
+    expect(messages(root).join("\n")).toMatch(/roles\/security\/role\.md: expected a valid YAML header/);
   });
 
   it("the profile of each existing agent keeps its tools and tier", () => {

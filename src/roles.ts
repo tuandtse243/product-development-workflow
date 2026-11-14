@@ -86,7 +86,12 @@ export function loadRoster(root: string): Roster {
 export function parseRoleText(text: string): { header: Record<string, unknown>; body: string } | null {
   const m = /^---\n([\s\S]*?)\n---\n?([\s\S]*)$/.exec(text);
   if (!m) return null;
-  const header = YAML.parse(m[1] ?? "") as unknown;
+  let header: unknown;
+  try {
+    header = YAML.parse(m[1] ?? "");
+  } catch {
+    return null; // checkRoster reports it; a broken profile must never crash the CLI
+  }
   return isRecord(header) ? { header, body: (m[2] ?? "").trim() } : null;
 }
 
@@ -226,7 +231,7 @@ export function checkRoster(root: string): Diags {
     }
     const parsed = parseRoleText(read(path));
     if (!parsed) {
-      d.error(file, "expected a YAML header between --- lines");
+      d.error(file, "expected a valid YAML header between --- lines (quote any value that contains \": \")");
       continue;
     }
     const h = parsed.header;

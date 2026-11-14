@@ -251,7 +251,7 @@ describe("migration rule", () => {
   it("is in the profile and both reviewers", () => {
     const plugin = join(__dirname, "..", "plugins", "aidw");
     const read = (f: string) => readFileSync(join(plugin, f), "utf8");
-    expect(read("profiles/quality-layers.md")).toMatch(/## Database migrations[\s\S]*reversible[\s\S]*seeded database/);
+    expect(read("roles/qa/references/quality-layers.md")).toMatch(/## Database migrations[\s\S]*reversible[\s\S]*seeded database/);
     expect(read("agents/code-reviewer.md")).toMatch(/Migrations in the diff must be reversible/);
     expect(read("agents/security.md")).toMatch(/Migrations:/);
   });

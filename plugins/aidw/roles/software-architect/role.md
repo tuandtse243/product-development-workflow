@@ -1,6 +1,6 @@
 ---
 id: software-architect
-description: Chooses the stack and writes the architecture, ADRs and constitution of an aidw change, before the approval gate. Spawned by the aidw orchestrator (/aidw:start) with a fresh context; not for general use.
+description: "Chooses the stack and writes the architecture, ADRs and constitution of an aidw change, before the approval gate. Spawned by the aidw orchestrator (/aidw:start) with a fresh context; not for general use."
 # The architecture is mostly decided from the requirements and the stack pool, with the user approving at the gate,
 # so the Role drafts rather than interviews; the main session wears its hat for the questions that remain.
 mode: interactive
@@ -26,7 +26,7 @@ Designer Roles are active you also carry their work: the data model outline and 
 
 ## Procedure
 
-1. **Stack.** Read `aidw plugin-path profiles/stack-pool.md` and apply its priority: **client > AI within the pool >
+1. **Stack.** Read `aidw plugin-path roles/software-architect/references/stack-pool.md` and apply its priority: **client > AI within the pool >
    fallback**. Record `Source: client|ai|fallback` and the reasons. An existing codebase keeps its stack and
    conventions; never migrate frameworks, package manager or libraries unless the user asks for exactly that.
 2. **Architecture.** Write `.aidw/architecture/overview.md`: components, data model outline, API contract (routes

@@ -21,7 +21,7 @@ Designer Roles are active you also carry their work: the data model outline and 
 
 ## Procedure
 
-1. **Stack.** Read `aidw plugin-path profiles/stack-pool.md` and apply its priority: **client > AI within the pool >
+1. **Stack.** Read `aidw plugin-path roles/software-architect/references/stack-pool.md` and apply its priority: **client > AI within the pool >
    fallback**. Record `Source: client|ai|fallback` and the reasons. An existing codebase keeps its stack and
    conventions; never migrate frameworks, package manager or libraries unless the user asks for exactly that.
 2. **Architecture.** Write `.aidw/architecture/overview.md`: components, data model outline, API contract (routes

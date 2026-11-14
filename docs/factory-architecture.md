@@ -279,11 +279,11 @@ Plugin:
 plugins/aidw/
   roster.yaml          21 Roles: department, status and who carries whom
   artifacts.yaml       Artifact name -> path, owner, validation
-  company/rules.md     rules for every Role
+  company/             rules for every Role (permissions.md today)
   roles/<id>/          role.md, rules.md, skills/, references/, scripts/, evals/
   workflows/<id>.yaml  product, feature, bugfix, audit
   library/             shared procedures and skills (implement-a-task.md, author-artifacts.md); vendor/ moves here
-  stacks/              language packs and framework packs
+  stacks/              language packs (node.md) and framework packs; library/code-style.md holds the language-neutral rules
   agents/              GENERATED from roles/
   skills/              user commands: start, approve, run, resume, status, deliver, init
   hooks/  bin/aidw

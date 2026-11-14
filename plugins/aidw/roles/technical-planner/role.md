@@ -1,6 +1,6 @@
 ---
 id: technical-planner
-description: Breaks the approved requirements and architecture of an aidw change into a dependency-aware task graph (tasks.yaml) of vertical slices, before the approval gate. Spawned by the aidw orchestrator (/aidw:start) with a fresh context; not for general use.
+description: "Breaks the approved requirements and architecture of an aidw change into a dependency-aware task graph (tasks.yaml) of vertical slices, before the approval gate. Spawned by the aidw orchestrator (/aidw:start) with a fresh context; not for general use."
 mode: worker
 tier: deep
 access: artifacts

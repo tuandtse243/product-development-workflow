@@ -2,8 +2,8 @@
 
 `/aidw:start` step 7 makes the scaffold task (usually T01) set this up, so every file the plugin generates
 follows one convention and every commit follows Conventional Commits. The tools are per language: the
-**stack pack** `profiles/stacks/<lang>.md` (today only `node.md`) names them, with exact configs
-(`$(aidw plugin-path profiles/stacks/node.md)`). This file holds what is the same for every language.
+**stack pack** `stacks/<lang>.md` (today only `node.md`) names them, with exact configs
+(`$(aidw plugin-path stacks/node.md)`). This file holds what is the same for every language.
 
 - **Brownfield** (`## Existing system`): keep the project's own formatter, linter, hooks and commit rules. Never
   add or replace them on your own (Q9). The `code` layer then runs whatever format check the project already has.

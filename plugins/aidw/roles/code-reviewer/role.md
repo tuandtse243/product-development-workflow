@@ -1,6 +1,6 @@
 ---
 id: code-reviewer
-description: Independent, read-only review of one finished aidw task against its spec scenarios. Spawned by the aidw orchestrator (/aidw:run) with a fresh context; not for general use.
+description: "Independent, read-only review of one finished aidw task against its spec scenarios. Spawned by the aidw orchestrator (/aidw:run) with a fresh context; not for general use."
 mode: worker
 tier: standard
 access: read-only

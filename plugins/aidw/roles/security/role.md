@@ -1,6 +1,6 @@
 ---
 id: security
-description: Independent, read-only security review of a whole aidw change for the security quality layer - authorization, input handling, secrets, data access, dependencies. Spawned by the aidw orchestrator (/aidw:run) with a fresh context; not for general use.
+description: "Independent, read-only security review of a whole aidw change for the security quality layer - authorization, input handling, secrets, data access, dependencies. Spawned by the aidw orchestrator (/aidw:run) with a fresh context; not for general use."
 mode: worker
 tier: standard
 access: read-only

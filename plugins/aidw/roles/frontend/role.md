@@ -1,6 +1,6 @@
 ---
 id: frontend
-description: Implements one aidw task that is the user interface of a Slice (screens, components, client state, styling), test-first, from its brief. Spawned by the aidw orchestrator (/aidw:run) with a fresh context; not for general use.
+description: "Implements one aidw task that is the user interface of a Slice (screens, components, client state, styling), test-first, from its brief. Spawned by the aidw orchestrator (/aidw:run) with a fresh context; not for general use."
 mode: worker
 tier: deep
 access: write
@@ -34,6 +34,6 @@ has a contract or server work that another Role does in parallel.
   design has both.
 - **Client code holds no business rules and no secrets.** Rules live behind the API. Only variables meant for
   the browser (for example `NEXT_PUBLIC_*`) reach client code.
-- **Stack.** Follow the project's stack pack for tooling (`aidw plugin-path profiles/stacks/<language>.md`). The
+- **Stack.** Follow the project's stack pack for tooling (`aidw plugin-path stacks/<language>.md`). The
   framework's conventions come from its framework pack when one exists; otherwise follow the project's own
   code and `.aidw/constitution.md`.

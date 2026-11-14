@@ -4,12 +4,12 @@ The first tasks of a greenfield plan usually scaffold the project with the appro
 harness, the JUnit reporters of `quality.yaml`, and `.env.example` for every environment variable (names only).
 
 - **Code style and commits.** For a greenfield project the scaffold task also sets up the formatter, linter, hooks
-  and commit lint of the project's **stack pack** (`aidw plugin-path profiles/stacks/node.md` for JS/TS; the
-  language-neutral rules are in `aidw plugin-path profiles/code-style.md`); put those files in its `touches` and
+  and commit lint of the project's **stack pack** (`aidw plugin-path stacks/node.md` for JS/TS; the
+  language-neutral rules are in `aidw plugin-path library/code-style.md`); put those files in its `touches` and
   tell it to follow both. A stack without a pack gets the language's usual equivalents. Brownfield projects keep
   their own tooling. Greenfield scaffolds commitlint with the same rules (the stack pack).
 - **CI.** A greenfield project that will live on GitHub also gets `.github/workflows/ci.yml` from the scaffold
-  task, mirroring the `code`, `unit` and `integration` layers (`aidw plugin-path profiles/ci.md`). Brownfield keeps
+  task, mirroring the `code`, `unit` and `integration` layers (`aidw plugin-path roles/devops/references/ci.md`). Brownfield keeps
   its own.
 - **Test reports.** Every layer in `quality.yaml` with `reports:` needs its runner configured to write that JUnit
   file (Playwright `reporter: [['list'], ['junit', { outputFile: process.env.PLAYWRIGHT_JUNIT_OUTPUT_NAME ?? '...' }]]`).

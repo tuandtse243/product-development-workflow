@@ -1,6 +1,6 @@
 ---
 id: backend
-description: Implements one aidw task that is the server side of a Slice (API, business logic, integrations, data access), test-first, from its brief. Spawned by the aidw orchestrator (/aidw:run) with a fresh context; not for general use.
+description: "Implements one aidw task that is the server side of a Slice (API, business logic, integrations, data access), test-first, from its brief. Spawned by the aidw orchestrator (/aidw:run) with a fresh context; not for general use."
 mode: worker
 tier: deep
 access: write
@@ -29,9 +29,9 @@ gives you a task of your own when the Slice also has a screen that the Frontend 
   migration), tested against a seeded database (apply up, check the seeded rows survive and the new shape
   works, apply down, check the old shape is back), and additive first for anything live (add the column
   nullable, backfill, tighten later). Never run one against a remote database: that asks the user.
-  Details: `aidw plugin-path profiles/quality-layers.md`, section "Database migrations".
+  Details: `aidw plugin-path roles/qa/references/quality-layers.md`, section "Database migrations".
 - **Tests.** Test the behavior through the public interface of the module (the HTTP route or the exported
   function), not its internals. External services are replaced at their boundary, never inside the logic.
-- **Stack.** Follow the project's stack pack for tooling (`aidw plugin-path profiles/stacks/<language>.md`). The
+- **Stack.** Follow the project's stack pack for tooling (`aidw plugin-path stacks/<language>.md`). The
   framework's conventions come from its framework pack when one exists; otherwise follow the project's own
   code and `.aidw/constitution.md`.

@@ -84,7 +84,7 @@ the domain model (`.aidw/domain/model.md`, ADRs in `.aidw/decisions/`), `.aidw/r
 ## 5. Design decision (Q3)
 
 Detect design assets: Figma links, screenshots, an existing design system, brand guides. Then choose the
-mode with the user. Read `$(aidw plugin-path profiles/design-tokens.md)` for how each mode produces tokens.
+mode with the user. Read `$(aidw plugin-path roles/ui-ux-designer/references/design-tokens.md)` for how each mode produces tokens.
 
 - `existing`: assets exist. Collect them into `.aidw/design/` (Figma via the Figma MCP tools, screenshots, notes)
   and extract the tokens from them (Figma variables, the brand guide, the live site's CSS).
@@ -115,7 +115,7 @@ types). When the plan scaffolds a new project, also read its `scaffold-tasks` sk
 
 ## 8. Quality, deploy and permissions
 
-Read `$(aidw plugin-path profiles/quality-layers.md)` and `$(aidw plugin-path policies/permissions.md)`.
+Read `$(aidw plugin-path roles/qa/references/quality-layers.md)` and `$(aidw plugin-path company/permissions.md)`.
 
 - Write `.aidw/changes/<id>/quality.yaml`: the layers with the exact commands for the chosen stack, the deploy
   target and command, the smoke checks, and the tier-2 resource keys. These commands run unattended after

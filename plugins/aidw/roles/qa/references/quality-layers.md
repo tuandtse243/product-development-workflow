@@ -106,7 +106,7 @@ creating or deleting Supabase projects, other hosts).
 | NestJS / Express API | `pnpm lint`, `pnpm format:check`, `pnpm exec tsc --noEmit`, `pnpm build` | `pnpm test` | supertest + local DB (Docker) | API smoke via Playwright `request` or supertest | security only (no UI) |
 
 Use the package manager the project uses; pin nothing here that the constitution decides otherwise.
-The `format:check` script comes from the stack pack `profiles/stacks/node.md` (greenfield); a brownfield project uses its own.
+The `format:check` script comes from the stack pack `stacks/node.md` (greenfield); a brownfield project uses its own.
 
 ## Database migrations
 

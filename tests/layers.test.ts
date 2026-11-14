@@ -62,8 +62,8 @@ function project(quality = Q()): string {
   write(root, `${c}/specs/booking/spec.md`, `## ADDED Requirements\n\n${REQ("Reschedule appointment")}`);
   write(root, "check.js", "process.exit(require('fs').existsSync(process.argv[2]) ? 0 : (console.log('missing ' + process.argv[2]), 1));\n");
   write(root, "shots.js", "const fs=require('fs');fs.mkdirSync('test-results/shots',{recursive:true});fs.writeFileSync('test-results/shots/home-mobile-light.png','');fs.writeFileSync('test-results/shots/home-desktop-dark.png','');console.log('2 shots');\n");
-  write(root, "plugin/vendor/addy/frontend-ui-engineering/SKILL.md", "# ui\n");
-  write(root, "plugin/vendor/addy/security-and-hardening/SKILL.md", "# sec\n");
+  write(root, "plugin/library/vendor/addy/frontend-ui-engineering/SKILL.md", "# ui\n");
+  write(root, "plugin/library/vendor/addy/security-and-hardening/SKILL.md", "# sec\n");
   for (const f of ["code-ok", "audit-ok", "e2e-ok"]) write(root, f, "");
   for (const s of ["intake", "analyzing", "awaiting_approval"]) expect(cli(root, "transition", ID, s).err).toBe("");
   expect(cli(root, "approve", ID).code).toBe(0);
@@ -130,7 +130,7 @@ describe("verify with review layers (S7)", () => {
     expect(brief).toMatch(/\| `accent` \| color \|/); // tokens table
     expect(brief).toMatch(/- D1: Times are stored in UTC/);
     expect(brief).toMatch(/`node shots.js` \(exit 0, \d+s\):\n\n```\n2 shots\n```/);
-    expect(brief).toContain(join(root, "plugin/vendor/addy/frontend-ui-engineering/SKILL.md"));
+    expect(brief).toContain(join(root, "plugin/library/vendor/addy/frontend-ui-engineering/SKILL.md"));
     expect(brief).toMatch(/\.aidw\/design`: design direction/);
     expect(brief).toMatch(/## Checklist\n\n1\. \*\*Design compliance/);
 

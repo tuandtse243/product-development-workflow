@@ -272,7 +272,7 @@ export function analyzeChange(p: Paths, id: string): Diags {
     }
     const globs = Array.isArray(t.touches) ? (t.touches as unknown[]).map(String) : [];
     if (globs.some((g) => MIGRATION_TOUCH.test(g)) && t.risk !== "high") {
-      d.warn(tf, `task ${t.id} touches database migrations but is not "risk: high": migrations run alone, must be reversible and tested against a seeded database (profiles/quality-layers.md)`);
+      d.warn(tf, `task ${t.id} touches database migrations but is not "risk: high": migrations run alone, must be reversible and tested against a seeded database (roles/qa/references/quality-layers.md)`);
     }
   }
   const size = sizeOf(analysis);

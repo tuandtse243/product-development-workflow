@@ -77,7 +77,7 @@ cùng bằng chứng; task bị sửa hoặc mới sẽ chạy lại (output `ai
 **Commit.** Mọi commit theo Conventional Commits (`docs/commit-guide.md`). aidw tự dựng message `type(capability): title` từ trường
 `type` của task.
 
-**Stack pack.** Công cụ theo ngôn ngữ nằm ở `plugins/aidw/profiles/stacks/<ngôn ngữ>.md` (hiện có `node.md`); thêm ngôn ngữ mới là thêm một file.
+**Stack pack.** Công cụ theo ngôn ngữ nằm ở `plugins/aidw/stacks/<ngôn ngữ>.md` (hiện có `node.md`); thêm ngôn ngữ mới là thêm một file.
 
 ## 4. Đường đi của một change
 
@@ -208,7 +208,7 @@ Xem [`diagrams/components.html`](diagrams/components.html).
 | **backstop** (Stop) | khi session dừng | báo file bị sửa mà không do bước aidw nào giải thích (file do tool sinh ra như `*.tsbuildinfo` được bỏ qua) |
 | **pause** (StopFailure) | khi API lỗi hoặc hết quota | đặt change về `paused`, ghi lý do |
 
-Quyền được chia theo bậc (xem [`plugins/aidw/policies/permissions.md`](../plugins/aidw/policies/permissions.md)):
+Quyền được chia theo bậc (xem [`plugins/aidw/company/permissions.md`](../plugins/aidw/company/permissions.md)):
 bậc 0 và 1 tự do sau approve; bậc 2 (deploy preview, dự án cloud miễn phí) chỉ khi có trong danh sách bạn đã
 duyệt; bậc 3 (tốn tiền, production, push) luôn hỏi bạn; bậc x (secret cá nhân) không bao giờ.
 

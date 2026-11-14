@@ -150,7 +150,7 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
   analyze [<id>]                         pre-gate consistency checks (analysis.md, task coverage)
   ids [<id>]                             requirement and scenario ids (after applying the change)
   vendor-path <upstream>/<skill>         absolute path of a vendored SKILL.md (e.g. pocock/grilling)
-  plugin-path <path>                     absolute path of a plugin file (e.g. profiles/stack-pool.md)
+  plugin-path <path>                     absolute path of a plugin file (e.g. roles/software-architect/references/stack-pool.md)
   roster [--write]                       the factory's Roles; checks roster.yaml, role profiles and the generated
                                          agent files (--write regenerates agents/ from roles/)
 
@@ -401,7 +401,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           return 0;
         }
         const r = startTask(p, id, need(rest[1], "task id"), { worktree: args.flags.worktree === true });
-        const brief = buildBrief(p, id, r.task, "implement", join(pluginRoot(env), "vendor"));
+        const brief = buildBrief(p, id, r.task, "implement", join(pluginRoot(env), "library", "vendor"));
         emit(
           { ok: true, change: id, ...r, brief: brief.path },
           `${r.task} running: attempt ${r.attempt} of ${r.maxAttempts}${r.resumed ? " (resumed)" : ""}${r.base ? `, base ${r.base.slice(0, 8)}` : ""}${r.worktree ? `, worktree ${r.worktree}` : ""}\nbrief ${brief.path}\nSPAWN ${AGENTS.implement} with: Task brief: ${brief.path}. Read it and implement the task.\n`,
@@ -416,7 +416,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const taskId = need(rest[0], "task id");
         const kind = str(args.flags.for) ?? "implement";
         if (kind !== "implement" && kind !== "review") throw new UsageError('--for must be "implement" or "review"');
-        const b = buildBrief(p, id, taskId, kind, join(pluginRoot(env), "vendor"));
+        const b = buildBrief(p, id, taskId, kind, join(pluginRoot(env), "library", "vendor"));
         if (cmd === "skills") {
           emit({ change: id, task: taskId, for: kind, skills: b.skills }, b.skills.map((s) => `${s.path}  # ${s.reason}\n`).join(""));
         } else {
@@ -447,7 +447,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           if (auto) {
             after = `review ${auto.task}: auto-passed (converge tests, or a layer fix its own reviewer judges again)${auto.commit ? ` (commit ${auto.commit.slice(0, 8)})` : ""}\n${nextLine(p, id)}${sessionEnd(env, p, id)}`;
           } else {
-            reviewBrief = buildBrief(p, id, r.task, "review", join(pluginRoot(env), "vendor")).path;
+            reviewBrief = buildBrief(p, id, r.task, "review", join(pluginRoot(env), "library", "vendor")).path;
             after = `review brief ${reviewBrief}\nSPAWN ${AGENTS.taskReview} with: ${REVIEWER_PROMPT(reviewBrief)}\nThen: aidw verdict ${r.task}\n`;
           }
         } else {
@@ -466,7 +466,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           ...(str(args.flags.layer) ? { layer: str(args.flags.layer) as string } : {}),
           fresh: args.flags.fresh === true,
           ...(timeout ? { timeoutMs: Number(timeout) * 1000 } : {}),
-          vendorDir: join(pluginRoot(env), "vendor"),
+          vendorDir: join(pluginRoot(env), "library", "vendor"),
         });
         const lines = r.layers.map((l) => {
           const bad = l.runs.find((x) => x.exit !== 0);
@@ -662,7 +662,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
       case "vendor-path": {
         const ref = need(rest[0], "<upstream>/<skill>");
         if (!/^[a-z0-9-]+\/[a-z0-9-]+$/.test(ref)) throw new UsageError(`invalid vendored skill "${ref}"`);
-        const file = join(pluginRoot(env), "vendor", ...ref.split("/"), "SKILL.md");
+        const file = join(pluginRoot(env), "library", "vendor", ...ref.split("/"), "SKILL.md");
         if (!existsSync(file)) throw new OpError(`vendored skill "${ref}" not found at ${file}`);
         emit({ path: file }, `${file}\n`);
         return 0;

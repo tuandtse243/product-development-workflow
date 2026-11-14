@@ -98,8 +98,9 @@ aidw becomes a software factory with a Roster of Roles, Workflows as data and de
   - [x] Profiles for the five other active Roles (`product-manager`, `software-architect`, `technical-planner`,
     `frontend`, `backend`). The knowledge of `/aidw:start` sections 2 to 4, 6 and 7 moved into them; the skill now
     points at the profiles. `access: artifacts`, a skill index and `includes` added to profiles.
-  - [ ] Profiles for the 12 Planned Roles.
-  - [ ] Move `profiles/`, `policies/`, `vendor/` to `stacks/`, `company/`, `library/`.
+  - [x] Profiles for the 12 Planned Roles (responsibility, boundaries, what to write before activating).
+  - [x] `profiles/`, `policies/`, `vendor/` moved: stack packs to `stacks/`, permissions to `company/`, shared text and
+    `vendor/` to `library/`, and the references each Role uses to `roles/<id>/references/`.
 - [ ] **Step 2.** `product` and `feature` Workflows as YAML drive `aidw next`; `artifacts.yaml`; interview in the
   main session, drafting in worker Agents.
 - [ ] **Step 3.** Decision Points, triage, Slice shape; `bugfix` and `audit` Workflows.

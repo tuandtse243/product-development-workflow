@@ -2,7 +2,7 @@
 
 Applies to greenfield Next.js, Vite + React and NestJS/Express projects. Every stack pack answers the same
 questions under the same headings (a test checks it), so adding a language means adding one file like this one
-(ADR-0001). The language-neutral rules are in `profiles/code-style.md`.
+(ADR-0001). The language-neutral rules are in `library/code-style.md`.
 
 ## Package manager and install
 
@@ -85,5 +85,5 @@ next-env.d.ts
 
 ## CI
 
-`profiles/ci.md` has the GitHub Actions workflow; for Node it installs with pnpm and runs the `code` and `unit`
+`roles/devops/references/ci.md` has the GitHub Actions workflow; for Node it installs with pnpm and runs the `code` and `unit`
 layer commands.
