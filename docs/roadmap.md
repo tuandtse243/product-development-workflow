@@ -117,7 +117,7 @@ aidw becomes a software factory with a Roster of Roles, Workflows as data and de
     Software Architect (answers recorded in `analysis.md`), then spawns `aidw:product-manager`, `aidw:software-architect`
     and `aidw:technical-planner` to draft. Design (step 5 of the skill) and the brownfield assessment stay in the main
     session. Not yet run end to end: a run on `~/aidw-demo` is the check.
-- [ ] **Step 3.** Decision Points, triage, Slice shape; `bugfix` and `audit` Workflows.
+- [x] **Step 3.** Decision Points, triage, Slice shape; `bugfix` and `audit` Workflows.
   - [x] Slice shape: a task runs with the Agent of its `role` (`aidw:fullstack`, `frontend` or `backend`; a Planned Role runs
     through the Role that carries it); `aidw analyze` warns when the plan names a Role that cannot run tasks.
   - [x] Triage (section 12, point 6 and the user's point 4): a task out of attempts is diagnosed once by `aidw:software-architect`
@@ -128,6 +128,9 @@ aidw becomes a software factory with a Roster of Roles, Workflows as data and de
     the scope gate.
   - [x] Decision Points (ADR-0003): `decisions:` in a Workflow file, `aidw decide` / `aidw decisions`, answers in `decisions.yaml`
     (part of the approved package); `design-needed` in `product` and `feature`. `aidw analyze` refuses `no-ui` with UI tasks.
+  - [x] Scope gate of `product` (Approval Gate 1): state `awaiting_scope_approval`, `brief.md` (vision, scope, MVP, out of scope),
+    `aidw approve` approves the scope, `awaiting_approval` is refused until it is approved and again if the brief changed.
+    A change gets it when created with `--workflow product`; one created without `--workflow` keeps the single gate.
   - [x] `audit` Workflow (read-only; its own machine: analyzing -> delivered, no approval): `aidw decide audit-lenses`, `aidw audit
     brief|report|picks`; reviewers write `.aidw/run/audit-<lens>.md`, the CLI assembles one report by severity. `performance` joins
     when its Role is activated. Not yet run with real Agents.

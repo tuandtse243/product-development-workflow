@@ -39,10 +39,11 @@ describe("the workflows of the plugin", () => {
     for (const id of workflowIds(plugin).filter((w) => w !== "audit")) {
       const w = loadWorkflow(plugin, id)!;
       const states = new Set([...w.interrupts, ...w.stages.flatMap((s) => s.states)]);
-      expect([...states].sort(), id).toEqual([...STATES].sort()); // these three walk the full machine
-      expect(w.stages.flatMap((s) => s.states).filter((s, i, a) => s !== a[i - 1]), id).toEqual(
-        ["draft", "intake", "analyzing", "awaiting_approval", "approved", "executing", "verifying", "converging", "deploying", "delivered", "archived"],
-      );
+      // product walks every state; feature and bugfix lack the scope gate
+      expect([...states].sort(), id).toEqual(STATES.filter((s) => id === "product" || s !== "awaiting_scope_approval").sort());
+      const path = w.stages.flatMap((s) => s.states).filter((s, i, a) => s !== a[i - 1]);
+      const tail = ["awaiting_approval", "approved", "executing", "verifying", "converging", "deploying", "delivered", "archived"];
+      expect(path, id).toEqual(["draft", "intake", "analyzing", ...(id === "product" ? ["awaiting_scope_approval", "analyzing"] : []), ...tail]);
     }
   });
 
@@ -59,7 +60,7 @@ describe("the workflows of the plugin", () => {
     const product = loadWorkflow(plugin, "product")!.stages.map((s) => s.id);
     const feature = loadWorkflow(plugin, "feature")!.stages.map((s) => s.id);
     expect(feature.filter((s) => !product.includes(s))).toEqual(["assessment"]);
-    expect(product.filter((s) => !feature.includes(s))).toEqual([]);
+    expect(product.filter((s) => !feature.includes(s))).toEqual(["scope"]); // Approval Gate 1
   });
 });
 
@@ -121,7 +122,7 @@ describe("workflow consistency", () => {
 });
 
 describe("the state machine of a workflow", () => {
-  const FLOW = {
+  const FLOW: Record<string, string[]> = {
     draft: ["intake"],
     intake: ["analyzing"],
     analyzing: ["awaiting_approval"],
@@ -140,7 +141,9 @@ describe("the state machine of a workflow", () => {
   it("is read from the workflow file and equals the table aidw ran before it moved there", () => {
     for (const id of ["product", "feature", "bugfix"]) {
       const m = machineById(id)!;
-      expect(m.transitions, id).toEqual(FLOW);
+      // product adds the scope gate: analyzing may also go to awaiting_scope_approval, and back
+      const flow = id === "product" ? { ...FLOW, analyzing: ["awaiting_scope_approval", "awaiting_approval"], awaiting_scope_approval: ["analyzing"] } : FLOW;
+      expect(m.transitions, id).toEqual(flow);
       expect([...m.approvalRequired].sort(), id).toEqual(["approved", "converging", "delivered", "deploying", "escalated", "executing", "paused", "verifying"]);
       expect([...m.analysisRequired].sort(), id).toEqual(["approved", "archived", "awaiting_approval", "converging", "delivered", "deploying", "escalated", "executing", "paused", "verifying"]);
     }

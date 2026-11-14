@@ -12,7 +12,7 @@ export interface ApprovalHash {
 }
 
 /** Change-level files of the approved package (besides specs/** and the planned part of tasks.yaml). */
-export const CHANGE_PACKAGE_FILES = ["intake.md", "analysis.md", "design.md", "quality.yaml", "decisions.yaml"] as const;
+export const CHANGE_PACKAGE_FILES = ["intake.md", "analysis.md", "design.md", "quality.yaml", "decisions.yaml", "brief.md"] as const;
 
 /** Project-level directories that belong to the approved package (with constitution.md). */
 export const FROZEN_PROJECT_DIRS = (p: Paths): string[] => [p.design, p.domain, p.architecture, p.requirements];

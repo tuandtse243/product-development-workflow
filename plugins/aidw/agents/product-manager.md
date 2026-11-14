@@ -35,6 +35,11 @@ request needs it, and recording user journeys and personas that the requirements
 
 ## Procedure (drafting)
 
+0. **Product brief (new product, before anything else).** When the change has a scope gate (`brief.md` exists in the
+   change folder), write only `.aidw/changes/<id>/brief.md` first: `## Vision`, `## Scope`, `## MVP`, `## Out of scope`,
+   from the recorded interview, short enough to approve in a minute. Reply, and stop: the user approves the scope before
+   you draft the domain model, requirements and specs.
+
 1. **Domain model.** Read `aidw vendor-path pocock/domain-modeling` and apply it with this adapter: glossary,
    entities, relationships and business rules go to `.aidw/domain/model.md` (sections `## Glossary`,
    `## Entities and relationships`, `## Business rules`; the glossary format is in `GLOSSARY-FORMAT.md` next to

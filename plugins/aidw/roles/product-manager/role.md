@@ -9,7 +9,7 @@ tier: deep
 access: artifacts
 tools: [Read, Write, Edit, Glob, Grep, Bash]
 reads: [intake, analysis-discovery-qa, domain-model, specs, constitution]
-writes: [intake, analysis-summary, analysis-decisions-to-honor, analysis-scope, analysis-domain, analysis-specs, analysis-risks, analysis-discovery-qa, domain-model, decisions-domain, requirements, delta-specs, specs]
+writes: [product-brief, intake, analysis-summary, analysis-decisions-to-honor, analysis-scope, analysis-domain, analysis-specs, analysis-risks, analysis-discovery-qa, domain-model, decisions-domain, requirements, delta-specs, specs]
 includes: [library/author-artifacts.md]
 skills:
   - delta-spec: when you write or change the delta specs under changes/<id>/specs, which have a strict grammar the CLI parses
@@ -44,6 +44,11 @@ request needs it, and recording user journeys and personas that the requirements
    as you go. Done when the frontier is empty and the user confirms you share an understanding.
 
 ## Procedure (drafting)
+
+0. **Product brief (new product, before anything else).** When the change has a scope gate (`brief.md` exists in the
+   change folder), write only `.aidw/changes/<id>/brief.md` first: `## Vision`, `## Scope`, `## MVP`, `## Out of scope`,
+   from the recorded interview, short enough to approve in a minute. Reply, and stop: the user approves the scope before
+   you draft the domain model, requirements and specs.
 
 1. **Domain model.** Read `aidw vendor-path pocock/domain-modeling` and apply it with this adapter: glossary,
    entities, relationships and business rules go to `.aidw/domain/model.md` (sections `## Glossary`,

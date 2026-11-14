@@ -7,6 +7,7 @@ export const STATES = [
   "draft",
   "intake",
   "analyzing",
+  "awaiting_scope_approval",
   "awaiting_approval",
   "approved",
   "executing",

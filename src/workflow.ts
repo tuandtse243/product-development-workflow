@@ -14,8 +14,8 @@ import { AGENTS, loadRoster } from "./roles.js";
  * Agents the CLI spawns.
  */
 
-/** approval: only the user passes it. approval-auto: aidw records the approval itself while the plan stays inside the stage's `boundary`. */
-export const GATES = ["approval", "approval-auto", "production-deploy"] as const;
+/** scope-approval: the user approves the product brief before any requirement is written. approval: only the user passes it. approval-auto: aidw records the approval itself while the plan stays inside the stage's `boundary`. */
+export const GATES = ["approval", "approval-auto", "scope-approval", "production-deploy"] as const;
 /** The project kinds a Workflow is the default for, or `request`: chosen for one request (a bug report, an audit) and confirmed by the user. */
 export const PROJECT_KINDS = ["greenfield", "brownfield", "request"] as const;
 
@@ -60,6 +60,8 @@ export interface Workflow {
   description: string;
   applies_to: (typeof PROJECT_KINDS)[number];
   existing: string[];
+  /** a Change of this Workflow needs the scope approved (a stage has gate: scope-approval) before the final approval */
+  scope_gate: boolean;
   interrupts: State[];
   /** the state machine of its Changes; null when `transitions`, `approval_required` or `analysis_required` is not valid */
   machine: Machine | null;
@@ -73,6 +75,7 @@ export interface Workflow {
  */
 const COMMAND_TRANSITIONS: readonly (readonly [State, State])[] = [
   ["awaiting_approval", "approved"],
+  ["awaiting_scope_approval", "analyzing"], // `aidw approve` approves the scope
   ["delivered", "archived"],
 ];
 
@@ -118,6 +121,7 @@ export function loadWorkflow(root: string, id: string): Workflow | null {
     description: String(data.description ?? ""),
     applies_to: data.applies_to as Workflow["applies_to"],
     existing: strings(data.existing),
+    scope_gate: data.scope_gate === true,
     interrupts: strings(data.interrupts) as State[],
     machine: parseMachine(String(data.id ?? ""), data),
     decisions: (Array.isArray(data.decisions) ? data.decisions : []).filter(isRecord).map(
@@ -241,6 +245,9 @@ export function checkWorkflows(root: string): Diags {
       if (x.options.length < 2 || new Set(x.options).size !== x.options.length || !x.options.every((o) => KEBAB.test(o))) d.error(file, `${where}: options must be at least two distinct kebab-case answers`);
       if (!w.stages.some((s) => s.id === x.stage)) d.error(file, `${where}: stage "${x.stage}" is not a stage of this workflow`);
     }
+    const scopeStages = w.stages.filter((s) => s.gate === "scope-approval");
+    if (scopeStages.length > 1) d.error(file, "at most one stage has gate: scope-approval");
+    if (w.scope_gate !== (scopeStages.length === 1)) d.error(file, "scope_gate: true and a stage with gate: scope-approval go together");
     if (approvals > 1) d.error(file, `at most one stage has gate: approval or approval-auto (found ${approvals})`);
     if (m) {
       // Approval is required exactly from the gate on; a Workflow with no gate (audit) never needs one.

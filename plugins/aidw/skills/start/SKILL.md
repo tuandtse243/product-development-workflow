@@ -42,7 +42,8 @@ already `awaiting_approval` or later, tell the user and stop: one change at a ti
 2. Pick the Workflow. The default follows the project (`product` for a new project, `feature` for an existing codebase); you
    only propose another: a **bug report** in an existing codebase is a `bugfix` and a request to **review** the code ("audit", "check", "is it secure") is an `audit` (see "Bugfix" and "Audit" below). Say which one you
    propose and why, and wait for the user to confirm it.
-   `aidw change new <id> --title "<title>" --input-type <idea|prd|upwork_jd|client_request|codebase> [--workflow bugfix|audit]`
+   `aidw change new <id> --title "<title>" --input-type <idea|prd|upwork_jd|client_request|codebase> --workflow <product|feature|bugfix|audit>`
+   Always pass `--workflow`: it records the confirmed Workflow, and a `product` change gets its scope gate (step 2b) that way.
 3. `aidw transition <id> intake`
 4. Fill `.aidw/changes/<id>/intake.md`: paste the original request **verbatim** (or its path), record the
    client's explicit constraints, including any stack the client requires.
@@ -78,6 +79,19 @@ section: it decides the size (`Size: small|normal` in the Summary, which the use
 grilling and the clarify categories, and records every round in `analysis.md`. Start with
 `aidw transition <id> analyzing`. The interview ends when the record is complete on disk: the drafting Agents below
 read that record, not this conversation.
+
+## 2b. Scope gate (`product` only)
+
+A `product` change has a first approval before any requirement is written (`brief.md` exists in the change folder). Skip
+this step for `feature`, `bugfix` and `audit`. It stops for the user:
+
+1. Spawn **`aidw:product-manager`** with this prompt and nothing else:
+   `Change <id>. The discovery interview is recorded in .aidw/changes/<id>/analysis.md. Write only the product brief, .aidw/changes/<id>/brief.md (vision, scope, MVP, out of scope), as your Procedure step 0 says, and reply with every decision still open.`
+2. Settle open decisions with the user, as in step 3. `aidw transition <id> awaiting_scope_approval` refuses a brief that is still a skeleton.
+3. Present the brief in a few lines (vision, scope, MVP, what is out) and tell the user: `/aidw:approve` to approve the
+   scope, or tell you what to change (`aidw transition <id> analyzing`, revise, present again). **Stop.**
+4. After the user approves the scope the change is back in `analyzing` (`aidw status` shows it). Continue with step 3.
+   The final approval at step 9 is refused until the scope is approved.
 
 ## 3. Domain model, 4. Requirements and specs (drafting Agent)
 

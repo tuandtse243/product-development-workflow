@@ -5,6 +5,7 @@
 import { auditReady } from "./audit.js";
 import { loadChange } from "./change.js";
 import { machineOf, workflowIdOf } from "./machine.js";
+import { checkBrief, scopeGuard } from "./scope.js";
 import { convergePassed } from "./converge.js";
 import type { Paths } from "./project.js";
 import { pendingIntegration } from "./parallel.js";
@@ -15,6 +16,14 @@ export function transitionGuard(p: Paths, id: string, target: string): string | 
   const change = loadChange(p, id);
   // An audit is delivered when its report is assembled; it has no build, deploy or delivery package.
   if (workflowIdOf(p, change) === "audit") return target === "delivered" ? auditReady(p, id) : null;
+  if (target === "awaiting_scope_approval") {
+    const d = checkBrief(change);
+    if (d.errors.length) return `"awaiting_scope_approval" needs the product brief: ${d.errors[0]!.message}`;
+  }
+  if (target === "awaiting_approval") {
+    const why = scopeGuard(change);
+    if (why) return `"awaiting_approval" refused: ${why}`;
+  }
   if (!("deploying" in machineOf(p, change).transitions)) return null;
   if (target === "verifying") {
     const open = loadTasks(p, id).tasks.filter((t) => String(t.status ?? "pending") !== "done");

@@ -10,7 +10,8 @@ describe("interview in the main session, drafting in worker Agents", () => {
   it("the start skill spawns the drafting Agents of the three authoring Roles, and each exists", () => {
     const agents = Object.keys(generateAgents(plugin)).map((f) => f.replace(/\.md$/, ""));
     const spawned = [...start.matchAll(/\*\*`aidw:([a-z-]+)`\*\*/g)].map((m) => m[1]);
-    expect(spawned.sort()).toEqual(["product-manager", "software-architect", "technical-planner"]);
+    // the Product Manager is spawned twice: for the product brief (scope gate) and for the specs
+    expect(spawned.sort()).toEqual(["product-manager", "product-manager", "software-architect", "technical-planner"]);
     for (const id of spawned) expect(agents).toContain(id as string);
   });
 
@@ -35,6 +36,6 @@ describe("interview in the main session, drafting in worker Agents", () => {
 
   it("each drafting prompt points at what the Agent reads on disk, not at this conversation", () => {
     for (const prompt of start.match(/`Change <id>\.[^`]+`/g) ?? []) expect(prompt).toMatch(/\.aidw\/changes\/<id>\/|\bdrafted\b/);
-    expect((start.match(/`Change <id>\.[^`]+`/g) ?? []).length).toBe(3);
+    expect((start.match(/`Change <id>\.[^`]+`/g) ?? []).length).toBe(4);
   });
 });
