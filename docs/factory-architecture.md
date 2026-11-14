@@ -251,8 +251,8 @@ The Orchestrator proposes the Workflow, the user confirms, and a flag can name i
 the 12 stages above: `product` has 13 stages and `feature` 14 (it adds the assessment), each tied to Change states,
 with one approval gate and no new stage. `aidw roster` checks
 that a stage reads only what an earlier stage (or the project) already has, writes only what one of its Roles owns,
-walks the Change state machine in an allowed order, and names the Agents the CLI spawns. The CLI does not yet read
-them to decide the next step.
+walks the Change state machine in an allowed order, and names the Agents the CLI spawns. The CLI reads the state
+machine (`transitions:`) and those Agents from `product.yaml`; every Workflow file must list the same ones.
 
 ### feature (brownfield)
 

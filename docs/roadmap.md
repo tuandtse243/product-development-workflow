@@ -109,9 +109,11 @@ aidw becomes a software factory with a Roster of Roles, Workflows as data and de
 - [ ] **Step 2.** `product` and `feature` Workflows as YAML drive `aidw next`; `artifacts.yaml`; interview in the
   main session, drafting in worker Agents.
   - [x] A: `artifacts.yaml` and `reads` / `writes` in the profiles; `aidw roster` checks owners and what each Role writes.
-  - [x] B (part 1): `workflows/product.yaml` and `feature.yaml` describe the flow that exists today (no new stage);
-    `aidw roster` checks them against the roster, `artifacts.yaml`, the state machine and the Agents the CLI spawns.
-  - [ ] B (part 2): `aidw next` and the state machine still come from code, not from the YAML; wiring them is open.
+  - [x] B: `workflows/product.yaml` and `feature.yaml` describe the flow that exists today (no new stage);
+    `aidw roster` checks them against the roster, `artifacts.yaml` and the state machine. The CLI now reads the Change
+    state machine (`transitions:`) and the Agents it spawns (build stage `agents:`) from `product.yaml`; the task
+    order of `aidw next` is scheduling and stays in code.
+  - [ ] Interview in the main session, drafting in worker Agents (needs the run modes of section 12, point 1).
 - [ ] **Step 3.** Decision Points, triage, Slice shape; `bugfix` and `audit` Workflows.
 - [ ] **Step 4.** Activate Planned Roles one at a time with their evals; Next.js and NestJS framework packs.
 

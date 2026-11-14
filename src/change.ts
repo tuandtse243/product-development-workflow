@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import YAML from "yaml";
+import { bundledRoot } from "./plugin.js";
 import { isDir, type Paths } from "./project.js";
 
 export const STATES = [
@@ -36,24 +37,33 @@ export const POST_APPROVAL: ReadonlySet<State> = new Set<State>([
 export const NEEDS_ANALYSIS: ReadonlySet<State> = new Set<State>([...POST_APPROVAL, "awaiting_approval", "archived"]);
 
 /**
- * Allowed transitions via `aidw transition`. "approved" is reachable only through `aidw approve`
- * and "archived" only through `aidw archive`. "paused" resumes to the state it paused from.
+ * Allowed transitions via `aidw transition`, read from the `transitions:` of the Workflow file (workflows/*.yaml): the
+ * Workflow defines the flow, this is its state machine. "approved" is reachable only through `aidw approve` and
+ * "archived" only through `aidw archive`. "paused" resumes to the state it paused from. `aidw roster` checks that
+ * every Workflow file lists the same table.
  */
-export const TRANSITIONS: Record<State, readonly State[]> = {
-  draft: ["intake"],
-  intake: ["analyzing"],
-  analyzing: ["awaiting_approval"],
-  awaiting_approval: ["analyzing"],
-  approved: ["executing"],
-  executing: ["verifying", "paused", "escalated"],
-  paused: [],
-  verifying: ["executing", "converging", "paused", "escalated"],
-  converging: ["executing", "deploying", "paused", "escalated"],
-  deploying: ["delivered", "paused", "escalated"],
-  delivered: [],
-  archived: [],
-  escalated: ["executing", "verifying", "converging", "deploying", "analyzing"],
-};
+export const TRANSITIONS: Record<State, readonly State[]> = loadTransitions();
+
+function loadTransitions(): Record<State, readonly State[]> {
+  const root = bundledRoot();
+  const file = root ? join(root, "workflows", "product.yaml") : "";
+  const data = file && existsSync(file) ? (YAML.parse(readFileSync(file, "utf8")) as { transitions?: unknown } | null) : null;
+  const table = parseTransitions(data?.transitions);
+  if (!table) throw new Error(`the Change state machine is missing: ${file || "plugin root not found"} needs a "transitions:" table that covers every state`);
+  return table;
+}
+
+/** `transitions:` of a Workflow file as a complete table, or null when it is not one (checked by `aidw roster`). */
+export function parseTransitions(raw: unknown): Record<State, readonly State[]> | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const out = {} as Record<State, readonly State[]>;
+  for (const s of STATES) {
+    const to = (raw as Record<string, unknown>)[s];
+    if (!Array.isArray(to) || !to.every(isState)) return null;
+    out[s] = to as State[];
+  }
+  return Object.keys(raw).length === STATES.length ? out : null;
+}
 
 export const CHANGE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 

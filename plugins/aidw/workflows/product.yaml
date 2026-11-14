@@ -1,18 +1,37 @@
 # The `product` Workflow (greenfield): the flow aidw runs TODAY, described as data (docs/factory-architecture.md, section 8).
-# It adds no stage. Check with `aidw roster`.
+# It adds no stage. The CLI reads `transitions` and the build `agents` from here. Check with `aidw roster`.
 #
 #   applies_to  the project kind (`kind:` in .aidw/project.yaml) this Workflow serves
 #   existing    Artifacts that may exist before the Change starts (written by `aidw init` or by earlier Changes)
 #   stages      in order. A stage names the Change states it covers, the Roles that do the work, the Artifacts it
 #               reads (written by an earlier stage, or existing) and writes (each owned by one of the stage's Roles)
 #   gate        approval: only the user passes it (/aidw:approve); production-deploy: a production deploy asks first
-#   agents      the Agents the CLI tells the orchestrator to spawn in the build stage (must match src/roles.ts)
+#   transitions the Change state machine (see below)
+#   agents      the Agents the CLI tells the orchestrator to spawn (the build stage of product.yaml is what the CLI reads)
 # Roles that are Planned (qa, release) are named as the true owners; the main session carries their work today.
 id: product
 description: Greenfield request to delivered software, with one approval gate after the plan.
 applies_to: greenfield
 existing: [project-config]
 interrupts: [paused, escalated]
+
+# The Change state machine: from each state, the states `aidw transition` may move to. `approved` is reached by
+# `aidw approve` and `archived` by `aidw archive`, so no state lists them. The CLI reads this table (src/change.ts);
+# every Workflow file lists the same one.
+transitions:
+  draft: [intake]
+  intake: [analyzing]
+  analyzing: [awaiting_approval]
+  awaiting_approval: [analyzing]
+  approved: [executing]
+  executing: [verifying, paused, escalated]
+  paused: []
+  verifying: [executing, converging, paused, escalated]
+  converging: [executing, deploying, paused, escalated]
+  deploying: [delivered, paused, escalated]
+  delivered: []
+  archived: []
+  escalated: [executing, verifying, converging, deploying, analyzing]
 
 stages:
   - id: intake

@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import YAML from "yaml";
 import { loadArtifacts } from "./artifacts.js";
-import { isState, POST_APPROVAL, STATES, TRANSITIONS, type State } from "./change.js";
+import { isState, parseTransitions, POST_APPROVAL, STATES, TRANSITIONS, type State } from "./change.js";
 import { Diags } from "./diag.js";
 import { AGENTS, loadRoster } from "./roles.js";
 
@@ -33,6 +33,8 @@ export interface Workflow {
   applies_to: (typeof PROJECT_KINDS)[number];
   existing: string[];
   interrupts: State[];
+  /** the Change state machine this Workflow lists; null when it is not a complete table */
+  transitions: Record<State, readonly State[]> | null;
   stages: Stage[];
 }
 
@@ -86,6 +88,7 @@ export function loadWorkflow(root: string, id: string): Workflow | null {
     applies_to: data.applies_to as Workflow["applies_to"],
     existing: strings(data.existing),
     interrupts: strings(data.interrupts) as State[],
+    transitions: parseTransitions(data.transitions),
     stages,
   };
 }
@@ -131,6 +134,8 @@ export function checkWorkflows(root: string): Diags {
     if (!(PROJECT_KINDS as readonly string[]).includes(w.applies_to)) d.error(file, `applies_to must be ${PROJECT_KINDS.join(" or ")}`);
     else if (kinds.has(w.applies_to)) d.error(file, `${kinds.get(w.applies_to)} already serves ${w.applies_to} projects: one Workflow per project kind`);
     else kinds.set(w.applies_to, id);
+    if (!w.transitions) d.error(file, '"transitions:" must list every state with the states it may move to');
+    else if (JSON.stringify(w.transitions) !== JSON.stringify(TRANSITIONS)) d.error(file, 'its "transitions:" differ from the table the CLI runs (the one in workflows/product.yaml): every Workflow must list the same state machine');
     if (!w.stages.length) {
       d.error(file, "no stages");
       continue;
@@ -184,7 +189,7 @@ export function checkWorkflows(root: string): Diags {
     });
     for (const st of STATES) if (!covered.has(st)) d.error(file, `no stage covers the state "${st}"`);
 
-    // The stages walk the state machine: every step from one state to the next is one aidw allows.
+    // The stages walk the state machine: every step from one state to the next is one the table allows.
     const path = w.stages.flatMap((s) => s.states);
     for (let i = 1; i < path.length; i++) {
       const from = path[i - 1] as State;
@@ -201,7 +206,7 @@ export function checkWorkflows(root: string): Diags {
   return d;
 }
 
-/** The build stage's Agents are the ones the CLI spawns (AGENTS in roles.ts): the two must say the same. */
+/** The build stage's Agents are the ones the CLI spawns (AGENTS in roles.ts, read from workflows/product.yaml): every Workflow says the same. */
 function checkAgents(d: Diags, file: string, at: string, s: Stage, roles: Record<string, unknown>): void {
   const a = s.agents ?? {};
   const expect = {
@@ -212,7 +217,7 @@ function checkAgents(d: Diags, file: string, at: string, s: Stage, roles: Record
   };
   const got = { implement: a.implement, review: a.review, ui: a["layer-review"]?.ui, security: a["layer-review"]?.security };
   for (const k of Object.keys(expect) as (keyof typeof expect)[]) {
-    if (got[k] !== expect[k]) d.error(file, `${at}: agents ${k} is "${String(got[k])}" but the CLI spawns "${expect[k]}" (AGENTS in src/roles.ts)`);
+    if (got[k] !== expect[k]) d.error(file, `${at}: agents ${k} is "${String(got[k])}" but the CLI spawns "${expect[k]}" (the build stage of workflows/product.yaml)`);
     else if (!(expect[k] in roles)) d.error(file, `${at}: agent "${expect[k]}" is not in roster.yaml`);
   }
 }

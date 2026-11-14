@@ -2,7 +2,7 @@ import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { STATES } from "../src/change.js";
+import { STATES, TRANSITIONS } from "../src/change.js";
 import { checkWorkflows, loadWorkflow, workflowFor, workflowIds } from "../src/workflow.js";
 
 const plugin = join(__dirname, "..", "plugins", "aidw");
@@ -116,5 +116,38 @@ describe("workflow consistency", () => {
     edit(root, "workflows/product.yaml", "writes: [analysis-summary, analysis-decisions-to-honor, analysis-risks]", "writes: [analysis-summary, analysis-decisions-to-honor]");
     edit(root, "workflows/feature.yaml", "writes: [analysis-summary, analysis-decisions-to-honor, analysis-risks]", "writes: [analysis-summary, analysis-decisions-to-honor]");
     expect(checkWorkflows(root).warnings.map((w) => w.message).join("\n")).toMatch(/artifact "analysis-risks" is written by no workflow stage/);
+  });
+});
+
+describe("the state machine", () => {
+  it("is read from the workflow file and equals the table aidw ran before it moved there", () => {
+    expect(TRANSITIONS).toEqual({
+      draft: ["intake"],
+      intake: ["analyzing"],
+      analyzing: ["awaiting_approval"],
+      awaiting_approval: ["analyzing"],
+      approved: ["executing"],
+      executing: ["verifying", "paused", "escalated"],
+      paused: [],
+      verifying: ["executing", "converging", "paused", "escalated"],
+      converging: ["executing", "deploying", "paused", "escalated"],
+      deploying: ["delivered", "paused", "escalated"],
+      delivered: [],
+      archived: [],
+      escalated: ["executing", "verifying", "converging", "deploying", "analyzing"],
+    });
+  });
+
+  it("is listed identically by every workflow, and a workflow that differs is rejected", () => {
+    for (const id of workflowIds(plugin)) expect(loadWorkflow(plugin, id)!.transitions, id).toEqual(TRANSITIONS);
+    const root = copy();
+    edit(root, "workflows/feature.yaml", "  analyzing: [awaiting_approval]", "  analyzing: [awaiting_approval, executing]");
+    expect(errors(root)).toMatch(/feature\.yaml: its "transitions:" differ/);
+  });
+
+  it("rejects a table that misses a state", () => {
+    const root = copy();
+    edit(root, "workflows/feature.yaml", "  archived: []\n", "");
+    expect(errors(root)).toMatch(/"transitions:" must list every state/);
   });
 });

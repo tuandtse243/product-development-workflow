@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, wri
 import { join } from "node:path";
 import YAML from "yaml";
 import { Diags } from "./diag.js";
+import { bundledRoot } from "./plugin.js";
 
 /**
  * The factory's organization (docs/factory-architecture.md, ADR-0004).
@@ -27,15 +28,31 @@ export const ACCESS = ["write", "artifacts", "read-only"] as const;
 export type Tier = (typeof TIERS)[number];
 export type Access = (typeof ACCESS)[number];
 
-/** The Agents the CLI tells the orchestrator to spawn. Each is `aidw:<role id>`. */
-export const AGENTS = {
-  implement: "aidw:fullstack",
-  taskReview: "aidw:code-reviewer",
-  layerReview: { ui: "aidw:ui-ux-designer", security: "aidw:security" },
-} as const;
+const ROLE_ID = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
+const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+
+/**
+ * The Agents the CLI tells the orchestrator to spawn, each `aidw:<role id>`: the `agents:` of the build stage in
+ * workflows/product.yaml (every Workflow file must list the same ones, which `aidw roster` checks).
+ */
+export const AGENTS = loadAgents();
 
 /** The Role that runs tasks the workflow adds itself (quality fixes, converge gaps, integration fixes). */
-export const DEFAULT_TASK_ROLE = "fullstack";
+export const DEFAULT_TASK_ROLE = AGENTS.implement.replace(/^aidw:/, "");
+
+function loadAgents(): { implement: string; taskReview: string; layerReview: { ui: string; security: string } } {
+  const root = bundledRoot();
+  const file = root ? join(root, "workflows", "product.yaml") : "";
+  const data = file && existsSync(file) ? (YAML.parse(readFileSync(file, "utf8")) as { stages?: unknown } | null) : null;
+  const stages = Array.isArray(data?.stages) ? (data.stages as Record<string, unknown>[]) : [];
+  const agents = stages.map((s) => s?.agents).find(isRecord);
+  const layer = isRecord(agents?.["layer-review"]) ? (agents["layer-review"] as Record<string, unknown>) : {};
+  const [implement, review, ui, security] = [agents?.implement, agents?.review, layer.ui, layer.security];
+  for (const v of [implement, review, ui, security]) {
+    if (typeof v !== "string" || !ROLE_ID.test(v)) throw new Error(`the Agents are missing: ${file || "plugin root not found"} needs a stage with agents: implement, review and layer-review ui and security`);
+  }
+  return { implement: `aidw:${implement}`, taskReview: `aidw:${review}`, layerReview: { ui: `aidw:${ui}`, security: `aidw:${security}` } };
+}
 
 export interface RosterEntry {
   department: string;
@@ -68,8 +85,6 @@ export interface RoleProfile {
   rules: string;
 }
 
-const ROLE_ID = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
-const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 const oneOf = <T extends string>(list: readonly T[], v: unknown): v is T => typeof v === "string" && (list as readonly string[]).includes(v);
 
 export const rosterFile = (root: string) => join(root, "roster.yaml");

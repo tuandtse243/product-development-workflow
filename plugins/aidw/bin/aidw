@@ -7337,43 +7337,63 @@ var import_node_fs17 = require("node:fs");
 var import_node_path18 = require("node:path");
 
 // src/change.ts
-var import_node_fs2 = require("node:fs");
-var import_node_path2 = require("node:path");
+var import_node_fs3 = require("node:fs");
+var import_node_path3 = require("node:path");
 var import_yaml = __toESM(require_dist(), 1);
 
-// src/project.ts
+// src/plugin.ts
 var import_node_fs = require("node:fs");
 var import_node_path = require("node:path");
+var bundled;
+function pluginRoot(env) {
+  if (env.AIDW_PLUGIN_ROOT) return env.AIDW_PLUGIN_ROOT;
+  const own = bundledRoot();
+  if (own) return own;
+  if (env.CLAUDE_PLUGIN_ROOT) return env.CLAUDE_PLUGIN_ROOT;
+  return (0, import_node_path.join)(process.cwd(), "plugins", "aidw");
+}
+function bundledRoot() {
+  if (typeof __dirname === "undefined") return null;
+  if (bundled === void 0) {
+    const up = (0, import_node_path.join)(__dirname, "..");
+    bundled = (0, import_node_fs.existsSync)((0, import_node_path.join)(up, ".claude-plugin", "plugin.json")) ? up : (0, import_node_path.join)(up, "plugins", "aidw");
+  }
+  return bundled;
+}
+
+// src/project.ts
+var import_node_fs2 = require("node:fs");
+var import_node_path2 = require("node:path");
 var AIDW_DIR = ".aidw";
 function pathsFor(project) {
-  const aidw = (0, import_node_path.join)(project, AIDW_DIR);
+  const aidw = (0, import_node_path2.join)(project, AIDW_DIR);
   return {
     project,
     aidw,
-    projectYaml: (0, import_node_path.join)(aidw, "project.yaml"),
-    constitution: (0, import_node_path.join)(aidw, "constitution.md"),
-    requirements: (0, import_node_path.join)(aidw, "requirements"),
-    specs: (0, import_node_path.join)(aidw, "specs"),
-    domain: (0, import_node_path.join)(aidw, "domain"),
-    architecture: (0, import_node_path.join)(aidw, "architecture"),
-    decisions: (0, import_node_path.join)(aidw, "decisions"),
-    design: (0, import_node_path.join)(aidw, "design"),
-    changes: (0, import_node_path.join)(aidw, "changes"),
-    archive: (0, import_node_path.join)(aidw, "archive"),
-    run: (0, import_node_path.join)(aidw, "run")
+    projectYaml: (0, import_node_path2.join)(aidw, "project.yaml"),
+    constitution: (0, import_node_path2.join)(aidw, "constitution.md"),
+    requirements: (0, import_node_path2.join)(aidw, "requirements"),
+    specs: (0, import_node_path2.join)(aidw, "specs"),
+    domain: (0, import_node_path2.join)(aidw, "domain"),
+    architecture: (0, import_node_path2.join)(aidw, "architecture"),
+    decisions: (0, import_node_path2.join)(aidw, "decisions"),
+    design: (0, import_node_path2.join)(aidw, "design"),
+    changes: (0, import_node_path2.join)(aidw, "changes"),
+    archive: (0, import_node_path2.join)(aidw, "archive"),
+    run: (0, import_node_path2.join)(aidw, "run")
   };
 }
-var isProjectDir = (dir) => (0, import_node_fs.existsSync)((0, import_node_path.join)(dir, AIDW_DIR, "project.yaml"));
+var isProjectDir = (dir) => (0, import_node_fs2.existsSync)((0, import_node_path2.join)(dir, AIDW_DIR, "project.yaml"));
 function findProject(opts) {
-  if (opts.root) return (0, import_node_path.resolve)(opts.cwd, opts.root);
+  if (opts.root) return (0, import_node_path2.resolve)(opts.cwd, opts.root);
   const envDir = opts.env.CLAUDE_PROJECT_DIR;
-  if (envDir && isProjectDir(envDir)) return (0, import_node_path.resolve)(envDir);
-  let dir = (0, import_node_path.resolve)(opts.cwd);
+  if (envDir && isProjectDir(envDir)) return (0, import_node_path2.resolve)(envDir);
+  let dir = (0, import_node_path2.resolve)(opts.cwd);
   const wt = new RegExp(`^(.*?)[\\/]${AIDW_DIR.replace(".", "\\.")}[\\/]run[\\/]worktrees(?:[\\/]|$)`).exec(dir);
   if (wt?.[1] && isProjectDir(wt[1])) return wt[1];
   for (; ; ) {
     if (isProjectDir(dir)) return dir;
-    const parent = (0, import_node_path.dirname)(dir);
+    const parent = (0, import_node_path2.dirname)(dir);
     if (parent === dir) return null;
     dir = parent;
   }
@@ -7385,27 +7405,27 @@ function projectKind(p) {
   return m ? m[1] : null;
 }
 function rel(p, file) {
-  return (0, import_node_path.relative)(p.project, file).split(import_node_path.sep).join("/");
+  return (0, import_node_path2.relative)(p.project, file).split(import_node_path2.sep).join("/");
 }
 function readText(file) {
-  return (0, import_node_fs.existsSync)(file) ? (0, import_node_fs.readFileSync)(file, "utf8") : null;
+  return (0, import_node_fs2.existsSync)(file) ? (0, import_node_fs2.readFileSync)(file, "utf8") : null;
 }
 function isDir(p) {
-  return (0, import_node_fs.existsSync)(p) && (0, import_node_fs.statSync)(p).isDirectory();
+  return (0, import_node_fs2.existsSync)(p) && (0, import_node_fs2.statSync)(p).isDirectory();
 }
 function walkFiles(dir) {
   if (!isDir(dir)) return [];
   const out = [];
-  for (const name of (0, import_node_fs.readdirSync)(dir).sort()) {
+  for (const name of (0, import_node_fs2.readdirSync)(dir).sort()) {
     if (name.startsWith(".")) continue;
-    const full = (0, import_node_path.join)(dir, name);
+    const full = (0, import_node_path2.join)(dir, name);
     if (isDir(full)) out.push(...walkFiles(full));
     else out.push(full);
   }
   return out;
 }
 function capabilityOf(specsDir, file) {
-  const parts = (0, import_node_path.relative)(specsDir, file).split(import_node_path.sep);
+  const parts = (0, import_node_path2.relative)(specsDir, file).split(import_node_path2.sep);
   if (parts.length < 2 || parts[parts.length - 1] !== "spec.md") return null;
   return parts.slice(0, -1).join("/");
 }
@@ -7438,45 +7458,49 @@ var POST_APPROVAL = /* @__PURE__ */ new Set([
   "escalated"
 ]);
 var NEEDS_ANALYSIS = /* @__PURE__ */ new Set([...POST_APPROVAL, "awaiting_approval", "archived"]);
-var TRANSITIONS = {
-  draft: ["intake"],
-  intake: ["analyzing"],
-  analyzing: ["awaiting_approval"],
-  awaiting_approval: ["analyzing"],
-  approved: ["executing"],
-  executing: ["verifying", "paused", "escalated"],
-  paused: [],
-  verifying: ["executing", "converging", "paused", "escalated"],
-  converging: ["executing", "deploying", "paused", "escalated"],
-  deploying: ["delivered", "paused", "escalated"],
-  delivered: [],
-  archived: [],
-  escalated: ["executing", "verifying", "converging", "deploying", "analyzing"]
-};
+var TRANSITIONS = loadTransitions();
+function loadTransitions() {
+  const root = bundledRoot();
+  const file = root ? (0, import_node_path3.join)(root, "workflows", "product.yaml") : "";
+  const data = file && (0, import_node_fs3.existsSync)(file) ? import_yaml.default.parse((0, import_node_fs3.readFileSync)(file, "utf8")) : null;
+  const table = parseTransitions(data?.transitions);
+  if (!table) throw new Error(`the Change state machine is missing: ${file || "plugin root not found"} needs a "transitions:" table that covers every state`);
+  return table;
+}
+function parseTransitions(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const out = {};
+  for (const s of STATES) {
+    const to = raw[s];
+    if (!Array.isArray(to) || !to.every(isState)) return null;
+    out[s] = to;
+  }
+  return Object.keys(raw).length === STATES.length ? out : null;
+}
 var CHANGE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 function isState(s) {
   return typeof s === "string" && STATES.includes(s);
 }
 function changeDir(p, id) {
-  return (0, import_node_path2.join)(p.changes, id);
+  return (0, import_node_path3.join)(p.changes, id);
 }
 function listChangeIds(p) {
   if (!isDir(p.changes)) return [];
-  return (0, import_node_fs2.readdirSync)(p.changes).filter((n) => !n.startsWith(".") && isDir((0, import_node_path2.join)(p.changes, n))).sort();
+  return (0, import_node_fs3.readdirSync)(p.changes).filter((n) => !n.startsWith(".") && isDir((0, import_node_path3.join)(p.changes, n))).sort();
 }
 var ChangeError = class extends Error {
 };
 function loadChange(p, id) {
   const dir = changeDir(p, id);
-  const file = (0, import_node_path2.join)(dir, "change.yaml");
-  if (!(0, import_node_fs2.existsSync)(file)) throw new ChangeError(`change "${id}" not found (${file})`);
-  const doc = import_yaml.default.parseDocument((0, import_node_fs2.readFileSync)(file, "utf8"));
+  const file = (0, import_node_path3.join)(dir, "change.yaml");
+  if (!(0, import_node_fs3.existsSync)(file)) throw new ChangeError(`change "${id}" not found (${file})`);
+  const doc = import_yaml.default.parseDocument((0, import_node_fs3.readFileSync)(file, "utf8"));
   if (doc.errors.length) throw new ChangeError(`change.yaml of "${id}" is not valid YAML: ${doc.errors[0]?.message}`);
   const data = doc.toJS() ?? {};
   return { id, dir, file, doc, data };
 }
 function saveChange(c) {
-  (0, import_node_fs2.writeFileSync)(c.file, String(c.doc));
+  (0, import_node_fs3.writeFileSync)(c.file, String(c.doc));
   c.data = c.doc.toJS() ?? {};
 }
 function stateOf(c) {
@@ -7496,8 +7520,8 @@ var import_node_path17 = require("node:path");
 
 // src/approval.ts
 var import_node_crypto2 = require("node:crypto");
-var import_node_fs3 = require("node:fs");
-var import_node_path3 = require("node:path");
+var import_node_fs4 = require("node:fs");
+var import_node_path4 = require("node:path");
 
 // src/tasks.ts
 var import_node_crypto = require("node:crypto");
@@ -7715,11 +7739,11 @@ var CHANGE_PACKAGE_FILES = ["intake.md", "analysis.md", "design.md", "quality.ya
 var FROZEN_PROJECT_DIRS = (p) => [p.design, p.domain, p.architecture, p.requirements];
 function baseSpecFiles(p, change) {
   const out = /* @__PURE__ */ new Set();
-  for (const f of walkFiles((0, import_node_path3.join)(change.dir, "specs"))) {
-    const cap = capabilityOf((0, import_node_path3.join)(change.dir, "specs"), f);
+  for (const f of walkFiles((0, import_node_path4.join)(change.dir, "specs"))) {
+    const cap = capabilityOf((0, import_node_path4.join)(change.dir, "specs"), f);
     if (!cap) continue;
-    const main = (0, import_node_path3.join)(p.specs, ...cap.split("/"), "spec.md");
-    if ((0, import_node_fs3.existsSync)(main)) out.add(main);
+    const main = (0, import_node_path4.join)(p.specs, ...cap.split("/"), "spec.md");
+    if ((0, import_node_fs4.existsSync)(main)) out.add(main);
   }
   return [...out];
 }
@@ -7728,15 +7752,15 @@ var normalize = (s) => s.replace(/\r\n?/g, "\n");
 function computeApprovalHash(p, change) {
   const entries = [];
   const add = (file, content) => {
-    if (!(0, import_node_fs3.existsSync)(file)) return;
-    const text = content ?? normalize((0, import_node_fs3.readFileSync)(file, "utf8"));
+    if (!(0, import_node_fs4.existsSync)(file)) return;
+    const text = content ?? normalize((0, import_node_fs4.readFileSync)(file, "utf8"));
     entries.push({ path: rel(p, file), digest: sha256(text) });
   };
-  for (const name of CHANGE_PACKAGE_FILES) add((0, import_node_path3.join)(change.dir, name));
-  for (const f of walkFiles((0, import_node_path3.join)(change.dir, "specs"))) add(f);
+  for (const name of CHANGE_PACKAGE_FILES) add((0, import_node_path4.join)(change.dir, name));
+  for (const f of walkFiles((0, import_node_path4.join)(change.dir, "specs"))) add(f);
   for (const f of baseSpecFiles(p, change)) add(f);
-  const tasksFile = (0, import_node_path3.join)(change.dir, "tasks.yaml");
-  if ((0, import_node_fs3.existsSync)(tasksFile)) add(tasksFile, canonicalTasks((0, import_node_fs3.readFileSync)(tasksFile, "utf8")));
+  const tasksFile = (0, import_node_path4.join)(change.dir, "tasks.yaml");
+  if ((0, import_node_fs4.existsSync)(tasksFile)) add(tasksFile, canonicalTasks((0, import_node_fs4.readFileSync)(tasksFile, "utf8")));
   add(p.constitution);
   for (const dir of FROZEN_PROJECT_DIRS(p)) for (const f of walkFiles(dir)) add(f);
   entries.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
@@ -8180,25 +8204,34 @@ function validateDeltaText(text, file, mainText, capability) {
 var import_node_fs15 = require("node:fs");
 
 // src/roles.ts
-var import_node_fs4 = require("node:fs");
-var import_node_path4 = require("node:path");
+var import_node_fs5 = require("node:fs");
+var import_node_path5 = require("node:path");
 var import_yaml3 = __toESM(require_dist(), 1);
 var ROLE_STATUSES = ["active", "planned"];
 var RUN_MODES = ["interactive", "worker"];
 var TIERS = ["deep", "standard", "fast"];
 var ACCESS = ["write", "artifacts", "read-only"];
-var AGENTS = {
-  implement: "aidw:fullstack",
-  taskReview: "aidw:code-reviewer",
-  layerReview: { ui: "aidw:ui-ux-designer", security: "aidw:security" }
-};
-var DEFAULT_TASK_ROLE = "fullstack";
 var ROLE_ID = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 var isRecord = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+var AGENTS = loadAgents();
+var DEFAULT_TASK_ROLE = AGENTS.implement.replace(/^aidw:/, "");
+function loadAgents() {
+  const root = bundledRoot();
+  const file = root ? (0, import_node_path5.join)(root, "workflows", "product.yaml") : "";
+  const data = file && (0, import_node_fs5.existsSync)(file) ? import_yaml3.default.parse((0, import_node_fs5.readFileSync)(file, "utf8")) : null;
+  const stages = Array.isArray(data?.stages) ? data.stages : [];
+  const agents = stages.map((s) => s?.agents).find(isRecord);
+  const layer = isRecord(agents?.["layer-review"]) ? agents["layer-review"] : {};
+  const [implement, review, ui, security] = [agents?.implement, agents?.review, layer.ui, layer.security];
+  for (const v of [implement, review, ui, security]) {
+    if (typeof v !== "string" || !ROLE_ID.test(v)) throw new Error(`the Agents are missing: ${file || "plugin root not found"} needs a stage with agents: implement, review and layer-review ui and security`);
+  }
+  return { implement: `aidw:${implement}`, taskReview: `aidw:${review}`, layerReview: { ui: `aidw:${ui}`, security: `aidw:${security}` } };
+}
 var oneOf = (list5, v) => typeof v === "string" && list5.includes(v);
-var rosterFile = (root) => (0, import_node_path4.join)(root, "roster.yaml");
-var roleDir = (root, id) => (0, import_node_path4.join)(root, "roles", id);
-var read = (file) => (0, import_node_fs4.readFileSync)(file, "utf8");
+var rosterFile = (root) => (0, import_node_path5.join)(root, "roster.yaml");
+var roleDir = (root, id) => (0, import_node_path5.join)(root, "roles", id);
+var read = (file) => (0, import_node_fs5.readFileSync)(file, "utf8");
 function loadRoster(root) {
   const data = import_yaml3.default.parse(read(rosterFile(root)));
   const departments = isRecord(data) && isRecord(data.departments) ? data.departments : {};
@@ -8217,12 +8250,12 @@ function parseRoleText(text) {
   return isRecord(header2) ? { header: header2, body: (m[2] ?? "").trim() } : null;
 }
 function loadRole(root, id) {
-  const file = (0, import_node_path4.join)(roleDir(root, id), "role.md");
-  if (!(0, import_node_fs4.existsSync)(file)) return null;
+  const file = (0, import_node_path5.join)(roleDir(root, id), "role.md");
+  if (!(0, import_node_fs5.existsSync)(file)) return null;
   const parsed = parseRoleText(read(file));
   if (!parsed) return null;
   const h = parsed.header;
-  const rulesFile = (0, import_node_path4.join)(roleDir(root, id), "rules.md");
+  const rulesFile = (0, import_node_path5.join)(roleDir(root, id), "rules.md");
   const includes = Array.isArray(h.includes) ? h.includes.map(String) : [];
   return {
     id: String(h.id ?? ""),
@@ -8235,8 +8268,8 @@ function loadRole(root, id) {
     skills: skillIndex(h.skills),
     includes,
     body: parsed.body,
-    shared: includes.map((f) => (0, import_node_fs4.existsSync)((0, import_node_path4.join)(root, f)) ? read((0, import_node_path4.join)(root, f)).trim() : ""),
-    rules: (0, import_node_fs4.existsSync)(rulesFile) ? read(rulesFile).trim() : ""
+    shared: includes.map((f) => (0, import_node_fs5.existsSync)((0, import_node_path5.join)(root, f)) ? read((0, import_node_path5.join)(root, f)).trim() : ""),
+    rules: (0, import_node_fs5.existsSync)(rulesFile) ? read(rulesFile).trim() : ""
   };
 }
 function skillIndex(raw) {
@@ -8244,8 +8277,8 @@ function skillIndex(raw) {
   return raw.flatMap((e) => isRecord(e) ? Object.entries(e).map(([name, when]) => ({ name, when: String(when) })) : []);
 }
 function loadTiers(root, platform = "claude-code") {
-  const file = (0, import_node_path4.join)(root, "tiers.yaml");
-  const data = (0, import_node_fs4.existsSync)(file) ? import_yaml3.default.parse(read(file)) : null;
+  const file = (0, import_node_path5.join)(root, "tiers.yaml");
+  const data = (0, import_node_fs5.existsSync)(file) ? import_yaml3.default.parse(read(file)) : null;
   return isRecord(data) && isRecord(data[platform]) ? data[platform] : {};
 }
 function renderAgent(role, tiers) {
@@ -8281,9 +8314,9 @@ ${role.body}${shared}${rules}${skills}
 `;
 }
 function profiledRoles(root) {
-  const dir = (0, import_node_path4.join)(root, "roles");
-  if (!(0, import_node_fs4.existsSync)(dir)) return [];
-  return (0, import_node_fs4.readdirSync)(dir).filter((n) => (0, import_node_fs4.statSync)((0, import_node_path4.join)(dir, n)).isDirectory()).sort();
+  const dir = (0, import_node_path5.join)(root, "roles");
+  if (!(0, import_node_fs5.existsSync)(dir)) return [];
+  return (0, import_node_fs5.readdirSync)(dir).filter((n) => (0, import_node_fs5.statSync)((0, import_node_path5.join)(dir, n)).isDirectory()).sort();
 }
 function generateAgents(root) {
   const roster = loadRoster(root);
@@ -8297,17 +8330,17 @@ function generateAgents(root) {
   return out;
 }
 function writeAgents(root) {
-  const dir = (0, import_node_path4.join)(root, "agents");
-  (0, import_node_fs4.mkdirSync)(dir, { recursive: true });
+  const dir = (0, import_node_path5.join)(root, "agents");
+  (0, import_node_fs5.mkdirSync)(dir, { recursive: true });
   const files = generateAgents(root);
-  for (const name of (0, import_node_fs4.readdirSync)(dir)) if (!(name in files)) (0, import_node_fs4.rmSync)((0, import_node_path4.join)(dir, name), { recursive: true });
-  for (const [name, content] of Object.entries(files)) (0, import_node_fs4.writeFileSync)((0, import_node_path4.join)(dir, name), content);
+  for (const name of (0, import_node_fs5.readdirSync)(dir)) if (!(name in files)) (0, import_node_fs5.rmSync)((0, import_node_path5.join)(dir, name), { recursive: true });
+  for (const [name, content] of Object.entries(files)) (0, import_node_fs5.writeFileSync)((0, import_node_path5.join)(dir, name), content);
   return Object.keys(files).sort();
 }
 function checkRoster(root) {
   const d = new Diags();
   const rf = "roster.yaml";
-  if (!(0, import_node_fs4.existsSync)(rosterFile(root))) {
+  if (!(0, import_node_fs5.existsSync)(rosterFile(root))) {
     d.error(rf, "not found");
     return d;
   }
@@ -8342,8 +8375,8 @@ function checkRoster(root) {
   for (const id of profiled) {
     const file = `roles/${id}/role.md`;
     if (!(id in roster.roles)) d.error(file, `role "${id}" has a folder but is not in roster.yaml`);
-    const path = (0, import_node_path4.join)(roleDir(root, id), "role.md");
-    if (!(0, import_node_fs4.existsSync)(path)) {
+    const path = (0, import_node_path5.join)(roleDir(root, id), "role.md");
+    if (!(0, import_node_fs5.existsSync)(path)) {
       d.error(file, "not found");
       continue;
     }
@@ -8368,13 +8401,13 @@ function checkRoster(root) {
       } else {
         for (const s of skillIndex(h.skills)) {
           if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(s.name)) d.error(file, `skill name "${s.name}" must be kebab-case`);
-          else if (!(0, import_node_fs4.existsSync)((0, import_node_path4.join)(roleDir(root, id), "skills", `${s.name}.md`))) d.error(file, `skill "${s.name}" has no file roles/${id}/skills/${s.name}.md`);
+          else if (!(0, import_node_fs5.existsSync)((0, import_node_path5.join)(roleDir(root, id), "skills", `${s.name}.md`))) d.error(file, `skill "${s.name}" has no file roles/${id}/skills/${s.name}.md`);
         }
       }
     }
     if (h.includes !== void 0) {
       if (!Array.isArray(h.includes) || !h.includes.every((f) => typeof f === "string")) d.error(file, "includes must be a list of plugin-relative file paths");
-      else for (const f of h.includes) if (f.includes("..") || !(0, import_node_fs4.existsSync)((0, import_node_path4.join)(root, f))) d.error(file, `includes: "${f}" not found in the plugin`);
+      else for (const f of h.includes) if (f.includes("..") || !(0, import_node_fs5.existsSync)((0, import_node_path5.join)(root, f))) d.error(file, `includes: "${f}" not found in the plugin`);
     }
     for (const k of ["department", "status", "carried_by"]) if (k in h) d.error(file, `"${k}" belongs in roster.yaml, not in the profile`);
   }
@@ -8383,11 +8416,11 @@ function checkRoster(root) {
   }
   if (d.errors.length) return d;
   const expected = generateAgents(root);
-  const dir = (0, import_node_path4.join)(root, "agents");
-  const present = (0, import_node_fs4.existsSync)(dir) ? (0, import_node_fs4.readdirSync)(dir) : [];
+  const dir = (0, import_node_path5.join)(root, "agents");
+  const present = (0, import_node_fs5.existsSync)(dir) ? (0, import_node_fs5.readdirSync)(dir) : [];
   for (const [name, content] of Object.entries(expected)) {
-    const file = (0, import_node_path4.join)(dir, name);
-    if (!(0, import_node_fs4.existsSync)(file)) d.error(`agents/${name}`, "missing: run `npm run build` (or `aidw roster --write`)");
+    const file = (0, import_node_path5.join)(dir, name);
+    if (!(0, import_node_fs5.existsSync)(file)) d.error(`agents/${name}`, "missing: run `npm run build` (or `aidw roster --write`)");
     else if (read(file) !== content) d.error(`agents/${name}`, "out of date with its role folder: run `npm run build` (agent files are generated, never edited)");
   }
   for (const name of present) if (!(name in expected)) d.error(`agents/${name}`, "not generated from a role: agents/ holds only generated files");
@@ -8524,23 +8557,6 @@ var RUNNER_COMMAND = /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+run\b/;
 var AIDW_COMMAND = /^\s*["']?(?:[^\s;&|"']*\/)?aidw["']?\s/;
 var SHELL_CHAINING = /[;&|`<>]|\$\(/;
 var AIDW_STATE_COMMAND = /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+(?:task|checkpoint|review|layer-review|verify|integrate|converge|deploy|first-deploy|deliver|transition|approve|archive|merge|init|change|brief|pr)\b/;
-
-// src/plugin.ts
-var import_node_fs5 = require("node:fs");
-var import_node_path5 = require("node:path");
-var bundled;
-function pluginRoot(env) {
-  if (env.AIDW_PLUGIN_ROOT) return env.AIDW_PLUGIN_ROOT;
-  if (typeof __dirname !== "undefined") {
-    if (bundled === void 0) {
-      const up = (0, import_node_path5.join)(__dirname, "..");
-      bundled = (0, import_node_fs5.existsSync)((0, import_node_path5.join)(up, ".claude-plugin", "plugin.json")) ? up : (0, import_node_path5.join)(up, "plugins", "aidw");
-    }
-    return bundled;
-  }
-  if (env.CLAUDE_PLUGIN_ROOT) return env.CLAUDE_PLUGIN_ROOT;
-  return (0, import_node_path5.join)(process.cwd(), "plugins", "aidw");
-}
 
 // src/gate.ts
 var OPEN_STATES = /* @__PURE__ */ new Set(["approved", "executing", "verifying", "converging", "deploying"]);
@@ -12284,6 +12300,7 @@ function loadWorkflow(root, id) {
     applies_to: data.applies_to,
     existing: strings(data.existing),
     interrupts: strings(data.interrupts),
+    transitions: parseTransitions(data.transitions),
     stages
   };
 }
@@ -12317,6 +12334,8 @@ function checkWorkflows(root) {
     if (!PROJECT_KINDS.includes(w.applies_to)) d.error(file, `applies_to must be ${PROJECT_KINDS.join(" or ")}`);
     else if (kinds.has(w.applies_to)) d.error(file, `${kinds.get(w.applies_to)} already serves ${w.applies_to} projects: one Workflow per project kind`);
     else kinds.set(w.applies_to, id);
+    if (!w.transitions) d.error(file, '"transitions:" must list every state with the states it may move to');
+    else if (JSON.stringify(w.transitions) !== JSON.stringify(TRANSITIONS)) d.error(file, 'its "transitions:" differ from the table the CLI runs (the one in workflows/product.yaml): every Workflow must list the same state machine');
     if (!w.stages.length) {
       d.error(file, "no stages");
       continue;
@@ -12389,7 +12408,7 @@ function checkAgents(d, file, at, s, roles) {
   };
   const got = { implement: a.implement, review: a.review, ui: a["layer-review"]?.ui, security: a["layer-review"]?.security };
   for (const k of Object.keys(expect)) {
-    if (got[k] !== expect[k]) d.error(file, `${at}: agents ${k} is "${String(got[k])}" but the CLI spawns "${expect[k]}" (AGENTS in src/roles.ts)`);
+    if (got[k] !== expect[k]) d.error(file, `${at}: agents ${k} is "${String(got[k])}" but the CLI spawns "${expect[k]}" (the build stage of workflows/product.yaml)`);
     else if (!(expect[k] in roles)) d.error(file, `${at}: agent "${expect[k]}" is not in roster.yaml`);
   }
 }
