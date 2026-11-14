@@ -119,7 +119,7 @@ stages:
   - id: build
     title: Build, one task at a time, each reviewed
     states: [executing]
-    roles: [fullstack, frontend, backend, database, code-reviewer, software-architect]
+    roles: [fullstack, frontend, backend, database, devops, code-reviewer, software-architect]
     reads: [tasks, delta-specs, constitution, architecture, design-tokens]
     writes: [task-review, triage-report]
     agents:

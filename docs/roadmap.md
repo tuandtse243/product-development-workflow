@@ -151,7 +151,11 @@ aidw becomes a software factory with a Roster of Roles, Workflows as data and de
     are injected, so the tests use a fake; it has not been run against a real model (the sandbox blocks `claude -p`).
   - [x] First planned Role activated: `database` (skills for Prisma, Drizzle and Supabase migrations, expand-contract, indexes and
     seeds; an eval case). A task with `role: database` now runs `aidw:database`. It took no CLI change: `roster.yaml`, the
-    profile, its knowledge and the planner's text. `tests/activation.test.ts` repeats this for `devops`. Eleven Roles stay planned.
+    profile, its knowledge and the planner's text. `tests/activation.test.ts` repeats this for `integration`.
+  - [x] Second planned Role activated: `devops` (skills for Docker and compose, and for a CI pipeline that mirrors the quality
+    layers without leaking a secret; one case). A task with `role: devops` runs `aidw:devops`; it never deploys. Ten Roles
+    stay planned. `qa` is held back on purpose: the CLI carries it (it runs and judges the layers), so an Agent would only
+    duplicate it until there is a gap the CLI cannot close.
   - [x] Framework packs `stacks/nextjs.md` and `stacks/nestjs.md` (front matter: the framework `aidw detect` reports and the Roles
     that read it). An implementer's brief points at the pack of the project's framework; `frontend` never gets NestJS. Adding a
     framework is adding one file.

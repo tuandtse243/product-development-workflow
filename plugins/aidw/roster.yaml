@@ -26,7 +26,7 @@ roles:
   fullstack: { department: implementation, status: active }
   database: { department: implementation, status: active }
   integration: { department: implementation, status: planned, carried_by: fullstack }
-  devops: { department: implementation, status: planned, carried_by: fullstack }
+  devops: { department: implementation, status: active }
 
   qa: { department: quality-delivery, status: planned, carried_by: cli }
   code-reviewer: { department: quality-delivery, status: active }

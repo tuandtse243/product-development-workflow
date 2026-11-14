@@ -49,7 +49,7 @@ in the last column until it is activated. The Orchestrator (main session plus CL
 | `fullstack` | Implementation | active | |
 | `database` | Implementation | active | |
 | `integration` | Implementation | planned | `fullstack` |
-| `devops` | Implementation | planned | `fullstack` |
+| `devops` | Implementation | active | |
 | `qa` | Quality & Delivery | planned | test plan: skipped (spec scenarios stand in); coverage: CLI `converge` |
 | `code-reviewer` | Quality & Delivery | active | |
 | `security` | Quality & Delivery | active | |
