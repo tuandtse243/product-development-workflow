@@ -267,6 +267,9 @@ Reproduce with a failing regression test, diagnose, fix, review, verify, converg
 Gate.** The boundary that keeps larger work out (Q40): after diagnosis the CLI checks the planned fix, and if
 it changes behavior written in a spec, needs a migration, or needs more than 3 tasks, the Change is
 reclassified to `feature` and stops at that Workflow's gate. A production deploy still asks.
+The main session writes the diagnosis itself (no product-manager or architect Agent); only the planner is spawned. The red-first
+claim is proved by the CLI, not taken from the implementer: the checkpoint runs the new tests on the base commit and fails a `fix`
+task whose tests pass there. A task may name its commit `scope:`.
 
 ### audit
 

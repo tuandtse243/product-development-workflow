@@ -137,6 +137,12 @@ aidw becomes a software factory with a Roster of Roles, Workflows as data and de
   - [x] `bugfix` Workflow (`workflows/bugfix.yaml`, chosen per request): `aidw approve <id> --auto` approves a small fix itself
     (at most 3 tasks, no migration, no delta spec) and reclassifies a bigger one to `feature`; `aidw change new --workflow`.
     Not yet run end to end.
+  - [x] Bugfix hardening (from the first real bugfix run): a `type: fix` task's checkpoint copies the new test files onto the base
+    commit and runs the unit verify commands there (`proveRegression`: `red`, `not-red` or `unproven`; `not-red` fails the task;
+    evidence field `regression`). `start` does not spawn the product-manager or architect for a bugfix; only the planner runs. A task
+    may carry `scope:` so the commit reads `fix(todos): ...` rather than `fix(config): ...`. Gap: a test that is red only because of
+    a missing import still counts as red; e2e is not re-run on the old code.
+  - [x] a11y: `aidw analyze` requires an `a11y` layer for a UI change; `aidw detect` reports axe-core; `start` installs it by default.
 - [ ] **Step 4.** Activate Planned Roles one at a time with their evals; Next.js and NestJS framework packs.
   - [x] Role evals: every active Role ships at least one case (`roles/<id>/evals/<case>.md`: `## Input`, `## Criteria` with
     must / must not bullets); `aidw roster` fails an active Role without one. There is no runner that grades an Agent against
