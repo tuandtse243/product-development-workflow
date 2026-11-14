@@ -125,6 +125,11 @@ design-tokens:
   path: design/tokens.yaml
   owner: ui-ux-designer
   validate: aidw analyze
+decision-design-needed:
+  path: changes/<id>/decisions.yaml
+  part: "design-needed: full-design, reuse-existing or no-ui"
+  owner: ui-ux-designer
+  validate: aidw analyze
 architecture:
   path: architecture/overview.md
   owner: software-architect

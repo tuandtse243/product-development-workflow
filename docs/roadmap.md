@@ -126,6 +126,8 @@ aidw becomes a software factory with a Roster of Roles, Workflows as data and de
   - [x] State machine per Workflow: `transitions`, `approval_required` and `analysis_required` live in each `workflows/<id>.yaml`
     (`src/machine.ts`); `product`, `feature` and `bugfix` walk the same machine, so behavior is unchanged. Needed by `audit` and
     the scope gate.
+  - [x] Decision Points (ADR-0003): `decisions:` in a Workflow file, `aidw decide` / `aidw decisions`, answers in `decisions.yaml`
+    (part of the approved package); `design-needed` in `product` and `feature`. `aidw analyze` refuses `no-ui` with UI tasks.
   - [x] `bugfix` Workflow (`workflows/bugfix.yaml`, chosen per request): `aidw approve <id> --auto` approves a small fix itself
     (at most 3 tasks, no migration, no delta spec) and reclassifies a bigger one to `feature`; `aidw change new --workflow`.
     Not yet run end to end.

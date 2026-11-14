@@ -17,6 +17,7 @@ import { touchesUi } from "./skills.js";
 import { planAdvice } from "./plan.js";
 import { pluginRoot } from "./plugin.js";
 import { implementerOf } from "./roles.js";
+import { answerOf, checkDecisions } from "./decisions.js";
 
 const TITLE_ADVISED = 60;
 const isPlanned = (t: { origin?: unknown }): boolean => t.origin === undefined || t.origin === "plan";
@@ -235,6 +236,16 @@ export function analyzeChange(p: Paths, id: string): Diags {
   }
   const { tasks, error } = parseTasks(tasksText);
   if (error) return d; // structural errors are reported by validate
+
+  // Decision Points of the Workflow (ADR-0003): required ones recorded, answers inside their options, consistent with the plan.
+  if (existsSync(join(pluginRoot(process.env), "roster.yaml"))) {
+    d.add(checkDecisions(p, change, pluginRoot(process.env)));
+    const design = answerOf(change, "design-needed");
+    const uiTasks = tasks.filter((t: Task) => touchesUi(t)).map((t) => t.id);
+    if (design?.[0] === "no-ui" && uiTasks.length) {
+      d.error(rel(p, join(change.dir, "decisions.yaml")), `decision "design-needed" is no-ui, but task(s) ${uiTasks.join(", ")} change UI`);
+    }
+  }
 
   // UI work is reviewed against machine-readable design tokens, so a UI plan needs them before approval.
   const tokens = loadTokens(p);

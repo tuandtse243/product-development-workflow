@@ -37,6 +37,16 @@ transitions:
 approval_required: [approved, executing, paused, verifying, converging, deploying, delivered, escalated]
 analysis_required: [awaiting_approval, approved, executing, paused, verifying, converging, deploying, delivered, escalated, archived]
 
+# Decision Points: where one Role chooses from a fixed set. `aidw decide` records the answer and the reason in
+# decisions.yaml of the Change (part of the approved package, so the user sees it at the gate); an answer outside
+# `options` is refused. required: `aidw analyze` refuses a package without the answer.
+decisions:
+  - id: design-needed
+    decide: ui-ux-designer
+    options: [full-design, reuse-existing, no-ui]
+    stage: design
+    required: false
+
 stages:
   - id: intake
     title: Intake
@@ -70,7 +80,7 @@ stages:
     states: [analyzing]
     roles: [ui-ux-designer]
     reads: [requirements, delta-specs]
-    writes: [design-direction, design-tokens, analysis-design]
+    writes: [design-direction, design-tokens, decision-design-needed, analysis-design]
 
   - id: architecture
     title: Stack, architecture and constitution

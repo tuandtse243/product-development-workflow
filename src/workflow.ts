@@ -39,6 +39,20 @@ export interface Stage {
   agents?: { implement?: string; review?: string; triage?: string; "layer-review"?: Record<string, string> };
 }
 
+/** A place the Workflow lets one Role choose from a fixed set (ADR-0003); `aidw decide` rejects an answer outside `options`. */
+export interface DecisionPoint {
+  id: string;
+  /** the Role that decides; it is the owner of the Artifact `decision-<id>` */
+  decide: string;
+  options: string[];
+  /** more than one option may be chosen */
+  multiple: boolean;
+  /** the stage that needs the answer */
+  stage: string;
+  /** `aidw analyze` refuses a package without it */
+  required: boolean;
+}
+
 export interface Workflow {
   id: string;
   description: string;
@@ -47,6 +61,7 @@ export interface Workflow {
   interrupts: State[];
   /** the state machine of its Changes; null when `transitions`, `approval_required` or `analysis_required` is not valid */
   machine: Machine | null;
+  decisions: DecisionPoint[];
   stages: Stage[];
 }
 
@@ -102,6 +117,16 @@ export function loadWorkflow(root: string, id: string): Workflow | null {
     existing: strings(data.existing),
     interrupts: strings(data.interrupts) as State[],
     machine: parseMachine(String(data.id ?? ""), data),
+    decisions: (Array.isArray(data.decisions) ? data.decisions : []).filter(isRecord).map(
+      (x): DecisionPoint => ({
+        id: String(x.id ?? ""),
+        decide: String(x.decide ?? ""),
+        options: strings(x.options),
+        multiple: x.multiple === true,
+        stage: String(x.stage ?? ""),
+        required: x.required === true,
+      }),
+    ),
     stages,
   };
 }
@@ -196,6 +221,17 @@ export function checkWorkflows(root: string): Diags {
     });
 
     const m = w.machine;
+    const seenDecisions = new Set<string>();
+    for (const x of w.decisions) {
+      const where = `${file}: decision ${x.id || "?"}`;
+      if (!KEBAB.test(x.id)) d.error(file, `decision id "${x.id}" must be lower-case kebab-case`);
+      else if (seenDecisions.has(x.id)) d.error(file, `decision id "${x.id}" appears twice`);
+      seenDecisions.add(x.id);
+      if (!(x.decide in roster.roles)) d.error(file, `${where}: decide "${x.decide}" is not a role in roster.yaml`);
+      else if (registry[`decision-${x.id}`]?.owner !== x.decide) d.error(file, `${where}: the artifact "decision-${x.id}" must exist in artifacts.yaml and be owned by ${x.decide}`);
+      if (x.options.length < 2 || new Set(x.options).size !== x.options.length || !x.options.every((o) => KEBAB.test(o))) d.error(file, `${where}: options must be at least two distinct kebab-case answers`);
+      if (!w.stages.some((s) => s.id === x.stage)) d.error(file, `${where}: stage "${x.stage}" is not a stage of this workflow`);
+    }
     if (approvals > 1) d.error(file, `at most one stage has gate: approval or approval-auto (found ${approvals})`);
     if (m) {
       // Approval is required exactly from the gate on; a Workflow with no gate (audit) never needs one.

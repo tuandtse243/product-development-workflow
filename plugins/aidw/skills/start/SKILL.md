@@ -104,6 +104,10 @@ mode with the user. Read `$(aidw plugin-path roles/ui-ux-designer/references/des
   and the tokens. The user approves the look at the gate.
 - `hybrid`: say which parts follow references and which parts AI designs; tokens cover both.
 
+Record the outcome as a Decision Point: `aidw decide design-needed <full-design|reuse-existing|no-ui> --reason "<why>"`
+(`existing` -> `reuse-existing`; `claude_design`, `ai_design`, `hybrid` -> `full-design`; a change with no UI -> `no-ui`).
+`aidw analyze` refuses `no-ui` when a task changes UI. The user sees every decision at the gate: `aidw decisions <id>`.
+
 **Every mode ends with `.aidw/design/tokens.yaml`** whenever the plan has UI work (`aidw analyze` refuses the
 package without it). Each token has a `use` rule saying where it must appear ("accent: Focus mode label, start
 button, progress ring"). The `use` rules are what reviewers check on screenshots, so make them concrete. Show
@@ -181,8 +185,8 @@ Read `$(aidw plugin-path roles/qa/references/quality-layers.md)` and `$(aidw plu
    must fit one page: goal, scope, the key decisions, and the risks and assumptions that need attention.
 2. Run `aidw analyze <id>` and `aidw validate <id>`. Fix every error and re-run until both are clean.
 3. `aidw transition <id> awaiting_approval` (it re-runs both checks).
-4. Present to the user: the summary, the key decisions, risks and assumptions, requested permissions, and
-   the plan size. Point them to `.aidw/changes/<id>/analysis.md` and tell them:
+4. Present to the user: the summary, the key decisions, the Decision Points and their answers (`aidw decisions <id>`),
+   risks and assumptions, requested permissions, and the plan size. Point them to `.aidw/changes/<id>/analysis.md` and tell them:
    `/aidw:approve` to approve, or tell you what to change.
 5. **Stop.** Do not start building.
 

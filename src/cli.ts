@@ -9,6 +9,7 @@ import { pluginRoot } from "./plugin.js";
 import { BrowserError, browserEnv, browserStatus, startBrowser, stopBrowser } from "./browser.js";
 import { checkArtifacts } from "./artifacts.js";
 import { boundaryOf } from "./boundary.js";
+import { DecisionError, readDecisions, recordDecision, workflowOfChange } from "./decisions.js";
 import { machineOf } from "./machine.js";
 import { checkWorkflows, workflowIds } from "./workflow.js";
 import { agentForTask, AGENTS, checkRoster, rosterTable, writeAgents } from "./roles.js";
@@ -153,6 +154,9 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
   change new <id> [--title T] [--input-type ${INPUT_TYPES.join("|")}] [--workflow W]
   status [<id>]                          project and change status
   validate [<id>] [--strict]             validate specs and changes (all when no id)
+  decide <decision> <answer> --reason R  record a Decision Point of the Workflow (the answer must be one of its options;
+                                         several answers separated by commas where the decision allows)
+  decisions [<id>]                       the Workflow's Decision Points of a change and their answers
   approve <id> [--auto]                  approve the Analysis package (hashes it); --auto: aidw approves a small change of
                                          a workflow with an automatic approval (bugfix), or reclassifies one that is too big
   approval check <id>                    exit 1 when the approved package drifted
@@ -947,6 +951,37 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const summary = `${failed ? "FAILED" : "OK"}: ${d.errors.length} error(s), ${d.warnings.length} warning(s)${strict ? " (strict)" : ""}\n`;
         emit({ ok: !failed, strict, ...diagsJson(d) }, printDiags(d) + summary);
         return failed ? 1 : 0;
+      }
+
+      case "decide": {
+        // A Decision Point of the Workflow: the answer must be one of its options; the reason is shown at the next gate.
+        const p = project();
+        const id = resolveChangeId(p, str(args.flags.change));
+        const name = need(rest[0], "decision id");
+        try {
+          const r = recordDecision(p, id, name, need(rest[1], "answer"), str(args.flags.reason) ?? "", pluginRoot(env));
+          emit({ ok: true, change: id, decision: name, ...r.recorded }, `${id}: ${name} = ${[r.recorded.answer].flat().join(", ")} (${r.decision.decide}): ${r.recorded.reason}\n`);
+          return 0;
+        } catch (e) {
+          if (e instanceof DecisionError) throw new OpError(e.message);
+          throw e;
+        }
+      }
+
+      case "decisions": {
+        const p = project();
+        const id = resolveChangeId(p, rest[0]);
+        const c = loadChange(p, id);
+        const w = workflowOfChange(p, c, pluginRoot(env));
+        const all = readDecisions(c);
+        const rows = w.decisions.map((x) => ({ id: x.id, decide: x.decide, options: x.options, required: x.required, recorded: all[x.id] ?? null }));
+        emit(
+          { change: id, workflow: w.id, decisions: rows },
+          rows.length
+            ? `${rows.map((r) => `${r.id.padEnd(20)} ${r.recorded ? `${[r.recorded.answer].flat().join(", ")}: ${r.recorded.reason}` : `(open: ${r.options.join(" | ")}${r.required ? ", required" : ""})`}`).join("\n")}\n`
+            : `workflow ${w.id} has no decision points\n`,
+        );
+        return 0;
       }
 
       case "approve": {
