@@ -20,8 +20,14 @@ const HEADINGS = [
   "CI",
 ];
 
+/** The framework packs (ADR-0001, amendment): a front matter names the framework `aidw detect` reports and the Roles that read it. */
+const FRAMEWORK_HEADINGS = ["Structure", "Conventions", "Data and mutations", "Environment variables", "Testing", "Common mistakes", "Commands"];
+const isFramework = (file: string) => /^---\nframework: /.test(readFileSync(join(stacks, file), "utf8"));
+
 describe("stack packs", () => {
-  const packs = readdirSync(stacks).filter((f) => f.endsWith(".md"));
+  const all = readdirSync(stacks).filter((f) => f.endsWith(".md"));
+  const packs = all.filter((f) => !isFramework(f));
+  const frameworks = all.filter(isFramework);
 
   it("has at least the node pack", () => {
     expect(packs).toContain("node.md");
@@ -31,6 +37,17 @@ describe("stack packs", () => {
     const text = readFileSync(join(stacks, file), "utf8");
     const got = [...text.matchAll(/^## (.+)$/gm)].map((m) => m[1]);
     for (const h of HEADINGS) expect(got, `${file} lacks "## ${h}"`).toContain(h);
+  });
+
+  it("has the Next.js and NestJS framework packs", () => {
+    expect(frameworks.sort()).toEqual(["nestjs.md", "nextjs.md"]);
+  });
+
+  it.each(["nextjs.md", "nestjs.md"])("%s answers every framework question and names who reads it", (file) => {
+    const text = readFileSync(join(stacks, file), "utf8");
+    const got = [...text.matchAll(/^## (.+)$/gm)].map((m) => m[1]);
+    for (const h of FRAMEWORK_HEADINGS) expect(got, `${file} lacks "## ${h}"`).toContain(h);
+    expect(text).toMatch(/^roles: \[[a-z, -]+\]$/m);
   });
 
   it("the CI profile mirrors the code and unit layers", () => {

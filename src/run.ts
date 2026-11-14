@@ -12,7 +12,7 @@
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { join, relative, sep } from "node:path";
+import { join, relative, resolve, sep } from "node:path";
 import YAML from "yaml";
 import { decisionsToHonor, requirementsAfterChange } from "./analyze.js";
 import { approvalStatus } from "./approval.js";
@@ -21,6 +21,9 @@ import { hardcodedColors, loadTokens, missingTokens, shotsDir, taskShots, tokens
 import { header as commitHeader, scopeOf, taskCommitMessage } from "./commit.js";
 import { changedSince, git, headCommit, isGitRepo, junkMessage, stagedJunk } from "./git.js";
 import { matchesAny } from "./glob.js";
+import { detectProject } from "./detect.js";
+import { DEFAULT_TASK_ROLE, implementerOf } from "./roles.js";
+import { packsFor } from "./stackpacks.js";
 import { OpError, transition } from "./ops.js";
 import { readText, rel, walkFiles, type Paths } from "./project.js";
 import { ensureWorktree, integrate, mergeWorktree, parallelConfig, pendingIntegration, planWave, removeWorktree, taskDir, type IntegrateResult } from "./parallel.js";
@@ -731,6 +734,14 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
     ...(touchesUi(t) ? [pointer(p, p.design, "design direction and assets (UI task)")] : []),
   ].filter((x): x is string => x !== null);
   const adrs = adrPointers(p);
+  // The framework pack of the stack the project uses, for the Roles that build with it (never another side's framework).
+  const pluginDir = resolve(vendorDir, "..", "..");
+  const packLines =
+    kind === "implement"
+      ? packsFor(pluginDir, detectProject(p.project).stack, implementerOf(pluginDir, typeof t.role === "string" ? t.role : undefined) ?? DEFAULT_TASK_ROLE).map(
+          (k) => `- \`${k.file}\`: how to build with ${k.framework} (framework pack)`,
+        )
+      : [];
 
   const touches = list(t.touches);
   const verify = list(t.verify);
@@ -758,7 +769,7 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
     ...h("Builds on (finished tasks; see `git log`)", done),
     ...h("Touches (files this task may change)", touches.map((g) => `- \`${g}\``)),
     ...h("Verify", verify.map((v) => `- \`${v}\``)),
-    ...h("Read first (context pointers; read only what you need)", [...pointers, ...adrs]),
+    ...h("Read first (context pointers; read only what you need)", [...pointers, ...adrs, ...packLines]),
     ...h("Skills (read each SKILL.md and apply it)", skills.map((s) => `- \`${s.path}\`: ${s.reason}`)),
   ];
 

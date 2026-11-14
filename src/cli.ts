@@ -12,6 +12,7 @@ import { boundaryOf } from "./boundary.js";
 import { buildAuditBrief, chosenLenses, compileReport, lensRoles, pickFindings } from "./audit.js";
 import { DecisionError, readDecisions, recordDecision, workflowOfChange } from "./decisions.js";
 import { machineOf } from "./machine.js";
+import { packsFor } from "./stackpacks.js";
 import { checkWorkflows, loadWorkflow, workflowIds } from "./workflow.js";
 import { agentForTask, AGENTS, checkRoster, rosterTable, writeAgents } from "./roles.js";
 import { checkChange, checkSpecs } from "./check.js";
@@ -887,6 +888,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           `${d.kind}${d.packageManager ? ` (${d.packageManager})` : ""}${d.languages.length ? `, ${d.languages.join(", ")}` : ""}`,
           ...d.signals.map((s) => `  signal  ${s}`),
           ...Object.entries(d.stack).map(([k, v]) => `  stack   ${k}: ${v}`),
+          ...packsFor(pluginRoot(env), d.stack, "fullstack").concat(packsFor(pluginRoot(env), d.stack, "frontend"), packsFor(pluginRoot(env), d.stack, "backend")).filter((k, i, a) => a.findIndex((x) => x.id === k.id) === i).map((k) => `  pack    ${k.id} (read by ${k.roles.join(", ")})`),
           ...d.layers.map((l) => `  layer   ${l.name}: ${l.run.join(" && ")}`),
           ...d.warnings.map((w) => `  WARNING ${w}`),
         ];

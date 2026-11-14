@@ -138,6 +138,9 @@ aidw becomes a software factory with a Roster of Roles, Workflows as data and de
     (at most 3 tasks, no migration, no delta spec) and reclassifies a bigger one to `feature`; `aidw change new --workflow`.
     Not yet run end to end.
 - [ ] **Step 4.** Activate Planned Roles one at a time with their evals; Next.js and NestJS framework packs.
+  - [x] Framework packs `stacks/nextjs.md` and `stacks/nestjs.md` (front matter: the framework `aidw detect` reports and the Roles
+    that read it). An implementer's brief points at the pack of the project's framework; `frontend` never gets NestJS. Adding a
+    framework is adding one file.
 
 ## Backlog
 
