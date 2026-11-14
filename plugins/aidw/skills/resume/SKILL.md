@@ -27,9 +27,14 @@ All progress lives in `.aidw/` and git, so resuming needs no memory of the previ
      - the scope must change: `aidw transition <id> analyzing`, revise, approve again.
    - `approved`, `executing`: nothing to do here.
    - drift or anything before approval: explain (`/aidw:status`) and stop.
-3. Continue with the `/aidw:run` loop from step 1. A wave task keeps its worktree across sessions: its brief
+3. Read `$(aidw plugin-path skills/run/SKILL.md)` and follow it from its step 1 to its last step. Do not try to invoke
+   `/aidw:run` as a skill: it is not offered to the model (it is a command the user types), so its text only reaches
+   you through this file (trial: five headless sessions, three of them stopped to ask for it). The file holds the
+   whole loop, not only the tasks: verify, converge, deploy and delivery are its sections 3 to 5, so do not stop
+   when `aidw next` says `complete`. A wave task keeps its worktree across sessions: its brief
    points the new implementer there. `aidw next` returns the interrupted task first
    (`implement <T> (interrupted)`): its brief tells the new implementer to continue from the work already in
    the working tree rather than start over.
-4. Headless (`claude -p` from `aidw run`): never ask the user anything. If a decision is needed, escalate with the
+4. Headless (`claude -p` from `aidw run`): never ask the user anything and never offer choices ("tell me which you
+   want"): the next step is in the run skill, so do it. If a decision is really needed, escalate with the
    question and stop; the runner reports it.

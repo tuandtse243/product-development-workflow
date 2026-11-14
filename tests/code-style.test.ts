@@ -24,6 +24,11 @@ describe("code style profile", () => {
     expect(read("roles/technical-planner/role.md")).toMatch(/type: feat/);
   });
 
+  it("resume reads the run skill by path, because /aidw:run cannot be invoked by the model", () => {
+    expect(read("skills/run/SKILL.md")).toMatch(/disable-model-invocation: true/);
+    expect(read("skills/resume/SKILL.md")).toContain("aidw plugin-path skills/run/SKILL.md");
+  });
+
   it("the code layer checks formatting for every stack", () => {
     const rows = read("roles/qa/references/quality-layers.md").split("\n").filter((l) => /^\| (Next\.js|Vite|NestJS)/.test(l));
     expect(rows).toHaveLength(3);
