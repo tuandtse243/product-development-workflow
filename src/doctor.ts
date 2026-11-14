@@ -45,7 +45,7 @@ export function binaryOf(command: string): { bin: string; sub?: string } | null 
 
 const commandsOf = (q: QualityConfig): string[] => [...q.layers.flatMap((l) => [...l.setup, ...l.run]), ...(q.deploy.command ? [q.deploy.command] : []), ...q.deploy.smoke];
 
-const drivesBrowser = (q: QualityConfig): boolean => q.layers.some((l) => ["e2e", "a11y", "ui-ux"].includes(l.name) || l.run.some((c) => /playwright|cypress/i.test(c)));
+export const drivesBrowser = (q: QualityConfig): boolean => q.layers.some((l) => ["e2e", "a11y", "ui-ux"].includes(l.name) || l.run.some((c) => /playwright|cypress/i.test(c)));
 
 function writable(path: string): boolean {
   let dir = path;

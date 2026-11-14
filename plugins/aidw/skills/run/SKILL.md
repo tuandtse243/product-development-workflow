@@ -54,6 +54,10 @@ that aidw creates; everything else runs sequentially on the main checkout.
    - FAIL: stop and tell the user what to fix (the line says how), then run it again.
    - `pnpm store` WARN (not writable): ask the user to run the first `pnpm install` in their own terminal after
      T01's `package.json` exists, or to allow the path; do not let T01 sit waiting.
+   - `chrome cdp` FAIL: no Chromium-family browser can start inside this session's sandbox (macOS denies it
+     registering its processes), so the project's test browser has to be started outside it. Tell the user to run
+     `! aidw browser start` once, or to use `aidw run`, which starts the browser itself because the runner is not
+     sandboxed. Do not try to launch Chrome from here.
    - `vercel project` WARN (not linked): run `vercel link --yes` now (creating a free project is covered by the
      `vercel-preview` permission). Without it the first deploy is forced to Production, which is tier 3.
 4. Not running under the runner (`echo $AIDW_RUNNER` is empty) and more than 3 tasks remain: **recommend the runner first**:
@@ -202,7 +206,9 @@ their own terminal (never run it yourself; the gate denies it):
 aidw run <id> --permission-mode auto -- --plugin-dir <plugin dir if not installed>
 ```
 
-It loops `claude -p "/aidw:resume <id>"` until the change is archived, **one task per session** (a fresh session
+Before every session the runner prepares what a sandboxed session cannot do: it starts the project's test browser
+(`aidw browser start`, a free port, one profile per project) when a layer drives a browser, and stops it when the
+change is archived. The sessions then connect to it over localhost. It loops `claude -p "/aidw:resume <id>"` until the change is archived, **one task per session** (a fresh session
 starts at about 55K tokens instead of carrying hundreds of thousands), waits out each limit (the reset time from
 the error, or 5 to 60 minutes of backoff), and stops on escalation or when two sessions make no progress
 (log: `.aidw/run/runner.log`). Tier-3 questions cannot be answered headless; they end in an escalation.

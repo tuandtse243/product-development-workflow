@@ -12695,6 +12695,10 @@ function runLoop(p, id, opts = {}) {
   const result = (outcome, state, message) => {
     if (env.AIDW_RUN_DETACHED === "1") (0, import_node_fs22.rmSync)(pidFile(p), { force: true });
     record(`stop: ${outcome}: ${message}`);
+    try {
+      opts.onFinish?.(outcome);
+    } catch {
+    }
     return { outcome, runs, waits, state, message };
   };
   for (; ; ) {
@@ -12709,6 +12713,10 @@ function runLoop(p, id, opts = {}) {
       waits++;
       record(`paused (${reason || "no reason"}): waiting ${Math.round(w.ms / MINUTE)} min, ${w.why}`);
       sleep(w.ms);
+    }
+    if (opts.prepare) {
+      const problem = opts.prepare(state);
+      if (problem) return result("needs_user", state, problem);
     }
     if (opts.preflight && (runs === 0 || state === "deploying")) {
       const problem = opts.preflight(state);
@@ -13308,11 +13316,33 @@ Status: aidw run --status   Stop: aidw run --stop   (it also stops by itself whe
         }
         const maxRuns = str(args.flags["max-runs"]);
         if (maxRuns !== void 0 && !(Number.isInteger(Number(maxRuns)) && Number(maxRuns) >= 1)) throw new UsageError("--max-runs must be a positive integer");
+        let startedBrowser = false;
         const r = runLoop(p, id, {
           ...str(args.flags.claude) ? { claude: str(args.flags.claude) } : {},
           ...str(args.flags["permission-mode"]) ? { permissionMode: str(args.flags["permission-mode"]) } : {},
           ...maxRuns ? { maxRuns: Number(maxRuns) } : {},
           ...args.flags["keep-mcp"] === true ? { keepMcp: true } : {},
+          // The runner runs outside the sandbox that wraps each session, so it hosts the test browser for them.
+          prepare: () => {
+            if (env.E2E_CDP_URL) return null;
+            const qtext = readText(qualityFile(loadChange(p, id)));
+            const config = qtext === null ? null : parseQuality(qtext, "quality.yaml").config;
+            if (!config || !drivesBrowser2(config)) return null;
+            try {
+              const b = startBrowser(p, { env });
+              if (b.started) {
+                startedBrowser = true;
+                if (!json) io.out(`[aidw run] test browser started at ${b.record?.url} for the sessions to connect to
+`);
+              }
+              return null;
+            } catch (e) {
+              return `the test browser could not start, even outside a session: ${e.message}`;
+            }
+          },
+          onFinish: (outcome) => {
+            if (startedBrowser && outcome === "archived") stopBrowser(p);
+          },
           preflight: () => {
             const bad = doctor(p, id, env).filter((c) => c.status === "fail");
             return bad.length ? `fix this first, then run the same command again: ${bad.map((c) => `${c.name}: ${c.detail}`).join("; ")}` : null;

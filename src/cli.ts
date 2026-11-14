@@ -32,12 +32,12 @@ import { parseTasks, type Task } from "./tasks.js";
 import { converge } from "./converge.js";
 import { formatCost, parallelSavings, readSessions } from "./cost.js";
 import { detectProject } from "./detect.js";
-import { doctor, doctorText } from "./doctor.js";
+import { doctor, doctorText, drivesBrowser } from "./doctor.js";
 import { createPr, planPr } from "./pr.js";
 import { planAdvice, planShape, planSummary } from "./plan.js";
 import { detachRun, runLoop, runnerPid, stopRunner } from "./runner.js";
 import { deliver } from "./deliver.js";
-import { deploy, recordLayerReview, verify } from "./quality.js";
+import { deploy, parseQuality, qualityFile, recordLayerReview, verify } from "./quality.js";
 import { firstDeploy } from "./firstdeploy.js";
 import { reconcileDoneTasks, reopenTask } from "./run.js";
 import { autoReview, buildBrief, checkpoint, integrateChange, nextAction, parseVerdict, recordReview, retryTask, startTask, type NextAction } from "./run.js";
@@ -559,11 +559,32 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         }
         const maxRuns = str(args.flags["max-runs"]);
         if (maxRuns !== undefined && !(Number.isInteger(Number(maxRuns)) && Number(maxRuns) >= 1)) throw new UsageError("--max-runs must be a positive integer");
+        let startedBrowser = false;
         const r = runLoop(p, id, {
           ...(str(args.flags.claude) ? { claude: str(args.flags.claude) as string } : {}),
           ...(str(args.flags["permission-mode"]) ? { permissionMode: str(args.flags["permission-mode"]) as string } : {}),
           ...(maxRuns ? { maxRuns: Number(maxRuns) } : {}),
           ...(args.flags["keep-mcp"] === true ? { keepMcp: true } : {}),
+          // The runner runs outside the sandbox that wraps each session, so it hosts the test browser for them.
+          prepare: () => {
+            if (env.E2E_CDP_URL) return null; // the user's own browser
+            const qtext = readText(qualityFile(loadChange(p, id)));
+            const config = qtext === null ? null : parseQuality(qtext, "quality.yaml").config;
+            if (!config || !drivesBrowser(config)) return null;
+            try {
+              const b = startBrowser(p, { env });
+              if (b.started) {
+                startedBrowser = true;
+                if (!json) io.out(`[aidw run] test browser started at ${b.record?.url} for the sessions to connect to\n`);
+              }
+              return null;
+            } catch (e) {
+              return `the test browser could not start, even outside a session: ${(e as Error).message}`;
+            }
+          },
+          onFinish: (outcome) => {
+            if (startedBrowser && outcome === "archived") stopBrowser(p);
+          },
           preflight: () => {
             const bad = doctor(p, id, env).filter((c) => c.status === "fail");
             return bad.length ? `fix this first, then run the same command again: ${bad.map((c) => `${c.name}: ${c.detail}`).join("; ")}` : null;
