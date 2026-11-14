@@ -88,7 +88,8 @@ aidw next --change <id> --json
 **`implement <T>`** (reason `new`, `retry` or `interrupted`):
 1. `aidw task start <T> --change <id>`. It prints the brief path and the exact prompt to use. If it fails
    because attempts are exhausted, go to *Escalate*.
-2. Spawn the `aidw:fullstack` subagent (Agent tool, `subagent_type: "aidw:fullstack"`) with the printed
+2. Spawn the Agent named on the `SPAWN` line of `task start` (Agent tool, `subagent_type: "<that name>"`: `aidw:fullstack`,
+   `aidw:frontend` or `aidw:backend`, from the task's `role`) with the printed
    prompt (`Task brief: <path>. Read it and implement the task.`). Wait for it.
 3. If the implementer reports a blocker it cannot resolve (missing decision, contradictory spec, credential),
    go to *Escalate* with its words.
@@ -118,7 +119,7 @@ aidw next --change <id> --json
 1. For each task: `aidw task start <T> --worktree --change <id>`. If one fails because its worktree setup
    failed, it is marked sequential and runs later on its own; continue with the others.
 2. Each `task start` printed the brief path and prompt.
-3. Spawn one `aidw:fullstack` per task **in a single message** (parallel Agent calls), each with only its
+3. Spawn one Agent per task, the one named on its `SPAWN` line, **in a single message** (parallel Agent calls), each with only its
    printed prompt (`Task brief: <path>. Read it and implement the task.`). Wait for all of them.
 4. A blocker from any implementer: finish the others, then *Escalate*.
 5. `aidw checkpoint <T>` for each task, one after the other (checkpoints run builds; never in parallel).

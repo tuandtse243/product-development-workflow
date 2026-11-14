@@ -293,6 +293,27 @@ export function checkRoster(root: string): Diags {
   return d;
 }
 
+/**
+ * The Role whose Agent runs a task owned by `role`: the Role itself when it is active and writes project files, the
+ * active Role that carries it when it is Planned (`database` -> `fullstack`), otherwise null (the plan names a Role
+ * that cannot run tasks).
+ */
+export function implementerOf(root: string, role: string | undefined): string | null {
+  if (!role) return null;
+  try {
+    const entry = loadRoster(root).roles[role];
+    if (!entry) return null;
+    if (entry.status === "active") return roleAccess(root, role) === "write" ? role : null;
+    const by = entry.carried_by;
+    return by && by !== role ? implementerOf(root, by) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** `aidw:<role>` of the Agent for a task; falls back to the default implementer (`aidw analyze` warned about the plan). */
+export const agentForTask = (root: string, role: string | undefined): string => `aidw:${implementerOf(root, role) ?? DEFAULT_TASK_ROLE}`;
+
 const accessCache = new Map<string, Access | null>();
 
 /** The access a Role declares, or null when no such Role has a profile. Cached: the gate asks on every tool call. */

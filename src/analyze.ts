@@ -3,7 +3,7 @@
  * Spec Kit "analyze"). The user should never be asked to approve a package whose parts
  * contradict each other.
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadChange } from "./change.js";
 import { deltaFiles } from "./check.js";
@@ -15,6 +15,8 @@ import { parseQuality } from "./quality.js";
 import { loadTokens, tokensFile } from "./design.js";
 import { touchesUi } from "./skills.js";
 import { planAdvice } from "./plan.js";
+import { pluginRoot } from "./plugin.js";
+import { implementerOf } from "./roles.js";
 
 const TITLE_ADVISED = 60;
 const isPlanned = (t: { origin?: unknown }): boolean => t.origin === undefined || t.origin === "plan";
@@ -240,6 +242,16 @@ export function analyzeChange(p: Paths, id: string): Diags {
   const ui = tasks.filter((t: Task) => touchesUi(t)).map((t) => t.id);
   if (ui.length && !tokens.exists) {
     d.error(rel(p, tokensFile(p)), `missing: task(s) ${ui.join(", ")} change UI, so the design needs tokens with use rules (see /aidw:start step 5)`);
+  }
+
+  // Every planned task is run by the Agent of its Role: an unknown Role, or one that cannot write code, falls back to fullstack.
+  const root = pluginRoot(process.env);
+  if (existsSync(join(root, "roster.yaml"))) {
+    for (const t of tasks) {
+      if (isPlanned(t) && typeof t.role === "string" && implementerOf(root, t.role) === null) {
+        d.warn(rel(p, tasksFile), `task ${t.id}: role "${t.role}" cannot run a task (use fullstack, frontend or backend, or a Planned Role that one of them carries); fullstack will run it`);
+      }
+    }
   }
 
   const { ids, changed } = idsAfterChange(p, id);

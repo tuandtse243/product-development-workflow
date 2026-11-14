@@ -141,6 +141,8 @@ export function nextAction(p: Paths, id: string): NextAction {
 
 export interface StartResult {
   task: string;
+  /** the Role that owns the task (`role:` in tasks.yaml); the Agent that runs it is derived from it */
+  role?: string;
   attempt: number;
   maxAttempts: number;
   base: string | null;
@@ -202,7 +204,7 @@ export function startTask(p: Paths, id: string, taskId: string, opts: { worktree
   if (!t.started_at) setField(tf, i, "started_at", now());
   if (base) setField(tf, i, "base", base);
   saveTasks(tf);
-  return { task: taskId, attempt, maxAttempts: max, base, resumed, ...(worktree ? { worktree } : {}) };
+  return { task: taskId, ...(typeof t.role === "string" ? { role: t.role } : {}), attempt, maxAttempts: max, base, resumed, ...(worktree ? { worktree } : {}) };
 }
 
 /** User-granted retry of an escalated or failed task: a fresh attempt budget, same base commit. */

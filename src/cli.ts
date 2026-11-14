@@ -9,7 +9,7 @@ import { pluginRoot } from "./plugin.js";
 import { BrowserError, browserEnv, browserStatus, startBrowser, stopBrowser } from "./browser.js";
 import { checkArtifacts } from "./artifacts.js";
 import { checkWorkflows } from "./workflow.js";
-import { AGENTS, checkRoster, rosterTable, writeAgents } from "./roles.js";
+import { agentForTask, AGENTS, checkRoster, rosterTable, writeAgents } from "./roles.js";
 import { checkChange, checkSpecs } from "./check.js";
 import { Diags, type Diagnostic } from "./diag.js";
 import {
@@ -412,9 +412,10 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         }
         const r = startTask(p, id, need(rest[1], "task id"), { worktree: args.flags.worktree === true });
         const brief = buildBrief(p, id, r.task, "implement", join(pluginRoot(env), "library", "vendor"));
+        const agent = agentForTask(pluginRoot(env), r.role);
         emit(
-          { ok: true, change: id, ...r, brief: brief.path },
-          `${r.task} running: attempt ${r.attempt} of ${r.maxAttempts}${r.resumed ? " (resumed)" : ""}${r.base ? `, base ${r.base.slice(0, 8)}` : ""}${r.worktree ? `, worktree ${r.worktree}` : ""}\nbrief ${brief.path}\nSPAWN ${AGENTS.implement} with: Task brief: ${brief.path}. Read it and implement the task.\n`,
+          { ok: true, change: id, ...r, agent, brief: brief.path },
+          `${r.task} running: attempt ${r.attempt} of ${r.maxAttempts}${r.resumed ? " (resumed)" : ""}${r.base ? `, base ${r.base.slice(0, 8)}` : ""}${r.worktree ? `, worktree ${r.worktree}` : ""}\nbrief ${brief.path}\nSPAWN ${agent} with: Task brief: ${brief.path}. Read it and implement the task.\n`,
         );
         return 0;
       }

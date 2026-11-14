@@ -8426,6 +8426,19 @@ function checkRoster(root) {
   for (const name of present) if (!(name in expected)) d.error(`agents/${name}`, "not generated from a role: agents/ holds only generated files");
   return d;
 }
+function implementerOf(root, role) {
+  if (!role) return null;
+  try {
+    const entry = loadRoster(root).roles[role];
+    if (!entry) return null;
+    if (entry.status === "active") return roleAccess(root, role) === "write" ? role : null;
+    const by = entry.carried_by;
+    return by && by !== role ? implementerOf(root, by) : null;
+  } catch {
+    return null;
+  }
+}
+var agentForTask = (root, role) => `aidw:${implementerOf(root, role) ?? DEFAULT_TASK_ROLE}`;
 var accessCache = /* @__PURE__ */ new Map();
 function roleAccess(root, id) {
   if (!ROLE_ID.test(id)) return null;
@@ -9460,7 +9473,7 @@ ${r.tail}`);
   if (!t.started_at) setField(tf, i, "started_at", now2());
   if (base) setField(tf, i, "base", base);
   saveTasks(tf);
-  return { task: taskId, attempt, maxAttempts: max, base, resumed, ...worktree ? { worktree } : {} };
+  return { task: taskId, ...typeof t.role === "string" ? { role: t.role } : {}, attempt, maxAttempts: max, base, resumed, ...worktree ? { worktree } : {} };
 }
 function retryTask(p, id, taskId) {
   const tf = loadTasks(p, id);
@@ -11920,6 +11933,14 @@ function analyzeChange(p, id) {
   if (ui.length && !tokens.exists) {
     d.error(rel(p, tokensFile(p)), `missing: task(s) ${ui.join(", ")} change UI, so the design needs tokens with use rules (see /aidw:start step 5)`);
   }
+  const root = pluginRoot(process.env);
+  if ((0, import_node_fs17.existsSync)((0, import_node_path18.join)(root, "roster.yaml"))) {
+    for (const t of tasks) {
+      if (isPlanned2(t) && typeof t.role === "string" && implementerOf(root, t.role) === null) {
+        d.warn(rel(p, tasksFile), `task ${t.id}: role "${t.role}" cannot run a task (use fullstack, frontend or backend, or a Planned Role that one of them carries); fullstack will run it`);
+      }
+    }
+  }
   const { ids, changed } = idsAfterChange(p, id);
   const coveredReqs = /* @__PURE__ */ new Set();
   const coveredScenarios = /* @__PURE__ */ new Set();
@@ -13431,11 +13452,12 @@ ${r2.dependents.length ? `WARNING: done task(s) ${r2.dependents.join(", ")} depe
         }
         const r = startTask(p, id, need(rest[1], "task id"), { worktree: args.flags.worktree === true });
         const brief = buildBrief(p, id, r.task, "implement", (0, import_node_path26.join)(pluginRoot(env), "library", "vendor"));
+        const agent = agentForTask(pluginRoot(env), r.role);
         emit(
-          { ok: true, change: id, ...r, brief: brief.path },
+          { ok: true, change: id, ...r, agent, brief: brief.path },
           `${r.task} running: attempt ${r.attempt} of ${r.maxAttempts}${r.resumed ? " (resumed)" : ""}${r.base ? `, base ${r.base.slice(0, 8)}` : ""}${r.worktree ? `, worktree ${r.worktree}` : ""}
 brief ${brief.path}
-SPAWN ${AGENTS.implement} with: Task brief: ${brief.path}. Read it and implement the task.
+SPAWN ${agent} with: Task brief: ${brief.path}. Read it and implement the task.
 `
         );
         return 0;
