@@ -63,7 +63,7 @@ describe("artifact ownership", () => {
 
   it("rejects a Role that writes an artifact another Role owns", () => {
     const root = copy();
-    edit(root, "roles/security/role.md", "writes: [layer-review-security]", "writes: [layer-review-security, architecture]");
+    edit(root, "roles/security/role.md", "writes: [layer-review-security, audit-security]", "writes: [layer-review-security, audit-security, architecture]");
     expect(errors(root)).toMatch(/roles\/security\/role\.md: writes: "architecture" is owned by software-architect/);
   });
 

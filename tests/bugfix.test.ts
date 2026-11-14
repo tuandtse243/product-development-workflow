@@ -54,7 +54,7 @@ describe("the bugfix workflow", () => {
   it("records the workflow of a change, and rejects one that does not exist", () => {
     const root = atGate();
     expect(change(root).workflow).toBe("bugfix");
-    expect(cli(root, "change", "new", "other", "--workflow", "nope").err).toMatch(/unknown workflow "nope" \(expected bugfix, feature, product\)/);
+    expect(cli(root, "change", "new", "other", "--workflow", "nope").err).toMatch(/unknown workflow "nope" \(expected audit, bugfix, feature, product\)/);
   });
 });
 

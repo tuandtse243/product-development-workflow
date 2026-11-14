@@ -5,6 +5,7 @@ mode: worker
 tier: fast
 access: artifacts
 tools: [Read, Write, Edit, Glob, Grep, Bash]
+writes: [audit-report]
 ---
 
 ## Status

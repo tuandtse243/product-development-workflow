@@ -10,7 +10,7 @@ tier: deep
 access: artifacts
 tools: [Read, Write, Edit, Glob, Grep, Bash]
 reads: [requirements, delta-specs, domain-model, design-direction, design-tokens, project-config, architecture, constitution, tasks]
-writes: [architecture, decisions-architecture, constitution, project-config, analysis-existing-system, analysis-stack, analysis-architecture, triage-report]
+writes: [architecture, decisions-architecture, constitution, project-config, analysis-existing-system, analysis-stack, analysis-architecture, triage-report, decision-audit-lenses]
 includes: [library/author-artifacts.md]
 skills:
   - triage: when the brief you were given is a triage brief (a task ran out of attempts and you are asked why)

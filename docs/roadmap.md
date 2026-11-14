@@ -128,6 +128,9 @@ aidw becomes a software factory with a Roster of Roles, Workflows as data and de
     the scope gate.
   - [x] Decision Points (ADR-0003): `decisions:` in a Workflow file, `aidw decide` / `aidw decisions`, answers in `decisions.yaml`
     (part of the approved package); `design-needed` in `product` and `feature`. `aidw analyze` refuses `no-ui` with UI tasks.
+  - [x] `audit` Workflow (read-only; its own machine: analyzing -> delivered, no approval): `aidw decide audit-lenses`, `aidw audit
+    brief|report|picks`; reviewers write `.aidw/run/audit-<lens>.md`, the CLI assembles one report by severity. `performance` joins
+    when its Role is activated. Not yet run with real Agents.
   - [x] `bugfix` Workflow (`workflows/bugfix.yaml`, chosen per request): `aidw approve <id> --auto` approves a small fix itself
     (at most 3 tasks, no migration, no delta spec) and reclassifies a bigger one to `feature`; `aidw change new --workflow`.
     Not yet run end to end.

@@ -115,6 +115,9 @@ const REPORT_FILE = /^report-[A-Za-z0-9._-]+\.md$/;
 /** The only file a reviewer may write: its verdict, in .aidw/run/. */
 const VERDICT_FILE = /^(?:layer-)?review-[A-Za-z0-9._-]+\.md$/;
 
+/** An audit reviewer's answer: .aidw/run/audit-<lens>.md. */
+const AUDIT_FILE = /^audit-[a-z0-9-]+\.md$/;
+
 /**
  * What an aidw subagent may do, from the hook's agent_type ("aidw:code-reviewer", "fullstack", ...). The name is a
  * Role id and the Role's profile declares its access: `write` -> "implementer", `read-only` -> "reviewer".
@@ -179,7 +182,7 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
     if (role === "reviewer") {
       // The one thing a reviewer writes is its verdict file: the orchestrator reads it from disk instead of
       // carrying the whole reply in its context.
-      if (dirname(file) === p.run && VERDICT_FILE.test(basename(file))) return allow("reviewer verdict file");
+      if (dirname(file) === p.run && (VERDICT_FILE.test(basename(file)) || AUDIT_FILE.test(basename(file)))) return allow("reviewer verdict file");
       return deny("the reviewer is read-only; report issues in the verdict instead of fixing them (it may write only .aidw/run/review-<task>.md or layer-review-<layer>.md)");
     }
     // S8: a wave task's git worktree is project code, not aidw state; its own .aidw/ is a stale copy.

@@ -539,7 +539,8 @@ export function archiveChange(p: Paths, id: string): { target: string; merges: C
   }
   const d = checkChange(p, id);
   if (d.errors.length) throw new OpError(`change "${id}" has validation errors; nothing was archived`, d);
-  const delivery = checkDelivery(p, id);
+  // A Workflow that never deploys (audit) has no delivery package.
+  const delivery = "deploying" in machineOf(p, change).transitions ? checkDelivery(p, id) : new Diags();
   if (delivery.errors.length) throw new OpError(`the delivery package of "${id}" is incomplete; run \`aidw deliver\` and complete it`, delivery);
   const merges = planMerge(p, id);
 

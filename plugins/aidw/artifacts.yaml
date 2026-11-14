@@ -163,6 +163,27 @@ task-review:
   path: run/review-<T>.md
   owner: code-reviewer
   validate: none
+decision-audit-lenses:
+  path: changes/<id>/decisions.yaml
+  part: "audit-lenses: the lenses an audit looks through"
+  owner: software-architect
+  validate: none
+audit-security:
+  path: run/audit-security.md
+  owner: security
+  validate: none
+audit-code-quality:
+  path: run/audit-code-quality.md
+  owner: code-reviewer
+  validate: none
+audit-ui:
+  path: run/audit-ui.md
+  owner: ui-ux-designer
+  validate: none
+audit-report:
+  path: changes/<id>/audit-report.md
+  owner: documentation
+  validate: none
 triage-report:
   path: run/triage-<T>.md
   owner: software-architect

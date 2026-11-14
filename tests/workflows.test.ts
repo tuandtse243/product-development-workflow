@@ -26,8 +26,8 @@ const edit = (root: string, file: string, from: string | RegExp, to: string) => 
 const errors = (root: string) => checkWorkflows(root).errors.map((e) => `${e.file}: ${e.message}`).join("\n");
 
 describe("the workflows of the plugin", () => {
-  it("are product (greenfield), feature (brownfield) and bugfix (on request), and pass their own check", () => {
-    expect(workflowIds(plugin)).toEqual(["bugfix", "feature", "product"]);
+  it("are product (greenfield), feature (brownfield), bugfix and audit (on request), and pass their own check", () => {
+    expect(workflowIds(plugin)).toEqual(["audit", "bugfix", "feature", "product"]);
     expect(workflowFor(plugin, "greenfield")?.id).toBe("product");
     expect(workflowFor(plugin, "brownfield")?.id).toBe("feature");
     const d = checkWorkflows(plugin);
@@ -35,8 +35,8 @@ describe("the workflows of the plugin", () => {
     expect(d.warnings).toEqual([]);
   });
 
-  it("cover every state of the Change state machine, in the order aidw walks them", () => {
-    for (const id of workflowIds(plugin)) {
+  it("cover every state of the Change state machine, in the order aidw walks them (all but audit)", () => {
+    for (const id of workflowIds(plugin).filter((w) => w !== "audit")) {
       const w = loadWorkflow(plugin, id)!;
       const states = new Set([...w.interrupts, ...w.stages.flatMap((s) => s.states)]);
       expect([...states].sort(), id).toEqual([...STATES].sort()); // these three walk the full machine
@@ -46,8 +46,8 @@ describe("the workflows of the plugin", () => {
     }
   });
 
-  it("have one approval gate, before the build", () => {
-    for (const id of workflowIds(plugin)) {
+  it("have one approval gate, before the build (all but audit, which has none)", () => {
+    for (const id of workflowIds(plugin).filter((w) => w !== "audit")) {
       const stages = loadWorkflow(plugin, id)!.stages.map((s) => s.id);
       const gates = loadWorkflow(plugin, id)!.stages.filter((s) => s.gate === "approval" || s.gate === "approval-auto");
       expect(gates, id).toHaveLength(1);

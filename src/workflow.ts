@@ -36,6 +36,8 @@ export interface Stage {
   writes: string[];
   gate?: (typeof GATES)[number];
   boundary?: Boundary;
+  /** audit: lens -> the Role whose Agent reviews through it */
+  lenses?: Record<string, string>;
   agents?: { implement?: string; review?: string; triage?: string; "layer-review"?: Record<string, string> };
 }
 
@@ -107,6 +109,7 @@ export function loadWorkflow(root: string, id: string): Workflow | null {
       writes: strings(s.writes),
       ...(typeof s.gate === "string" ? { gate: s.gate as Stage["gate"] } : {}),
       ...(isRecord(s.boundary) ? { boundary: s.boundary as unknown as Boundary } : {}),
+      ...(isRecord(s.lenses) ? { lenses: Object.fromEntries(Object.entries(s.lenses).map(([k, v]) => [k, String(v)])) } : {}),
       ...(isRecord(s.agents) ? { agents: s.agents as Stage["agents"] } : {}),
     }),
   );
@@ -218,6 +221,12 @@ export function checkWorkflows(root: string): Diags {
       if (s.gate === "approval-auto") checkBoundary(d, file, at, s, ids);
       else if (s.boundary) d.error(file, `${at}: boundary belongs to a stage with gate: approval-auto`);
       if (s.agents) checkAgents(d, file, at, s, roster.roles);
+      if (s.lenses) {
+        const lensDecision = w.decisions.find((x) => x.id === "audit-lenses");
+        if (!lensDecision) d.error(file, `${at}: lenses need a decision "audit-lenses" whose options are the lenses`);
+        else if (JSON.stringify(Object.keys(s.lenses).sort()) !== JSON.stringify([...lensDecision.options].sort())) d.error(file, `${at}: lenses (${Object.keys(s.lenses).join(", ")}) must be exactly the options of the decision audit-lenses (${lensDecision.options.join(", ")})`);
+        for (const [lens, role] of Object.entries(s.lenses)) if (!s.roles.includes(role)) d.error(file, `${at}: lens ${lens} is reviewed by ${role}, who is not one of the stage's roles`);
+      }
     });
 
     const m = w.machine;

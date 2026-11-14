@@ -6,7 +6,7 @@ tier: standard
 access: read-only
 tools: [Read, Grep, Glob, Bash, Write]
 reads: [delta-specs, tasks, constitution]
-writes: [task-review]
+writes: [task-review, audit-code-quality]
 ---
 
 ## Responsibility

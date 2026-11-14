@@ -9,6 +9,7 @@ import { pluginRoot } from "./plugin.js";
 import { BrowserError, browserEnv, browserStatus, startBrowser, stopBrowser } from "./browser.js";
 import { checkArtifacts } from "./artifacts.js";
 import { boundaryOf } from "./boundary.js";
+import { buildAuditBrief, chosenLenses, compileReport, lensRoles, pickFindings } from "./audit.js";
 import { DecisionError, readDecisions, recordDecision, workflowOfChange } from "./decisions.js";
 import { machineOf } from "./machine.js";
 import { checkWorkflows, workflowIds } from "./workflow.js";
@@ -156,6 +157,8 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
   validate [<id>] [--strict]             validate specs and changes (all when no id)
   decide <decision> <answer> --reason R  record a Decision Point of the Workflow (the answer must be one of its options;
                                          several answers separated by commas where the decision allows)
+  audit brief <lens> | report | picks <F-01,..>   the audit workflow: a brief for the reviewer of one lens, the report
+                                         assembled from their answers, the picked findings as the request of a new change
   decisions [<id>]                       the Workflow's Decision Points of a change and their answers
   approve <id> [--auto]                  approve the Analysis package (hashes it); --auto: aidw approves a small change of
                                          a workflow with an automatic approval (bugfix), or reclassifies one that is too big
@@ -966,6 +969,41 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           if (e instanceof DecisionError) throw new OpError(e.message);
           throw e;
         }
+      }
+
+      case "audit": {
+        // The audit Workflow: one brief per lens for its read-only reviewer, one report assembled from their answers.
+        const p = project();
+        const sub = need(rest[0], "brief | report | picks");
+        const id = resolveChangeId(p, str(args.flags.change));
+        const c = loadChange(p, id);
+        const w = workflowOfChange(p, c, pluginRoot(env));
+        const roles = lensRoles(w);
+        if (!Object.keys(roles).length) throw new OpError(`change "${id}" runs under the "${w.id}" workflow, which is not an audit`);
+        if (sub === "brief") {
+          const lens = need(rest[1], "lens");
+          const chosen = chosenLenses(p, id);
+          if (!chosen) throw new OpError('no lenses decided: run `aidw decide audit-lenses <lens,lens> --reason "..."` first');
+          if (!chosen.includes(lens)) throw new OpError(`lens "${lens}" was not decided for this audit (decided: ${chosen.join(", ")})`);
+          const role = roles[lens] as string;
+          const b = buildAuditBrief(p, id, lens, role);
+          emit({ change: id, lens, agent: `aidw:${role}`, brief: b.path }, `${b.path}\nSPAWN aidw:${role} with: Audit brief: ${b.path}. Read it and write your answer as it says.\n`);
+          return 0;
+        }
+        if (sub === "report") {
+          const r = compileReport(p, id);
+          const ok = r.diags.errors.length === 0;
+          emit({ ok, change: id, report: ok ? rel(p, r.path) : null, findings: r.findings, ...diagsJson(r.diags) }, ok ? `${rel(p, r.path)}: ${r.findings.length} finding(s)\n` : `${printDiags(r.diags)}INCOMPLETE: every decided lens must answer\n`);
+          return ok ? 0 : 1;
+        }
+        if (sub === "picks") {
+          const picks = need(rest[1], "finding ids, e.g. F-01,F-03").split(",").map((x) => x.trim().toUpperCase()).filter(Boolean);
+          const r = pickFindings(p, id, picks);
+          if (r.missing.length) throw new OpError(`no such finding: ${r.missing.join(", ")} (see the report: aidw audit report)`);
+          emit({ ok: true, change: id, picks, request: r.text }, r.text);
+          return 0;
+        }
+        throw new UsageError("usage: aidw audit brief <lens> | report | picks <F-01,F-02>");
       }
 
       case "decisions": {

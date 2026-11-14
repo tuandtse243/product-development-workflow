@@ -40,9 +40,9 @@ already `awaiting_approval` or later, tell the user and stop: one change at a ti
 
 1. Pick a change id: `YYYY-MM-DD-<short-kebab-slug>` (today's date).
 2. Pick the Workflow. The default follows the project (`product` for a new project, `feature` for an existing codebase); you
-   only propose another: a **bug report** in an existing codebase is a `bugfix` (see "Bugfix" below). Say which one you
+   only propose another: a **bug report** in an existing codebase is a `bugfix` and a request to **review** the code ("audit", "check", "is it secure") is an `audit` (see "Bugfix" and "Audit" below). Say which one you
    propose and why, and wait for the user to confirm it.
-   `aidw change new <id> --title "<title>" --input-type <idea|prd|upwork_jd|client_request|codebase> [--workflow bugfix]`
+   `aidw change new <id> --title "<title>" --input-type <idea|prd|upwork_jd|client_request|codebase> [--workflow bugfix|audit]`
 3. `aidw transition <id> intake`
 4. Fill `.aidw/changes/<id>/intake.md`: paste the original request **verbatim** (or its path), record the
    client's explicit constraints, including any stack the client requires.
@@ -204,6 +204,24 @@ There is **no approval gate** while the fix stays small. After `aidw transition 
   one line what will be fixed, then continue with `/aidw:run`. A production deploy still asks.
 - It refuses when the plan has more than 3 tasks, adds a migration or needs a delta spec. The change is now a `feature`
   change: present the package as in step 9 and stop for `/aidw:approve`.
+
+## Audit
+
+A change created with `--workflow audit` is **read-only**: no spec, plan, approval or build, and the gate stays closed to
+project files for the whole change. Do not follow steps 1b to 9. Instead:
+
+1. Intake as in step 1: write what to audit, and why, in `intake.md`. `aidw transition <id> intake`, then `analyzing`.
+2. Choose the lenses with the user (`security`, `code-quality`, `ui`), recommending the ones the request implies, and
+   record them: `aidw decide audit-lenses security,code-quality --reason "<why>"`.
+3. For each lens: `aidw audit brief <lens>`. It prints the brief and the `SPAWN` line; spawn that Agent (`aidw:security`,
+   `aidw:code-reviewer`, `aidw:ui-ux-designer`), all of them in one message, each with exactly the printed prompt. Each writes
+   `.aidw/run/audit-<lens>.md` and replies with one line.
+4. `aidw audit report`. It assembles `audit-report.md` (findings by severity, numbered `F-01`...). A lens that answered in a
+   wrong shape is named: spawn that reviewer once more.
+5. `aidw transition <id> delivered`, then `aidw archive <id>`. Present the report to the user: the counts, the critical and
+   high findings, and what was not covered.
+6. The user picks what to act on. `aidw audit picks F-01,F-03 --change <id>` prints the picked findings as the request of
+   a new change; start it with this skill as a `bugfix` (a small, clear defect) or a `feature`.
 
 ## Revising
 

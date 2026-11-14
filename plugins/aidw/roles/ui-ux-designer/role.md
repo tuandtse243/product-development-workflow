@@ -8,7 +8,7 @@ tier: standard
 access: read-only
 tools: [Read, Grep, Glob, Bash, Write]
 reads: [requirements, delta-specs, design-direction, design-tokens]
-writes: [design-direction, design-tokens, decision-design-needed, analysis-design, layer-review-ui-ux]
+writes: [design-direction, design-tokens, decision-design-needed, analysis-design, layer-review-ui-ux, audit-ui]
 ---
 
 ## Responsibility
