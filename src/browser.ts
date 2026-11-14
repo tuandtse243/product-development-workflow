@@ -71,8 +71,8 @@ export interface BrowserDeps {
   launch: (bin: string, args: string[], log: string) => number | null;
   /** is this process alive? */
   alive: (pid: number) => boolean;
-  /** ends the process */
-  kill: (pid: number) => void;
+  /** ends the process; false when this process is not allowed to (a sandboxed session cannot signal Chrome) */
+  kill: (pid: number) => boolean;
   sleep: (ms: number) => void;
   /** the Chrome binary to use, or null */
   chrome: (env: NodeJS.ProcessEnv) => string | null;
@@ -119,15 +119,16 @@ export const realBrowserDeps: BrowserDeps = {
     try {
       process.kill(pid, 0);
       return true;
-    } catch {
-      return false;
+    } catch (e) {
+      return (e as NodeJS.ErrnoException).code === "EPERM"; // it exists, this process may not signal it
     }
   },
   kill: (pid) => {
     try {
       process.kill(pid, "SIGTERM");
-    } catch {
-      /* already gone */
+      return true;
+    } catch (e) {
+      return (e as NodeJS.ErrnoException).code !== "EPERM"; // ESRCH: already gone
     }
   },
   sleep: (ms) => void Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms),
@@ -177,8 +178,15 @@ export function startBrowser(p: Paths, opts: { headed?: boolean; env?: NodeJS.Pr
 
   const profile = usableProfile(p, deps.home, deps.tmp ?? tmpdir());
   // A crashed Chrome leaves its old port behind; reading it would point at nothing.
-  rmSync(join(profile, "DevToolsActivePort"), { force: true });
-  if (current.record && deps.alive(current.record.pid)) deps.kill(current.record.pid);
+  try {
+    rmSync(join(profile, "DevToolsActivePort"), { force: true });
+  } catch {
+    /* not writable from here: Chrome overwrites it when it starts */
+  }
+  if (current.record && deps.alive(current.record.pid)) {
+    // a leftover Chrome that no longer answers; if it cannot be signalled from here, a second Chrome would fight for the profile
+    if (!deps.kill(current.record.pid)) throw new BrowserError(`pid ${current.record.pid} is still running but does not answer, and this session may not stop it: run \`aidw browser stop\` in your own terminal`);
+  }
 
   const headless = !opts.headed;
   const args = [
@@ -228,12 +236,19 @@ function whyChromeFailed(log: string): string {
   return last ? ` Chrome said: ${last.slice(0, 160)}` : "";
 }
 
-/** Stops the project's test browser and forgets it. Returns false when there was none. */
-export function stopBrowser(p: Paths, deps: BrowserDeps = realBrowserDeps): boolean {
+/**
+ * Stops the project's test browser and forgets it. "none": there was none. "denied": it is running but this process
+ * may not signal it (a sandboxed session); the record is kept so it is not lost, and the user stops it themselves.
+ */
+export function stopBrowser(p: Paths, deps: BrowserDeps = realBrowserDeps): "stopped" | "none" | "denied" {
   const record = readBrowser(p);
-  if (!record) return false;
-  if (deps.alive(record.pid)) deps.kill(record.pid);
+  if (!record) return "none";
+  if (deps.alive(record.pid) && !deps.kill(record.pid)) return "denied";
   rmSync(browserFile(p), { force: true });
-  rmSync(join(record.profile, "DevToolsActivePort"), { force: true });
-  return true;
+  try {
+    rmSync(join(record.profile, "DevToolsActivePort"), { force: true });
+  } catch {
+    /* the profile may be outside what this process can write (a sandboxed session); the port is ignored on the next start anyway */
+  }
+  return "stopped";
 }

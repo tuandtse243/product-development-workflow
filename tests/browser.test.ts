@@ -42,6 +42,7 @@ function fakeChrome(home: string, opts: { port?: number; crash?: boolean; noPort
     kill: (pid) => {
       state.killed.push(pid);
       state.running.delete(state.port);
+      return true;
     },
     sleep: () => {},
   };
@@ -136,10 +137,18 @@ describe("the project's test browser", () => {
     const { p, home } = project();
     const { deps, state } = fakeChrome(home);
     startBrowser(p, {}, deps);
-    expect(stopBrowser(p, deps)).toBe(true);
+    expect(stopBrowser(p, deps)).toBe("stopped");
     expect(state.killed).toHaveLength(1);
     expect(readBrowser(p)).toBeNull();
-    expect(stopBrowser(p, deps)).toBe(false);
+    expect(stopBrowser(p, deps)).toBe("none");
+  });
+
+  it("keeps the record and says so when this process may not signal Chrome (a sandboxed session)", () => {
+    const { p, home } = project();
+    const { deps } = fakeChrome(home);
+    startBrowser(p, {}, deps);
+    expect(stopBrowser(p, { ...deps, kill: () => false })).toBe("denied");
+    expect(readBrowser(p)).not.toBeNull();
   });
 });
 

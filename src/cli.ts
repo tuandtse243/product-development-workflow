@@ -583,7 +583,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
             }
           },
           onFinish: (outcome) => {
-            if (startedBrowser && outcome === "archived") stopBrowser(p);
+            if (startedBrowser && outcome === "archived") stopBrowser(p); // "denied" cannot happen here: the runner started it
           },
           preflight: () => {
             const bad = doctor(p, id, env).filter((c) => c.status === "fail");
@@ -813,8 +813,9 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           return 0;
         }
         if (sub === "stop") {
-          const stopped = stopBrowser(p);
-          emit({ ok: true, stopped }, stopped ? "test browser stopped\n" : "no test browser was running\n");
+          const result = stopBrowser(p);
+          if (result === "denied") throw new OpError("the test browser is running but this session may not stop it (the sandbox blocks signalling it): run `aidw browser stop` in your own terminal");
+          emit({ ok: true, stopped: result === "stopped" }, result === "stopped" ? "test browser stopped\n" : "no test browser was running\n");
           return 0;
         }
         throw new UsageError("browser needs start, status, url or stop");
