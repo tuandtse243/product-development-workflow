@@ -15,7 +15,7 @@
  */
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { approvalStatus, baseSpecFiles, CHANGE_PACKAGE_FILES, FROZEN_PROJECT_DIRS } from "./approval.js";
-import { listChangeIds, loadChange, POST_APPROVAL, stateOf, type State } from "./change.js";
+import { listChangeIds, loadChange, stateOf, type State } from "./change.js";
 import { AIDW_DIR, findProject, pathsFor, rel, type Paths } from "./project.js";
 import {
   AIDW_COMMAND,
@@ -32,6 +32,7 @@ import {
   RUNNER_COMMAND,
 } from "./policy.js";
 import { grantedResources } from "./quality.js";
+import { machineOf } from "./machine.js";
 import { pluginRoot } from "./plugin.js";
 import { roleAccess } from "./roles.js";
 
@@ -47,9 +48,6 @@ export type Decision = { decision: "allow" | "deny" | "ask"; reason: string } | 
 
 /** States in which code may be written: approved and actively executing. */
 export const OPEN_STATES: ReadonlySet<State> = new Set<State>(["approved", "executing", "verifying", "converging", "deploying"]);
-
-/** States in which the approved package is frozen against edits. */
-const FROZEN_STATES: ReadonlySet<State> = new Set<State>([...POST_APPROVAL].filter((s) => s !== "escalated"));
 
 export interface GateState {
   open: boolean;
@@ -69,12 +67,14 @@ export function gateState(p: Paths): GateState {
     try {
       const c = loadChange(p, id);
       state = stateOf(c);
-      if (state && POST_APPROVAL.has(state)) {
+      const machine = machineOf(p, c);
+      if (state && machine.approvalRequired.has(state)) {
         const a = approvalStatus(p, c).status;
         if (a === "drift") st.drift.push(id);
         if (a === "valid" && OPEN_STATES.has(state)) st.open = true;
         if (a === "valid" && state === "delivered") st.delivered = true;
-        if (FROZEN_STATES.has(state)) st.frozen.push(id);
+        // the approved package is frozen against edits in every approved state but escalated
+        if (state !== "escalated") st.frozen.push(id);
       }
     } catch {
       // an unreadable change never opens the gate

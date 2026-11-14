@@ -4,7 +4,8 @@
  * the reason, so `aidw status` shows why work stopped and `/aidw:resume` knows where to continue.
  * Never blocks and never throws: the hook output is ignored by Claude Code.
  */
-import { listChangeIds, loadChange, stateOf, TRANSITIONS } from "./change.js";
+import { listChangeIds, loadChange, stateOf } from "./change.js";
+import { machineOf } from "./machine.js";
 import { transition } from "./ops.js";
 import { findProject, pathsFor } from "./project.js";
 
@@ -24,8 +25,9 @@ export function runStopFailure(stdin: string, env: NodeJS.ProcessEnv): string[] 
   const paused: string[] = [];
   for (const id of listChangeIds(p)) {
     try {
-      const state = stateOf(loadChange(p, id));
-      if (state && TRANSITIONS[state].includes("paused")) {
+      const change = loadChange(p, id);
+      const state = stateOf(change);
+      if (state && (machineOf(p, change).transitions[state] ?? []).includes("paused")) {
         transition(p, id, "paused", { reason });
         paused.push(id);
       }

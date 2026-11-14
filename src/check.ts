@@ -1,7 +1,8 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { approvalStatus } from "./approval.js";
-import { CHANGE_ID, isState, loadChange, NEEDS_ANALYSIS, POST_APPROVAL, type Change } from "./change.js";
+import { CHANGE_ID, isState, loadChange, type Change } from "./change.js";
+import { machineOf } from "./machine.js";
 import { Diags } from "./diag.js";
 import { capabilityOf, KEBAB_SEGMENT, readText, rel, walkFiles, type Paths } from "./project.js";
 import { validateDeltaText, validateSpecText } from "./spec/validate.js";
@@ -76,7 +77,8 @@ export function checkChange(p: Paths, id: string, opts: { asState?: string } = {
   const qFile = join(change.dir, "quality.yaml");
   if (existsSync(qFile)) d.add(parseQuality(readFileSync(qFile, "utf8"), rel(p, qFile)).diags);
 
-  if (NEEDS_ANALYSIS.has(state)) {
+  const machine = machineOf(p, change);
+  if (machine.analysisRequired.has(state)) {
     for (const name of ["intake.md", "analysis.md", "tasks.yaml", "quality.yaml"]) {
       if (!existsSync(join(change.dir, name))) d.error(meta, `state "${state}" requires ${name}`);
     }
@@ -85,7 +87,7 @@ export function checkChange(p: Paths, id: string, opts: { asState?: string } = {
     }
   }
 
-  if (POST_APPROVAL.has(state)) {
+  if (machine.approvalRequired.has(state)) {
     const a = approvalStatus(p, change);
     if (a.status === "none") d.error(meta, `state "${state}" requires an approval; run \`aidw approve ${id}\``);
     if (a.status === "drift") {

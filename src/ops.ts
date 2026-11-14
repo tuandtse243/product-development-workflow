@@ -4,13 +4,12 @@ import { approvalStatus, computeApprovalHash } from "./approval.js";
 import {
   CHANGE_ID,
   ChangeError,
+  isState,
   changeDir,
   listChangeIds,
   loadChange,
-  POST_APPROVAL,
   saveChange,
   stateOf,
-  TRANSITIONS,
   type State,
 } from "./change.js";
 import { analyzeChange, PLACEHOLDER } from "./analyze.js";
@@ -41,8 +40,7 @@ export class OpError extends Error {
 
 const now = () => new Date().toISOString();
 
-/** States a paused change can resume to (every state that can transition to "paused"). */
-const RESUMABLE = (Object.keys(TRANSITIONS) as State[]).filter((s) => TRANSITIONS[s].includes("paused"));
+import { machineOf } from "./machine.js";
 
 // ---------------------------------------------------------------- init
 
@@ -348,26 +346,29 @@ export function transition(p: Paths, id: string, to: string, opts: { reason?: st
   const from = stateOf(change);
   if (!from) throw new OpError(`change "${id}" has an unknown state "${String(change.data.state)}"`);
 
+  const machine = machineOf(p, change);
   let target: State;
   if (to === "resume") {
     if (from !== "paused") throw new OpError(`change "${id}" is not paused`);
     const back = (change.data.run as { paused?: { from?: string } } | undefined)?.paused?.from;
-    if (!back || !(RESUMABLE as readonly string[]).includes(back)) {
+    // a paused change resumes to a state that can pause (every state that can transition to "paused")
+    if (!back || !isState(back) || !(machine.transitions[back] ?? []).includes("paused")) {
       throw new OpError(`change "${id}" has no valid paused.from state to resume to`);
     }
     target = back as State;
   } else {
     if (to === "approved") throw new OpError("use `aidw approve` to approve a change");
     if (to === "archived") throw new OpError("use `aidw archive` to archive a change");
-    if (!(TRANSITIONS[from] as readonly string[]).includes(to)) {
-      const allowed = TRANSITIONS[from].join(", ") || "none";
+    const next = machine.transitions[from] ?? [];
+    if (!(next as readonly string[]).includes(to)) {
+      const allowed = next.join(", ") || "none";
       throw new OpError(`cannot go from "${from}" to "${to}" (allowed: ${allowed})`);
     }
     target = to as State;
   }
 
   // "escalated" is the escape hatch (e.g. after drift), so it is reachable without a valid approval.
-  if (POST_APPROVAL.has(target) && target !== "escalated") {
+  if (machine.approvalRequired.has(target) && target !== "escalated") {
     const a = approvalStatus(p, change);
     if (a.status !== "valid") {
       throw new OpError(

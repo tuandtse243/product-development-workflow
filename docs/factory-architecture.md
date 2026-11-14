@@ -253,7 +253,8 @@ the 12 stages above: `product` has 13 stages and `feature` 14 (it adds the asses
 with one approval gate and no new stage. `aidw roster` checks
 that a stage reads only what an earlier stage (or the project) already has, writes only what one of its Roles owns,
 walks the Change state machine in an allowed order, and names the Agents the CLI spawns. The CLI reads the state
-machine (`transitions:`) and those Agents from `product.yaml`; every Workflow file must list the same ones.
+machine of a Change from its own Workflow file (`transitions`, `approval_required`, `analysis_required`) and the Agents
+it spawns from `product.yaml`.
 
 ### feature (brownfield)
 

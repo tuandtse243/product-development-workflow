@@ -8,9 +8,8 @@ applies_to: request
 existing: [project-config, specs, constitution, domain-model, architecture, design-tokens]
 interrupts: [paused, escalated]
 
-# The Change state machine: from each state, the states `aidw transition` may move to. `approved` is reached by
-# `aidw approve` and `archived` by `aidw archive`, so no state lists them. The CLI reads this table (src/change.ts);
-# every Workflow file lists the same one.
+# The Change state machine of this Workflow: from each state, the states `aidw transition` may move to. `approved` is reached by
+# `aidw approve` and `archived` by `aidw archive`, so no state lists them. The CLI reads this table (src/machine.ts).
 transitions:
   draft: [intake]
   intake: [analyzing]
@@ -25,6 +24,11 @@ transitions:
   delivered: []
   archived: []
   escalated: [executing, verifying, converging, deploying, analyzing]
+
+# States in which the approved package must exist and match its hash, and in which intake, analysis, tasks and quality
+# files must exist. `archived` needs the package but not a live approval (it is the end of the Change).
+approval_required: [approved, executing, paused, verifying, converging, deploying, delivered, escalated]
+analysis_required: [awaiting_approval, approved, executing, paused, verifying, converging, deploying, delivered, escalated, archived]
 
 stages:
   - id: intake

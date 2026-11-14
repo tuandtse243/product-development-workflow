@@ -3,12 +3,13 @@ import { join } from "node:path";
 import { analyzeChange, idsAfterChange, mainSpecIds } from "./analyze.js";
 import { approvalStatus, computeApprovalHash } from "./approval.js";
 import { runBackstop } from "./backstop.js";
-import { ChangeError, isState, listChangeIds, loadChange, NEEDS_ANALYSIS, resolveChangeId, stateOf, STATES } from "./change.js";
+import { ChangeError, isState, listChangeIds, loadChange, resolveChangeId, stateOf, STATES } from "./change.js";
 import { runGate } from "./gate.js";
 import { pluginRoot } from "./plugin.js";
 import { BrowserError, browserEnv, browserStatus, startBrowser, stopBrowser } from "./browser.js";
 import { checkArtifacts } from "./artifacts.js";
 import { boundaryOf } from "./boundary.js";
+import { machineOf } from "./machine.js";
 import { checkWorkflows, workflowIds } from "./workflow.js";
 import { agentForTask, AGENTS, checkRoster, rosterTable, writeAgents } from "./roles.js";
 import { checkChange, checkSpecs } from "./check.js";
@@ -930,8 +931,8 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           d.add(checkChange(p, id));
           // Once the package is presented for approval, analyze findings are validation errors too.
           try {
-            const state = loadChange(p, id).data.state;
-            if (isState(state) && NEEDS_ANALYSIS.has(state)) d.add(analyzeChange(p, id));
+            const c = loadChange(p, id);
+            if (isState(c.data.state) && machineOf(p, c).analysisRequired.has(c.data.state)) d.add(analyzeChange(p, id));
           } catch {
             // load errors are already reported by checkChange
           }

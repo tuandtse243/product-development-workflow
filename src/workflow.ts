@@ -2,7 +2,8 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import YAML from "yaml";
 import { loadArtifacts } from "./artifacts.js";
-import { isState, parseTransitions, POST_APPROVAL, STATES, TRANSITIONS, type State } from "./change.js";
+import { isState, type State } from "./change.js";
+import { parseMachine, statesOf, type Machine } from "./machine.js";
 import { Diags } from "./diag.js";
 import { AGENTS, loadRoster } from "./roles.js";
 
@@ -44,8 +45,8 @@ export interface Workflow {
   applies_to: (typeof PROJECT_KINDS)[number];
   existing: string[];
   interrupts: State[];
-  /** the Change state machine this Workflow lists; null when it is not a complete table */
-  transitions: Record<State, readonly State[]> | null;
+  /** the state machine of its Changes; null when `transitions`, `approval_required` or `analysis_required` is not valid */
+  machine: Machine | null;
   stages: Stage[];
 }
 
@@ -100,7 +101,7 @@ export function loadWorkflow(root: string, id: string): Workflow | null {
     applies_to: data.applies_to as Workflow["applies_to"],
     existing: strings(data.existing),
     interrupts: strings(data.interrupts) as State[],
-    transitions: parseTransitions(data.transitions),
+    machine: parseMachine(String(data.id ?? ""), data),
     stages,
   };
 }
@@ -146,8 +147,7 @@ export function checkWorkflows(root: string): Diags {
     if (!(PROJECT_KINDS as readonly string[]).includes(w.applies_to)) d.error(file, `applies_to must be ${PROJECT_KINDS.join(" or ")}`);
     else if (w.applies_to !== "request" && kinds.has(w.applies_to)) d.error(file, `${kinds.get(w.applies_to)} already serves ${w.applies_to} projects: one Workflow per project kind`);
     else kinds.set(w.applies_to, id);
-    if (!w.transitions) d.error(file, '"transitions:" must list every state with the states it may move to');
-    else if (JSON.stringify(w.transitions) !== JSON.stringify(TRANSITIONS)) d.error(file, 'its "transitions:" differ from the table the CLI runs (the one in workflows/product.yaml): every Workflow must list the same state machine');
+    if (!w.machine) d.error(file, '"transitions:" (state -> states it may move to), "approval_required:" and "analysis_required:" (lists of states) are required');
     if (!w.stages.length) {
       d.error(file, "no stages");
       continue;
@@ -195,22 +195,31 @@ export function checkWorkflows(root: string): Diags {
       if (s.agents) checkAgents(d, file, at, s, roster.roles);
     });
 
-    if (approvals !== 1) d.error(file, `exactly one stage has gate: approval or approval-auto (found ${approvals})`);
-    w.stages.forEach((s, i) => {
-      if (s.states.some((st) => POST_APPROVAL.has(st) && st !== "approved") && approvalAt >= 0 && i <= approvalAt) {
-        d.error(file, `stage ${s.id}: covers a state that needs the approval, but it is not after the approval stage`);
-      }
-    });
-    for (const st of STATES) if (!covered.has(st)) d.error(file, `no stage covers the state "${st}"`);
+    const m = w.machine;
+    if (approvals > 1) d.error(file, `at most one stage has gate: approval or approval-auto (found ${approvals})`);
+    if (m) {
+      // Approval is required exactly from the gate on; a Workflow with no gate (audit) never needs one.
+      if (approvals === 0 && m.approvalRequired.size) d.error(file, "approval_required lists states, but no stage has gate: approval or approval-auto");
+      if (approvals === 1 && !m.approvalRequired.size) d.error(file, "a stage has an approval gate, so approval_required must list the states that need it");
+      const fromGate = new Set<string>(w.interrupts);
+      w.stages.forEach((s, i) => i >= approvalAt && approvalAt >= 0 && s.states.forEach((st) => fromGate.add(st)));
+      for (const st of m.approvalRequired) if (!fromGate.has(st)) d.error(file, `approval_required: "${st}" is a state before the approval stage, or no stage covers it`);
+      const mentioned = new Set<string>(statesOf(m));
+      for (const st of m.analysisRequired) if (!mentioned.has(st)) d.error(file, `analysis_required: "${st}" is not a state of this workflow's transitions`);
+      for (const [from, to] of Object.entries(m.transitions)) for (const x of to ?? []) if (!mentioned.has(x)) d.error(file, `transitions: "${from}" -> "${x}", but "${x}" has no entry of its own`);
+      // The workflow's states are exactly the states its stages (and interrupts) cover.
+      for (const st of mentioned) if (!covered.has(st)) d.error(file, `no stage covers the state "${st}"`);
+      for (const st of covered) if (!mentioned.has(st)) d.error(file, `a stage covers the state "${st}", which is not in the transitions`);
+    }
 
     // The stages walk the state machine: every step from one state to the next is one the table allows.
     const path = w.stages.flatMap((s) => s.states);
-    for (let i = 1; i < path.length; i++) {
+    for (let i = 1; w.machine && i < path.length; i++) {
       const from = path[i - 1] as State;
       const to = path[i] as State;
       if (from === to || !isState(from) || !isState(to)) continue;
-      const allowed = (TRANSITIONS[from] as readonly string[]).includes(to) || COMMAND_TRANSITIONS.some(([a, b]) => a === from && b === to);
-      if (!allowed) d.error(file, `the stages go from state "${from}" to "${to}", which aidw does not allow`);
+      const allowed = ((w.machine!.transitions[from] ?? []) as readonly string[]).includes(to) || COMMAND_TRANSITIONS.some(([a, b]) => a === from && b === to);
+      if (!allowed) d.error(file, `the stages go from state "${from}" to "${to}", which its transitions do not allow`);
     }
   }
 

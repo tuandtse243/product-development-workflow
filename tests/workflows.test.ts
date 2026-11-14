@@ -2,7 +2,8 @@ import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { STATES, TRANSITIONS } from "../src/change.js";
+import { STATES } from "../src/change.js";
+import { machineById } from "../src/machine.js";
 import { checkWorkflows, loadWorkflow, workflowFor, workflowIds } from "../src/workflow.js";
 
 const plugin = join(__dirname, "..", "plugins", "aidw");
@@ -38,7 +39,7 @@ describe("the workflows of the plugin", () => {
     for (const id of workflowIds(plugin)) {
       const w = loadWorkflow(plugin, id)!;
       const states = new Set([...w.interrupts, ...w.stages.flatMap((s) => s.states)]);
-      expect([...states].sort(), id).toEqual([...STATES].sort());
+      expect([...states].sort(), id).toEqual([...STATES].sort()); // these three walk the full machine
       expect(w.stages.flatMap((s) => s.states).filter((s, i, a) => s !== a[i - 1]), id).toEqual(
         ["draft", "intake", "analyzing", "awaiting_approval", "approved", "executing", "verifying", "converging", "deploying", "delivered", "archived"],
       );
@@ -87,7 +88,7 @@ describe("workflow consistency", () => {
   it("rejects a flow that skips a state aidw does not let it skip", () => {
     const root = copy();
     edit(root, "workflows/product.yaml", "states: [verifying]", "states: [deploying]");
-    expect(errors(root)).toMatch(/the stages go from state "executing" to "deploying", which aidw does not allow/);
+    expect(errors(root)).toMatch(/the stages go from state "executing" to "deploying", which its transitions do not allow/);
   });
 
   it("rejects a workflow with no approval gate, or with a state no stage covers", () => {
@@ -95,7 +96,7 @@ describe("workflow consistency", () => {
     edit(root, "workflows/product.yaml", "    gate: approval\n", "");
     edit(root, "workflows/product.yaml", "states: [converging]", "states: [verifying]");
     const out = errors(root);
-    expect(out).toMatch(/exactly one stage has gate: approval or approval-auto \(found 0\)/);
+    expect(out).toMatch(/approval_required lists states, but no stage has gate: approval or approval-auto/);
     expect(out).toMatch(/no stage covers the state "converging"/);
   });
 
@@ -119,35 +120,44 @@ describe("workflow consistency", () => {
   });
 });
 
-describe("the state machine", () => {
+describe("the state machine of a workflow", () => {
+  const FLOW = {
+    draft: ["intake"],
+    intake: ["analyzing"],
+    analyzing: ["awaiting_approval"],
+    awaiting_approval: ["analyzing"],
+    approved: ["executing"],
+    executing: ["verifying", "paused", "escalated"],
+    paused: [],
+    verifying: ["executing", "converging", "paused", "escalated"],
+    converging: ["executing", "deploying", "paused", "escalated"],
+    deploying: ["delivered", "paused", "escalated"],
+    delivered: [],
+    archived: [],
+    escalated: ["executing", "verifying", "converging", "deploying", "analyzing"],
+  };
+
   it("is read from the workflow file and equals the table aidw ran before it moved there", () => {
-    expect(TRANSITIONS).toEqual({
-      draft: ["intake"],
-      intake: ["analyzing"],
-      analyzing: ["awaiting_approval"],
-      awaiting_approval: ["analyzing"],
-      approved: ["executing"],
-      executing: ["verifying", "paused", "escalated"],
-      paused: [],
-      verifying: ["executing", "converging", "paused", "escalated"],
-      converging: ["executing", "deploying", "paused", "escalated"],
-      deploying: ["delivered", "paused", "escalated"],
-      delivered: [],
-      archived: [],
-      escalated: ["executing", "verifying", "converging", "deploying", "analyzing"],
-    });
+    for (const id of ["product", "feature", "bugfix"]) {
+      const m = machineById(id)!;
+      expect(m.transitions, id).toEqual(FLOW);
+      expect([...m.approvalRequired].sort(), id).toEqual(["approved", "converging", "delivered", "deploying", "escalated", "executing", "paused", "verifying"]);
+      expect([...m.analysisRequired].sort(), id).toEqual(["approved", "archived", "awaiting_approval", "converging", "delivered", "deploying", "escalated", "executing", "paused", "verifying"]);
+    }
   });
 
-  it("is listed identically by every workflow, and a workflow that differs is rejected", () => {
-    for (const id of workflowIds(plugin)) expect(loadWorkflow(plugin, id)!.transitions, id).toEqual(TRANSITIONS);
+  it("is checked: a table that points at a state it does not list, or misses a covered one, is rejected", () => {
     const root = copy();
-    edit(root, "workflows/feature.yaml", "  analyzing: [awaiting_approval]", "  analyzing: [awaiting_approval, executing]");
-    expect(errors(root)).toMatch(/feature\.yaml: its "transitions:" differ/);
+    edit(root, "workflows/feature.yaml", "  analyzing: [awaiting_approval]", "  analyzing: [awaiting_approval, nowhere]");
+    expect(errors(root)).toMatch(/feature\.yaml: "transitions:" .* required/);
+    const root2 = copy();
+    edit(root2, "workflows/feature.yaml", "  archived: []\n", "");
+    expect(errors(root2)).toMatch(/a stage covers the state "archived", which is not in the transitions/);
   });
 
-  it("rejects a table that misses a state", () => {
+  it("rejects approval_required states that come before the approval stage", () => {
     const root = copy();
-    edit(root, "workflows/feature.yaml", "  archived: []\n", "");
-    expect(errors(root)).toMatch(/"transitions:" must list every state/);
+    edit(root, "workflows/product.yaml", "approval_required: [approved,", "approval_required: [intake, approved,");
+    expect(errors(root)).toMatch(/approval_required: "intake" is a state before the approval stage/);
   });
 });
