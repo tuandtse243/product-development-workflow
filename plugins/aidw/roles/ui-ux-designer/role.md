@@ -7,6 +7,8 @@ mode: interactive
 tier: standard
 access: read-only
 tools: [Read, Grep, Glob, Bash, Write]
+reads: [requirements, delta-specs, design-direction, design-tokens]
+writes: [design-direction, design-tokens, analysis-design, layer-review-ui-ux]
 ---
 
 ## Responsibility

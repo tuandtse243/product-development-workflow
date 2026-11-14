@@ -7,6 +7,7 @@ import { ChangeError, isState, listChangeIds, loadChange, NEEDS_ANALYSIS, resolv
 import { runGate } from "./gate.js";
 import { pluginRoot } from "./plugin.js";
 import { BrowserError, browserEnv, browserStatus, startBrowser, stopBrowser } from "./browser.js";
+import { checkArtifacts } from "./artifacts.js";
 import { AGENTS, checkRoster, rosterTable, writeAgents } from "./roles.js";
 import { checkChange, checkSpecs } from "./check.js";
 import { Diags, type Diagnostic } from "./diag.js";
@@ -156,8 +157,9 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
   ids [<id>]                             requirement and scenario ids (after applying the change)
   vendor-path <upstream>/<skill>         absolute path of a vendored SKILL.md (e.g. pocock/grilling)
   plugin-path <path>                     absolute path of a plugin file (e.g. roles/software-architect/references/stack-pool.md)
-  roster [--write]                       the factory's Roles; checks roster.yaml, role profiles and the generated
-                                         agent files (--write regenerates agents/ from roles/)
+  roster [--write]                       the factory's Roles; checks roster.yaml, role profiles, artifacts.yaml (one owner
+                                         per artifact, reads/writes of each Role) and the generated agent files
+                                         (--write regenerates agents/ from roles/)
 
 Execution (state executing; add --change <id> when several changes are active):
   next                                   what the orchestrator does next (implement | review | escalate | complete)
@@ -711,6 +713,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const root = pluginRoot(env);
         const written = args.flags.write === true ? writeAgents(root) : [];
         const d = checkRoster(root);
+        d.add(checkArtifacts(root));
         const table = d.errors.length ? "" : rosterTable(root);
         const summary = `${d.errors.length ? "FAILED" : "OK"}: ${d.errors.length} error(s), ${d.warnings.length} warning(s)\n`;
         emit(

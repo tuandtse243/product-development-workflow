@@ -7,6 +7,8 @@ mode: interactive
 tier: deep
 access: artifacts
 tools: [Read, Write, Edit, Glob, Grep, Bash]
+reads: [requirements, delta-specs, domain-model, design-direction, design-tokens, project-config, architecture, constitution]
+writes: [architecture, decisions-architecture, constitution, project-config, analysis-existing-system, analysis-stack, analysis-architecture]
 includes: [library/author-artifacts.md]
 ---
 

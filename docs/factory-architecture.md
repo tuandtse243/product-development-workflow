@@ -107,8 +107,8 @@ skills:                    # on-demand: roles/<id>/skills/<name>.md, read only w
 `access` tells the gate what the Role's Agent may write: `write` edits project files (implementing Roles, never
 `.aidw/`), `artifacts` drafts under `.aidw/` only, never project files (the gate's normal rules also apply inside `.aidw/`:
 the approved package is frozen), `read-only` writes only a verdict. `includes` appends shared text such as the
-procedure all implementing Roles follow, so it exists once. `reads` and `writes` by Artifact name arrive with
-`artifacts.yaml` in step 2; until then a profile lists the paths in its text.
+procedure all implementing Roles follow, so it exists once. `reads` and `writes` list Artifact names from
+`artifacts.yaml`; the profile's text still names the paths for the Agent, and `aidw roster` checks the names.
 
 Department, status and `carried_by` live only in `roster.yaml`, so a Planned Role can be declared before it has
 a folder and activating one is a one-line change. `aidw roster` checks the Roster, every profile and that the
@@ -171,6 +171,11 @@ api-contract:
   owner: api-designer                    # exactly one Role writes it
   validate: aidw validate
 ```
+
+Two Artifacts may share one file or folder (the sections of `analysis.md`, the ADRs of two Roles); each then
+carries a `part` saying which part it is, so that ownership stays one Role per Artifact. `aidw roster` checks
+today that every Artifact has one owner who is in the Roster, that `reads` / `writes` name only registered
+Artifacts and that a Role writes only what it owns. The Workflow checks below arrive with the Workflow files.
 
 The CLI uses the registry and the Roles' `reads` / `writes` to check three things: every Artifact has exactly
 one owner, no Workflow stage reads an Artifact that no earlier stage writes, and an Artifact exists and

@@ -5,6 +5,7 @@ mode: worker
 tier: standard
 access: artifacts
 tools: [Read, Write, Edit, Glob, Grep, Bash]
+writes: [quality, analysis-quality-profile]
 ---
 
 ## Status

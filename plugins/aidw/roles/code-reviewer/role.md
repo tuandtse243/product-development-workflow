@@ -5,6 +5,8 @@ mode: worker
 tier: standard
 access: read-only
 tools: [Read, Grep, Glob, Bash, Write]
+reads: [delta-specs, tasks, constitution]
+writes: [task-review]
 ---
 
 ## Responsibility

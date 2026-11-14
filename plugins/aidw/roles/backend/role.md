@@ -5,6 +5,8 @@ mode: worker
 tier: deep
 access: write
 tools: [Read, Write, Edit, Glob, Grep, Bash]
+reads: [tasks, delta-specs, constitution, architecture]
+writes: []
 max_turns: 100
 includes: [library/implement-a-task.md]
 ---

@@ -8,6 +8,8 @@ mode: interactive
 tier: deep
 access: artifacts
 tools: [Read, Write, Edit, Glob, Grep, Bash]
+reads: [intake, analysis-discovery-qa, domain-model, specs, constitution]
+writes: [intake, analysis-summary, analysis-decisions-to-honor, analysis-scope, analysis-domain, analysis-specs, analysis-risks, analysis-discovery-qa, domain-model, decisions-domain, requirements, delta-specs, specs]
 includes: [library/author-artifacts.md]
 skills:
   - delta-spec: when you write or change the delta specs under changes/<id>/specs, which have a strict grammar the CLI parses

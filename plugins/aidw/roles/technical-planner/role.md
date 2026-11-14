@@ -5,6 +5,8 @@ mode: worker
 tier: deep
 access: artifacts
 tools: [Read, Write, Edit, Glob, Grep, Bash]
+reads: [delta-specs, architecture, constitution, design-tokens]
+writes: [tasks, analysis-plan]
 includes: [library/author-artifacts.md]
 skills:
   - scaffold-tasks: when the plan creates a new project or its first tasks set up the toolchain, the test harness, CI or a Vercel deploy

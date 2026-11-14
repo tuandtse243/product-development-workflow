@@ -7,6 +7,8 @@ access: write
 # An allowlist, not a denylist: every tool a subagent inherits puts its schema in each of its turns. Trial-3A measured
 # 37K tokens in an implementer's first turn against 9K in a reviewer's, the difference being tool schemas.
 tools: [Read, Write, Edit, Glob, Grep, Bash]
+reads: [tasks, delta-specs, constitution, design-tokens]
+writes: []
 max_turns: 100
 includes: [library/implement-a-task.md]
 ---

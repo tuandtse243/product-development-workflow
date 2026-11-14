@@ -108,6 +108,8 @@ aidw becomes a software factory with a Roster of Roles, Workflows as data and de
     `vendor/` to `library/`, and the references each Role uses to `roles/<id>/references/`.
 - [ ] **Step 2.** `product` and `feature` Workflows as YAML drive `aidw next`; `artifacts.yaml`; interview in the
   main session, drafting in worker Agents.
+  - [x] A: `artifacts.yaml` and `reads` / `writes` in the profiles; `aidw roster` checks owners and what each Role writes.
+  - [ ] B: `workflows/product.yaml` and `feature.yaml` for the flow that exists today; consistency check.
 - [ ] **Step 3.** Decision Points, triage, Slice shape; `bugfix` and `audit` Workflows.
 - [ ] **Step 4.** Activate Planned Roles one at a time with their evals; Next.js and NestJS framework packs.
 
