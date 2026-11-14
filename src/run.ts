@@ -11,8 +11,8 @@
  * session resumes from files, never from conversation memory.
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { join, relative, resolve, sep } from "node:path";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import YAML from "yaml";
 import { decisionsToHonor, requirementsAfterChange } from "./analyze.js";
 import { approvalStatus } from "./approval.js";
@@ -306,6 +306,22 @@ export interface CheckpointRecord {
   outside_touches: string[];
   /** UI tasks with approved design tokens only */
   design?: DesignEvidence;
+  /** `type: fix` tasks only: does the new test fail on the old code? */
+  regression?: RegressionEvidence;
+}
+
+/**
+ * Proof that a bugfix's regression test reproduces the bug: the changed test files are run, with the task's unit-test
+ * verify commands, against a checkout of the base commit. `red` = they fail there (good); `not-red` = they pass on the
+ * old code or the task changed no test (the checkpoint fails); `unproven` = it could not be checked (the reviewer is told).
+ */
+export interface RegressionEvidence {
+  status: "red" | "not-red" | "unproven";
+  reason: string;
+  files: string[];
+  command?: string;
+  exit?: number | null;
+  tail?: string;
 }
 
 export interface DesignEvidence {
@@ -401,6 +417,41 @@ export interface CheckpointResult extends CheckpointRecord {
   evidence: string;
 }
 
+const UNIT_TEST_COMMAND = /\b(vitest|jest|mocha|pytest|test)\b|go test|cargo test/;
+const BROWSER_COMMAND = /playwright|cypress|\be2e\b/i;
+
+function proveRegression(p: Paths, id: string, t: Task, dir: string, base: string | null, changed: string[] | null, runner: CommandRunner, timeoutMs: number): RegressionEvidence {
+  const files = (changed ?? []).filter((f) => TEST_FILE.test(f));
+  if (!base || !isGitRepo(dir)) return { status: "unproven", reason: "there is no base commit to compare with", files };
+  if (!files.length) return { status: "not-red", reason: "the task changed no test file: a fix needs a regression test that fails on the old code", files };
+  const commands = list(t.verify).filter((c) => UNIT_TEST_COMMAND.test(c) && !BROWSER_COMMAND.test(c));
+  if (!commands.length) return { status: "unproven", reason: "no verify command runs unit tests, so the old code could not be checked", files };
+  let wt: { dir: string; branch: string };
+  try {
+    wt = ensureWorktree(p, id, `${String(t.id)}-red`, base);
+  } catch (e) {
+    return { status: "unproven", reason: `could not check out the base commit: ${(e as Error).message}`, files };
+  }
+  const wdir = join(p.project, wt.dir);
+  try {
+    for (const f of files) {
+      if (!existsSync(join(dir, f))) continue; // a deleted test
+      mkdirSync(dirname(join(wdir, f)), { recursive: true });
+      copyFileSync(join(dir, f), join(wdir, f));
+    }
+    let last: { command: string; exit: number | null; tail: string } = { command: commands[0] as string, exit: 0, tail: "" };
+    for (const command of commands) {
+      const r = runner(command, wdir, Math.min(timeoutMs, 5 * 60 * 1000));
+      if (r.timedOut) return { status: "unproven", reason: `\`${command}\` timed out on the old code`, files, command };
+      last = { command, exit: r.exit, tail: r.tail };
+      if (r.exit !== 0) return { status: "red", reason: "the new tests fail on the old code", files, ...last };
+    }
+    return { status: "not-red", reason: "the new tests pass on the old code: they do not reproduce the bug", files, ...last };
+  } finally {
+    removeWorktree(p, wt.dir, wt.branch);
+  }
+}
+
 export function checkpoint(
   p: Paths,
   id: string,
@@ -437,7 +488,9 @@ export function checkpoint(
   const previous = readEvidence(tf.change, t).checkpoints.at(-1)?.at;
   const design = designEvidence(p, id, t, changed, previous ?? (typeof t.started_at === "string" ? t.started_at : undefined));
   const designOk = !design || (design.missing_tokens.length === 0 && design.screenshots.length > 0);
-  const ok = verifyOk && missing.length === 0 && designOk;
+  const regression = t.type === "fix" && verifyOk ? proveRegression(p, id, t, dir, base, changed, runner, timeoutMs) : undefined;
+  const regressionOk = !regression || regression.status !== "not-red";
+  const ok = verifyOk && missing.length === 0 && designOk && regressionOk;
 
   const record: CheckpointRecord = {
     attempt: attemptsOf(t),
@@ -450,6 +503,7 @@ export function checkpoint(
     changed_files: changed,
     outside_touches: outside,
     ...(design ? { design } : {}),
+    ...(regression ? { regression } : {}),
   };
   const ev = readEvidence(tf.change, t);
   ev.checkpoints.push(record);
@@ -459,6 +513,7 @@ export function checkpoint(
   if (missing.length) problems.push(`no test names scenario ${missing.join(", ")}`);
   const failed = verify.find((v) => v.exit !== 0);
   if (failed) problems.push(`verify failed: \`${failed.command}\`${failed.timedOut ? " (timed out)" : ` (exit ${failed.exit})`}`);
+  if (regression?.status === "not-red") problems.push(`no regression proof: ${regression.reason}`);
   if (design?.missing_tokens.length) problems.push(`design tokens not in the code: ${design.missing_tokens.join(", ")}`);
   if (design && design.screenshots.length === 0) problems.push(`no fresh screenshot in ${rel(p, shotsDir(p, id, taskId))}`);
   setField(tf, i, "status", ok ? "review" : "failed");
@@ -780,6 +835,7 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
       if (failedCheckpoint.missing_scenarios.length) previous.push(`- Missing scenario tests: ${failedCheckpoint.missing_scenarios.map((s) => `\`${s}\``).join(", ")}`);
       const failed = failedCheckpoint.verify.find((v) => v.exit !== 0);
       if (failed) previous.push(`- \`${failed.command}\` failed${failed.timedOut ? " (timed out)" : ` with exit ${failed.exit}`}:`, "", "```", failed.tail, "```");
+      if (failedCheckpoint.regression?.status === "not-red") previous.push(`- Regression proof failed: ${failedCheckpoint.regression.reason}. Write a test that fails on the old code (it is run against the base commit), then fix.`);
       if (failedCheckpoint.design?.missing_tokens.length) previous.push(`- Design tokens not found in the code: ${failedCheckpoint.design.missing_tokens.map((x) => `\`${x}\``).join(", ")}`);
       if (failedCheckpoint.design && failedCheckpoint.design.screenshots.length === 0) previous.push(`- No fresh screenshot in \`${shots}\``);
     }
@@ -809,7 +865,7 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
           ]
         : []),
       ...(t.type === "fix"
-        ? ["- **Bugfix**: first write a regression test that reproduces the bug and run it to watch it FAIL on the current code; only then fix it. The test name keeps the scenario id."]
+        ? ["- **Bugfix**: first write a regression test that reproduces the bug and run it to watch it FAIL on the current code; only then fix it. The test name keeps the scenario id. The checkpoint proves it: your new test files are run against the base commit, and a test that passes there fails the checkpoint."]
         : []),
       "- Report in at most 10 lines: what works now, files changed, verify result.",
       `- Only if the reviewer needs to know something (a file outside Touches and why, a scenario you narrowed or could not cover, a risk), write it to \`${reportFile}\` with the Write tool (the only .aidw file you may write besides screenshots). Otherwise write nothing: do not create the file.`,
@@ -838,6 +894,13 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
       "",
       `- The task's changes: ${diff}.`,
       `- Checkpoint evidence: \`${rel(p, join(tf.change.dir, evidenceRel(taskId)))}\` (verify output, where each scenario test lives).`,
+      ...(lastCheckpoint?.regression
+        ? [
+            lastCheckpoint.regression.status === "red"
+              ? `- Regression proof (done by aidw): the new tests (${lastCheckpoint.regression.files.map((f) => `\`${f}\``).join(", ")}) FAIL on the base commit (\`${lastCheckpoint.regression.command}\`, exit ${lastCheckpoint.regression.exit}) and pass now. Judge whether they fail for the bug's reason, not for a missing import.`
+              : `- Regression proof NOT done by aidw: ${lastCheckpoint.regression.reason}. Check by hand that the new test fails on the old code (\`git stash\` is not allowed to you: read the diff and reason about it), and say what you could not verify.`,
+          ]
+        : []),
       ...(existsSync(reportFile) ? [`- Implementer notes: \`${rel(p, reportFile)}\` (read it first; it explains files outside Touches and anything the implementer flagged).`] : []),
       ...(outside.length ? [`- Files changed outside Touches: ${outside.map((f) => `\`${f}\``).join(", ")}. Decide whether each is justified.`] : []),
       ...(design?.screenshots.length ? [`- Screenshots (open each with Read): ${design.screenshots.map((f) => `\`${join(p.project, f)}\``).join(", ")}`] : []),

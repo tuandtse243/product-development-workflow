@@ -37,6 +37,7 @@ tasks:
     title: <end-to-end behavior this slice makes work, under 60 characters: it becomes the commit subject>
     role: fullstack   # a Role id from the Roster (`aidw roster`); see "Who owns a task"
     type: feat                 # Conventional Commits type of the task commit: feat fix refactor test docs style perf build ci chore revert
+    scope: booking             # only for a task with no `specs` (a bugfix): the capability it touches, for the commit `fix(booking): ...`
     specs: [<capability>/<requirement-id>]                 # from `aidw ids <id>`
     scenarios: [<capability>/<requirement-id>/<scenario-id>]
     depends_on: []             # blocking edges: only a real data dependency (trial-3C: a near-chain ran with no wave)

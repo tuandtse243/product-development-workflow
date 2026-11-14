@@ -36,6 +36,6 @@ describe("interview in the main session, drafting in worker Agents", () => {
 
   it("each drafting prompt points at what the Agent reads on disk, not at this conversation", () => {
     for (const prompt of start.match(/`Change <id>\.[^`]+`/g) ?? []) expect(prompt).toMatch(/\.aidw\/changes\/<id>\/|\bdrafted\b/);
-    expect((start.match(/`Change <id>\.[^`]+`/g) ?? []).length).toBe(4);
+    expect((start.match(/`Change <id>\.[^`]+`/g) ?? []).length).toBe(5); // plus the planner prompt of a bugfix
   });
 });

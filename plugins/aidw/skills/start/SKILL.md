@@ -219,6 +219,19 @@ most 3 tasks, no domain model, design tokens or ADRs; layers `code` + `unit`, pl
 differences. The behavior is already specified, so the change has **no delta spec** (`skip_specs` is set for you), and the
 planner writes a `type: fix` task whose regression test fails first on the current code (the implementer's brief says so).
 
+**Skip the drafting Agents.** A defect has no new domain, requirements or architecture: do **not** spawn
+`aidw:product-manager` or `aidw:software-architect`, and write no `requirements/` file, domain model, ADR or constitution change
+(a run that spawned the Product Manager produced a requirements document and an extra Agent for a one-line fix). Do steps 1b to
+2 and the health baseline yourself, then write the diagnosis into `analysis.md` in your one Write: the **root cause** (file and
+line), the **scope** (what changes, what does not), the **Decisions to honor** (the exact response or behavior after the fix, what
+must stay as it is), and the regression test the fix needs. The sections for Domain, Stack, Design, Architecture and Specs say
+"n/a for a bugfix", and `aidw decide design-needed no-ui` records a fix without UI. Then spawn only the planner (step 7) with this
+prompt instead of the one there:
+`Change <id>. The diagnosis (root cause, scope, decisions to honor) is in .aidw/changes/<id>/analysis.md; there are no specs. Write .aidw/changes/<id>/tasks.yaml with one task of type fix (at most 3), with scope: <the capability it touches> and a regression test in its touches, run aidw plan and aidw analyze <id>, and reply with the number of tasks and every decision still open.`
+
+The task's **regression test is proven by the CLI**: at its checkpoint aidw runs the new test files against the base commit, and a
+test that passes on the old code fails the checkpoint.
+
 There is **no approval gate** while the fix stays small. After `aidw transition <id> awaiting_approval` run
 `aidw approve <id> --auto` instead of stopping:
 
