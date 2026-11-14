@@ -153,7 +153,7 @@ aidw becomes a software factory with a Roster of Roles, Workflows as data and de
     seeds; an eval case). A task with `role: database` now runs `aidw:database`. It took no CLI change: `roster.yaml`, the
     profile, its knowledge and the planner's text. `tests/activation.test.ts` repeats this for `api-designer`.
   - [x] Second planned Role activated: `devops` (skills for Docker and compose, and for a CI pipeline that mirrors the quality
-    layers without leaking a secret; one case). A task with `role: devops` runs `aidw:devops`; it never deploys. Nine Roles
+    layers without leaking a secret; one case). A task with `role: devops` runs `aidw:devops`; it never deploys. Ten Roles
     stay planned. `qa` is held back on purpose: the CLI carries it (it runs and judges the layers), so an Agent would only
     duplicate it until there is a gap the CLI cannot close.
   - [x] Third planned Role activated: `integration` (skills for contract tests and external APIs; a case about one field that the
@@ -162,6 +162,9 @@ aidw becomes a software factory with a Roster of Roles, Workflows as data and de
   - [x] Framework packs `stacks/nextjs.md` and `stacks/nestjs.md` (front matter: the framework `aidw detect` reports and the Roles
     that read it). An implementer's brief points at the pack of the project's framework; `frontend` never gets NestJS. Adding a
     framework is adding one file.
+  - [x] Two more packs for the other frameworks `aidw detect` reports as a full-stack framework: `stacks/nuxt.md` and
+    `stacks/sveltekit.md`. Astro and React Router / Remix are detected but have no pack yet; there is no pack for a language
+    other than Node, because `aidw detect` only reads `package.json`.
 
 ## Backlog
 

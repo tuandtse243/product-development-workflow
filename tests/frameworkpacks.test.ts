@@ -13,6 +13,8 @@ describe("framework packs", () => {
     expect(frameworkPacks(plugin).map((p) => [p.id, p.framework, p.roles])).toEqual([
       ["nestjs", "NestJS", ["backend", "fullstack"]],
       ["nextjs", "Next.js", ["frontend", "backend", "fullstack"]],
+      ["nuxt", "Nuxt", ["frontend", "backend", "fullstack"]],
+      ["sveltekit", "SvelteKit", ["frontend", "backend", "fullstack"]],
     ]);
   });
 
@@ -25,7 +27,9 @@ describe("framework packs", () => {
     expect(ids({ framework: "NestJS 10.4.0" }, "frontend")).toEqual([]); // never the framework of the other side
     expect(ids({ framework: "NestJS 10.4.0" }, "code-reviewer")).toEqual([]);
     expect(ids({}, "backend")).toEqual([]);
-    expect(ids({ framework: "Nuxt" }, "backend")).toEqual([]);
+    expect(ids({ framework: "Astro" }, "backend")).toEqual([]);
+    expect(ids({ framework: "Nuxt 3.14" }, "frontend")).toEqual(["nuxt"]);
+    expect(ids({ framework: "SvelteKit 2.9" }, "backend")).toEqual(["sveltekit"]);
   });
 });
 
