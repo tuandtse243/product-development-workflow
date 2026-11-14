@@ -14,7 +14,7 @@ describe("which Agent runs a task", () => {
     expect(implementerOf(plugin, "fullstack")).toBe("fullstack");
     expect(implementerOf(plugin, "database")).toBe("database"); // activated: it runs its own tasks
     expect(implementerOf(plugin, "devops")).toBe("devops"); // activated: it runs its own tasks
-    expect(implementerOf(plugin, "integration")).toBe("fullstack");
+    expect(implementerOf(plugin, "integration")).toBe("integration"); // activated
   });
 
   it("is nobody for a role that cannot write project files or does not exist", () => {
@@ -25,7 +25,7 @@ describe("which Agent runs a task", () => {
     expect(agentForTask(plugin, "frontend")).toBe("aidw:frontend");
     expect(agentForTask(plugin, "database")).toBe("aidw:database");
     expect(agentForTask(plugin, "devops")).toBe("aidw:devops");
-    expect(agentForTask(plugin, "integration")).toBe("aidw:fullstack"); // planned, carried by fullstack
+    expect(agentForTask(plugin, "integration")).toBe("aidw:integration");
     expect(agentForTask(plugin, "no-such-role")).toBe("aidw:fullstack");
   });
 });

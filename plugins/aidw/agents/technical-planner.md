@@ -42,11 +42,11 @@ tasks:
 
 ### Who owns a task
 
-Every task has exactly one `role`. Today the Roles that run tasks are `fullstack`, `frontend`, `backend`, `database` and `devops` (Dockerfile, compose, CI workflow, environment variable names; the scaffold task of a new project stays with whoever builds the app).
+Every task has exactly one `role`. Today the Roles that run tasks are `fullstack`, `frontend`, `backend`, `database`, `devops` and `integration` (the glue of a split Slice; Dockerfile, compose, CI workflow, environment variable names; the scaffold task of a new project stays with whoever builds the app).
 **Default: one `fullstack` task delivers the whole Slice.** Split a Slice by Role when at least one holds: it adds
 or changes an API contract that another Slice also uses; it has a migration (a migration is always its own task, owned by `database`);
 both sides are large enough that running them in parallel pays for the extra agents. A split Slice is a small
-graph: backend task, frontend task (parallel), then, once that Role is active, an integration task that runs the
+graph: backend task, frontend task (parallel), then an `integration` task that runs the
 scenario end to end. Say in `analysis.md` why a Slice was split.
 
 ### Rules of a good plan
