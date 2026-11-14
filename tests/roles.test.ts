@@ -13,7 +13,7 @@ afterAll(() => temps.forEach((t) => rmSync(t, { recursive: true, force: true }))
 function copy(): string {
   const root = mkdtempSync(join(tmpdir(), "aidw-roles-"));
   temps.push(root);
-  for (const f of ["roster.yaml", "tiers.yaml", "roles", "agents"]) cpSync(join(plugin, f), join(root, f), { recursive: true });
+  for (const f of ["roster.yaml", "tiers.yaml", "roles", "agents", "library"]) cpSync(join(plugin, f), join(root, f), { recursive: true });
   return root;
 }
 const messages = (root: string) => checkRoster(root).errors.map((e) => `${e.file}: ${e.message}`);
@@ -59,8 +59,20 @@ describe("role profiles", () => {
     const file = join(root, "roles", "security", "role.md");
     writeFileSync(file, readFileSync(file, "utf8").replace("access: read-only", "access: anything\nstatus: active"));
     const out = messages(root).join("\n");
-    expect(out).toMatch(/access must be write or read-only/);
+    expect(out).toMatch(/access must be one of write, artifacts, read-only/);
     expect(out).toMatch(/"status" belongs in roster\.yaml/);
+  });
+
+  it("every active role has a profile", () => {
+    for (const [id, e] of Object.entries(loadRoster(plugin).roles)) {
+      if (e.status === "active") expect(loadRole(plugin, id), id).not.toBeNull();
+    }
+    expect(checkRoster(plugin).warnings).toEqual([]);
+  });
+
+  it("the roles that draft before approval use the artifacts access, the implementing roles write", () => {
+    for (const id of ["product-manager", "software-architect", "technical-planner"]) expect(loadRole(plugin, id), id).toMatchObject({ access: "artifacts" });
+    for (const id of ["fullstack", "frontend", "backend"]) expect(loadRole(plugin, id), id).toMatchObject({ access: "write", mode: "worker" });
   });
 
   it("the profile of each existing agent keeps its tools and tier", () => {
@@ -71,7 +83,34 @@ describe("role profiles", () => {
 
 describe("generated agents", () => {
   it("one agent file per active role that has a profile", () => {
-    expect(Object.keys(generateAgents(plugin)).sort()).toEqual(["code-reviewer.md", "fullstack.md", "security.md", "ui-ux-designer.md"]);
+    expect(Object.keys(generateAgents(plugin)).sort()).toEqual(["backend.md", "code-reviewer.md", "frontend.md", "fullstack.md", "product-manager.md", "security.md", "software-architect.md", "technical-planner.md", "ui-ux-designer.md"]);
+  });
+
+  it("the three implementing roles share one procedure instead of copying it", () => {
+    const tiers = loadTiers(plugin);
+    const shared = loadRole(plugin, "fullstack")!.shared[0]!;
+    expect(shared).toMatch(/finish by running it on the files you changed/);
+    for (const id of ["fullstack", "frontend", "backend"]) {
+      const agent = renderAgent(loadRole(plugin, id)!, tiers);
+      expect(agent, id).toContain(shared);
+      expect(readFileSync(join(plugin, "roles", id, "role.md"), "utf8"), id).not.toContain("finish by running it");
+    }
+  });
+
+  it("a role's skills are listed in its agent with how to read them", () => {
+    const agent = renderAgent(loadRole(plugin, "technical-planner")!, loadTiers(plugin));
+    expect(agent).toMatch(/## Skills \(load only when the work needs one\)/);
+    expect(agent).toContain("aidw plugin-path roles/technical-planner/skills/<name>.md");
+    expect(agent).toMatch(/- `migration-tasks`: when a task adds or changes a database migration/);
+  });
+
+  it("flags a skill without a file and an include that does not exist", () => {
+    const root = copy();
+    const file = join(root, "roles", "technical-planner", "role.md");
+    writeFileSync(file, readFileSync(file, "utf8").replace("  - migration-tasks:", "  - ghost-skill: when it is needed\n  - migration-tasks:").replace("library/author-artifacts.md", "library/missing.md"));
+    const out = messages(root).join("\n");
+    expect(out).toMatch(/skill "ghost-skill" has no file roles\/technical-planner\/skills\/ghost-skill\.md/);
+    expect(out).toMatch(/includes: "library\/missing\.md" not found in the plugin/);
   });
 
   it("maps the tier to a model and carries the role's rules", () => {
@@ -93,7 +132,7 @@ describe("generated agents", () => {
     const out = messages(root).join("\n");
     expect(out).toMatch(/agents\/security\.md: out of date with its role folder/);
     expect(out).toMatch(/agents\/extra\.md: not generated from a role/);
-    expect(writeAgents(root)).toEqual(["code-reviewer.md", "fullstack.md", "security.md", "ui-ux-designer.md"]);
+    expect(writeAgents(root)).toEqual(["backend.md", "code-reviewer.md", "frontend.md", "fullstack.md", "product-manager.md", "security.md", "software-architect.md", "technical-planner.md", "ui-ux-designer.md"]);
     expect(messages(root)).toEqual([]);
   });
 
@@ -107,6 +146,9 @@ describe("the gate reads access from the role profile", () => {
   it("write -> implementer, read-only -> reviewer, unknown -> no subagent rules", () => {
     expect(agentRole("aidw:fullstack")).toBe("implementer");
     expect(["aidw:code-reviewer", "security", "aidw:ui-ux-designer"].map((a) => agentRole(a))).toEqual(["reviewer", "reviewer", "reviewer"]);
+    expect(["aidw:frontend", "backend"].map((a) => agentRole(a))).toEqual(["implementer", "implementer"]);
+    // authoring roles get the gate's normal rules: before approval only .aidw/ is writable
+    expect(["aidw:product-manager", "software-architect", "aidw:technical-planner"].map((a) => agentRole(a))).toEqual([null, null, null]);
     expect(agentRole("general-purpose")).toBeNull();
     expect(agentRole(undefined)).toBeNull();
   });

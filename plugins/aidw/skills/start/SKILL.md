@@ -67,92 +67,19 @@ system before asking anything; the grilling then asks only what the code cannot 
 6. Keep the stack: `Source: client` (the existing code is the client's choice, Q9). Never migrate frameworks,
    package manager or libraries unless the user asks for exactly that.
 
-## 1c. Size
+## 1c. Size, 2. Discovery (grilling + clarify)
 
-Decide with the user whether this is a **small** change (a bugfix or a tweak to one behavior) or a **normal** one, and
-write `Size: small` or `Size: normal` in the Analysis Summary; the user confirms it at the gate. Small means:
+These two steps are the **Interview** of the Product Manager Role. Read
+`$(aidw plugin-path roles/product-manager/role.md)` and follow its "Interview (main session)" section: it decides the
+size (`Size: small|normal` in the Summary, which the user confirms at the gate), runs the grilling and the clarify
+categories, and records every round in `analysis.md`. Start with `aidw transition <id> analyzing`.
 
-- at most 3 grilling questions (only what the code cannot answer), no new domain model, design tokens or ADRs
-  unless the change really needs one;
-- at most 3 tasks, and `aidw analyze` refuses more;
-- quality layers `code` + `unit`, plus `e2e` when UI is touched; deploy target `none` unless the user asked;
-- a bugfix (`type: fix`) needs a regression test that fails first (its implementer brief says so).
+## 3. Domain model, 4. Requirements and specs
 
-Everything else (intake, specs, one gate, independent review, evidence) is unchanged.
-
-## 2. Discovery (grilling + clarify)
-
-1. `aidw transition <id> analyzing`
-2. Read `$(aidw vendor-path pocock/grilling)` and run it: rounds over the decision frontier, numbered questions,
-   each with your recommended answer.
-3. Make sure the tree covers these ambiguity categories (Spec Kit *clarify*): users and roles, core flows,
-   data and its lifecycle, edge cases and failure paths, non-functional needs (performance, security,
-   accessibility, i18n), integrations, constraints (deadline, budget, hosting), and what is out of scope.
-4. For a client JD the client is not here: the user answers what they know, and every remaining guess becomes
-   an explicit **assumption** to put in the Analysis.
-5. Record every round (questions, recommendations, answers) in `analysis.md` under
-   `## Appendix: discovery Q&A` as you go.
-6. Done when the frontier is empty and the user confirms you share an understanding.
-
-## 3. Domain model
-
-Read `$(aidw vendor-path pocock/domain-modeling)` and apply it, with this **adapter**:
-
-- Glossary, entities, relationships and business rules go to `.aidw/domain/model.md` (sections
-  `## Glossary`, `## Entities and relationships`, `## Business rules`). Use the glossary format in
-  `$(dirname $(aidw vendor-path pocock/domain-modeling))/GLOSSARY-FORMAT.md`.
-- ADRs go to `.aidw/decisions/NNNN-<slug>.md` in the format of `ADR-FORMAT.md` next to it. Not `docs/adr/`.
-
-## 4. Requirements and specs
-
-Read `$(aidw vendor-path pocock/to-spec)` and apply its synthesis (no new interview), with this **adapter**:
-
-- Write `.aidw/requirements/<id>.md` with its template sections (Problem Statement, Solution, User Stories,
-  Implementation Decisions, Testing Decisions, Out of Scope, Further Notes). Do not publish anywhere.
-- Then express the behavior as **delta specs**, one per capability, at
-  `.aidw/changes/<id>/specs/<capability>/spec.md`. Capability = a durable behavior area (`booking`,
-  `identity/auth`), kebab-case, never the name of this work. Check existing ones with `aidw ids`.
-
-Delta grammar (the CLI parses it; it is strict):
-
-```markdown
-## Purpose
-<new capability only: what it is for, 50+ characters>
-
-## ADDED Requirements
-
-### Requirement: <one behavior>
-The system SHALL <behavior>.
-
-#### Scenario: <name>
-- **GIVEN** <precondition>          (optional)
-- **WHEN** <trigger>
-- **THEN** <observable outcome>
-
-## MODIFIED Requirements
-<copy the WHOLE existing block from .aidw/specs/<capability>/spec.md, keep its header exactly, then edit>
-
-## REMOVED Requirements
-### Requirement: <exact existing name>
-**Reason**: <why>
-**Migration**: <what users or code do instead>
-
-## RENAMED Requirements
-- FROM: <old name>
-- TO: <new name>
-```
-
-Every requirement needs at least one scenario; scenarios become the E2E and integration tests later.
-Run `aidw validate <id>` and fix every error.
-
-**Brownfield: lazy baseline specs.** Existing behavior has no spec yet, and aidw does not spec the whole
-system. When this change modifies or removes behavior of a capability that has no `.aidw/specs/<capability>/`,
-first run `aidw baseline <capability> --change <id>` and replace every `TODO(aidw)` in the skeleton with the
-behavior the code has **today** (read the code and its tests; one requirement per behavior the change touches,
-plus the neighbours it must not break). Then write the delta against it (`## MODIFIED Requirements` copies the
-baseline block). The baseline is approved with the change and frozen while it runs. Capabilities the change
-only adds to need no baseline. When a modified behavior has no test today, plan a first task that adds a
-characterization test (it must pass on the current code) before changing it.
+The Product Manager Role's "Procedure (drafting)" in `$(aidw plugin-path roles/product-manager/role.md)` covers both:
+the domain model (`.aidw/domain/model.md`, ADRs in `.aidw/decisions/`), `.aidw/requirements/<id>.md`, and the delta specs
+(its `delta-spec` skill holds the strict grammar), including the brownfield baseline specs. Follow it, then run
+`aidw validate <id>` and fix every error.
 
 ## 5. Design decision (Q3)
 
@@ -175,89 +102,16 @@ the user the token table (name, value, use) as part of the Design discussion.
 
 ## 6. Architecture and stack
 
-1. Read `$(aidw plugin-path profiles/stack-pool.md)` and apply its priority: **client > AI within the pool >
-   fallback**. Record `Source: client|ai|fallback` and the reasons.
-2. Write `.aidw/architecture/overview.md`: components, data model outline, folder structure, integrations,
-   auth and payment choices.
-   Read `$(aidw vendor-path pocock/codebase-design)` first and use it as design principles (deep modules, where a seam
-   goes, the interface is the test surface), not as required vocabulary: the project's own `domain/model.md` terms win.
-   For a task that creates a new module or interface, add `skills: [pocock/codebase-design]` in tasks.yaml so its
-   implementer loads it; do not add it to every task (about 1.5k tokens each).
-3. ADRs for hard-to-reverse, surprising, real trade-offs only (domain-modeling's rule).
-   Brownfield: extend the existing architecture; record only what the change adds.
-4. Fill `.aidw/constitution.md`: engineering principles and stack conventions every agent must follow.
-5. Update `stack:` and `design_mode:` in `.aidw/project.yaml`.
+Read `$(aidw plugin-path roles/software-architect/role.md)` and follow its Procedure: the stack by the
+client > AI within the pool > fallback priority, `.aidw/architecture/overview.md`, ADRs, `.aidw/constitution.md`, and the
+`stack:` and `design_mode:` fields of `.aidw/project.yaml`.
 
 ## 7. Plan (task graph)
 
-Read `$(aidw vendor-path pocock/to-tickets)` and apply its slicing rules (tracer-bullet vertical slices,
-blocking edges, prefactor first, expand-contract for wide refactors), with this **adapter**:
-
-- Do **not** quiz the user separately and do not publish tickets: the breakdown is reviewed at the gate.
-- Write `.aidw/changes/<id>/tasks.yaml`:
-
-```yaml
-tasks:
-  - id: T01
-    title: <end-to-end behavior this slice makes work, under 60 characters: it becomes the commit subject>
-    role: fullstack   # a Role id from the Roster (`aidw roster`); today the fullstack Agent runs every task
-    type: feat                 # Conventional Commits type of the task commit: feat fix refactor test docs style perf build ci chore revert
-    specs: [<capability>/<requirement-id>]                 # from `aidw ids <id>`
-    scenarios: [<capability>/<requirement-id>/<scenario-id>]
-    depends_on: []             # blocking edges: only a real data dependency (trial-3C: a near-chain ran with no wave)
-    touches: ["app/(site)/booking/**", "lib/booking/**"]   # file globs this task may change
-    risk: normal               # normal | high (high never runs in parallel)
-    verify:
-      - <command that proves it works, e.g. pnpm vitest run lib/booking>
-    status: pending
-```
-
-- Every requirement and scenario marked `*` (changed) in `aidw ids <id>` must be referenced by some task.
-- **Parallel waves.** Tasks whose `touches` do not overlap and whose dependencies are done run side by side,
-  each in its own git worktree. Keep `touches` tight (exact folders, not `src/**`) so independent slices can
-  run together, and list shared files (`package.json`, the root layout, a shared schema) only in the task
-  that really changes them. `risk: high` (auth, payments, migrations, wide refactors) always runs alone. At
-  most one task per wave may drive a browser (UI or e2e verify), since they share the e2e port.
-- **Check the shape before the gate.** Run `aidw plan <id>`: it prints the stages (tasks that can run side by side
-  are joined with `+`) and advice. Aim for a widest stage of 3 where the work allows. Split a task that carries a
-  third of the scenarios (list / create / edit / delete are separate slices touching different files), and quote the
-  one-line shape in the Summary so the user sees how long the build will take.
-- **Every UI scenario has a UI owner.** A scenario whose WHEN is a user action on a screen ("the user clicks Export CSV")
-  must be listed by a task that touches the UI files (and the API task may list it too). `aidw analyze` warns when
-  its only owners touch no UI files; fix the plan, do not leave the button to chance.
-- **One shared file is a chain.** When every slice must edit the same central file (the page shell or main component),
-  the slices cannot overlap and no wave runs (trial-3C: T04 and T05 both edited `components/notes-app.tsx` outside
-  their `touches`). Build that file in the first slice with a clear extension point (a list of sections, a router
-  table), and list it in the `touches` of every slice that adds to it, so the plan shows the real conflict.
-- **Vercel needs its framework in the repo.** When the deploy target is Vercel, the scaffold task must commit a
-  `vercel.json` with `{"framework": "nextjs"}` (or the framework in use) and put it in its `touches`: a project
-  linked before the app exists is saved as preset "Other" and fails with `STATIC_BUILD_NO_OUT_DIR`. Add that line to
-  the scaffold task's scenarios or verify command. A brand-new project's first deployment is Production
-  (`aidw first-deploy --yes`, run by the user), so tell the user at the gate.
-- **Slice vertically, not by layer.** A plan that is one `depends_on` chain (T01 types, T02 API, T03 UI, T04
-  tests...) can never run a wave. After scaffolding, cut the work into slices that each carry their own API,
-  UI and tests for one behavior; give a task `depends_on` only for something it truly needs (a shared type or
-  file it imports), not for "it comes next". `aidw analyze` warns when the plan is one chain or when
-  `depends_on` links tasks whose `touches` do not overlap: act on that warning, or keep the chain when the
-  dependency is real.
-- The first tasks usually scaffold the project with the approved stack and set up the test harness, the
-  JUnit reporters of quality.yaml, and `.env.example` for every environment variable (names only).
-- **Code style and commits.** For a greenfield project the scaffold task also sets up the formatter, linter, hooks
-  and commit lint of the project's **stack pack** (`$(aidw plugin-path profiles/stacks/node.md)` for JS/TS; the
-  language-neutral rules are in `$(aidw plugin-path profiles/code-style.md)`); put those files in its `touches`
-  and tell it to follow both. A stack without a pack gets the language's usual equivalents. Brownfield projects keep
-  their own tooling.
-- **Migrations.** A task that adds or changes a database migration is `risk: high` and follows the migration rule
-  in `$(aidw plugin-path profiles/quality-layers.md)` (reversible, tested against a seeded database, additive first).
-- **CI.** A greenfield project that will live on GitHub also gets `.github/workflows/ci.yml` from the scaffold task,
-  mirroring the `code`, `unit` and `integration` layers (`$(aidw plugin-path profiles/ci.md)`). Brownfield keeps its own.
-- **Test reports.** Every layer in quality.yaml with `reports:` needs its runner configured to write that JUnit file
-  (Playwright `reporter: [['list'], ['junit', { outputFile: process.env.PLAYWRIGHT_JUNIT_OUTPUT_NAME ?? '...' }]]`).
-  Put it in the scaffold task's brief: a layer that passes without writing its report now fails verify.
-- **Commits.** Every planned task states a `type` (analysis fails without one). The task commit becomes
-  `type(capability): title`, the scope being the capability of its first spec (`config` when it has none), so
-  a task spanning several capabilities lists the main one first. Add `breaking: true` only for a breaking change.
-  Greenfield scaffolds commitlint with the same rules (the stack pack); see `docs/commit-guide.md`.
+Read `$(aidw plugin-path roles/technical-planner/role.md)` and follow its Procedure: it holds the `tasks.yaml` format, who
+owns a task, and the rules of a good plan (vertical slices, parallel waves, `aidw plan` shape, UI owners, commit
+types). When the plan scaffolds a new project, also read its `scaffold-tasks` skill; when a task adds a migration, its
+`migration-tasks` skill (`aidw plugin-path roles/technical-planner/skills/<name>.md`).
 
 ## 8. Quality, deploy and permissions
 

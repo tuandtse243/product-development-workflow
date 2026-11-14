@@ -8186,7 +8186,7 @@ var import_yaml3 = __toESM(require_dist(), 1);
 var ROLE_STATUSES = ["active", "planned"];
 var RUN_MODES = ["interactive", "worker"];
 var TIERS = ["deep", "standard", "fast"];
-var ACCESS = ["write", "read-only"];
+var ACCESS = ["write", "artifacts", "read-only"];
 var AGENTS = {
   implement: "aidw:fullstack",
   taskReview: "aidw:code-reviewer",
@@ -8218,6 +8218,7 @@ function loadRole(root, id) {
   if (!parsed) return null;
   const h = parsed.header;
   const rulesFile = (0, import_node_path4.join)(roleDir(root, id), "rules.md");
+  const includes = Array.isArray(h.includes) ? h.includes.map(String) : [];
   return {
     id: String(h.id ?? ""),
     description: String(h.description ?? ""),
@@ -8226,9 +8227,16 @@ function loadRole(root, id) {
     access: h.access,
     tools: Array.isArray(h.tools) ? h.tools.map(String) : [],
     ...typeof h.max_turns === "number" ? { max_turns: h.max_turns } : {},
+    skills: skillIndex(h.skills),
+    includes,
     body: parsed.body,
+    shared: includes.map((f) => (0, import_node_fs4.existsSync)((0, import_node_path4.join)(root, f)) ? read((0, import_node_path4.join)(root, f)).trim() : ""),
     rules: (0, import_node_fs4.existsSync)(rulesFile) ? read(rulesFile).trim() : ""
   };
+}
+function skillIndex(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((e) => isRecord(e) ? Object.entries(e).map(([name, when]) => ({ name, when: String(when) })) : []);
 }
 function loadTiers(root, platform = "claude-code") {
   const file = (0, import_node_path4.join)(root, "tiers.yaml");
@@ -8245,16 +8253,26 @@ function renderAgent(role, tiers) {
     ...model && model !== "inherit" ? [`model: ${model}`] : [],
     ...role.max_turns ? [`maxTurns: ${role.max_turns}`] : []
   ];
+  const shared = role.shared.filter(Boolean).map((t) => `
+
+${t}`).join("");
   const rules = role.rules ? `
 
 ## Rules
 
 ${role.rules}` : "";
+  const skills = role.skills.length ? `
+
+## Skills (load only when the work needs one)
+
+Read a skill with \`aidw plugin-path roles/${role.id}/skills/<name>.md\`.
+
+${role.skills.map((s) => `- \`${s.name}\`: ${s.when}`).join("\n")}` : "";
   return `---
 ${head.join("\n")}
 ---
 
-${role.body}${rules}
+${role.body}${shared}${rules}${skills}
 `;
 }
 function profiledRoles(root) {
@@ -8334,10 +8352,25 @@ function checkRoster(root) {
     if (typeof h.description !== "string" || !h.description.trim()) d.error(file, "header needs a description");
     if (!oneOf(RUN_MODES, h.mode)) d.error(file, `mode must be ${RUN_MODES.join(" or ")}`);
     if (!oneOf(TIERS, h.tier)) d.error(file, `tier must be ${TIERS.join(", ")}`);
-    if (!oneOf(ACCESS, h.access)) d.error(file, `access must be ${ACCESS.join(" or ")}`);
+    if (!oneOf(ACCESS, h.access)) d.error(file, `access must be one of ${ACCESS.join(", ")}`);
     if (!Array.isArray(h.tools) || h.tools.length === 0 || !h.tools.every((t) => typeof t === "string")) d.error(file, "tools must be a non-empty list of tool names");
     if (h.max_turns !== void 0 && !(Number.isInteger(h.max_turns) && Number(h.max_turns) > 0)) d.error(file, "max_turns must be a positive integer");
     if (!parsed.body) d.error(file, "the profile has no text after its header");
+    if (h.skills !== void 0) {
+      const list5 = Array.isArray(h.skills) ? h.skills : null;
+      if (!list5 || !list5.every((e) => isRecord(e) && Object.keys(e).length === 1 && typeof Object.values(e)[0] === "string")) {
+        d.error(file, 'skills must be a list of one-entry mappings: "- <skill-name>: <when to load it>"');
+      } else {
+        for (const s of skillIndex(h.skills)) {
+          if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(s.name)) d.error(file, `skill name "${s.name}" must be kebab-case`);
+          else if (!(0, import_node_fs4.existsSync)((0, import_node_path4.join)(roleDir(root, id), "skills", `${s.name}.md`))) d.error(file, `skill "${s.name}" has no file roles/${id}/skills/${s.name}.md`);
+        }
+      }
+    }
+    if (h.includes !== void 0) {
+      if (!Array.isArray(h.includes) || !h.includes.every((f) => typeof f === "string")) d.error(file, "includes must be a list of plugin-relative file paths");
+      else for (const f of h.includes) if (f.includes("..") || !(0, import_node_fs4.existsSync)((0, import_node_path4.join)(root, f))) d.error(file, `includes: "${f}" not found in the plugin`);
+    }
     for (const k of ["department", "status", "carried_by"]) if (k in h) d.error(file, `"${k}" belongs in roster.yaml, not in the profile`);
   }
   for (const id of ids) {

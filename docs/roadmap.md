@@ -95,8 +95,10 @@ aidw becomes a software factory with a Roster of Roles, Workflows as data and de
 - [ ] **Step 1.** `roles/` for the 21 Roles, `roster.yaml`, agents generated from `role.md`. No behavior change.
   - [x] `roster.yaml` (21 Roles), `tiers.yaml`, `aidw roster`, agents generated at build; the four existing agents are
     Roles (`fullstack`, `code-reviewer`, `security`, `ui-ux-designer`); the gate reads a Role's access from its profile.
-  - [ ] Profiles for the five other active Roles (`product-manager`, `software-architect`, `technical-planner`,
-    `frontend`, `backend`) and for the 12 Planned Roles.
+  - [x] Profiles for the five other active Roles (`product-manager`, `software-architect`, `technical-planner`,
+    `frontend`, `backend`). The knowledge of `/aidw:start` sections 2 to 4, 6 and 7 moved into them; the skill now
+    points at the profiles. `access: artifacts`, a skill index and `includes` added to profiles.
+  - [ ] Profiles for the 12 Planned Roles.
   - [ ] Move `profiles/`, `policies/`, `vendor/` to `stacks/`, `company/`, `library/`.
 - [ ] **Step 2.** `product` and `feature` Workflows as YAML drive `aidw next`; `artifacts.yaml`; interview in the
   main session, drafting in worker Agents.

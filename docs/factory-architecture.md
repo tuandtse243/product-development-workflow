@@ -91,11 +91,10 @@ id: api-designer
 description: Designs the API contract of a change. ...
 mode: worker               # interactive | worker; a workflow stage may override
 tier: standard             # deep | standard | fast
-access: write              # write | read-only: what the gate lets this Role's Agent do
+access: write              # write | artifacts | read-only: what the gate lets this Role's Agent do
 tools: [Read, Write, Edit, Glob, Grep]
-reads:  [requirements, architecture-overview]
-writes: [api-contract]
-skills:
+includes: [library/implement-a-task.md]   # shared procedure, appended to the generated agent
+skills:                    # on-demand: roles/<id>/skills/<name>.md, read only when the condition holds
   - rest-contract:   when designing a new endpoint
   - breaking-change: when changing an existing contract
 ---
@@ -104,6 +103,12 @@ skills:
 ## Done when
 ## Stop and report when
 ```
+
+`access` tells the gate what the Role's Agent may write: `write` edits project files (implementing Roles, never
+`.aidw/`), `artifacts` drafts under `.aidw/` before the Approval Gate (the gate's normal rules apply, so before
+approval only `.aidw/` is writable), `read-only` writes only a verdict. `includes` appends shared text such as the
+procedure all implementing Roles follow, so it exists once. `reads` and `writes` by Artifact name arrive with
+`artifacts.yaml` in step 2; until then a profile lists the paths in its text.
 
 Department, status and `carried_by` live only in `roster.yaml`, so a Planned Role can be declared before it has
 a folder and activating one is a one-line change. `aidw roster` checks the Roster, every profile and that the
@@ -277,7 +282,7 @@ plugins/aidw/
   company/rules.md     rules for every Role
   roles/<id>/          role.md, rules.md, skills/, references/, scripts/, evals/
   workflows/<id>.yaml  product, feature, bugfix, audit
-  library/             shared skills, including vendor/
+  library/             shared procedures and skills (implement-a-task.md, author-artifacts.md); vendor/ moves here
   stacks/              language packs and framework packs
   agents/              GENERATED from roles/
   skills/              user commands: start, approve, run, resume, status, deliver, init

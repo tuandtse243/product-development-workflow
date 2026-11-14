@@ -16,8 +16,13 @@ import { Diags } from "./diag.js";
 export const ROLE_STATUSES = ["active", "planned"] as const;
 export const RUN_MODES = ["interactive", "worker"] as const;
 export const TIERS = ["deep", "standard", "fast"] as const;
-/** What the gate lets a Role's Agent do: `write` edits project files, `read-only` writes only its verdict. */
-export const ACCESS = ["write", "read-only"] as const;
+/**
+ * What the gate lets a Role's Agent do:
+ *   write      edits project files (the implementing Roles); never `.aidw/`
+ *   artifacts  drafts Artifacts under `.aidw/` before the Approval Gate; the gate's normal rules apply
+ *   read-only  writes only its verdict
+ */
+export const ACCESS = ["write", "artifacts", "read-only"] as const;
 
 export type Tier = (typeof TIERS)[number];
 export type Access = (typeof ACCESS)[number];
@@ -51,8 +56,14 @@ export interface RoleProfile {
   access: Access;
   tools: string[];
   max_turns?: number;
+  /** on-demand skills of this Role: name -> when to load it (the file is roles/<id>/skills/<name>.md) */
+  skills: { name: string; when: string }[];
+  /** plugin-relative files whose text every Agent of this Role also gets (shared procedures) */
+  includes: string[];
   /** role.md after its header */
   body: string;
+  /** the text of `includes`, in order */
+  shared: string[];
   /** rules.md, empty when the Role has none */
   rules: string;
 }
@@ -87,6 +98,7 @@ export function loadRole(root: string, id: string): RoleProfile | null {
   if (!parsed) return null;
   const h = parsed.header;
   const rulesFile = join(roleDir(root, id), "rules.md");
+  const includes = Array.isArray(h.includes) ? h.includes.map(String) : [];
   return {
     id: String(h.id ?? ""),
     description: String(h.description ?? ""),
@@ -95,9 +107,18 @@ export function loadRole(root: string, id: string): RoleProfile | null {
     access: h.access as Access,
     tools: Array.isArray(h.tools) ? h.tools.map(String) : [],
     ...(typeof h.max_turns === "number" ? { max_turns: h.max_turns } : {}),
+    skills: skillIndex(h.skills),
+    includes,
     body: parsed.body,
+    shared: includes.map((f) => (existsSync(join(root, f)) ? read(join(root, f)).trim() : "")),
     rules: existsSync(rulesFile) ? read(rulesFile).trim() : "",
   };
+}
+
+/** `skills: [{ name: when }]` -> a list; anything else is reported by checkRoster. */
+function skillIndex(raw: unknown): { name: string; when: string }[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((e) => (isRecord(e) ? Object.entries(e).map(([name, when]) => ({ name, when: String(when) })) : []));
 }
 
 export function loadTiers(root: string, platform = "claude-code"): Record<string, string> {
@@ -117,8 +138,12 @@ export function renderAgent(role: RoleProfile, tiers: Record<string, string>): s
     ...(model && model !== "inherit" ? [`model: ${model}`] : []),
     ...(role.max_turns ? [`maxTurns: ${role.max_turns}`] : []),
   ];
+  const shared = role.shared.filter(Boolean).map((t) => `\n\n${t}`).join("");
   const rules = role.rules ? `\n\n## Rules\n\n${role.rules}` : "";
-  return `---\n${head.join("\n")}\n---\n\n${role.body}${rules}\n`;
+  const skills = role.skills.length
+    ? `\n\n## Skills (load only when the work needs one)\n\nRead a skill with \`aidw plugin-path roles/${role.id}/skills/<name>.md\`.\n\n${role.skills.map((s) => `- \`${s.name}\`: ${s.when}`).join("\n")}`
+    : "";
+  return `---\n${head.join("\n")}\n---\n\n${role.body}${shared}${rules}${skills}\n`;
 }
 
 /** Role ids that have a folder under roles/. */
@@ -209,10 +234,25 @@ export function checkRoster(root: string): Diags {
     if (typeof h.description !== "string" || !h.description.trim()) d.error(file, "header needs a description");
     if (!oneOf(RUN_MODES, h.mode)) d.error(file, `mode must be ${RUN_MODES.join(" or ")}`);
     if (!oneOf(TIERS, h.tier)) d.error(file, `tier must be ${TIERS.join(", ")}`);
-    if (!oneOf(ACCESS, h.access)) d.error(file, `access must be ${ACCESS.join(" or ")}`);
+    if (!oneOf(ACCESS, h.access)) d.error(file, `access must be one of ${ACCESS.join(", ")}`);
     if (!Array.isArray(h.tools) || h.tools.length === 0 || !h.tools.every((t) => typeof t === "string")) d.error(file, "tools must be a non-empty list of tool names");
     if (h.max_turns !== undefined && !(Number.isInteger(h.max_turns) && Number(h.max_turns) > 0)) d.error(file, "max_turns must be a positive integer");
     if (!parsed.body) d.error(file, "the profile has no text after its header");
+    if (h.skills !== undefined) {
+      const list = Array.isArray(h.skills) ? h.skills : null;
+      if (!list || !list.every((e) => isRecord(e) && Object.keys(e).length === 1 && typeof Object.values(e)[0] === "string")) {
+        d.error(file, 'skills must be a list of one-entry mappings: "- <skill-name>: <when to load it>"');
+      } else {
+        for (const s of skillIndex(h.skills)) {
+          if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(s.name)) d.error(file, `skill name "${s.name}" must be kebab-case`);
+          else if (!existsSync(join(roleDir(root, id), "skills", `${s.name}.md`))) d.error(file, `skill "${s.name}" has no file roles/${id}/skills/${s.name}.md`);
+        }
+      }
+    }
+    if (h.includes !== undefined) {
+      if (!Array.isArray(h.includes) || !h.includes.every((f) => typeof f === "string")) d.error(file, "includes must be a list of plugin-relative file paths");
+      else for (const f of h.includes as string[]) if (f.includes("..") || !existsSync(join(root, f))) d.error(file, `includes: "${f}" not found in the plugin`);
+    }
     // Department, status and carried_by have one home: roster.yaml.
     for (const k of ["department", "status", "carried_by"]) if (k in h) d.error(file, `"${k}" belongs in roster.yaml, not in the profile`);
   }

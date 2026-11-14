@@ -118,7 +118,9 @@ const VERDICT_FILE = /^(?:layer-)?review-[A-Za-z0-9._-]+\.md$/;
 /**
  * What an aidw subagent may do, from the hook's agent_type ("aidw:code-reviewer", "fullstack", ...). The name is a
  * Role id and the Role's profile declares its access: `write` -> "implementer", `read-only` -> "reviewer".
- * An unknown name ending in "reviewer" is still treated as read-only, so a renamed reviewer never gains write access.
+ * `artifacts` Roles (they draft under `.aidw/` before approval) get no special branch: the gate's normal rules apply,
+ * and before approval those allow `.aidw/` only. An unknown name ending in "reviewer" is still treated as read-only,
+ * so a renamed reviewer never gains write access.
  */
 export function agentRole(agentType: string | undefined, env: NodeJS.ProcessEnv = process.env): "implementer" | "reviewer" | null {
   const name = (agentType ?? "").split(":").pop() ?? "";

@@ -6,9 +6,10 @@ const plugin = join(__dirname, "..", "plugins", "aidw");
 const read = (p: string) => readFileSync(join(plugin, p), "utf8");
 
 describe("code style profile", () => {
-  it("start makes the scaffold task follow it", () => {
-    expect(read("skills/start/SKILL.md")).toContain("profiles/code-style.md");
-    expect(read("skills/start/SKILL.md")).toContain("profiles/stacks/node.md");
+  it("the planner makes the scaffold task follow it", () => {
+    expect(read("skills/start/SKILL.md")).toContain("roles/technical-planner/role.md");
+    expect(read("roles/technical-planner/skills/scaffold-tasks.md")).toContain("profiles/code-style.md");
+    expect(read("roles/technical-planner/skills/scaffold-tasks.md")).toContain("profiles/stacks/node.md");
   });
 
   it("covers prettier, eslint, husky and lint-staged, and leaves brownfield alone", () => {
@@ -20,7 +21,7 @@ describe("code style profile", () => {
   it("scaffolds commitlint and tasks state a commit type", () => {
     const p = read("profiles/stacks/node.md");
     for (const w of ["@commitlint/config-conventional", ".husky/commit-msg", "header-max-length"]) expect(p).toContain(w);
-    expect(read("skills/start/SKILL.md")).toMatch(/type: feat/);
+    expect(read("roles/technical-planner/role.md")).toMatch(/type: feat/);
   });
 
   it("the code layer checks formatting for every stack", () => {
