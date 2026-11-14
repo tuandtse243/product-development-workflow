@@ -24,7 +24,7 @@ roles:
   frontend: { department: implementation, status: active }
   backend: { department: implementation, status: active }
   fullstack: { department: implementation, status: active }
-  database: { department: implementation, status: planned, carried_by: fullstack }
+  database: { department: implementation, status: active }
   integration: { department: implementation, status: planned, carried_by: fullstack }
   devops: { department: implementation, status: planned, carried_by: fullstack }
 

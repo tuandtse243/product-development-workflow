@@ -1,0 +1,14 @@
+# Migrations with Prisma
+
+- The schema is `prisma/schema.prisma`; a migration is a folder `prisma/migrations/<timestamp>_<name>/migration.sql`.
+- Create it locally with `pnpm exec prisma migrate dev --name <name>`. It needs a database and creates a shadow database, so run
+  it only against the **local** one (`DATABASE_URL` points at localhost or a SQLite file). Never run `migrate dev` or
+  `migrate reset` against a remote database; production and CI use `prisma migrate deploy`, which only applies what exists.
+- **Prisma has no down migrations.** Write the reverse by hand as `prisma/migrations/<timestamp>_<name>/down.sql` (it sits
+  beside the migration; Prisma ignores it). `prisma migrate diff --from-schema-datamodel <new schema> --to-schema-datamodel <old schema> --script`
+  prints a starting point for the reverse; read it before you keep it.
+- To test: start from a fresh local database, `prisma migrate deploy`, load the seed, run your up/check, apply `down.sql` with
+  `prisma db execute --file <down.sql> --schema prisma/schema.prisma`, and check the old shape. After a down, the migration
+  history table still lists the migration; the test resets the database instead of continuing from it.
+- Seeds: the `prisma.seed` command in `package.json`, run by `prisma db seed` and after `migrate reset`. Keep it idempotent.
+- Do not edit a migration that has been applied anywhere; add a new one.

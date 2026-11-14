@@ -30,7 +30,7 @@ platforms and cheaper models can be generated later.
 
 ## 2. The Roster
 
-21 Roles in four Departments: the 20 the user listed plus `fullstack`. 9 are active in the first version; a Planned Role's work is carried by the Role
+21 Roles in four Departments: the 20 the user listed plus `fullstack`. 10 are active (the first nine, then `database`); a Planned Role's work is carried by the Role
 in the last column until it is activated. The Orchestrator (main session plus CLI) is not a Role.
 
 | Role id | Department | First version | Carried by |
@@ -47,7 +47,7 @@ in the last column until it is activated. The Orchestrator (main session plus CL
 | `frontend` | Implementation | active | |
 | `backend` | Implementation | active | |
 | `fullstack` | Implementation | active | |
-| `database` | Implementation | planned | `fullstack` |
+| `database` | Implementation | active | |
 | `integration` | Implementation | planned | `fullstack` |
 | `devops` | Implementation | planned | `fullstack` |
 | `qa` | Quality & Delivery | planned | test plan: skipped (spec scenarios stand in); coverage: CLI `converge` |

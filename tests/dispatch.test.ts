@@ -12,8 +12,9 @@ describe("which Agent runs a task", () => {
     expect(implementerOf(plugin, "frontend")).toBe("frontend");
     expect(implementerOf(plugin, "backend")).toBe("backend");
     expect(implementerOf(plugin, "fullstack")).toBe("fullstack");
-    expect(implementerOf(plugin, "database")).toBe("fullstack"); // planned, carried by fullstack
-    expect(implementerOf(plugin, "devops")).toBe("fullstack");
+    expect(implementerOf(plugin, "database")).toBe("database"); // activated: it runs its own tasks
+    expect(implementerOf(plugin, "devops")).toBe("fullstack"); // planned, carried by fullstack
+    expect(implementerOf(plugin, "integration")).toBe("fullstack");
   });
 
   it("is nobody for a role that cannot write project files or does not exist", () => {
@@ -22,7 +23,8 @@ describe("which Agent runs a task", () => {
 
   it("falls back to the default implementer, so an unknown role still runs", () => {
     expect(agentForTask(plugin, "frontend")).toBe("aidw:frontend");
-    expect(agentForTask(plugin, "database")).toBe("aidw:fullstack");
+    expect(agentForTask(plugin, "database")).toBe("aidw:database");
+    expect(agentForTask(plugin, "devops")).toBe("aidw:fullstack");
     expect(agentForTask(plugin, "no-such-role")).toBe("aidw:fullstack");
   });
 });
@@ -52,7 +54,7 @@ describe("a plan with a role that cannot run tasks", () => {
   });
 
   it("is silent for frontend, backend and a planned role carried by fullstack", () => {
-    for (const role of ["frontend", "backend", "database"]) {
+    for (const role of ["frontend", "backend", "database", "devops"]) {
       write(root, `.aidw/changes/${ID}/tasks.yaml`, TASKS_YAML.replace(/role: \S+/g, `role: ${role}`));
       expect(cli("analyze", ID, "--json").warnings.map((x) => x.message).join("\n"), role).not.toMatch(/cannot run a task/);
     }

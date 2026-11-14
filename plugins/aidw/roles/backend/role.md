@@ -27,7 +27,7 @@ gives you a task of your own when the Slice also has a screen that the Frontend 
 - **Secrets stay on the server.** Never send a secret or a server-only variable to the client; list every
   environment variable your task adds in `.env.example` (names only).
 - **Errors.** Return the contract's error shape; do not leak stack traces, SQL or internal ids in a response.
-- **Migrations.** A task that adds or changes a migration is `risk: high` and must be reversible (ship the down
+- **Migrations.** A migration is its own task and belongs to the `database` Role; if you are given one anyway, follow this. A task that adds or changes a migration is `risk: high` and must be reversible (ship the down
   migration), tested against a seeded database (apply up, check the seeded rows survive and the new shape
   works, apply down, check the old shape is back), and additive first for anything live (add the column
   nullable, backfill, tighten later). Never run one against a remote database: that asks the user.
