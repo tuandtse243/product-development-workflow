@@ -8,7 +8,8 @@ import { runGate } from "./gate.js";
 import { pluginRoot } from "./plugin.js";
 import { BrowserError, browserEnv, browserStatus, startBrowser, stopBrowser } from "./browser.js";
 import { checkArtifacts } from "./artifacts.js";
-import { checkWorkflows } from "./workflow.js";
+import { boundaryOf } from "./boundary.js";
+import { checkWorkflows, workflowIds } from "./workflow.js";
 import { agentForTask, AGENTS, checkRoster, rosterTable, writeAgents } from "./roles.js";
 import { checkChange, checkSpecs } from "./check.js";
 import { Diags, type Diagnostic } from "./diag.js";
@@ -148,10 +149,11 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
                                          Chrome CDP, Vercel login and link; exit 1 on a blocking problem
   detect                                 what the existing code uses (stack, package manager, suggested layers)
   baseline <capability> [--change <id>]  brownfield: skeleton spec of a capability's current behavior
-  change new <id> [--title T] [--input-type ${INPUT_TYPES.join("|")}]
+  change new <id> [--title T] [--input-type ${INPUT_TYPES.join("|")}] [--workflow W]
   status [<id>]                          project and change status
   validate [<id>] [--strict]             validate specs and changes (all when no id)
-  approve <id>                           approve the Analysis package (hashes it)
+  approve <id> [--auto]                  approve the Analysis package (hashes it); --auto: aidw approves a small change of
+                                         a workflow with an automatic approval (bugfix), or reclassifies one that is too big
   approval check <id>                    exit 1 when the approved package drifted
   transition <id> <state|resume> [--reason R]
   merge <id> [--write]                   merge delta specs into .aidw/specs (dry run by default)
@@ -212,7 +214,7 @@ interface Args {
   flags: Record<string, string | true>;
 }
 
-const VALUE_FLAGS = new Set(["session", "last", "root", "title", "input-type", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude"]);
+const VALUE_FLAGS = new Set(["session", "last", "root", "title", "input-type", "workflow", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude"]);
 
 export function parseArgs(argv: string[]): Args {
   const pos: string[] = [];
@@ -896,7 +898,8 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         if (rest[0] !== "new") throw new UsageError("usage: aidw change new <id>");
         const p = project();
         const id = need(rest[1], "change id");
-        const dir = newChange(p, id, { title: str(args.flags.title), inputType: str(args.flags["input-type"]) });
+        const wf = str(args.flags.workflow);
+        const dir = newChange(p, id, { title: str(args.flags.title), inputType: str(args.flags["input-type"]), ...(wf ? { workflow: wf, workflows: workflowIds(pluginRoot(env)), skipSpecs: boundaryOf(pluginRoot(env), wf)?.spec_changes === false } : {}) });
         emit({ ok: true, id, dir: rel(p, dir) }, `created change ${id} at ${rel(p, dir)}\n`);
         return 0;
       }
@@ -948,11 +951,12 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
       case "approve": {
         const p = project();
         const id = resolveChangeId(p, rest[0]);
-        const { hash, files } = approve(p, id);
+        const auto = args.flags.auto === true;
+        const { hash, files, by } = approve(p, id, auto ? { auto: { pluginRoot: pluginRoot(env) } } : {});
         const { kept, reopened } = reconcileDoneTasks(p, id);
         emit(
           { ok: true, id, hash, files, kept, reopened },
-          `approved ${id}\n  ${hash}\n  covers ${files.length} file(s)\n${kept.length ? `  done work kept: ${kept.join(", ")}\n` : ""}${reopened.length ? `  edited tasks run again: ${reopened.join(", ")}\n` : ""}  cheapest build (about a quarter of the tokens): in your own terminal, ${join(pluginRoot(env), "bin", "aidw")} run ${id} --permission-mode auto\n`,
+          `approved ${id}${by === "user" ? "" : ` by ${by}`}\n  ${hash}\n  covers ${files.length} file(s)\n${kept.length ? `  done work kept: ${kept.join(", ")}\n` : ""}${reopened.length ? `  edited tasks run again: ${reopened.join(", ")}\n` : ""}  cheapest build (about a quarter of the tokens): in your own terminal, ${join(pluginRoot(env), "bin", "aidw")} run ${id} --permission-mode auto\n`,
         );
         return 0;
       }

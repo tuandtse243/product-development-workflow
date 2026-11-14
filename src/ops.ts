@@ -14,6 +14,7 @@ import {
   type State,
 } from "./change.js";
 import { analyzeChange, PLACEHOLDER } from "./analyze.js";
+import { boundaryExceeded, boundaryOf } from "./boundary.js";
 import { recordBaseline } from "./backstop.js";
 import { checkChange, deltaFiles } from "./check.js";
 import { Diags } from "./diag.js";
@@ -180,11 +181,12 @@ const INTAKE = (title: string) => `# Intake: ${title}
 - Deadline / budget / other: <...>
 `;
 
-export function newChange(p: Paths, id: string, opts: { title?: string; inputType?: string }): string {
+export function newChange(p: Paths, id: string, opts: { title?: string; inputType?: string; workflow?: string; workflows?: string[]; skipSpecs?: boolean }): string {
   if (!CHANGE_ID.test(id)) throw new OpError(`change id "${id}" must be kebab-case (e.g. 2026-11-08-booking-app)`);
   if (opts.inputType && !(INPUT_TYPES as readonly string[]).includes(opts.inputType)) {
     throw new OpError(`unknown input type "${opts.inputType}" (expected ${INPUT_TYPES.join(", ")})`);
   }
+  if (opts.workflow && opts.workflows && !opts.workflows.includes(opts.workflow)) throw new OpError(`unknown workflow "${opts.workflow}" (expected ${opts.workflows.join(", ")})`);
   const dir = changeDir(p, id);
   if (existsSync(dir)) throw new OpError(`change "${id}" already exists`);
   const title = opts.title ?? id;
@@ -196,9 +198,10 @@ export function newChange(p: Paths, id: string, opts: { title?: string; inputTyp
       `id: ${id}`,
       `title: ${JSON.stringify(title)}`,
       `input_type: ${opts.inputType ?? "null"}`,
+      ...(opts.workflow ? [`workflow: ${opts.workflow}`] : []),
       "state: draft",
       `created_at: ${now()}`,
-      "skip_specs: false",
+      `skip_specs: ${opts.skipSpecs === true}`,
       "approval: null",
       "run:",
       "  paused: null",
@@ -300,19 +303,42 @@ export function readinessCheck(p: Paths, id: string, asState?: string): Diags {
 
 // ---------------------------------------------------------------- approve
 
-export function approve(p: Paths, id: string): { hash: string; files: string[] } {
+/**
+ * The user approves. With `auto` (the Workflow of the Change has a stage with `gate: approval-auto`, e.g. bugfix) aidw
+ * records the approval itself, but only while the plan stays inside the Workflow's boundary; beyond it the Change is
+ * reclassified to the Workflow named there and waits for the user.
+ */
+export function approve(p: Paths, id: string, opts: { auto?: { pluginRoot: string } } = {}): { hash: string; files: string[]; by: string } {
   const change = loadChange(p, id);
+  let by = "user";
+  if (opts.auto) {
+    const workflow = typeof change.data.workflow === "string" ? change.data.workflow : "";
+    const boundary = workflow ? boundaryOf(opts.auto.pluginRoot, workflow) : null;
+    if (!boundary) throw new OpError(`change "${id}" runs under ${workflow ? `the "${workflow}" workflow` : "no named workflow"}, which has no automatic approval: the user approves with /aidw:approve`);
+  }
   const state = stateOf(change);
   if (state !== "awaiting_approval") {
     throw new OpError(`change "${id}" is in state "${String(change.data.state)}"; only "awaiting_approval" can be approved`);
   }
   const d = readinessCheck(p, id);
   if (d.errors.length) throw new OpError(`change "${id}" has validation errors; fix them before approving`, d);
+  if (opts.auto) {
+    const workflow = String(change.data.workflow);
+    const boundary = boundaryOf(opts.auto.pluginRoot, workflow)!;
+    const exceeded = boundaryExceeded(p, id, boundary);
+    if (exceeded.length) {
+      change.doc.set("workflow", boundary.reclassify_to);
+      if (!boundary.spec_changes && walkFiles(join(change.dir, "specs")).some((f) => f.endsWith("spec.md"))) change.doc.set("skip_specs", false); // it has delta specs after all
+      saveChange(change);
+      throw new OpError(`change "${id}" is too big to approve itself (${exceeded.join("; ")}). It is now a "${boundary.reclassify_to}" change and waits for the user: present the package and ask for /aidw:approve`);
+    }
+    by = `aidw (${workflow} boundary)`;
+  }
   const { hash, files } = computeApprovalHash(p, change);
-  change.doc.set("approval", change.doc.createNode({ hash, at: now(), by: "user" }));
+  change.doc.set("approval", change.doc.createNode({ hash, at: now(), by }));
   change.doc.set("state", "approved");
   saveChange(change);
-  return { hash, files };
+  return { hash, files, by };
 }
 
 // ---------------------------------------------------------------- transition

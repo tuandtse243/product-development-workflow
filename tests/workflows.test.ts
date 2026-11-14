@@ -25,8 +25,8 @@ const edit = (root: string, file: string, from: string | RegExp, to: string) => 
 const errors = (root: string) => checkWorkflows(root).errors.map((e) => `${e.file}: ${e.message}`).join("\n");
 
 describe("the workflows of the plugin", () => {
-  it("are product (greenfield) and feature (brownfield), and pass their own check", () => {
-    expect(workflowIds(plugin)).toEqual(["feature", "product"]);
+  it("are product (greenfield), feature (brownfield) and bugfix (on request), and pass their own check", () => {
+    expect(workflowIds(plugin)).toEqual(["bugfix", "feature", "product"]);
     expect(workflowFor(plugin, "greenfield")?.id).toBe("product");
     expect(workflowFor(plugin, "brownfield")?.id).toBe("feature");
     const d = checkWorkflows(plugin);
@@ -48,7 +48,7 @@ describe("the workflows of the plugin", () => {
   it("have one approval gate, before the build", () => {
     for (const id of workflowIds(plugin)) {
       const stages = loadWorkflow(plugin, id)!.stages.map((s) => s.id);
-      const gates = loadWorkflow(plugin, id)!.stages.filter((s) => s.gate === "approval");
+      const gates = loadWorkflow(plugin, id)!.stages.filter((s) => s.gate === "approval" || s.gate === "approval-auto");
       expect(gates, id).toHaveLength(1);
       expect(stages.indexOf(gates[0]!.id), id).toBeLessThan(stages.indexOf("build"));
     }
@@ -95,7 +95,7 @@ describe("workflow consistency", () => {
     edit(root, "workflows/product.yaml", "    gate: approval\n", "");
     edit(root, "workflows/product.yaml", "states: [converging]", "states: [verifying]");
     const out = errors(root);
-    expect(out).toMatch(/exactly one stage has gate: approval \(found 0\)/);
+    expect(out).toMatch(/exactly one stage has gate: approval or approval-auto \(found 0\)/);
     expect(out).toMatch(/no stage covers the state "converging"/);
   });
 
@@ -114,7 +114,7 @@ describe("workflow consistency", () => {
   it("warns about an artifact that no workflow writes", () => {
     const root = copy();
     edit(root, "workflows/product.yaml", "writes: [analysis-summary, analysis-decisions-to-honor, analysis-risks]", "writes: [analysis-summary, analysis-decisions-to-honor]");
-    edit(root, "workflows/feature.yaml", "writes: [analysis-summary, analysis-decisions-to-honor, analysis-risks]", "writes: [analysis-summary, analysis-decisions-to-honor]");
+    for (const f of ["feature", "bugfix"]) edit(root, `workflows/${f}.yaml`, "writes: [analysis-summary, analysis-decisions-to-honor, analysis-risks]", "writes: [analysis-summary, analysis-decisions-to-honor]");
     expect(checkWorkflows(root).warnings.map((w) => w.message).join("\n")).toMatch(/artifact "analysis-risks" is written by no workflow stage/);
   });
 });

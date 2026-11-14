@@ -39,7 +39,10 @@ already `awaiting_approval` or later, tell the user and stop: one change at a ti
 ## 1. Intake
 
 1. Pick a change id: `YYYY-MM-DD-<short-kebab-slug>` (today's date).
-2. `aidw change new <id> --title "<title>" --input-type <idea|prd|upwork_jd|client_request|codebase>`
+2. Pick the Workflow. The default follows the project (`product` for a new project, `feature` for an existing codebase); you
+   only propose another: a **bug report** in an existing codebase is a `bugfix` (see "Bugfix" below). Say which one you
+   propose and why, and wait for the user to confirm it.
+   `aidw change new <id> --title "<title>" --input-type <idea|prd|upwork_jd|client_request|codebase> [--workflow bugfix]`
 3. `aidw transition <id> intake`
 4. Fill `.aidw/changes/<id>/intake.md`: paste the original request **verbatim** (or its path), record the
    client's explicit constraints, including any stack the client requires.
@@ -182,6 +185,21 @@ Read `$(aidw plugin-path roles/qa/references/quality-layers.md)` and `$(aidw plu
    the plan size. Point them to `.aidw/changes/<id>/analysis.md` and tell them:
    `/aidw:approve` to approve, or tell you what to change.
 5. **Stop.** Do not start building.
+
+## Bugfix
+
+A change created with `--workflow bugfix` takes the small path (steps 1c to 9 with `Size: small`: at most 3 questions, at
+most 3 tasks, no domain model, design tokens or ADRs; layers `code` + `unit`, plus `e2e` when UI is touched) with two
+differences. The behavior is already specified, so the change has **no delta spec** (`skip_specs` is set for you), and the
+planner writes a `type: fix` task whose regression test fails first on the current code (the implementer's brief says so).
+
+There is **no approval gate** while the fix stays small. After `aidw transition <id> awaiting_approval` run
+`aidw approve <id> --auto` instead of stopping:
+
+- It approves itself (`approved by aidw (bugfix boundary)`; hash and drift protection apply as ever). Tell the user in
+  one line what will be fixed, then continue with `/aidw:run`. A production deploy still asks.
+- It refuses when the plan has more than 3 tasks, adds a migration or needs a delta spec. The change is now a `feature`
+  change: present the package as in step 9 and stop for `/aidw:approve`.
 
 ## Revising
 

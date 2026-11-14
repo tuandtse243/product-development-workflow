@@ -13,8 +13,18 @@ import { AGENTS, loadRoster } from "./roles.js";
  * Agents the CLI spawns.
  */
 
-export const GATES = ["approval", "production-deploy"] as const;
-export const PROJECT_KINDS = ["greenfield", "brownfield"] as const;
+/** approval: only the user passes it. approval-auto: aidw records the approval itself while the plan stays inside the stage's `boundary`. */
+export const GATES = ["approval", "approval-auto", "production-deploy"] as const;
+/** The project kinds a Workflow is the default for, or `request`: chosen for one request (a bug report, an audit) and confirmed by the user. */
+export const PROJECT_KINDS = ["greenfield", "brownfield", "request"] as const;
+
+/** What a small, automatically approved change may not exceed; beyond it the Change is reclassified to `reclassify_to`. */
+export interface Boundary {
+  max_tasks: number;
+  migrations: boolean;
+  spec_changes: boolean;
+  reclassify_to: string;
+}
 
 export interface Stage {
   id: string;
@@ -24,6 +34,7 @@ export interface Stage {
   reads: string[];
   writes: string[];
   gate?: (typeof GATES)[number];
+  boundary?: Boundary;
   agents?: { implement?: string; review?: string; triage?: string; "layer-review"?: Record<string, string> };
 }
 
@@ -79,6 +90,7 @@ export function loadWorkflow(root: string, id: string): Workflow | null {
       reads: strings(s.reads),
       writes: strings(s.writes),
       ...(typeof s.gate === "string" ? { gate: s.gate as Stage["gate"] } : {}),
+      ...(isRecord(s.boundary) ? { boundary: s.boundary as unknown as Boundary } : {}),
       ...(isRecord(s.agents) ? { agents: s.agents as Stage["agents"] } : {}),
     }),
   );
@@ -132,7 +144,7 @@ export function checkWorkflows(root: string): Diags {
     if (w.id !== id) d.error(file, `id "${w.id}" must equal the file name "${id}"`);
     if (!w.description.trim()) d.error(file, "description is required");
     if (!(PROJECT_KINDS as readonly string[]).includes(w.applies_to)) d.error(file, `applies_to must be ${PROJECT_KINDS.join(" or ")}`);
-    else if (kinds.has(w.applies_to)) d.error(file, `${kinds.get(w.applies_to)} already serves ${w.applies_to} projects: one Workflow per project kind`);
+    else if (w.applies_to !== "request" && kinds.has(w.applies_to)) d.error(file, `${kinds.get(w.applies_to)} already serves ${w.applies_to} projects: one Workflow per project kind`);
     else kinds.set(w.applies_to, id);
     if (!w.transitions) d.error(file, '"transitions:" must list every state with the states it may move to');
     else if (JSON.stringify(w.transitions) !== JSON.stringify(TRANSITIONS)) d.error(file, 'its "transitions:" differ from the table the CLI runs (the one in workflows/product.yaml): every Workflow must list the same state machine');
@@ -174,14 +186,16 @@ export function checkWorkflows(root: string): Diags {
         else if (!available.has(a)) d.error(file, `${at}: reads "${a}", which no earlier stage writes`);
       }
       if (s.gate !== undefined && !(GATES as readonly string[]).includes(s.gate)) d.error(file, `${at}: gate must be ${GATES.join(" or ")}`);
-      if (s.gate === "approval") {
+      if (s.gate === "approval" || s.gate === "approval-auto") {
         approvals++;
         approvalAt = i;
       }
+      if (s.gate === "approval-auto") checkBoundary(d, file, at, s, ids);
+      else if (s.boundary) d.error(file, `${at}: boundary belongs to a stage with gate: approval-auto`);
       if (s.agents) checkAgents(d, file, at, s, roster.roles);
     });
 
-    if (approvals !== 1) d.error(file, `exactly one stage has gate: approval (found ${approvals})`);
+    if (approvals !== 1) d.error(file, `exactly one stage has gate: approval or approval-auto (found ${approvals})`);
     w.stages.forEach((s, i) => {
       if (s.states.some((st) => POST_APPROVAL.has(st) && st !== "approved") && approvalAt >= 0 && i <= approvalAt) {
         d.error(file, `stage ${s.id}: covers a state that needs the approval, but it is not after the approval stage`);
@@ -221,4 +235,12 @@ function checkAgents(d: Diags, file: string, at: string, s: Stage, roles: Record
     if (got[k] !== expect[k]) d.error(file, `${at}: agents ${k} is "${String(got[k])}" but the CLI spawns "${expect[k]}" (the build stage of workflows/product.yaml)`);
     else if (!(expect[k] in roles)) d.error(file, `${at}: agent "${expect[k]}" is not in roster.yaml`);
   }
+}
+
+function checkBoundary(d: Diags, file: string, at: string, s: Stage, workflows: string[]): void {
+  const b = s.boundary;
+  if (!b) return void d.error(file, `${at}: gate approval-auto needs a boundary (max_tasks, migrations, spec_changes, reclassify_to)`);
+  if (!Number.isInteger(b.max_tasks) || b.max_tasks < 1) d.error(file, `${at}: boundary.max_tasks must be a positive integer`);
+  if (typeof b.migrations !== "boolean" || typeof b.spec_changes !== "boolean") d.error(file, `${at}: boundary.migrations and boundary.spec_changes must be true (allowed) or false`);
+  if (typeof b.reclassify_to !== "string" || !workflows.includes(b.reclassify_to)) d.error(file, `${at}: boundary.reclassify_to must name a workflow file (${workflows.join(", ")})`);
 }
