@@ -1,0 +1,11 @@
+node_modules/
+.next/
+test-results/
+playwright-report/
+.pnpm-store/
+.vitest/
+*.tsbuildinfo
+next-env.d.ts
+.vercel
+.env*.local
+.DS_Store

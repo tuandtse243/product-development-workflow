@@ -60,6 +60,15 @@ tests/                            vitest suites
 docs/                             blueprint and decisions log
 ```
 
+## Try it on a demo
+
+```bash
+node scripts/make-demo.mjs ~/aidw-demo     # a tiny Next.js app, git, packages installed, `aidw init` done
+```
+
+It prints the exact commands and the request to give `/aidw:start`; `DEMO.md` in the demo lists what to check.
+The template is `evals/demo/todo-board` (unit and e2e tests known to pass; the e2e test uses the test browser).
+
 ## Develop
 
 ```bash
