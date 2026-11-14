@@ -163,8 +163,13 @@ aidw becomes a software factory with a Roster of Roles, Workflows as data and de
     that read it). An implementer's brief points at the pack of the project's framework; `frontend` never gets NestJS. Adding a
     framework is adding one file.
   - [x] Two more packs for the other frameworks `aidw detect` reports as a full-stack framework: `stacks/nuxt.md` and
-    `stacks/sveltekit.md`. Astro and React Router / Remix are detected but have no pack yet; there is no pack for a language
-    other than Node, because `aidw detect` only reads `package.json`.
+    `stacks/sveltekit.md`. Astro and React Router / Remix are detected but have no pack yet.
+  - [x] Python: `aidw detect` reads `pyproject.toml` (PEP 621, Poetry, dependency groups), `requirements*.txt` and `Pipfile`
+    (`src/pydetect.ts`, no TOML library), names the tool (uv, Poetry, Pipenv, pip), reports the stack (Django, FastAPI, Flask,
+    SQLAlchemy, pytest, ruff, mypy...) and proposes the `code` and `unit` layers (`uv run ruff check .`, `uv run pytest`). A
+    project with both `package.json` and Python files gets both test suites in the same layers. New packs: `stacks/python.md`
+    (the stack pack) and the framework packs `django.md` and `fastapi.md`. Flask is detected but has no pack. Not yet run on a
+    real Python project; the tests use synthetic ones.
 
 ## Backlog
 

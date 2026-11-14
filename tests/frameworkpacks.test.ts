@@ -11,6 +11,8 @@ const plugin = join(__dirname, "..", "plugins", "aidw");
 describe("framework packs", () => {
   it("are found by their front matter, with the framework they cover and the Roles that read them", () => {
     expect(frameworkPacks(plugin).map((p) => [p.id, p.framework, p.roles])).toEqual([
+      ["django", "Django", ["backend", "fullstack"]],
+      ["fastapi", "FastAPI", ["backend", "fullstack"]],
       ["nestjs", "NestJS", ["backend", "fullstack"]],
       ["nextjs", "Next.js", ["frontend", "backend", "fullstack"]],
       ["nuxt", "Nuxt", ["frontend", "backend", "fullstack"]],

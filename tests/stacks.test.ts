@@ -29,8 +29,9 @@ describe("stack packs", () => {
   const packs = all.filter((f) => !isFramework(f));
   const frameworks = all.filter(isFramework);
 
-  it("has at least the node pack", () => {
+  it("has at least the node and python packs", () => {
     expect(packs).toContain("node.md");
+    expect(packs).toContain("python.md");
   });
 
   it.each(packs)("%s answers every standard question", (file) => {
@@ -39,11 +40,11 @@ describe("stack packs", () => {
     for (const h of HEADINGS) expect(got, `${file} lacks "## ${h}"`).toContain(h);
   });
 
-  it("has the Next.js, NestJS, Nuxt and SvelteKit framework packs", () => {
-    expect(frameworks.sort()).toEqual(["nestjs.md", "nextjs.md", "nuxt.md", "sveltekit.md"]);
+  it("has the Next.js, NestJS, Nuxt, SvelteKit, Django and FastAPI framework packs", () => {
+    expect(frameworks.sort()).toEqual(["django.md", "fastapi.md", "nestjs.md", "nextjs.md", "nuxt.md", "sveltekit.md"]);
   });
 
-  it.each(["nextjs.md", "nestjs.md", "nuxt.md", "sveltekit.md"])("%s answers every framework question and names who reads it", (file) => {
+  it.each(["nextjs.md", "nestjs.md", "nuxt.md", "sveltekit.md", "django.md", "fastapi.md"])("%s answers every framework question and names who reads it", (file) => {
     const text = readFileSync(join(stacks, file), "utf8");
     const got = [...text.matchAll(/^## (.+)$/gm)].map((m) => m[1]);
     for (const h of FRAMEWORK_HEADINGS) expect(got, `${file} lacks "## ${h}"`).toContain(h);

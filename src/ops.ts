@@ -87,6 +87,7 @@ function projectYaml(name: string, det: Detection): string {
     "detected",
     doc.createNode({
       package_manager: det.packageManager,
+      ...(det.pythonTool ? { python_tool: det.pythonTool } : {}),
       languages: det.languages,
       signals: det.signals,
       suggested_layers: Object.fromEntries(det.layers.map((l) => [l.name, l.run])),

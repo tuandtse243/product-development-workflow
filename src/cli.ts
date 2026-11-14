@@ -907,7 +907,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const dir = findProject({ root: str(args.flags.root), cwd, env }) ?? str(args.flags.root) ?? cwd;
         const d = detectProject(dir);
         const text = [
-          `${d.kind}${d.packageManager ? ` (${d.packageManager})` : ""}${d.languages.length ? `, ${d.languages.join(", ")}` : ""}`,
+          `${d.kind}${d.packageManager || d.pythonTool ? ` (${d.packageManager ?? d.pythonTool})` : ""}${d.languages.length ? `, ${d.languages.join(", ")}` : ""}`,
           ...d.signals.map((s) => `  signal  ${s}`),
           ...Object.entries(d.stack).map(([k, v]) => `  stack   ${k}: ${v}`),
           ...packsFor(pluginRoot(env), d.stack, "fullstack").concat(packsFor(pluginRoot(env), d.stack, "frontend"), packsFor(pluginRoot(env), d.stack, "backend")).filter((k, i, a) => a.findIndex((x) => x.id === k.id) === i).map((k) => `  pack    ${k.id} (read by ${k.roles.join(", ")})`),
