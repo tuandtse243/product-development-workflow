@@ -105,8 +105,8 @@ skills:                    # on-demand: roles/<id>/skills/<name>.md, read only w
 ```
 
 `access` tells the gate what the Role's Agent may write: `write` edits project files (implementing Roles, never
-`.aidw/`), `artifacts` drafts under `.aidw/` before the Approval Gate (the gate's normal rules apply, so before
-approval only `.aidw/` is writable), `read-only` writes only a verdict. `includes` appends shared text such as the
+`.aidw/`), `artifacts` drafts under `.aidw/` only, never project files (the gate's normal rules also apply inside `.aidw/`:
+the approved package is frozen), `read-only` writes only a verdict. `includes` appends shared text such as the
 procedure all implementing Roles follow, so it exists once. `reads` and `writes` by Artifact name arrive with
 `artifacts.yaml` in step 2; until then a profile lists the paths in its text.
 

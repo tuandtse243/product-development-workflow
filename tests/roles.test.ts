@@ -158,8 +158,7 @@ describe("the gate reads access from the role profile", () => {
     expect(agentRole("aidw:fullstack")).toBe("implementer");
     expect(["aidw:code-reviewer", "security", "aidw:ui-ux-designer"].map((a) => agentRole(a))).toEqual(["reviewer", "reviewer", "reviewer"]);
     expect(["aidw:frontend", "backend"].map((a) => agentRole(a))).toEqual(["implementer", "implementer"]);
-    // authoring roles get the gate's normal rules: before approval only .aidw/ is writable
-    expect(["aidw:product-manager", "software-architect", "aidw:technical-planner"].map((a) => agentRole(a))).toEqual([null, null, null]);
+    expect(["aidw:product-manager", "software-architect", "aidw:technical-planner"].map((a) => agentRole(a))).toEqual(["author", "author", "author"]);
     expect(agentRole("general-purpose")).toBeNull();
     expect(agentRole(undefined)).toBeNull();
   });

@@ -355,6 +355,21 @@ describe("gate for subagents", () => {
   });
   const d = (h: HookInput) => decide(h, {})?.decision ?? "none";
 
+  it("keeps an authoring role inside .aidw/, with the Write tool, and out of aidw state", () => {
+    for (const a of ["aidw:product-manager", "aidw:software-architect", "aidw:technical-planner"]) {
+      expect(d(hook(a, "Write", { file_path: "src/a.ts" })), a).toBe("deny");
+      expect(d(hook(a, "Edit", { file_path: "README.md" })), a).toBe("deny");
+      expect(d(hook(a, "Bash", { command: "echo x > src/a.ts" })), a).toBe("deny");
+      expect(d(hook(a, "Bash", { command: "aidw transition T01 executing" })), a).toBe("deny");
+      expect(d(hook(a, "Bash", { command: "git commit -m x" })), a).toBe("deny");
+      expect(d(hook(a, "Bash", { command: "aidw validate" })), a).toBe("none");
+    }
+    // inside .aidw/ the normal rules apply: the approved package is frozen, the task list is not
+    expect(d(hook("aidw:technical-planner", "Edit", { file_path: `.aidw/changes/${ID}/analysis.md` }))).toBe("deny");
+    expect(d(hook("aidw:technical-planner", "Write", { file_path: `.aidw/changes/${ID}/tasks.yaml` }))).toBe("allow");
+    expect(d(hook("aidw:product-manager", "Write", { file_path: ".aidw/domain/model.md" }))).toBe("deny"); // frozen while executing
+  });
+
   it("keeps the reviewer read-only and the implementer out of aidw state", () => {
     expect(d(hook("aidw:code-reviewer", "Write", { file_path: "src/a.ts" }))).toBe("deny");
     expect(d(hook("aidw:code-reviewer", "Bash", { command: "echo x > src/a.ts" }))).toBe("deny");

@@ -8594,6 +8594,7 @@ function agentRole(agentType, env = process.env) {
   const access = roleAccess(pluginRoot(env), name);
   if (access === "write") return "implementer";
   if (access === "read-only") return "reviewer";
+  if (access === "artifacts") return "author";
   return name === "reviewer" || name.endsWith("-reviewer") ? "reviewer" : null;
 }
 var deny = (reason) => ({ decision: "deny", reason: `AIDW: ${reason}` });
@@ -8631,6 +8632,9 @@ function decide(input, env) {
     const secret = firstMatch(SECRET_PATHS, file);
     if (secret && !inside(project, file)) return deny(`writing ${secret.why} is forbidden (tier x)`);
     if (!inside(project, file)) return null;
+    if (role === "author" && !inside(p.aidw, file)) {
+      return deny("an authoring role drafts Artifacts under .aidw/ only; project files are written by the implementing roles after approval");
+    }
     if (role === "reviewer") {
       if ((0, import_node_path6.dirname)(file) === p.run && VERDICT_FILE.test((0, import_node_path6.basename)(file))) return allow("reviewer verdict file");
       return deny("the reviewer is read-only; report issues in the verdict instead of fixing them (it may write only .aidw/run/review-<task>.md or layer-review-<layer>.md)");
@@ -8701,6 +8705,7 @@ function decide(input, env) {
     const writes = firstMatch(WRITE_COMMANDS, maskQuotedAngles(cmd2));
     if (writes) {
       if (role === "reviewer") return deny(`the reviewer is read-only (this command ${writes.why})`);
+      if (role === "author") return deny(`an authoring role writes its files with the Write tool, inside ${AIDW_DIR}/ (this command ${writes.why})`);
       const st = gateState(p);
       if (!st.open) return deny(`this command ${writes.why}. ${closedReason(st)} Use the Write tool for files in ${AIDW_DIR}/.`);
     }
@@ -10091,9 +10096,9 @@ function readEvidence2(change, taskId) {
     return null;
   }
 }
-function commitOf(p, taskId) {
+function commitOf(p, changeId, taskId) {
   if (!isGitRepo(p.project)) return "";
-  const r = git(p.project, ["log", "--format=%h", "-n", "1", "--grep", `^${taskId}: `]);
+  const r = git(p.project, ["log", "--format=%h", "-n", "1", "--all-match", "--grep", `^Change: ${changeId}$`, "--grep", `^Task: ${taskId}$`]);
   return r.ok ? r.out : "";
 }
 var cell = (s) => s.replace(/\|/g, "\\|").replace(/\n/g, " ");
@@ -10101,7 +10106,7 @@ function tasksMd(p, change, tasks) {
   const rows = tasks.map((t) => {
     const ev = readEvidence2(change, t.id);
     const reviews = (ev?.reviews ?? []).map((r) => r.verdict).join(", ") || "-";
-    return `| ${t.id} | ${cell(String(t.title ?? ""))} | ${String(t.origin ?? "plan")} | ${statusOf3(t)} | ${String(t.attempts ?? 0)} | ${reviews} | ${commitOf(p, t.id) || "-"} |`;
+    return `| ${t.id} | ${cell(String(t.title ?? ""))} | ${String(t.origin ?? "plan")} | ${statusOf3(t)} | ${String(t.attempts ?? 0)} | ${reviews} | ${commitOf(p, change.id, t.id) || "-"} |`;
   });
   const outside = tasks.flatMap((t) => {
     const files = readEvidence2(change, t.id)?.checkpoints.at(-1)?.outside_touches ?? [];

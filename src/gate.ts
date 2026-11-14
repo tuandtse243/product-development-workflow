@@ -118,16 +118,16 @@ const VERDICT_FILE = /^(?:layer-)?review-[A-Za-z0-9._-]+\.md$/;
 /**
  * What an aidw subagent may do, from the hook's agent_type ("aidw:code-reviewer", "fullstack", ...). The name is a
  * Role id and the Role's profile declares its access: `write` -> "implementer", `read-only` -> "reviewer".
- * `artifacts` Roles (they draft under `.aidw/` before approval) get no special branch: the gate's normal rules apply,
- * and before approval those allow `.aidw/` only. An unknown name ending in "reviewer" is still treated as read-only,
- * so a renamed reviewer never gains write access.
+ * `artifacts` -> "author": it drafts Artifacts under `.aidw/` and never touches project files, before or after approval.
+ * An unknown name ending in "reviewer" is still treated as read-only, so a renamed reviewer never gains write access.
  */
-export function agentRole(agentType: string | undefined, env: NodeJS.ProcessEnv = process.env): "implementer" | "reviewer" | null {
+export function agentRole(agentType: string | undefined, env: NodeJS.ProcessEnv = process.env): "implementer" | "reviewer" | "author" | null {
   const name = (agentType ?? "").split(":").pop() ?? "";
   if (!name) return null;
   const access = roleAccess(pluginRoot(env), name);
   if (access === "write") return "implementer";
   if (access === "read-only") return "reviewer";
+  if (access === "artifacts") return "author";
   return name === "reviewer" || name.endsWith("-reviewer") ? "reviewer" : null;
 }
 
@@ -171,6 +171,10 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
     const secret = firstMatch(SECRET_PATHS, file);
     if (secret && !inside(project, file)) return deny(`writing ${secret.why} is forbidden (tier x)`);
     if (!inside(project, file)) return null; // outside the project: normal permission rules apply
+
+    if (role === "author" && !inside(p.aidw, file)) {
+      return deny("an authoring role drafts Artifacts under .aidw/ only; project files are written by the implementing roles after approval");
+    }
 
     if (role === "reviewer") {
       // The one thing a reviewer writes is its verdict file: the orchestrator reads it from disk instead of
@@ -250,6 +254,7 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
     const writes = firstMatch(WRITE_COMMANDS, maskQuotedAngles(cmd));
     if (writes) {
       if (role === "reviewer") return deny(`the reviewer is read-only (this command ${writes.why})`);
+      if (role === "author") return deny(`an authoring role writes its files with the Write tool, inside ${AIDW_DIR}/ (this command ${writes.why})`);
       const st = gateState(p);
       if (!st.open) return deny(`this command ${writes.why}. ${closedReason(st)} Use the Write tool for files in ${AIDW_DIR}/.`);
     }

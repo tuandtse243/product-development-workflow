@@ -92,7 +92,12 @@ aidw becomes a software factory with a Roster of Roles, Workflows as data and de
 [`factory-architecture.md`](factory-architecture.md), [ADR-0003](adr/0003-cli-owns-flow-declared-decision-points.md),
 [ADR-0004](adr/0004-role-folders-are-the-source.md).
 
-- [ ] **Step 1.** `roles/` for the 21 Roles, `roster.yaml`, agents generated from `role.md`. No behavior change.
+- [x] **Step 1.** `roles/` for the 21 Roles, `roster.yaml`, agents generated from `role.md`. No behavior change.
+  Checked on the demo (`scripts/make-demo.mjs`, 2026-11-14): `/aidw:start`, approval, two tasks with `aidw:fullstack` and
+  `aidw:code-reviewer`, three layers, converge and archive all ran on the new paths. The same run showed that headless
+  `/aidw:resume` could not reach the run loop; fixed (it reads `skills/run/SKILL.md` by path) but not yet re-run.
+  Also in step 1: a test browser per project on a free port (`aidw browser`, hosted by the runner), authoring Roles
+  (`access: artifacts`) kept inside `.aidw/` by the gate.
   - [x] `roster.yaml` (21 Roles), `tiers.yaml`, `aidw roster`, agents generated at build; the four existing agents are
     Roles (`fullstack`, `code-reviewer`, `security`, `ui-ux-designer`); the gate reads a Role's access from its profile.
   - [x] Profiles for the five other active Roles (`product-manager`, `software-architect`, `technical-planner`,
