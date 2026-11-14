@@ -68,6 +68,22 @@ const shot = (root: string, name = "page.png") => write(root, `.aidw/run/shots/$
 const t01 = (root: string) =>
   (YAML.parse(readFileSync(join(root, ".aidw/changes", ID, "tasks.yaml"), "utf8")) as { tasks: Record<string, unknown>[] }).tasks[0];
 
+describe("design tokens that reuse the existing design", () => {
+  it("need at least one token, not an invented color: no color token is a warning", () => {
+    const d = new Diags();
+    const tokens = parseTokens("tokens:\n  - name: body\n    kind: font\n    value: system-ui\n    use: all text on the home page, including the counter\n", "t.yaml", d);
+    expect(tokens).toHaveLength(1);
+    expect(d.errors).toEqual([]);
+    expect(d.warnings.map((w) => w.message).join()).toMatch(/no color token: reviewers cannot check color use/);
+  });
+
+  it("still refuses an empty token file", () => {
+    const d = new Diags();
+    parseTokens("tokens: []\n", "t.yaml", d);
+    expect(d.errors.map((e) => e.message).join()).toMatch(/non-empty/);
+  });
+});
+
 describe("design tokens", () => {
   it("parses tokens and rejects what the reviewer could not check", () => {
     const d = new Diags();

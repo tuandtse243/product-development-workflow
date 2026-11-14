@@ -40,7 +40,7 @@ tasks:
     specs: [<capability>/<requirement-id>]                 # from `aidw ids <id>`
     scenarios: [<capability>/<requirement-id>/<scenario-id>]
     depends_on: []             # blocking edges: only a real data dependency (trial-3C: a near-chain ran with no wave)
-    touches: ["app/(site)/booking/**", "lib/booking/**"]   # file globs this task may change
+    touches: ["app/(site)/booking/**", "lib/booking/**", "tests/booking*"]   # file globs this task may change, tests included
     risk: normal               # normal | high (high never runs in parallel)
     verify:
       - <command that proves it works, e.g. pnpm vitest run lib/booking>
@@ -64,6 +64,9 @@ scenario end to end. Say in `analysis.md` why a Slice was split.
   tests for one behavior; give a task `depends_on` only for something it truly needs (a shared type or file it
   imports), not for "it comes next". `aidw analyze` warns when the plan is one chain or when `depends_on` links
   tasks whose `touches` do not overlap: act on that warning, or keep the chain when the dependency is real.
+- **Touches include the tests.** The implementer writes one test per scenario, often in more than one file (a unit test of
+  the module and a test of the screen), and a reviewer may ask for another. Give the task a glob for its tests
+  (`tests/<feature>*`, `e2e/<feature>*`), not one file name; a test outside Touches is reported and reviewed every time.
 - **Parallel waves.** Tasks whose `touches` do not overlap and whose dependencies are done run side by side, each
   in its own git worktree. Keep `touches` tight (exact folders, not `src/**`) so independent slices can run
   together, and list shared files (`package.json`, the root layout, a shared schema) only in the task that really

@@ -40,7 +40,7 @@ ${PLACEHOLDER}: prerequisites and exact commands (install, local services, dev s
 
 ## Environment
 
-${PLACEHOLDER}: every environment variable, what it is for and where its value comes from; point to .env.example. Write "None" if there are none.
+${PLACEHOLDER}: every environment variable the app reads, what it is for and where its value comes from; point to .env.example. Variables only the tests use go under Run locally. Write "None" if the app reads none.
 
 ## Deploy
 

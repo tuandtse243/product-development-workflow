@@ -18,6 +18,8 @@ Input: `$ARGUMENTS` (an idea, a path to a PRD/JD, pasted client text, or "this c
 
 ## Ground rules
 
+- **Write files with the Write tool, never with a shell redirect or heredoc** (`cat > file <<EOF`, `echo > file`): the gate
+  denies those before approval and each denial costs a turn. This holds for `intake.md`, `quality.yaml`, `tokens.yaml` and every file below.
 - Until approval you may write **only inside `.aidw/`**. The aidw gate hook denies everything else. Do not
   scaffold, install packages or create source files. Read the codebase freely.
 - All state changes go through the `aidw` CLI (on PATH while the plugin is enabled). Never hand-edit `state:`
@@ -190,7 +192,9 @@ Read `$(aidw plugin-path roles/qa/references/quality-layers.md)` and `$(aidw plu
 
 ## 9. Analyze and present
 
-1. Complete every section of `.aidw/changes/<id>/analysis.md`. Replace every `TODO(aidw)`.
+1. Complete every section of `.aidw/changes/<id>/analysis.md`. Replace every `TODO(aidw)`: read the file once, then write the
+   whole completed file with **one Write** (keep every heading and the `Source:` / `Mode:` / `Size:` lines). One Edit per section
+   is about twenty calls in a row, and the orchestrator's context is re-read on each.
    `## Decisions to honor` lists, as `- D1: <decision>`, every concrete choice the code must keep and a reviewer
    can check: names and keys (storage keys, routes, env var names), formats, tools and package manager,
    libraries, conventions, limits. Take them from the discovery answers, the stack, the architecture and the

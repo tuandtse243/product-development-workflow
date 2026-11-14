@@ -13,6 +13,7 @@ import { buildAuditBrief, chosenLenses, compileReport, lensRoles, pickFindings }
 import { DecisionError, readDecisions, recordDecision, workflowOfChange } from "./decisions.js";
 import { machineOf } from "./machine.js";
 import { packsFor } from "./stackpacks.js";
+import { git } from "./git.js";
 import { checkEvals } from "./evals.js";
 import { checkWorkflows, loadWorkflow, workflowIds } from "./workflow.js";
 import { agentForTask, AGENTS, checkRoster, rosterTable, writeAgents } from "./roles.js";
@@ -1097,9 +1098,11 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const p = project();
         const id = resolveChangeId(p, rest[0]);
         const { target, merges, commit } = archiveChange(p, id);
+        // The archive commit also carries the project files the delivery wrote (README.md, .env.example): say so, they are not left uncommitted.
+        const alsoCommitted = commit ? git(p.project, ["show", "--name-only", "--format=", commit]).out.split("\n").filter((f) => f && !f.startsWith(".aidw/")) : [];
         emit(
-          { ok: true, id, archived: rel(p, target), capabilities: merges.map((m) => m.capability), commit: commit ?? null },
-          `archived ${id} -> ${rel(p, target)} (${merges.length} capability spec(s) updated)${commit ? `, committed ${commit.slice(0, 8)}` : ""}\n`,
+          { ok: true, id, archived: rel(p, target), capabilities: merges.map((m) => m.capability), commit: commit ?? null, also_committed: alsoCommitted },
+          `archived ${id} -> ${rel(p, target)} (${merges.length} capability spec(s) updated)${commit ? `, committed ${commit.slice(0, 8)}` : ""}\n${alsoCommitted.length ? `also committed with it: ${alsoCommitted.join(", ")}\n` : ""}`,
         );
         return 0;
       }

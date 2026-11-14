@@ -9351,7 +9351,8 @@ function parseTokens(text, file, d) {
     }
     out.push(token);
   });
-  if (!out.some((t) => t.kind === "color")) d.error(file, "needs at least one color token");
+  if (out.length === 0) d.error(file, "needs at least one token");
+  else if (!out.some((t) => t.kind === "color")) d.warn(file, "no color token: reviewers cannot check color use (fine when the change reuses the existing design; do not invent a color to have one)");
   return out;
 }
 function loadTokens(p) {
@@ -10845,7 +10846,7 @@ ${PLACEHOLDER2}: prerequisites and exact commands (install, local services, dev 
 
 ## Environment
 
-${PLACEHOLDER2}: every environment variable, what it is for and where its value comes from; point to .env.example. Write "None" if there are none.
+${PLACEHOLDER2}: every environment variable the app reads, what it is for and where its value comes from; point to .env.example. Variables only the tests use go under Run locally. Write "None" if the app reads none.
 
 ## Deploy
 
@@ -14809,10 +14810,12 @@ ${lines.join("\n")}
         const p = project();
         const id = resolveChangeId(p, rest[0]);
         const { target, merges, commit } = archiveChange(p, id);
+        const alsoCommitted = commit ? git(p.project, ["show", "--name-only", "--format=", commit]).out.split("\n").filter((f) => f && !f.startsWith(".aidw/")) : [];
         emit(
-          { ok: true, id, archived: rel(p, target), capabilities: merges.map((m) => m.capability), commit: commit ?? null },
+          { ok: true, id, archived: rel(p, target), capabilities: merges.map((m) => m.capability), commit: commit ?? null, also_committed: alsoCommitted },
           `archived ${id} -> ${rel(p, target)} (${merges.length} capability spec(s) updated)${commit ? `, committed ${commit.slice(0, 8)}` : ""}
-`
+${alsoCommitted.length ? `also committed with it: ${alsoCommitted.join(", ")}
+` : ""}`
         );
         return 0;
       }
