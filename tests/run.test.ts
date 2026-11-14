@@ -356,15 +356,15 @@ describe("gate for subagents", () => {
   const d = (h: HookInput) => decide(h, {})?.decision ?? "none";
 
   it("keeps the reviewer read-only and the implementer out of aidw state", () => {
-    expect(d(hook("aidw:reviewer", "Write", { file_path: "src/a.ts" }))).toBe("deny");
-    expect(d(hook("aidw:reviewer", "Bash", { command: "echo x > src/a.ts" }))).toBe("deny");
-    expect(d(hook("aidw:reviewer", "Bash", { command: "pnpm vitest run" }))).toBe("none");
-    expect(d(hook("aidw:reviewer", "Bash", { command: "aidw review T01 pass" }))).toBe("deny");
-    expect(d(hook("aidw:implementer", "Write", { file_path: "src/a.ts" }))).toBe("allow");
-    expect(d(hook("aidw:implementer", "Edit", { file_path: `.aidw/changes/${ID}/tasks.yaml` }))).toBe("deny");
-    expect(d(hook("aidw:implementer", "Bash", { command: "aidw checkpoint T01" }))).toBe("deny");
-    expect(d(hook("aidw:implementer", "Bash", { command: "git commit -m done" }))).toBe("deny");
-    expect(d(hook("aidw:implementer", "Bash", { command: "aidw status" }))).toBe("none");
+    expect(d(hook("aidw:code-reviewer", "Write", { file_path: "src/a.ts" }))).toBe("deny");
+    expect(d(hook("aidw:code-reviewer", "Bash", { command: "echo x > src/a.ts" }))).toBe("deny");
+    expect(d(hook("aidw:code-reviewer", "Bash", { command: "pnpm vitest run" }))).toBe("none");
+    expect(d(hook("aidw:code-reviewer", "Bash", { command: "aidw review T01 pass" }))).toBe("deny");
+    expect(d(hook("aidw:fullstack", "Write", { file_path: "src/a.ts" }))).toBe("allow");
+    expect(d(hook("aidw:fullstack", "Edit", { file_path: `.aidw/changes/${ID}/tasks.yaml` }))).toBe("deny");
+    expect(d(hook("aidw:fullstack", "Bash", { command: "aidw checkpoint T01" }))).toBe("deny");
+    expect(d(hook("aidw:fullstack", "Bash", { command: "git commit -m done" }))).toBe("deny");
+    expect(d(hook("aidw:fullstack", "Bash", { command: "aidw status" }))).toBe("none");
     // the orchestrator (main session) does all of it
     expect(d(hook(undefined, "Bash", { command: "aidw checkpoint T01" }))).toBe("none");
     expect(d(hook(undefined, "Edit", { file_path: `.aidw/changes/${ID}/tasks.yaml` }))).toBe("allow");

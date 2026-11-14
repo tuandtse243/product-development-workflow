@@ -101,7 +101,7 @@ describe("quality.yaml review layers", () => {
     ]);
     expect(parseQuality("layers:\n  - name: code\n    run: [x]\n  - name: sec\n    review: security\n", "q").config?.layers[1]).toMatchObject({ run: [], review: "security" });
     expect(diags("layers:\n  - name: code\n    run: [x]\n  - name: perf\n    review: lighthouse\n").errors.map((e) => e.message)).toEqual([
-      'layer "perf": "review" must be one of ui, security (an aidw:<kind>-reviewer agent exists for each)',
+      'layer "perf": "review" must be one of ui, security (a reviewing Role exists for each)',
     ]);
     expect(diags("layers:\n  - name: code\n    run: [x]\n  - name: perf\n    artifacts: [x]\n").errors.map((e) => e.message)).toEqual([
       'layer "perf" needs a non-empty "run" list of commands (or "review: ui|security")',
@@ -119,8 +119,8 @@ describe("verify with review layers (S7)", () => {
     expect(v1.code).toBe(1);
     const r1 = v1.json();
     expect(r1.layers.map((l: { status: string }) => l.status)).toEqual(["pass", "review", "skipped", "skipped"]);
-    expect(r1.awaitingReview).toMatchObject({ layer: "ui-ux", kind: "ui", agent: "aidw:ui-reviewer", artifacts: ["test-results/shots/home-desktop-dark.png", "test-results/shots/home-mobile-light.png"] });
-    expect(cli(root, "verify").out).toMatch(/^REVIEW: layer "ui-ux" awaits its ui review[\s\S]*agent {2}aidw:ui-reviewer\n {2}brief {2}\.aidw\/run\/briefs\/.*ui-ux\.layer-review\.md\n {2}prompt Layer review brief: /);
+    expect(r1.awaitingReview).toMatchObject({ layer: "ui-ux", kind: "ui", agent: "aidw:ui-ux-designer", artifacts: ["test-results/shots/home-desktop-dark.png", "test-results/shots/home-mobile-light.png"] });
+    expect(cli(root, "verify").out).toMatch(/^REVIEW: layer "ui-ux" awaits its ui review[\s\S]*agent {2}aidw:ui-ux-designer\n {2}brief {2}\.aidw\/run\/briefs\/.*ui-ux\.layer-review\.md\n {2}prompt Layer review brief: /);
 
     const brief = readFileSync(join(root, r1.awaitingReview.brief), "utf8");
     expect(brief).toMatch(/^# Layer review brief: ui-ux \(ui review\) - Booking/);
@@ -150,7 +150,7 @@ describe("verify with review layers (S7)", () => {
     expect(sum.layers["ui-ux"]).toMatchObject({ status: "pass", review: { verdict: "pass", notes: "VERDICT: pass\nNon-blocking:\n- the day cells differ in height" } });
 
     const v2 = cli(root, "verify", "--json").json();
-    expect(v2.awaitingReview).toMatchObject({ layer: "security", kind: "security", agent: "aidw:security-reviewer", artifacts: [] });
+    expect(v2.awaitingReview).toMatchObject({ layer: "security", kind: "security", agent: "aidw:security", artifacts: [] });
     expect(v2.layers.map((l: { status: string }) => l.status)).toEqual(["skipped", "skipped", "review", "skipped"]);
     const sec = readFileSync(join(root, v2.awaitingReview.brief), "utf8");
     expect(sec).toMatch(/security reviewer/);
@@ -216,18 +216,18 @@ describe("verify with review layers (S7)", () => {
 describe("layer reviewers are read-only subagents", () => {
   const hook = (cwd: string, tool_name: string, tool_input: Record<string, unknown>, agent_type: string): HookInput => ({ hook_event_name: "PreToolUse", tool_name, tool_input, cwd, agent_type });
 
-  it("treats aidw:ui-reviewer and aidw:security-reviewer like the task reviewer", () => {
-    expect(["aidw:ui-reviewer", "security-reviewer", "aidw:reviewer"].map(agentRole)).toEqual(["reviewer", "reviewer", "reviewer"]);
-    expect(agentRole("aidw:implementer")).toBe("implementer");
+  it("treats the read-only Roles (ui-ux-designer, security) like the task reviewer", () => {
+    expect(["aidw:ui-ux-designer", "security", "aidw:code-reviewer"].map((a) => agentRole(a))).toEqual(["reviewer", "reviewer", "reviewer"]);
+    expect(agentRole("aidw:fullstack")).toBe("implementer");
     expect(agentRole("general-purpose")).toBeNull();
     const root = project();
     const d = (h: HookInput) => decide(h, {})?.decision ?? "none";
-    expect(d(hook(root, "Write", { file_path: join(root, "app/page.tsx") }, "aidw:ui-reviewer"))).toBe("deny");
-    expect(d(hook(root, "Bash", { command: "echo x > app/page.tsx" }, "aidw:security-reviewer"))).toBe("deny");
-    expect(d(hook(root, "Bash", { command: "aidw layer-review ui-ux pass" }, "aidw:ui-reviewer"))).toBe("deny");
-    expect(d(hook(root, "Bash", { command: "aidw verify" }, "aidw:security-reviewer"))).toBe("deny");
-    expect(d(hook(root, "Bash", { command: "git diff abc123 --stat" }, "aidw:security-reviewer"))).toBe("none");
-    expect(d(hook(root, "Bash", { command: "npx playwright test --project=shots" }, "aidw:ui-reviewer"))).toBe("none");
+    expect(d(hook(root, "Write", { file_path: join(root, "app/page.tsx") }, "aidw:ui-ux-designer"))).toBe("deny");
+    expect(d(hook(root, "Bash", { command: "echo x > app/page.tsx" }, "aidw:security"))).toBe("deny");
+    expect(d(hook(root, "Bash", { command: "aidw layer-review ui-ux pass" }, "aidw:ui-ux-designer"))).toBe("deny");
+    expect(d(hook(root, "Bash", { command: "aidw verify" }, "aidw:security"))).toBe("deny");
+    expect(d(hook(root, "Bash", { command: "git diff abc123 --stat" }, "aidw:security"))).toBe("none");
+    expect(d(hook(root, "Bash", { command: "npx playwright test --project=shots" }, "aidw:ui-ux-designer"))).toBe("none");
   });
 
   it("keeps verify, deploy and layer-review out of every subagent's hands", () => {

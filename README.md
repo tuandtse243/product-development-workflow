@@ -12,7 +12,7 @@ autonomous build → layered quality gates → living specs → complete deliver
   milestone-A code is in and ran end to end in Claude Code (blueprint section 27). **S6 code done** (design tokens with
   use rules for all four design modes, checkpoint token and screenshot checks, reviewer design and
   decisions-to-honor checks, README command check at delivery). **S7 code done** (review layers `review: ui|security` in
-  `quality.yaml` with read-only `aidw:ui-reviewer` / `aidw:security-reviewer` agents and `aidw layer-review`; a11y and
+  `quality.yaml` with read-only `aidw:ui-ux-designer` / `aidw:security` agents and `aidw layer-review`; a11y and
   performance layers over Chrome CDP in the quality profile). **S8-S10 code done** (parallel waves in git worktrees
   with merge per task and integration verify; `aidw run`, the headless auto-resume runner; brownfield detection,
   `## Existing system`, lazy baseline specs). Milestone B awaits trial 3: [`docs/trial-3.md`](docs/trial-3.md).
@@ -52,6 +52,9 @@ the diff. They sit outside `skills/`, so Claude Code never auto-loads them; aidw
 ```
 .claude-plugin/marketplace.json   this repo is a Claude Code marketplace
 plugins/aidw/                     the plugin (bin/aidw is the bundled CLI)
+plugins/aidw/roster.yaml          the factory's Roles: department, status, who carries a planned Role
+plugins/aidw/roles/<id>/          a Role: role.md (profile), rules.md; the source of its agent file
+plugins/aidw/agents/              GENERATED from roles/ by the build; never edit (`aidw roster` checks)
 src/                              TypeScript source of the aidw CLI
 tests/                            vitest suites
 docs/                             blueprint and decisions log

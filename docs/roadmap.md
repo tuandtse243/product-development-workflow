@@ -86,6 +86,23 @@ batch 2 (features). Tick items as they land.
 - [ ] Skill digests: 1–2 KB checklists of the vendored addy skills (each full SKILL.md is 10–21 KB, read by every implementer and
   kept in its context). Only if trial-3C shows implementers still dominate the cost.
 
+## Factory (decided 2026-11-14, awaiting approval of the design)
+
+aidw becomes a software factory with a Roster of Roles, Workflows as data and declared Decision Points:
+[`factory-architecture.md`](factory-architecture.md), [ADR-0003](adr/0003-cli-owns-flow-declared-decision-points.md),
+[ADR-0004](adr/0004-role-folders-are-the-source.md).
+
+- [ ] **Step 1.** `roles/` for the 21 Roles, `roster.yaml`, agents generated from `role.md`. No behavior change.
+  - [x] `roster.yaml` (21 Roles), `tiers.yaml`, `aidw roster`, agents generated at build; the four existing agents are
+    Roles (`fullstack`, `code-reviewer`, `security`, `ui-ux-designer`); the gate reads a Role's access from its profile.
+  - [ ] Profiles for the five other active Roles (`product-manager`, `software-architect`, `technical-planner`,
+    `frontend`, `backend`) and for the 12 Planned Roles.
+  - [ ] Move `profiles/`, `policies/`, `vendor/` to `stacks/`, `company/`, `library/`.
+- [ ] **Step 2.** `product` and `feature` Workflows as YAML drive `aidw next`; `artifacts.yaml`; interview in the
+  main session, drafting in worker Agents.
+- [ ] **Step 3.** Decision Points, triage, Slice shape; `bugfix` and `audit` Workflows.
+- [ ] **Step 4.** Activate Planned Roles one at a time with their evals; Next.js and NestJS framework packs.
+
 ## Backlog
 
 - Per-server MCP tier map (for example Vercel deploy as tier 3).

@@ -277,7 +277,7 @@ describe("a wave in worktrees (git)", () => {
 });
 
 describe("gate in worktrees", () => {
-  const hook = (cwd: string, file: string, agent_type = "aidw:implementer"): HookInput => ({
+  const hook = (cwd: string, file: string, agent_type = "aidw:fullstack"): HookInput => ({
     hook_event_name: "PreToolUse",
     tool_name: "Write",
     tool_input: { file_path: file },
@@ -292,7 +292,7 @@ describe("gate in worktrees", () => {
     const d = (h: HookInput) => decide(h, {})?.decision ?? "none";
     expect(d(hook(wt, join(wt, "lib/a/x.js")))).toBe("allow");
     expect(d(hook(wt, join(wt, ".aidw/changes/x/tasks.yaml")))).toBe("deny");
-    expect(d(hook(wt, join(wt, "lib/a/x.js"), "aidw:reviewer"))).toBe("deny");
+    expect(d(hook(wt, join(wt, "lib/a/x.js"), "aidw:code-reviewer"))).toBe("deny");
     expect(d(hook(root, join(root, `.aidw/run/worktrees/${ID}`)))).toBe("deny");
     const bash = (command: string): HookInput => ({ hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command }, cwd: root });
     expect(decide(bash("aidw run 2026-11-10-wave"), {})).toMatchObject({ decision: "deny" });

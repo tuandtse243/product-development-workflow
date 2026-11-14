@@ -32,6 +32,8 @@ import {
   RUNNER_COMMAND,
 } from "./policy.js";
 import { grantedResources } from "./quality.js";
+import { pluginRoot } from "./plugin.js";
+import { roleAccess } from "./roles.js";
 
 export interface HookInput {
   hook_event_name?: string;
@@ -114,12 +116,16 @@ const REPORT_FILE = /^report-[A-Za-z0-9._-]+\.md$/;
 const VERDICT_FILE = /^(?:layer-)?review-[A-Za-z0-9._-]+\.md$/;
 
 /**
- * aidw subagent role from the hook's agent_type ("aidw:reviewer", "reviewer", "aidw:ui-reviewer", ...).
- * Every `*-reviewer` (ui, security) is read-only like the task reviewer.
+ * What an aidw subagent may do, from the hook's agent_type ("aidw:code-reviewer", "fullstack", ...). The name is a
+ * Role id and the Role's profile declares its access: `write` -> "implementer", `read-only` -> "reviewer".
+ * An unknown name ending in "reviewer" is still treated as read-only, so a renamed reviewer never gains write access.
  */
-export function agentRole(agentType: string | undefined): "implementer" | "reviewer" | null {
+export function agentRole(agentType: string | undefined, env: NodeJS.ProcessEnv = process.env): "implementer" | "reviewer" | null {
   const name = (agentType ?? "").split(":").pop() ?? "";
-  if (name === "implementer") return "implementer";
+  if (!name) return null;
+  const access = roleAccess(pluginRoot(env), name);
+  if (access === "write") return "implementer";
+  if (access === "read-only") return "reviewer";
   return name === "reviewer" || name.endsWith("-reviewer") ? "reviewer" : null;
 }
 
@@ -154,7 +160,7 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
     return secret && !inside(project, resolve(cwd, file)) ? deny(`reading ${secret.why} is forbidden (tier x)`) : null;
   }
 
-  const role = agentRole(input.agent_type);
+  const role = agentRole(input.agent_type, env);
 
   if (tool === "Write" || tool === "Edit" || tool === "MultiEdit" || tool === "NotebookEdit") {
     const raw = String(ti.file_path ?? ti.notebook_path ?? "");

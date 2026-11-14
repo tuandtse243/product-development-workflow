@@ -187,7 +187,7 @@ describe("checkpoint and briefs for UI tasks", () => {
 
   it("lets the implementer write screenshots, and nothing else, under .aidw/", () => {
     const h = (file_path: string) =>
-      decide({ hook_event_name: "PreToolUse", tool_name: "Write", tool_input: { file_path, content: "x" }, cwd: root, agent_type: "aidw:implementer" }, {})?.decision;
+      decide({ hook_event_name: "PreToolUse", tool_name: "Write", tool_input: { file_path, content: "x" }, cwd: root, agent_type: "aidw:fullstack" }, {})?.decision;
     expect(h(join(root, ".aidw/run/shots", ID, "T01/a.png"))).toBe("allow");
     expect(h(join(root, ".aidw/changes", ID, "tasks.yaml"))).toBe("deny");
   });

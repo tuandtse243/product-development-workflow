@@ -5,6 +5,8 @@ import { approvalStatus, computeApprovalHash } from "./approval.js";
 import { runBackstop } from "./backstop.js";
 import { ChangeError, isState, listChangeIds, loadChange, NEEDS_ANALYSIS, resolveChangeId, stateOf, STATES } from "./change.js";
 import { runGate } from "./gate.js";
+import { pluginRoot } from "./plugin.js";
+import { AGENTS, checkRoster, rosterTable, writeAgents } from "./roles.js";
 import { checkChange, checkSpecs } from "./check.js";
 import { Diags, type Diagnostic } from "./diag.js";
 import {
@@ -149,6 +151,8 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
   ids [<id>]                             requirement and scenario ids (after applying the change)
   vendor-path <upstream>/<skill>         absolute path of a vendored SKILL.md (e.g. pocock/grilling)
   plugin-path <path>                     absolute path of a plugin file (e.g. profiles/stack-pool.md)
+  roster [--write]                       the factory's Roles; checks roster.yaml, role profiles and the generated
+                                         agent files (--write regenerates agents/ from roles/)
 
 Execution (state executing; add --change <id> when several changes are active):
   next                                   what the orchestrator does next (implement | review | escalate | complete)
@@ -228,13 +232,7 @@ interface Io {
   stdin?: () => string;
 }
 
-/** Root of the installed plugin (bin/ lives in it). */
-export function pluginRoot(env: NodeJS.ProcessEnv): string {
-  if (env.AIDW_PLUGIN_ROOT) return env.AIDW_PLUGIN_ROOT;
-  if (typeof __dirname !== "undefined") return join(__dirname, "..");
-  if (env.CLAUDE_PLUGIN_ROOT) return env.CLAUDE_PLUGIN_ROOT;
-  return join(process.cwd(), "plugins", "aidw");
-}
+export { pluginRoot };
 
 /**
  * Appends the plugin bin/ to the END of PATH via $CLAUDE_ENV_FILE, once. Appending keeps any shims the user puts
@@ -406,7 +404,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const brief = buildBrief(p, id, r.task, "implement", join(pluginRoot(env), "vendor"));
         emit(
           { ok: true, change: id, ...r, brief: brief.path },
-          `${r.task} running: attempt ${r.attempt} of ${r.maxAttempts}${r.resumed ? " (resumed)" : ""}${r.base ? `, base ${r.base.slice(0, 8)}` : ""}${r.worktree ? `, worktree ${r.worktree}` : ""}\nbrief ${brief.path}\nSPAWN aidw:implementer with: Task brief: ${brief.path}. Read it and implement the task.\n`,
+          `${r.task} running: attempt ${r.attempt} of ${r.maxAttempts}${r.resumed ? " (resumed)" : ""}${r.base ? `, base ${r.base.slice(0, 8)}` : ""}${r.worktree ? `, worktree ${r.worktree}` : ""}\nbrief ${brief.path}\nSPAWN ${AGENTS.implement} with: Task brief: ${brief.path}. Read it and implement the task.\n`,
         );
         return 0;
       }
@@ -450,7 +448,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
             after = `review ${auto.task}: auto-passed (converge tests, or a layer fix its own reviewer judges again)${auto.commit ? ` (commit ${auto.commit.slice(0, 8)})` : ""}\n${nextLine(p, id)}${sessionEnd(env, p, id)}`;
           } else {
             reviewBrief = buildBrief(p, id, r.task, "review", join(pluginRoot(env), "vendor")).path;
-            after = `review brief ${reviewBrief}\nSPAWN aidw:reviewer with: ${REVIEWER_PROMPT(reviewBrief)}\nThen: aidw verdict ${r.task}\n`;
+            after = `review brief ${reviewBrief}\nSPAWN ${AGENTS.taskReview} with: ${REVIEWER_PROMPT(reviewBrief)}\nThen: aidw verdict ${r.task}\n`;
           }
         } else {
           after = nextLine(p, id);
@@ -679,6 +677,19 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         if (!existsSync(file)) throw new OpError(`"${ref}" not found in the plugin (${file})`);
         emit({ path: file }, `${file}\n`);
         return 0;
+      }
+
+      case "roster": {
+        const root = pluginRoot(env);
+        const written = args.flags.write === true ? writeAgents(root) : [];
+        const d = checkRoster(root);
+        const table = d.errors.length ? "" : rosterTable(root);
+        const summary = `${d.errors.length ? "FAILED" : "OK"}: ${d.errors.length} error(s), ${d.warnings.length} warning(s)\n`;
+        emit(
+          { ok: d.errors.length === 0, written, ...diagsJson(d) },
+          `${table}${written.length ? `wrote agents/: ${written.join(", ")}\n` : ""}${printDiags(d)}${summary}`,
+        );
+        return d.errors.length ? 1 : 0;
       }
 
       case "analyze": {

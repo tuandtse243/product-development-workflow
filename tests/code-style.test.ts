@@ -30,7 +30,7 @@ describe("code style profile", () => {
   });
 
   it("implementer formats its files because worktrees skip the hook", () => {
-    expect(read("agents/implementer.md")).toMatch(/formatter[^\n]*finish by running it/);
+    expect(read("agents/fullstack.md")).toMatch(/formatter[^\n]*finish by running it/);
   });
 });
 

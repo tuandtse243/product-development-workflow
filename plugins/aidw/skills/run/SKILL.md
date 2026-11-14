@@ -84,7 +84,7 @@ aidw next --change <id> --json
 **`implement <T>`** (reason `new`, `retry` or `interrupted`):
 1. `aidw task start <T> --change <id>`. It prints the brief path and the exact prompt to use. If it fails
    because attempts are exhausted, go to *Escalate*.
-2. Spawn the `aidw:implementer` subagent (Agent tool, `subagent_type: "aidw:implementer"`) with the printed
+2. Spawn the `aidw:fullstack` subagent (Agent tool, `subagent_type: "aidw:fullstack"`) with the printed
    prompt (`Task brief: <path>. Read it and implement the task.`). Wait for it.
 3. If the implementer reports a blocker it cannot resolve (missing decision, contradictory spec, credential),
    go to *Escalate* with its words.
@@ -93,11 +93,11 @@ aidw next --change <id> --json
      brief carries the failure and the debugging skill).
    - PASS with `auto-passed`: a converge task that only added tests; it is reviewed and committed already.
      Follow the printed `NEXT:`.
-   - PASS with `SPAWN aidw:reviewer`: go to the review step below.
+   - PASS with `SPAWN aidw:code-reviewer`: go to the review step below.
 
 **`review <T>`**:
 1. The checkpoint printed the review brief and prompt (if you only have `NEXT: review <T>`, run
-   `aidw brief <T> --change <id> --for review`). Spawn the `aidw:reviewer` subagent with
+   `aidw brief <T> --change <id> --for review`). Spawn the `aidw:code-reviewer` subagent with
    `Review brief: <path>. Review the task and reply with the verdict.`
 2. The reviewer writes its verdict to `.aidw/run/review-<T>.md` and replies with its first line. Run
    `aidw verdict <T> --change <id>`: it reads that file, records `pass` (marks done, commits the task, keeps the
@@ -114,7 +114,7 @@ aidw next --change <id> --json
 1. For each task: `aidw task start <T> --worktree --change <id>`. If one fails because its worktree setup
    failed, it is marked sequential and runs later on its own; continue with the others.
 2. Each `task start` printed the brief path and prompt.
-3. Spawn one `aidw:implementer` per task **in a single message** (parallel Agent calls), each with only its
+3. Spawn one `aidw:fullstack` per task **in a single message** (parallel Agent calls), each with only its
    printed prompt (`Task brief: <path>. Read it and implement the task.`). Wait for all of them.
 4. A blocker from any implementer: finish the others, then *Escalate*.
 5. `aidw checkpoint <T>` for each task, one after the other (checkpoints run builds; never in parallel).
@@ -154,7 +154,7 @@ commands and the `code` layer on the merged code.
      (section 1): the fix task runs through implement, checkpoint and review like any other, then come back here.
    - `REVIEW`: a **review layer** (`review: ui` or `review: security`) passed its commands and waits for an
      independent reviewer. The output names the agent, the brief and the prompt:
-     1. Spawn that agent (`subagent_type: "aidw:ui-reviewer"` or `"aidw:security-reviewer"`) with exactly the
+     1. Spawn that agent (`subagent_type: "aidw:ui-ux-designer"` or `"aidw:security"`) with exactly the
         printed prompt: `Layer review brief: <path>. Review the layer and reply with the verdict.`
      2. The reviewer writes its verdict to `.aidw/run/layer-review-<layer>.md` and replies with one line. Run
         `aidw layer-review <layer> --change <id>` (no verdict argument): it reads that file and records

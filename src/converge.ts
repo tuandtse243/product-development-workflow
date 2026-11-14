@@ -9,6 +9,7 @@
  *   presence  no reports configured: a test file names the scenario id, the line is not skipped,
  *             and every layer passed on the current code. Weaker; the quality report says so.
  */
+import { DEFAULT_TASK_ROLE } from "./roles.js";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import YAML from "yaml";
@@ -149,7 +150,7 @@ export function converge(p: Paths, id: string): ConvergeResult {
         tf.doc.createNode({
           id: taskId,
           title: ids.length === 1 ? `Cover scenario ${ids[0]}` : `Cover ${ids.length} scenarios of ${cap}`,
-          role: "fullstack-engineer",
+          role: DEFAULT_TASK_ROLE,
           origin: "converge",
           specs: [cap],
           scenarios: ids,

@@ -273,7 +273,7 @@ describe("tier-2 allowlist in the gate", () => {
     expect(d("vercel deploy --yes && rm -rf build")).toBe("ask"); // chained: a human decides
     expect(d("vercel --prod")).toBe("ask"); // tier 3 always asks
     expect(d("supabase db push")).toBe("ask"); // tier 2, but not in this allowlist
-    expect(d("vercel deploy --yes", "aidw:implementer")).toBe("deny");
+    expect(d("vercel deploy --yes", "aidw:fullstack")).toBe("deny");
 
     // the allowlist only holds while the change is open
     cli(root, "transition", ID, "paused", "--reason", "x");

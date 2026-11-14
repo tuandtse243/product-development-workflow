@@ -200,7 +200,7 @@ blocking edges, prefactor first, expand-contract for wide refactors), with this 
 tasks:
   - id: T01
     title: <end-to-end behavior this slice makes work, under 60 characters: it becomes the commit subject>
-    role: fullstack-engineer   # fullstack-engineer | frontend-engineer | backend-engineer | database-engineer | qa-engineer | architect
+    role: fullstack   # a Role id from the Roster (`aidw roster`); today the fullstack Agent runs every task
     type: feat                 # Conventional Commits type of the task commit: feat fix refactor test docs style perf build ci chore revert
     specs: [<capability>/<requirement-id>]                 # from `aidw ids <id>`
     scenarios: [<capability>/<requirement-id>/<scenario-id>]

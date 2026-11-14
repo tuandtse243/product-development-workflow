@@ -20,7 +20,7 @@ layers:                         # run in this order by `aidw verify`; any kebab-
   - name: e2e                   # Chrome over CDP (see below); Playwright's webServer builds and starts the app
     run: ["pnpm exec playwright test --project=e2e"]
     reports: [test-results/e2e.xml]
-  - name: ui-ux                 # review layer: commands produce the artifacts, then aidw:ui-reviewer judges them
+  - name: ui-ux                 # review layer: commands produce the artifacts, then aidw:ui-ux-designer judges them
     run: ["PLAYWRIGHT_JUNIT_OUTPUT_NAME=test-results/shots.xml pnpm exec playwright test --project=shots"]
     artifacts: ["test-results/shots/**/*.png"]
     review: ui
@@ -44,7 +44,7 @@ parallel:                       # waves of tasks with disjoint touches, each in 
 
 - **Review layers** carry `review: ui` or `review: security`. Their `run` commands (optional) produce the
   artifacts; when they pass, `aidw verify` stops with a brief and the orchestrator spawns the matching
-  read-only agent (`aidw:ui-reviewer`, `aidw:security-reviewer`), then records the verdict with
+  read-only agent (`aidw:ui-ux-designer`, `aidw:security`), then records the verdict with
   `aidw layer-review <layer> pass|fix`. A `fix` verdict becomes a fix task with the reviewer's notes, within
   `max_fix_rounds`. `artifacts` are project-relative globs of files the reviewer must open.
 - **Layers** must not need a human: no interactive prompts, no watch mode, exit non-zero on failure.
@@ -185,7 +185,7 @@ must be justified in `## Quality profile`; the quality report lists it as not co
 
 ### ui-ux (review: ui)
 
-The `shots` project photographs every main screen at three viewports and each theme, then `aidw:ui-reviewer`
+The `shots` project photographs every main screen at three viewports and each theme, then `aidw:ui-ux-designer`
 opens every image. The scaffold task adds `e2e/shots.spec.ts`:
 
 ```ts
@@ -246,7 +246,7 @@ test("a11y keyboard: every control is reachable and focus is visible", async ({ 
 ### security (review: security)
 
 Commands first (dependency audit and a secret scan; both exit non-zero on a finding), then
-`aidw:security-reviewer` reads the whole diff against the OWASP-style checklist in its brief. npm projects use
+`aidw:security` reads the whole diff against the OWASP-style checklist in its brief. npm projects use
 `npm audit --audit-level=high --omit=dev`. When the Analysis accepts a specific advisory, say so in
 `## Quality profile` and add the exception to the command (`pnpm audit --ignore <id>` / an `.npmrc`
 `audit-level`), never by weakening the layer later.
