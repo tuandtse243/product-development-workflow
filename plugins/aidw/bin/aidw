@@ -9587,6 +9587,7 @@ var DEPS = [
   { dep: /^vitest$/, role: "unit tests", name: "Vitest" },
   { dep: /^jest$/, role: "unit tests", name: "Jest" },
   { dep: /^@playwright\/test$/, role: "e2e tests", name: "Playwright" },
+  { dep: /^@axe-core\/playwright$|^axe-core$/, role: "a11y tests", name: "axe-core" },
   { dep: /^cypress$/, role: "e2e tests", name: "Cypress" }
 ];
 var FILES = [
@@ -10563,7 +10564,7 @@ ${req.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`;
       ...tokens.length ? ["5. Design: look at every screenshot. Each token is used where its **Use** says (e.g. the accent color really appears on what it names), the layout matches the design direction, and no stray colors. A visible mismatch is a blocking issue."] : [],
       ...isSecuritySensitive(t) ? ["6. Security: authorization on every path, input validation, secrets handling, data exposure (security skill below)."] : [],
       "7. Tests are independent: each one sets up its own data and passes alone and in any order. A test that only passes after another test ran (shared in-memory state, a list the previous test filled) is a blocking issue: it breaks when the tests are reordered or run in parallel.",
-      ...touchesUi(t) ? ["8. Accessibility (no a11y layer may cover this change): controls have readable accessible names, a keyboard user can reach and operate them, dialogs and menus move and return focus, and state is not shown by color alone."] : [],
+      ...touchesUi(t) ? ["8. Accessibility beyond what axe finds (axe misses names that are wrong rather than missing, keyboard traps and focus order): controls have readable accessible names, a keyboard user can reach and operate them, dialogs and menus move and return focus, and state is not shown by color alone."] : [],
       "",
       "## Verdict",
       "",
@@ -12707,7 +12708,7 @@ function checkAnalysisDoc(text, file, d) {
 }
 var MIGRATION_TOUCH = /(^|\/)(migrations?|db\/migrate)(\/|$)/i;
 var SIZES = ["small", "normal"];
-var SMALL_LAYERS = /* @__PURE__ */ new Set(["code", "unit", "integration", "e2e"]);
+var SMALL_LAYERS = /* @__PURE__ */ new Set(["code", "unit", "integration", "e2e", "a11y"]);
 var SMALL_MAX_TASKS = 3;
 function sizeOf(analysis) {
   const m = analysis === null ? null : /^Size:\s*(\S+)/im.exec(analysis);
@@ -12811,12 +12812,18 @@ function analyzeChange(p, id) {
       d.warn(tf, `task ${t.id} touches database migrations but is not "risk: high": migrations run alone, must be reversible and tested against a seeded database (roles/qa/references/quality-layers.md)`);
     }
   }
+  if (quality && ui.length && !quality.layers.some((l) => l.name === "a11y")) {
+    const profile = sections(analysis ?? "").find((s) => s.name.toLowerCase() === "quality profile")?.body ?? "";
+    if (!/a11y|accessib/i.test(profile)) {
+      d.error(rel(p, (0, import_node_path26.join)(change.dir, "quality.yaml")), `task(s) ${ui.join(", ")} change UI but there is no a11y layer: add it (axe through Playwright, see roles/qa/references/quality-layers.md) or say in "## Quality profile" why a11y is left out`);
+    }
+  }
   const size = sizeOf(analysis);
   if (size === "invalid") d.error(rel(p, analysisFile), 'invalid "Size:" line: write "Size: small" or "Size: normal"');
   if (size === "small") {
     if (tasks.length > SMALL_MAX_TASKS) d.error(tf, `Size: small allows at most ${SMALL_MAX_TASKS} tasks (${tasks.length} planned): make it Size: normal or cut the scope`);
     for (const l of quality?.layers ?? []) {
-      if (!SMALL_LAYERS.has(l.name)) d.warn(rel(p, analysisFile), `Size: small normally runs only code, unit and e2e (UI); layer "${l.name}" was added: say why in "## Quality profile" or drop it`);
+      if (!SMALL_LAYERS.has(l.name)) d.warn(rel(p, analysisFile), `Size: small normally runs only code, unit, e2e and a11y (UI); layer "${l.name}" was added: say why in "## Quality profile" or drop it`);
     }
     if (quality && quality.deploy.target !== "none") d.warn(rel(p, analysisFile), "Size: small does not deploy unless the user asked for it; set the deploy target to none");
   }

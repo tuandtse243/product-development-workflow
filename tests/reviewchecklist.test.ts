@@ -15,6 +15,6 @@ describe("the review brief", () => {
     cli("brief", "T01", "--for", "review");
     const text = readFileSync(out.trim(), "utf8");
     expect(text).toMatch(/7\. Tests are independent: .*passes alone and in any order/);
-    expect(text).toMatch(/8\. Accessibility \(no a11y layer may cover this change\)/);
+    expect(text).toMatch(/8\. Accessibility beyond what axe finds/);
   });
 });

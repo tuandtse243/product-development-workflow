@@ -99,6 +99,7 @@ const DEPS: { dep: RegExp; role: string; name: string }[] = [
   { dep: /^vitest$/, role: "unit tests", name: "Vitest" },
   { dep: /^jest$/, role: "unit tests", name: "Jest" },
   { dep: /^@playwright\/test$/, role: "e2e tests", name: "Playwright" },
+  { dep: /^@axe-core\/playwright$|^axe-core$/, role: "a11y tests", name: "axe-core" },
   { dep: /^cypress$/, role: "e2e tests", name: "Cypress" },
 ];
 

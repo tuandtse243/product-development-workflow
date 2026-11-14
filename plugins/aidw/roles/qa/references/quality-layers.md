@@ -219,7 +219,7 @@ or the API; a screenshot of a blank page proves little. The reviewer may also ru
 
 ### a11y
 
-axe-core through Playwright (`pnpm add -D @axe-core/playwright`), one test per main screen plus a keyboard pass:
+axe-core through Playwright (`pnpm add -D @axe-core/playwright`), one test per main screen plus a keyboard pass. **Every change with UI has this layer**, including a small change to an existing project (`aidw analyze` refuses the plan without it): when the project has no axe yet, the first UI task adds the dev dependency, the `a11y` Playwright project and the spec below, covering at least the screens the change touches:
 
 ```yaml
   - name: a11y

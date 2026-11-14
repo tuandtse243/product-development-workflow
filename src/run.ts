@@ -854,7 +854,7 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
         : []),
       ...(isSecuritySensitive(t) ? ["6. Security: authorization on every path, input validation, secrets handling, data exposure (security skill below)."] : []),
       "7. Tests are independent: each one sets up its own data and passes alone and in any order. A test that only passes after another test ran (shared in-memory state, a list the previous test filled) is a blocking issue: it breaks when the tests are reordered or run in parallel.",
-      ...(touchesUi(t) ? ["8. Accessibility (no a11y layer may cover this change): controls have readable accessible names, a keyboard user can reach and operate them, dialogs and menus move and return focus, and state is not shown by color alone."] : []),
+      ...(touchesUi(t) ? ["8. Accessibility beyond what axe finds (axe misses names that are wrong rather than missing, keyboard traps and focus order): controls have readable accessible names, a keyboard user can reach and operate them, dialogs and menus move and return focus, and state is not shown by color alone."] : []),
       "",
       "## Verdict",
       "",

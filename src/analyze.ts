@@ -175,7 +175,7 @@ const MIGRATION_TOUCH = /(^|\/)(migrations?|db\/migrate)(\/|$)/i;
 export const SIZES = ["small", "normal"] as const;
 export type Size = (typeof SIZES)[number];
 /** Layers a small change may run: code and unit always, e2e when it touches UI. */
-const SMALL_LAYERS = new Set(["code", "unit", "integration", "e2e"]);
+const SMALL_LAYERS = new Set(["code", "unit", "integration", "e2e", "a11y"]);
 export const SMALL_MAX_TASKS = 3;
 
 /** `Size: small | normal` in the Analysis (default normal); the user confirms it at the gate with the rest of the file. */
@@ -298,12 +298,19 @@ export function analyzeChange(p: Paths, id: string): Diags {
       d.warn(tf, `task ${t.id} touches database migrations but is not "risk: high": migrations run alone, must be reversible and tested against a seeded database (roles/qa/references/quality-layers.md)`);
     }
   }
+  // A change with UI gets the a11y layer (axe) by default; leaving it out needs a reason in "## Quality profile".
+  if (quality && ui.length && !quality.layers.some((l) => l.name === "a11y")) {
+    const profile = sections(analysis ?? "").find((s) => s.name.toLowerCase() === "quality profile")?.body ?? "";
+    if (!/a11y|accessib/i.test(profile)) {
+      d.error(rel(p, join(change.dir, "quality.yaml")), `task(s) ${ui.join(", ")} change UI but there is no a11y layer: add it (axe through Playwright, see roles/qa/references/quality-layers.md) or say in "## Quality profile" why a11y is left out`);
+    }
+  }
   const size = sizeOf(analysis);
   if (size === "invalid") d.error(rel(p, analysisFile), 'invalid "Size:" line: write "Size: small" or "Size: normal"');
   if (size === "small") {
     if (tasks.length > SMALL_MAX_TASKS) d.error(tf, `Size: small allows at most ${SMALL_MAX_TASKS} tasks (${tasks.length} planned): make it Size: normal or cut the scope`);
     for (const l of quality?.layers ?? []) {
-      if (!SMALL_LAYERS.has(l.name)) d.warn(rel(p, analysisFile), `Size: small normally runs only code, unit and e2e (UI); layer "${l.name}" was added: say why in "## Quality profile" or drop it`);
+      if (!SMALL_LAYERS.has(l.name)) d.warn(rel(p, analysisFile), `Size: small normally runs only code, unit, e2e and a11y (UI); layer "${l.name}" was added: say why in "## Quality profile" or drop it`);
     }
     if (quality && quality.deploy.target !== "none") d.warn(rel(p, analysisFile), "Size: small does not deploy unless the user asked for it; set the deploy target to none");
   }

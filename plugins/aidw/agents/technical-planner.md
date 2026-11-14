@@ -56,6 +56,10 @@ scenario end to end. Say in `analysis.md` why a Slice was split.
   tests for one behavior; give a task `depends_on` only for something it truly needs (a shared type or file it
   imports), not for "it comes next". `aidw analyze` warns when the plan is one chain or when `depends_on` links
   tasks whose `touches` do not overlap: act on that warning, or keep the chain when the dependency is real.
+- **A UI plan carries the a11y layer.** `aidw analyze` refuses a plan that changes UI with no `a11y` layer in `quality.yaml`. When the
+  project does not have axe yet (`aidw detect` shows no `a11y tests`), the first UI task adds `@axe-core/playwright` as a dev dependency,
+  the `a11y` Playwright project and `e2e/a11y.spec.ts`: put `package.json`, the lockfile, `playwright.config.ts` and `e2e/a11y*` in its
+  `touches`, and say in `analysis.md` that this dev dependency was added for the layer.
 - **Touches include the tests.** The implementer writes one test per scenario, often in more than one file (a unit test of
   the module and a test of the screen), and a reviewer may ask for another. Give the task a glob for its tests
   (`tests/<feature>*`, `e2e/<feature>*`), not one file name; a test outside Touches is reported and reviewed every time.

@@ -162,8 +162,12 @@ Read `$(aidw plugin-path roles/qa/references/quality-layers.md)` and `$(aidw plu
   target and command, the smoke checks, and the tier-2 resource keys. These commands run unattended after
   approval, so make them non-interactive.
 - `## Quality profile`: which layers run and why, scaled to the project's risk (Q5: comprehensive by default).
-  `code`, `unit`, `e2e` are expected. Add `ui-ux` (screenshots at three viewports + `review: ui`) and `a11y`
-  (axe) whenever the change has UI; `security` (audit + secret scan + `review: security`) whenever it has
+  `code`, `unit`, `e2e` are expected. **A change with UI always gets the `a11y` layer (axe through Playwright)**, even a small
+  one: `aidw analyze` refuses a UI plan without it unless `## Quality profile` says why. Run `aidw detect`: when it shows no
+  `a11y tests: axe-core`, the plan adds it, and that is the one dependency a small UI change may add even when the request says
+  "no new dependencies" (a dev dependency for tests, never a runtime one): `@axe-core/playwright`, the `a11y` Playwright project
+  and `e2e/a11y.spec.ts` go in the `touches` of the UI task (or the plan's first task), and you say so at the gate. Add `ui-ux`
+  (screenshots at three viewports + `review: ui`) whenever the change has UI; `security` (audit + secret scan + `review: security`) whenever it has
   server code, auth, user data or a database; `performance` (Lighthouse budgets) for a public web app. The
   profile's "Recommended layers" section has the commands and the test files the scaffold task must add.
   Justify every layer you leave out; the quality report lists it as not covered.
@@ -211,7 +215,7 @@ Read `$(aidw plugin-path roles/qa/references/quality-layers.md)` and `$(aidw plu
 ## Bugfix
 
 A change created with `--workflow bugfix` takes the small path (steps 1c to 9 with `Size: small`: at most 3 questions, at
-most 3 tasks, no domain model, design tokens or ADRs; layers `code` + `unit`, plus `e2e` when UI is touched) with two
+most 3 tasks, no domain model, design tokens or ADRs; layers `code` + `unit`, plus `e2e` and `a11y` when UI is touched) with two
 differences. The behavior is already specified, so the change has **no delta spec** (`skip_specs` is set for you), and the
 planner writes a `type: fix` task whose regression test fails first on the current code (the implementer's brief says so).
 

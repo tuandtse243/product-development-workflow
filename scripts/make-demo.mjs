@@ -35,7 +35,7 @@ if (!existsSync(aidw)) {
 const run = (cmd, argv, opts = {}) => execFileSync(cmd, argv, { cwd: dir, stdio: ["ignore", "inherit", "inherit"], ...opts });
 const git = (...argv) => run("git", ["-c", "user.name=aidw demo", "-c", "user.email=demo@example.invalid", ...argv]);
 
-const REQUEST = "On the home page, show how many todos are done under the title, like \"1 of 3 done\". Hide it when the list is empty. Keep it small: no new dependencies and no deploy.";
+const REQUEST = "On the home page, show how many todos are done under the title, like \"1 of 3 done\". Hide it when the list is empty. Keep it small: no new runtime dependencies and no deploy.";
 
 cpSync(template, dir, { recursive: true });
 writeFileSync(
