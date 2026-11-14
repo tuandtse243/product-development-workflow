@@ -1,0 +1,107 @@
+# The `product` Workflow (greenfield): the flow aidw runs TODAY, described as data (docs/factory-architecture.md, section 8).
+# It adds no stage. Check with `aidw roster`.
+#
+#   applies_to  the project kind (`kind:` in .aidw/project.yaml) this Workflow serves
+#   existing    Artifacts that may exist before the Change starts (written by `aidw init` or by earlier Changes)
+#   stages      in order. A stage names the Change states it covers, the Roles that do the work, the Artifacts it
+#               reads (written by an earlier stage, or existing) and writes (each owned by one of the stage's Roles)
+#   gate        approval: only the user passes it (/aidw:approve); production-deploy: a production deploy asks first
+#   agents      the Agents the CLI tells the orchestrator to spawn in the build stage (must match src/roles.ts)
+# Roles that are Planned (qa, release) are named as the true owners; the main session carries their work today.
+id: product
+description: Greenfield request to delivered software, with one approval gate after the plan.
+applies_to: greenfield
+existing: [project-config]
+interrupts: [paused, escalated]
+
+stages:
+  - id: intake
+    title: Intake
+    states: [draft, intake]
+    roles: [product-manager]
+    writes: [intake]
+
+  - id: discovery
+    title: Discovery interview (grilling and clarify)
+    states: [analyzing]
+    roles: [product-manager]
+    reads: [intake]
+    writes: [analysis-discovery-qa]
+
+  - id: requirements
+    title: Domain model, requirements and delta specs
+    states: [analyzing]
+    roles: [product-manager]
+    reads: [intake, analysis-discovery-qa]
+    writes: [domain-model, decisions-domain, requirements, delta-specs, analysis-scope, analysis-domain, analysis-specs]
+
+  - id: design
+    title: Design decision and tokens
+    states: [analyzing]
+    roles: [ui-ux-designer]
+    reads: [requirements, delta-specs]
+    writes: [design-direction, design-tokens, analysis-design]
+
+  - id: architecture
+    title: Stack, architecture and constitution
+    states: [analyzing]
+    roles: [software-architect]
+    reads: [requirements, delta-specs, domain-model, design-direction, design-tokens, project-config]
+    writes: [architecture, decisions-architecture, constitution, project-config, analysis-stack, analysis-architecture]
+
+  - id: plan
+    title: Task graph
+    states: [analyzing]
+    roles: [technical-planner]
+    reads: [delta-specs, architecture, constitution, design-tokens]
+    writes: [tasks, analysis-plan]
+
+  - id: quality-profile
+    title: Quality layers, deploy strategy and permissions
+    states: [analyzing]
+    roles: [qa, release]
+    reads: [tasks, architecture]
+    writes: [quality, analysis-quality-profile, analysis-deploy-strategy, analysis-permissions]
+
+  - id: approval
+    title: Analyze, present and approve
+    states: [awaiting_approval, approved]
+    roles: [product-manager]
+    reads: [intake, analysis-discovery-qa, requirements, delta-specs, architecture, tasks, quality]
+    writes: [analysis-summary, analysis-decisions-to-honor, analysis-risks]
+    gate: approval
+
+  - id: build
+    title: Build, one task at a time, each reviewed
+    states: [executing]
+    roles: [fullstack, frontend, backend, code-reviewer]
+    reads: [tasks, delta-specs, constitution, architecture, design-tokens]
+    writes: [task-review]
+    agents:
+      implement: fullstack
+      review: code-reviewer
+      layer-review: { ui: ui-ux-designer, security: security }
+
+  - id: verify
+    title: Quality layers
+    states: [verifying]
+    roles: [security, ui-ux-designer]
+    reads: [delta-specs, architecture, constitution, design-tokens]
+    writes: [layer-review-security, layer-review-ui-ux]
+
+  - id: converge
+    title: Every scenario has a passing test
+    states: [converging]
+    roles: []
+    reads: [delta-specs, tasks]
+
+  - id: deploy
+    title: Deploy and smoke checks
+    states: [deploying]
+    roles: []
+    gate: production-deploy
+
+  - id: deliver
+    title: Delivery package and archive
+    states: [delivered, archived]
+    roles: []

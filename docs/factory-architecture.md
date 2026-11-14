@@ -175,7 +175,7 @@ api-contract:
 Two Artifacts may share one file or folder (the sections of `analysis.md`, the ADRs of two Roles); each then
 carries a `part` saying which part it is, so that ownership stays one Role per Artifact. `aidw roster` checks
 today that every Artifact has one owner who is in the Roster, that `reads` / `writes` name only registered
-Artifacts and that a Role writes only what it owns. The Workflow checks below arrive with the Workflow files.
+Artifacts and that a Role writes only what it owns; `aidw roster` also checks the Workflow files (section 8).
 
 The CLI uses the registry and the Roles' `reads` / `writes` to check three things: every Artifact has exactly
 one owner, no Workflow stage reads an Artifact that no earlier stage writes, and an Artifact exists and
@@ -244,6 +244,15 @@ The Orchestrator proposes the Workflow, the user confirms, and a flag can name i
 | | | | **Approval Gate 3: only for a production deploy** |
 | 11 Release | `release`, `devops` | deployment, smoke results | smoke checks pass |
 | 12 Handover | `documentation` | delivery package | README commands run |
+
+### Workflow files today
+
+`workflows/product.yaml` (greenfield) and `workflows/feature.yaml` (brownfield) describe the flow aidw runs now, not
+the 12 stages above: `product` has 13 stages and `feature` 14 (it adds the assessment), each tied to Change states,
+with one approval gate and no new stage. `aidw roster` checks
+that a stage reads only what an earlier stage (or the project) already has, writes only what one of its Roles owns,
+walks the Change state machine in an allowed order, and names the Agents the CLI spawns. The CLI does not yet read
+them to decide the next step.
 
 ### feature (brownfield)
 
