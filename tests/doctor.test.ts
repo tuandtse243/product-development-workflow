@@ -80,6 +80,14 @@ describe("aidw doctor", () => {
     expect(find({})).toMatchObject({ status: "ok", detail: "http://127.0.0.1:42000" });
   });
 
+  it("fails on an invalid quality.yaml instead of silently skipping every check", () => {
+    const root = project();
+    write(root, `.aidw/changes/${ID}/quality.yaml`, 'layers:\n  - name: code\n    run: ["node -e 1"]\ndeploy:\n  target: preview\n  command: "vercel deploy --yes"\n');
+    const checks = doctor(pathsFor(root), ID, {}, probe({}));
+    expect(checks.find((c) => c.name === "quality.yaml")).toMatchObject({ status: "fail" });
+    expect(checks.find((c) => c.name === "quality.yaml")?.detail).toMatch(/vercel-preview/);
+  });
+
   it("is a CLI command with a failing exit code", () => {
     const root = project();
     write(root, `.aidw/changes/${ID}/quality.yaml`, 'layers:\n  - name: code\n    run: ["node -e 1"]\n  - name: e2e\n    run: ["node -e 1"]\ndeploy:\n  target: none\n');

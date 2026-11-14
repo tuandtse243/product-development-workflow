@@ -111,8 +111,14 @@ export function doctor(p: Paths, id: string | null, env: NodeJS.ProcessEnv = pro
   if (id) {
     const change = loadChange(p, id);
     const text = readText(qualityFile(change));
-    if (text !== null) quality = parseQuality(text, "quality.yaml").config;
-    else add("quality.yaml", "warn", "missing: nothing to check beyond the machine");
+    if (text !== null) {
+      const parsed = parseQuality(text, "quality.yaml");
+      quality = parsed.config;
+      // An invalid file must not look like a clean one: without it no layer, browser or deploy check runs.
+      if (parsed.diags.errors.length) {
+        add("quality.yaml", "fail", `${parsed.diags.errors.map((e) => e.message).join("; ")} (nothing else can be checked until this is fixed)`);
+      }
+    } else add("quality.yaml", "warn", "missing: nothing to check beyond the machine");
   }
 
   if (isGitRepo(p.project)) {
