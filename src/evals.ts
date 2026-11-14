@@ -7,8 +7,8 @@ import { loadRoster, roleDir } from "./roles.js";
  * Per-Role evals (docs/factory-architecture.md, section 11): an active Role ships at least one case in
  * `roles/<id>/evals/<case>.md` so that editing its knowledge can be checked against its own cases without running a whole
  * Workflow. A case is a situation (`## Input`) and what a good answer must and must not do (`## Criteria`, one bullet each,
- * starting `must` or `must not`). A runner that grades an Agent's answer against the criteria is not built yet: today
- * the check is that every active Role has a well-formed case.
+ * starting `must` or `must not`). `aidw roster` checks that every active Role has a well-formed case; `aidw eval`
+ * (src/evalrun.ts) runs and grades them.
  */
 export interface EvalCase {
   name: string;

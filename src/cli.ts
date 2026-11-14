@@ -15,6 +15,7 @@ import { machineOf } from "./machine.js";
 import { packsFor } from "./stackpacks.js";
 import { git } from "./git.js";
 import { checkEvals } from "./evals.js";
+import { claudeExec, printResults, runCases, type Exec } from "./evalrun.js";
 import { checkWorkflows, loadWorkflow, workflowIds } from "./workflow.js";
 import { agentForTask, AGENTS, checkRoster, rosterTable, writeAgents } from "./roles.js";
 import { checkChange, checkSpecs } from "./check.js";
@@ -173,6 +174,9 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
   ids [<id>]                             requirement and scenario ids (after applying the change)
   vendor-path <upstream>/<skill>         absolute path of a vendored SKILL.md (e.g. pocock/grilling)
   plugin-path <path>                     absolute path of a plugin file (e.g. roles/software-architect/references/stack-pool.md)
+  eval [<role>] [--case <name>] [--model <m>]
+                                         run a Role's cases with claude -p (no tools) and grade each answer against its
+                                         criteria; without a Role, every active Role. Costs tokens; exits 1 when a case fails
   roster [--write]                       the factory's Roles; checks roster.yaml, role profiles, artifacts.yaml (one owner
                                          per artifact, reads/writes of each Role), workflows/*.yaml and the generated agent files
                                          (--write regenerates agents/ from roles/)
@@ -255,6 +259,8 @@ interface Io {
   out: (s: string) => void;
   err: (s: string) => void;
   stdin?: () => string;
+  /** Test seam: the model calls of the case runner. */
+  modelExec?: (model?: string) => Exec;
 }
 
 export { pluginRoot };
@@ -750,6 +756,19 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         if (!existsSync(file)) throw new OpError(`"${ref}" not found in the plugin (${file})`);
         emit({ path: file }, `${file}\n`);
         return 0;
+      }
+
+      case "eval": {
+        const root = pluginRoot(env);
+        let results;
+        try {
+          results = runCases(root, rest[0], str(args.flags.case), (io.modelExec ?? claudeExec)(str(args.flags.model)));
+        } catch (e) {
+          throw new OpError((e as Error).message);
+        }
+        const ok = results.every((r) => r.pass);
+        emit({ ok, results }, printResults(results));
+        return ok ? 0 : 1;
       }
 
       case "roster": {

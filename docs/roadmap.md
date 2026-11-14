@@ -145,8 +145,10 @@ aidw becomes a software factory with a Roster of Roles, Workflows as data and de
   - [x] a11y: `aidw analyze` requires an `a11y` layer for a UI change; `aidw detect` reports axe-core; `start` installs it by default.
 - [ ] **Step 4.** Activate Planned Roles one at a time with their evals; Next.js and NestJS framework packs.
   - [x] Role evals: every active Role ships at least one case (`roles/<id>/evals/<case>.md`: `## Input`, `## Criteria` with
-    must / must not bullets); `aidw roster` fails an active Role without one. There is no runner that grades an Agent against
-    the criteria yet.
+    must / must not bullets); `aidw roster` fails an active Role without one.
+  - [x] Case runner: `aidw eval [<role>] [--case <name>] [--model <m>]` (`src/evalrun.ts`) answers each case with the Role's agent
+    instructions through `claude -p` (no tools) and grades the answer against the criteria in a second call. The model calls
+    are injected, so the tests use a fake; it has not been run against a real model (the sandbox blocks `claude -p`).
   - [x] First planned Role activated: `database` (skills for Prisma, Drizzle and Supabase migrations, expand-contract, indexes and
     seeds; an eval case). A task with `role: database` now runs `aidw:database`. It took no CLI change: `roster.yaml`, the
     profile, its knowledge and the planner's text. `tests/activation.test.ts` repeats this for `devops`. Eleven Roles stay planned.
