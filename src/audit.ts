@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadChange } from "./change.js";
 import { answerOf } from "./decisions.js";
@@ -66,6 +66,7 @@ export function buildAuditBrief(p: Paths, id: string, lens: string, role: string
   const change = loadChange(p, id);
   const intake = readText(join(change.dir, "intake.md")) ?? "";
   const out = lensFile(p, lens);
+  rmSync(out, { force: true }); // an answer left by an earlier audit must not pass for this one's
   const focus: Record<string, string> = {
     security: "authorization on every path, input handling, secrets, data access and exposure, dependencies with known problems",
     "code-quality": "correctness, error handling, duplication and needless complexity, tests that do not test, conventions of the constitution",

@@ -9607,10 +9607,17 @@ function detectPython(dir) {
     tool,
     configured: {
       ruff: (0, import_node_fs12.existsSync)((0, import_node_path14.join)(dir, "ruff.toml")) || (0, import_node_fs12.existsSync)((0, import_node_path14.join)(dir, ".ruff.toml")) || has(/^\[tool\.ruff[\].]/m),
-      pytest: (0, import_node_fs12.existsSync)((0, import_node_path14.join)(dir, "pytest.ini")) || has(/^\[tool\.pytest/m) || (0, import_node_fs12.existsSync)((0, import_node_path14.join)(dir, "tests")),
+      pytest: (0, import_node_fs12.existsSync)((0, import_node_path14.join)(dir, "pytest.ini")) || has(/^\[tool\.pytest/m) || (0, import_node_fs12.existsSync)((0, import_node_path14.join)(dir, "conftest.py")) || hasPyTests((0, import_node_path14.join)(dir, "tests")),
       mypy: (0, import_node_fs12.existsSync)((0, import_node_path14.join)(dir, "mypy.ini")) || has(/^\[tool\.mypy[\].]/m)
     }
   };
+}
+function hasPyTests(dir) {
+  try {
+    return (0, import_node_fs12.readdirSync)(dir).some((f) => /^test_.*\.py$|_test\.py$/.test(f));
+  } catch {
+    return false;
+  }
 }
 function pyRun(tool) {
   return tool === "uv" ? "uv run" : tool === "poetry" ? "poetry run" : tool === "pipenv" ? "pipenv run" : "python -m";
@@ -10823,6 +10830,7 @@ function buildTriageBrief(p, id, taskId) {
   const t = tf.tasks[indexOf(tf, taskId)];
   if (statusOf2(t) !== "failed" || attemptsOf(t) < maxAttemptsOf(t)) throw new OpError(`task ${taskId} is "${statusOf2(t)}" with ${attemptsOf(t)} of ${maxAttemptsOf(t)} attempts: triage is for a failed task that ran out of attempts`);
   if (t.triage !== void 0) throw new OpError(`task ${taskId} was already triaged: one triage per task`);
+  (0, import_node_fs16.rmSync)(triageFile(p, taskId), { force: true });
   const ev = readEvidence(tf.change, t);
   const reqs = requirementsAfterChange(p, id);
   const scenarioIds = list3(t.scenarios);
@@ -11462,6 +11470,7 @@ function buildAuditBrief(p, id, lens, role) {
   const change = loadChange(p, id);
   const intake = readText((0, import_node_path22.join)(change.dir, "intake.md")) ?? "";
   const out = lensFile(p, lens);
+  (0, import_node_fs20.rmSync)(out, { force: true });
   const focus = {
     security: "authorization on every path, input handling, secrets, data access and exposure, dependencies with known problems",
     "code-quality": "correctness, error handling, duplication and needless complexity, tests that do not test, conventions of the constitution",

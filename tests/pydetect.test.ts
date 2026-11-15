@@ -120,4 +120,11 @@ describe("a Python project in aidw detect", () => {
     expect(unit.run).toEqual(["npm test", "python -m pytest"]);
     expect(both.stackPack).toBe("node");
   });
+
+  it("counts a tests/ folder as pytest's only when it holds pytest-style files", () => {
+    const base = '[project]\nname = "x"\ndependencies = []\n';
+    expect(detectPython(project({ "pyproject.toml": base, "tests/helper.txt": "" }))?.configured.pytest).toBe(false);
+    expect(detectPython(project({ "pyproject.toml": base, "tests/test_a.py": "" }))?.configured.pytest).toBe(true);
+    expect(detectPython(project({ "pyproject.toml": base, "conftest.py": "" }))?.configured.pytest).toBe(true);
+  });
 });

@@ -981,6 +981,7 @@ export function buildTriageBrief(p: Paths, id: string, taskId: string): { path: 
   const t = tf.tasks[indexOf(tf, taskId)] as Task;
   if (statusOf(t) !== "failed" || attemptsOf(t) < maxAttemptsOf(t)) throw new OpError(`task ${taskId} is "${statusOf(t)}" with ${attemptsOf(t)} of ${maxAttemptsOf(t)} attempts: triage is for a failed task that ran out of attempts`);
   if (t.triage !== undefined) throw new OpError(`task ${taskId} was already triaged: one triage per task`);
+  rmSync(triageFile(p, taskId), { force: true }); // task ids repeat across changes: an old diagnosis must not be read as this one
   const ev = readEvidence(tf.change, t);
   const reqs = requirementsAfterChange(p, id);
   const scenarioIds = list(t.scenarios);

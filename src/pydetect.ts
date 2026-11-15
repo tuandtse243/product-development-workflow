@@ -114,10 +114,19 @@ export function detectPython(dir: string): PythonProject | null {
     tool,
     configured: {
       ruff: existsSync(join(dir, "ruff.toml")) || existsSync(join(dir, ".ruff.toml")) || has(/^\[tool\.ruff[\].]/m),
-      pytest: existsSync(join(dir, "pytest.ini")) || has(/^\[tool\.pytest/m) || existsSync(join(dir, "tests")),
+      pytest: existsSync(join(dir, "pytest.ini")) || has(/^\[tool\.pytest/m) || existsSync(join(dir, "conftest.py")) || hasPyTests(join(dir, "tests")),
       mypy: existsSync(join(dir, "mypy.ini")) || has(/^\[tool\.mypy[\].]/m),
     },
   };
+}
+
+/** A `tests/` folder counts as pytest's only when it holds a pytest-style file (`test_*.py` or `*_test.py`). */
+function hasPyTests(dir: string): boolean {
+  try {
+    return readdirSync(dir).some((f) => /^test_.*\.py$|_test\.py$/.test(f));
+  } catch {
+    return false;
+  }
 }
 
 /** The prefix that runs an installed tool in the project's environment. */

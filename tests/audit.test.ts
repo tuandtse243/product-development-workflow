@@ -129,3 +129,12 @@ describe("parseLens", () => {
     expect(parseLens(SECURITY, "ui", "f").diags.errors.map((e) => e.message).join()).toMatch(/must be exactly "LENS: ui"/);
   });
 });
+
+describe("a lens answer left by an earlier audit", () => {
+  it("is removed when the brief for that lens is made, so it cannot pass for the new audit's answer", () => {
+    const root = audit();
+    write(root, ".aidw/run/audit-security.md", SECURITY); // left by an earlier audit
+    expect(cli(root, "audit", "brief", "security", "--change", ID).code).toBe(0);
+    expect(existsSync(join(root, ".aidw/run/audit-security.md"))).toBe(false);
+  });
+});
