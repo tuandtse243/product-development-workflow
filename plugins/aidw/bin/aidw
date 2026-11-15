@@ -11466,7 +11466,7 @@ function buildAuditBrief(p, id, lens, role) {
     "- <what you could not look at, and why> (or None)",
     "```",
     "",
-    "One bullet per finding, most serious first. Severity: critical = exploitable or data loss now; high = breaks a requirement or a real user flow; medium = wrong or fragile but contained; low = polish. Be concrete: a finding with no file or evidence is not a finding. Write `None` under Findings only if you found nothing.",
+    'One bullet per finding, most serious first. Severity: critical = exploitable or data loss now; high = breaks a requirement or a real user flow; medium = wrong or fragile but contained; low = polish. Be concrete: a finding with no file or evidence is not a finding. Write `None` under Findings only if you found nothing. Under Findings write only findings: no "checked and clean" notes and no sub-headings (a clean area is not a finding; say what you did not look at under Not covered).',
     ""
   ].join("\n");
   const dir = (0, import_node_path22.join)(p.run, "briefs", id);
@@ -13347,6 +13347,7 @@ function answerPrompt(c) {
     "the command, and put the full content of each file you write inline: the test code, the changes, the configuration or the",
     "review verdict, exactly as you would hand them over. Nothing can be run here, so for a command say what you expect it to print.",
     "## Reply: the exact message you send back when you are done, in the format your role asks for.",
+    "The brief above is complete and nothing is blocked: do not stop to ask a question or to report a missing input.",
     "Do not summarize and do not leave parts out."
   ].join("\n");
 }

@@ -102,7 +102,7 @@ export function buildAuditBrief(p: Paths, id: string, lens: string, role: string
     "- <what you could not look at, and why> (or None)",
     "```",
     "",
-    "One bullet per finding, most serious first. Severity: critical = exploitable or data loss now; high = breaks a requirement or a real user flow; medium = wrong or fragile but contained; low = polish. Be concrete: a finding with no file or evidence is not a finding. Write `None` under Findings only if you found nothing.",
+    "One bullet per finding, most serious first. Severity: critical = exploitable or data loss now; high = breaks a requirement or a real user flow; medium = wrong or fragile but contained; low = polish. Be concrete: a finding with no file or evidence is not a finding. Write `None` under Findings only if you found nothing. Under Findings write only findings: no \"checked and clean\" notes and no sub-headings (a clean area is not a finding; say what you did not look at under Not covered).",
     "",
   ].join("\n");
   const dir = join(p.run, "briefs", id);
