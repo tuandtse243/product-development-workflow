@@ -33,7 +33,7 @@ import {
 } from "./policy.js";
 import { grantedResources } from "./quality.js";
 import { machineOf } from "./machine.js";
-import { pluginRoot } from "./plugin.js";
+import { bundledRoot, pluginRoot } from "./plugin.js";
 import { roleAccess } from "./roles.js";
 
 export interface HookInput {
@@ -127,7 +127,8 @@ const AUDIT_FILE = /^audit-[a-z0-9-]+\.md$/;
 export function agentRole(agentType: string | undefined, env: NodeJS.ProcessEnv = process.env): "implementer" | "reviewer" | "author" | null {
   const name = (agentType ?? "").split(":").pop() ?? "";
   if (!name) return null;
-  const access = roleAccess(pluginRoot(env), name);
+  // A Role's access is what keeps a reviewer read-only: it comes from the bundled plugin, never from an environment override.
+  const access = roleAccess(bundledRoot() ?? pluginRoot(env), name);
   if (access === "write") return "implementer";
   if (access === "read-only") return "reviewer";
   if (access === "artifacts") return "author";

@@ -120,7 +120,7 @@ export interface Report {
 }
 
 /** Assembles `audit-report.md` from the lens files of the decided lenses: findings by severity, numbered F-01... */
-export function compileReport(p: Paths, id: string): Report {
+export function compileReport(p: Paths, id: string, write = true): Report {
   const change = loadChange(p, id);
   const d = new Diags();
   const lenses = chosenLenses(p, id);
@@ -166,7 +166,7 @@ export function compileReport(p: Paths, id: string): Report {
     "Pick the findings to act on (`aidw audit picks <id> F-01,F-02`); each pick becomes the request of a new bugfix or feature change.",
     "",
   ].join("\n");
-  writeFileSync(reportFile(change), text);
+  if (write) writeFileSync(reportFile(change), text);
   return { path: reportFile(change), findings, diags: d };
 }
 
@@ -183,10 +183,11 @@ export function pickFindings(p: Paths, id: string, picks: string[]): { text: str
   return { text, missing };
 }
 
-/** `aidw transition <id> delivered` for an audit: every decided lens has a valid answer and the report is assembled. */
+/** `aidw transition <id> delivered` for an audit: every decided lens has a valid answer and the report has been written. */
 export function auditReady(p: Paths, id: string): string | null {
-  const r = compileReport(p, id);
+  const r = compileReport(p, id, false); // a guard only checks: `aidw audit report` writes the report
   if (r.diags.errors.length) return `"delivered" needs every audit lens answered: ${r.diags.errors[0]!.message}`;
+  if (!existsSync(r.path)) return `"delivered" needs the report: run \`aidw audit report\` first`;
   return null;
 }
 

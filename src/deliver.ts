@@ -82,7 +82,10 @@ function readEvidence(change: Change, taskId: string): Evidence | null {
 export function commitOf(p: Paths, changeId: string, taskId: string): string {
   if (!isGitRepo(p.project)) return "";
   const r = git(p.project, ["log", "--format=%h", "-n", "1", "--all-match", "--grep", `^Change: ${changeId}$`, "--grep", `^Task: ${taskId}$`]);
-  return r.ok ? r.out : "";
+  if (r.ok && r.out) return r.out;
+  // A change run before the trailers existed: its commits start with the task id, and only on the change's own branch.
+  const old = git(p.project, ["log", "--format=%h", "-n", "1", "--grep", `^${taskId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}: `, `aidw/${changeId}`]);
+  return old.ok ? old.out : "";
 }
 
 const cell = (s: string) => s.replace(/\|/g, "\\|").replace(/\n/g, " ");

@@ -75,6 +75,17 @@ describe("a bugfix proves its regression test on the old code", () => {
     expect(evidence(root).regression).toMatchObject({ status: "not-red", via: "snapshot" });
   });
 
+  it("does not call it red when the test only fails to load on the old code", () => {
+    const root = running();
+    write(root, "lib/bug.js", "exports.add = (a, b) => a + b;\n");
+    write(root, "lib/newhelper.js", "exports.two = () => 2;\n"); // the fix adds this module; the old code has none
+    write(root, "tests/regress.test.js", 'const assert = require("node:assert");\nconst { two } = require("../lib/newhelper.js");\nassert.strictEqual(two(), 2);\n');
+    const r = cli(root, "checkpoint", "T01");
+    expect(r.code, r.out + r.err).toBe(0); // unproven does not fail the checkpoint, the reviewer is told
+    expect(evidence(root).regression).toMatchObject({ status: "unproven" });
+    expect(evidence(root).regression.reason).toMatch(/import does not exist there yet/);
+  });
+
   it("fails when the new test passes on the old code: it does not reproduce the bug", () => {
     const root = running();
     write(root, "lib/bug.js", "exports.add = (a, b) => a + b;\n");

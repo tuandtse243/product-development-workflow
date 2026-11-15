@@ -22,7 +22,7 @@ import { header as commitHeader, scopeOf, taskCommitMessage } from "./commit.js"
 import { changedSince, git, headCommit, isGitRepo, junkMessage, stagedJunk } from "./git.js";
 import { matchesAny } from "./glob.js";
 import { detectProject } from "./detect.js";
-import { DEFAULT_TASK_ROLE, implementerOf } from "./roles.js";
+import { defaultTaskRole, implementerOf } from "./roles.js";
 import { packsFor } from "./stackpacks.js";
 import { OpError, transition } from "./ops.js";
 import { readText, rel, walkFiles, type Paths } from "./project.js";
@@ -422,6 +422,9 @@ export interface CheckpointResult extends CheckpointRecord {
 const UNIT_TEST_COMMAND = /\b(vitest|jest|mocha|pytest|test)\b|go test|cargo test/;
 const BROWSER_COMMAND = /playwright|cypress|\be2e\b/i;
 
+/** Output of a test run that failed before running any assertion: a missing module or export. */
+const NOT_LOADABLE = /Cannot find module|ERR_MODULE_NOT_FOUND|Failed to resolve import|Failed to load url|ModuleNotFoundError|ImportError|does not provide an export named/i;
+
 function proveRegression(p: Paths, id: string, t: Task, dir: string, base: string | null, changed: string[] | null, runner: CommandRunner, timeoutMs: number): RegressionEvidence {
   const files = (changed ?? []).filter((f) => TEST_FILE.test(f));
   if (!base || !isGitRepo(dir)) return { status: "unproven", reason: "there is no base commit to compare with", files };
@@ -453,7 +456,13 @@ function proveRegression(p: Paths, id: string, t: Task, dir: string, base: strin
       const r = runner(command, wdir, Math.min(timeoutMs, 5 * 60 * 1000));
       if (r.timedOut) return { status: "unproven", reason: `\`${command}\` timed out on the old code`, files, command, via };
       last = { command, exit: r.exit, tail: r.tail };
-      if (r.exit !== 0) return { status: "red", reason: "the new tests fail on the old code", files, via, ...last };
+      if (r.exit !== 0) {
+        // A test that cannot even load on the old code (it imports a module the fix adds) fails for that, not for the bug.
+        if (NOT_LOADABLE.test(r.tail)) {
+          return { status: "unproven", reason: "the new tests fail on the old code, but because something they import does not exist there yet, not necessarily because of the bug: check that the assertion itself fails", files, via, ...last };
+        }
+        return { status: "red", reason: "the new tests fail on the old code", files, via, ...last };
+      }
     }
     return { status: "not-red", reason: "the new tests pass on the old code: they do not reproduce the bug", files, via, ...last };
   } finally {
@@ -803,7 +812,7 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
   const pluginDir = resolve(vendorDir, "..", "..");
   const packLines =
     kind === "implement"
-      ? packsFor(pluginDir, detectProject(p.project).stack, implementerOf(pluginDir, typeof t.role === "string" ? t.role : undefined) ?? DEFAULT_TASK_ROLE).map(
+      ? packsFor(pluginDir, detectProject(p.project).stack, implementerOf(pluginDir, typeof t.role === "string" ? t.role : undefined) ?? defaultTaskRole()).map(
           (k) => `- \`${k.file}\`: how to build with ${k.framework} (framework pack)`,
         )
       : [];

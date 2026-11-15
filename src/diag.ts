@@ -35,3 +35,13 @@ export class Diags {
     return this.errors.length > 0 || (strict && this.warnings.length > 0);
   }
 }
+
+/** An error the CLI reports as a one-line message, not a stack trace. */
+export class OpError extends Error {
+  constructor(
+    message: string,
+    readonly diags?: Diags,
+  ) {
+    super(message);
+  }
+}

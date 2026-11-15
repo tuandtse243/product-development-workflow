@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import YAML from "yaml";
 import { isState, STATES, type Change, type State } from "./change.js";
+import { OpError } from "./diag.js";
 import { bundledRoot } from "./plugin.js";
 import { projectKind, type Paths } from "./project.js";
 
@@ -75,7 +76,7 @@ export function workflowIdOf(p: Paths, change: Change): string {
 export function machineOf(p: Paths, change: Change): Machine {
   const id = workflowIdOf(p, change);
   const m = machineById(id);
-  if (!m) throw new Error(`the workflow "${id}" of change "${change.id}" has no valid state machine (workflows/${id}.yaml: transitions, approval_required, analysis_required)`);
+  if (!m) throw new OpError(`the workflow "${id}" of change "${change.id}" has no valid state machine (workflows/${id}.yaml: transitions, approval_required, analysis_required)`);
   return m;
 }
 

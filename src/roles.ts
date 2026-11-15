@@ -35,10 +35,15 @@ const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v =
  * The Agents the CLI tells the orchestrator to spawn, each `aidw:<role id>`: the `agents:` of the build stage in
  * workflows/product.yaml (every Workflow file must list the same ones, which `aidw roster` checks).
  */
-export const AGENTS = loadAgents();
+type Agents = ReturnType<typeof loadAgents>;
+let loadedAgents: Agents | undefined;
+/** Read on first use, not at import: a missing or malformed workflows/product.yaml then fails the command that needs it (`aidw roster` reports it), not every command and the gate hook. */
+export const AGENTS: Agents = new Proxy({} as Agents, {
+  get: (_t, key) => (loadedAgents ??= loadAgents())[key as keyof Agents],
+});
 
 /** The Role that runs tasks the workflow adds itself (quality fixes, converge gaps, integration fixes). */
-export const DEFAULT_TASK_ROLE = AGENTS.implement.replace(/^aidw:/, "");
+export const defaultTaskRole = (): string => AGENTS.implement.replace(/^aidw:/, "");
 
 function loadAgents(): { implement: string; taskReview: string; triage: string; layerReview: { ui: string; security: string } } {
   const root = bundledRoot();
@@ -313,7 +318,7 @@ export function implementerOf(root: string, role: string | undefined): string | 
 }
 
 /** `aidw:<role>` of the Agent for a task; falls back to the default implementer (`aidw analyze` warned about the plan). */
-export const agentForTask = (root: string, role: string | undefined): string => `aidw:${implementerOf(root, role) ?? DEFAULT_TASK_ROLE}`;
+export const agentForTask = (root: string, role: string | undefined): string => `aidw:${implementerOf(root, role) ?? defaultTaskRole()}`;
 
 const accessCache = new Map<string, Access | null>();
 

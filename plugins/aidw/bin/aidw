@@ -7500,6 +7500,12 @@ var Diags = class {
     return this.errors.length > 0 || strict && this.warnings.length > 0;
   }
 };
+var OpError = class extends Error {
+  constructor(message, diags) {
+    super(message);
+    this.diags = diags;
+  }
+};
 
 // src/commit.ts
 var COMMIT_TYPES = ["feat", "fix", "docs", "style", "refactor", "perf", "test", "build", "ci", "chore", "revert"];
@@ -7801,7 +7807,7 @@ function workflowIdOf(p, change) {
 function machineOf(p, change) {
   const id = workflowIdOf(p, change);
   const m = machineById(id);
-  if (!m) throw new Error(`the workflow "${id}" of change "${change.id}" has no valid state machine (workflows/${id}.yaml: transitions, approval_required, analysis_required)`);
+  if (!m) throw new OpError(`the workflow "${id}" of change "${change.id}" has no valid state machine (workflows/${id}.yaml: transitions, approval_required, analysis_required)`);
   return m;
 }
 var statesOf = (m) => STATES.filter((s) => s in m.transitions);
@@ -8242,8 +8248,11 @@ var TIERS = ["deep", "standard", "fast"];
 var ACCESS = ["write", "artifacts", "read-only"];
 var ROLE_ID = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 var isRecord2 = (v) => !!v && typeof v === "object" && !Array.isArray(v);
-var AGENTS = loadAgents();
-var DEFAULT_TASK_ROLE = AGENTS.implement.replace(/^aidw:/, "");
+var loadedAgents;
+var AGENTS = new Proxy({}, {
+  get: (_t, key) => (loadedAgents ??= loadAgents())[key]
+});
+var defaultTaskRole = () => AGENTS.implement.replace(/^aidw:/, "");
 function loadAgents() {
   const root = bundledRoot();
   const file = root ? (0, import_node_path6.join)(root, "workflows", "product.yaml") : "";
@@ -8467,7 +8476,7 @@ function implementerOf(root, role) {
     return null;
   }
 }
-var agentForTask = (root, role) => `aidw:${implementerOf(root, role) ?? DEFAULT_TASK_ROLE}`;
+var agentForTask = (root, role) => `aidw:${implementerOf(root, role) ?? defaultTaskRole()}`;
 var accessCache = /* @__PURE__ */ new Map();
 function roleAccess(root, id) {
   if (!ROLE_ID.test(id)) return null;
@@ -8650,7 +8659,7 @@ var AUDIT_FILE = /^audit-[a-z0-9-]+\.md$/;
 function agentRole(agentType, env = process.env) {
   const name = (agentType ?? "").split(":").pop() ?? "";
   if (!name) return null;
-  const access = roleAccess(pluginRoot(env), name);
+  const access = roleAccess(bundledRoot() ?? pluginRoot(env), name);
   if (access === "write") return "implementer";
   if (access === "read-only") return "reviewer";
   if (access === "artifacts") return "author";
@@ -10132,7 +10141,7 @@ Each task passed on its own; the merged code does not. Find the interaction betw
 
 ${failed.tail}` : "Integration verify did not complete.";
   tf.doc.get("tasks").add(
-    tf.doc.createNode({ id: taskId, title: `Fix the integration of ${record.tasks.join(", ")}`, role: DEFAULT_TASK_ROLE, origin: "integration", depends_on: [], touches: ["**"], verify: commands, problem, status: "pending" })
+    tf.doc.createNode({ id: taskId, title: `Fix the integration of ${record.tasks.join(", ")}`, role: defaultTaskRole(), origin: "integration", depends_on: [], touches: ["**"], verify: commands, problem, status: "pending" })
   );
   deps.save(tf);
   record.fixTask = taskId;
@@ -10398,6 +10407,7 @@ var retryingShellRunner = (command, cwd, timeoutMs, env) => {
 };
 var UNIT_TEST_COMMAND = /\b(vitest|jest|mocha|pytest|test)\b|go test|cargo test/;
 var BROWSER_COMMAND = /playwright|cypress|\be2e\b/i;
+var NOT_LOADABLE = /Cannot find module|ERR_MODULE_NOT_FOUND|Failed to resolve import|Failed to load url|ModuleNotFoundError|ImportError|does not provide an export named/i;
 function proveRegression(p, id, t, dir, base, changed, runner, timeoutMs) {
   const files = (changed ?? []).filter((f) => TEST_FILE.test(f));
   if (!base || !isGitRepo(dir)) return { status: "unproven", reason: "there is no base commit to compare with", files };
@@ -10428,7 +10438,12 @@ function proveRegression(p, id, t, dir, base, changed, runner, timeoutMs) {
       const r = runner(command, wdir, Math.min(timeoutMs, 5 * 60 * 1e3));
       if (r.timedOut) return { status: "unproven", reason: `\`${command}\` timed out on the old code`, files, command, via };
       last = { command, exit: r.exit, tail: r.tail };
-      if (r.exit !== 0) return { status: "red", reason: "the new tests fail on the old code", files, via, ...last };
+      if (r.exit !== 0) {
+        if (NOT_LOADABLE.test(r.tail)) {
+          return { status: "unproven", reason: "the new tests fail on the old code, but because something they import does not exist there yet, not necessarily because of the bug: check that the assertion itself fails", files, via, ...last };
+        }
+        return { status: "red", reason: "the new tests fail on the old code", files, via, ...last };
+      }
     }
     return { status: "not-red", reason: "the new tests pass on the old code: they do not reproduce the bug", files, via, ...last };
   } finally {
@@ -10690,7 +10705,7 @@ ${req.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`;
   ].filter((x) => x !== null);
   const adrs = adrPointers(p);
   const pluginDir = (0, import_node_path18.resolve)(vendorDir, "..", "..");
-  const packLines = kind === "implement" ? packsFor(pluginDir, detectProject(p.project).stack, implementerOf(pluginDir, typeof t.role === "string" ? t.role : void 0) ?? DEFAULT_TASK_ROLE).map(
+  const packLines = kind === "implement" ? packsFor(pluginDir, detectProject(p.project).stack, implementerOf(pluginDir, typeof t.role === "string" ? t.role : void 0) ?? defaultTaskRole()).map(
     (k) => `- \`${k.file}\`: how to build with ${k.framework} (framework pack)`
   ) : [];
   const touches = list3(t.touches);
@@ -11009,7 +11024,7 @@ function converge(p, id) {
         tf.doc.createNode({
           id: taskId,
           title: ids.length === 1 ? `Cover scenario ${ids[0]}` : `Cover ${ids.length} scenarios of ${cap}`,
-          role: DEFAULT_TASK_ROLE,
+          role: defaultTaskRole(),
           origin: "converge",
           specs: [cap],
           scenarios: ids,
@@ -11115,7 +11130,9 @@ function readEvidence2(change, taskId) {
 function commitOf(p, changeId, taskId) {
   if (!isGitRepo(p.project)) return "";
   const r = git(p.project, ["log", "--format=%h", "-n", "1", "--all-match", "--grep", `^Change: ${changeId}$`, "--grep", `^Task: ${taskId}$`]);
-  return r.ok ? r.out : "";
+  if (r.ok && r.out) return r.out;
+  const old = git(p.project, ["log", "--format=%h", "-n", "1", "--grep", `^${taskId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}: `, `aidw/${changeId}`]);
+  return old.ok ? old.out : "";
 }
 var cell = (s) => s.replace(/\|/g, "\\|").replace(/\n/g, " ");
 function tasksMd(p, change, tasks) {
@@ -11516,7 +11533,7 @@ function buildAuditBrief(p, id, lens, role) {
   (0, import_node_fs20.writeFileSync)(path, text);
   return { path, text };
 }
-function compileReport(p, id) {
+function compileReport(p, id, write = true) {
   const change = loadChange(p, id);
   const d = new Diags();
   const lenses = chosenLenses(p, id);
@@ -11562,7 +11579,7 @@ function compileReport(p, id) {
     "Pick the findings to act on (`aidw audit picks <id> F-01,F-02`); each pick becomes the request of a new bugfix or feature change.",
     ""
   ].join("\n");
-  (0, import_node_fs20.writeFileSync)(reportFile(change), text);
+  if (write) (0, import_node_fs20.writeFileSync)(reportFile(change), text);
   return { path: reportFile(change), findings, diags: d };
 }
 function pickFindings(p, id, picks) {
@@ -11577,8 +11594,9 @@ function pickFindings(p, id, picks) {
   return { text, missing };
 }
 function auditReady(p, id) {
-  const r = compileReport(p, id);
+  const r = compileReport(p, id, false);
   if (r.diags.errors.length) return `"delivered" needs every audit lens answered: ${r.diags.errors[0].message}`;
+  if (!(0, import_node_fs20.existsSync)(r.path)) return `"delivered" needs the report: run \`aidw audit report\` first`;
   return null;
 }
 
@@ -11621,12 +11639,6 @@ var VERSION = "0.1.0";
 
 // src/ops.ts
 var import_yaml11 = __toESM(require_dist(), 1);
-var OpError = class extends Error {
-  constructor(message, diags) {
-    super(message);
-    this.diags = diags;
-  }
-};
 var now4 = () => (/* @__PURE__ */ new Date()).toISOString();
 var PROJECT_YAML = (name) => `# aidw project configuration
 schema: 1
@@ -12545,7 +12557,7 @@ function addFixTask(p, id, config, layer, problem) {
   const task = {
     id: taskId,
     title: `Fix the ${layer.name} quality layer`,
-    role: DEFAULT_TASK_ROLE,
+    role: defaultTaskRole(),
     origin: "quality",
     layer: layer.name,
     depends_on: [],
@@ -14680,12 +14692,13 @@ Status: aidw run --status   Stop: aidw run --stop   (it also stops by itself whe
           ...args.flags["keep-mcp"] === true ? { keepMcp: true } : {},
           // The runner runs outside the sandbox that wraps each session, so it hosts the test browser for them.
           prepare: () => {
-            if (env.E2E_CDP_URL) return null;
+            if (env.E2E_CDP_URL && env.E2E_CDP_URL !== readBrowser(p)?.url) return null;
             const qtext = readText(qualityFile(loadChange(p, id)));
             const config = qtext === null ? null : parseQuality(qtext, "quality.yaml").config;
             if (!config || !drivesBrowser2(config)) return null;
             try {
               const b = startBrowser(p, { env });
+              if (env === process.env) Object.assign(process.env, browserEnv(p));
               if (b.started) {
                 startedBrowser = true;
                 if (!json) io.out(`[aidw run] test browser started at ${b.record?.url} for the sessions to connect to

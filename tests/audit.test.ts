@@ -138,3 +138,17 @@ describe("a lens answer left by an earlier audit", () => {
     expect(existsSync(join(root, ".aidw/run/audit-security.md"))).toBe(false);
   });
 });
+
+describe("the delivered guard of an audit", () => {
+  it("only checks: it refuses without the report, and does not write it itself", () => {
+    const root = audit();
+    write(root, ".aidw/run/audit-security.md", SECURITY);
+    write(root, ".aidw/run/audit-code-quality.md", QUALITY);
+    const refused = cli(root, "transition", ID, "delivered");
+    expect(refused.code).not.toBe(0);
+    expect(refused.out + refused.err).toMatch(/aidw audit report/);
+    expect(existsSync(join(root, `.aidw/changes/${ID}/audit-report.md`))).toBe(false);
+    expect(cli(root, "audit", "report", "--change", ID).code).toBe(0);
+    expect(cli(root, "transition", ID, "delivered").code).toBe(0);
+  });
+});

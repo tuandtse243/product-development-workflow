@@ -11,7 +11,7 @@
  *   integrate  after a wave, the merged code runs every wave task's verify plus the `code` layer; a failure
  *              becomes a fix task (origin: integration) before anything new starts
  */
-import { DEFAULT_TASK_ROLE } from "./roles.js";
+import { defaultTaskRole } from "./roles.js";
 import { spawnSync } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -256,7 +256,7 @@ export function integrate(
     ? `Integration verify after merging ${record.tasks.join(", ")} failed: \`${failed.command}\`${failed.timedOut ? " timed out" : ` exited ${failed.exit}`}.\nEach task passed on its own; the merged code does not. Find the interaction between the tasks.\n\n${failed.tail}`
     : "Integration verify did not complete.";
   (tf.doc.get("tasks") as YAML.YAMLSeq).add(
-    tf.doc.createNode({ id: taskId, title: `Fix the integration of ${record.tasks.join(", ")}`, role: DEFAULT_TASK_ROLE, origin: "integration", depends_on: [], touches: ["**"], verify: commands, problem, status: "pending" }),
+    tf.doc.createNode({ id: taskId, title: `Fix the integration of ${record.tasks.join(", ")}`, role: defaultTaskRole(), origin: "integration", depends_on: [], touches: ["**"], verify: commands, problem, status: "pending" }),
   );
   deps.save(tf);
   record.fixTask = taskId;

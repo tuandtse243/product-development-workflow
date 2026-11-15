@@ -219,6 +219,8 @@ describe("layer reviewers are read-only subagents", () => {
   it("treats the read-only Roles (ui-ux-designer, security) like the task reviewer", () => {
     expect(["aidw:ui-ux-designer", "security", "aidw:code-reviewer"].map((a) => agentRole(a))).toEqual(["reviewer", "reviewer", "reviewer"]);
     expect(agentRole("aidw:fullstack")).toBe("implementer");
+    // an environment override must not turn a reviewer into a writer
+    expect(agentRole("aidw:code-reviewer", { AIDW_PLUGIN_ROOT: "/nowhere" } as NodeJS.ProcessEnv)).toBe("reviewer");
     expect(agentRole("general-purpose")).toBeNull();
     const root = project();
     const d = (h: HookInput) => decide(h, {})?.decision ?? "none";

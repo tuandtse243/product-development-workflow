@@ -10,7 +10,7 @@
  *   aidw deploy   runs the approved preview deploy, then smoke checks against its URL
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { AGENTS, DEFAULT_TASK_ROLE } from "./roles.js";
+import { AGENTS, defaultTaskRole } from "./roles.js";
 import { join } from "node:path";
 import YAML from "yaml";
 import { approvalStatus } from "./approval.js";
@@ -512,7 +512,7 @@ export function addFixTask(p: Paths, id: string, config: QualityConfig, layer: L
   const task = {
     id: taskId,
     title: `Fix the ${layer.name} quality layer`,
-    role: DEFAULT_TASK_ROLE,
+    role: defaultTaskRole(),
     origin: "quality",
     layer: layer.name,
     depends_on: [],

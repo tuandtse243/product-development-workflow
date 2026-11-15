@@ -17,7 +17,7 @@ import { boundaryExceeded, boundaryOf } from "./boundary.js";
 import { BRIEF_FILE, BRIEF_TEMPLATE, briefHash, checkBrief } from "./scope.js";
 import { recordBaseline } from "./backstop.js";
 import { checkChange, deltaFiles } from "./check.js";
-import { Diags } from "./diag.js";
+import { Diags, OpError } from "./diag.js";
 import { aidwCommitMessage } from "./commit.js";
 import { capabilityOf, findProject, isDir, KEBAB_SEGMENT, pathsFor, projectKind, readText, rel, walkFiles, type Paths } from "./project.js";
 import { applyDelta, type MergeSummary } from "./spec/merge.js";
@@ -30,14 +30,7 @@ import { VERSION } from "./version.js";
 import { detectProject, type Detection } from "./detect.js";
 import YAML from "yaml";
 
-export class OpError extends Error {
-  constructor(
-    message: string,
-    readonly diags?: Diags,
-  ) {
-    super(message);
-  }
-}
+export { OpError };
 
 const now = () => new Date().toISOString();
 

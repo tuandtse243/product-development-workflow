@@ -26,6 +26,19 @@ describe("the commit shown in the delivery task table", () => {
     expect(commitOf(p, "2026-11-14-a", "T0")).toBe("");
   });
 
+  it("still finds a commit made before the trailers existed, by its `T01: ...` subject on the change's branch", () => {
+    const root = tempProject();
+    git(root, "init", "-q");
+    git(root, "commit", "-q", "--allow-empty", "-m", "base");
+    git(root, "checkout", "-q", "-b", "aidw/2026-11-14-a");
+    git(root, "commit", "-q", "--allow-empty", "-m", "T01: show done count");
+    const old = git(root, "log", "-1", "--format=%h");
+    git(root, "commit", "-q", "--allow-empty", "-m", "T010: a longer id");
+    const p = pathsFor(root);
+    expect(commitOf(p, "2026-11-14-a", "T01")).toBe(old);
+    expect(commitOf(p, "2026-11-15-b", "T01")).toBe(""); // another change has no such branch
+  });
+
   it("is empty outside a git repository", () => {
     expect(commitOf(pathsFor(tempProject()), "2026-11-14-a", "T01")).toBe("");
   });
