@@ -13120,6 +13120,7 @@ function readBrowser(p) {
     return null;
   }
 }
+var usesOwnBrowser = (env, p) => !!env.E2E_CDP_URL && env.E2E_CDP_URL !== readBrowser(p)?.url;
 function browserEnv(p) {
   const r = readBrowser(p);
   return r ? { E2E_CDP_URL: r.url, E2E_CDP_PORT: String(r.port) } : {};
@@ -14692,7 +14693,7 @@ Status: aidw run --status   Stop: aidw run --stop   (it also stops by itself whe
           ...args.flags["keep-mcp"] === true ? { keepMcp: true } : {},
           // The runner runs outside the sandbox that wraps each session, so it hosts the test browser for them.
           prepare: () => {
-            if (env.E2E_CDP_URL && env.E2E_CDP_URL !== readBrowser(p)?.url) return null;
+            if (usesOwnBrowser(env, p)) return null;
             const qtext = readText(qualityFile(loadChange(p, id)));
             const config = qtext === null ? null : parseQuality(qtext, "quality.yaml").config;
             if (!config || !drivesBrowser2(config)) return null;

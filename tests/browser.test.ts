@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { BrowserError, browserEnv, browserFile, browserStatus, profileDir, readBrowser, startBrowser, stopBrowser, type BrowserDeps } from "../src/browser.js";
+import { BrowserError, browserEnv, browserFile, browserStatus, profileDir, readBrowser, startBrowser, stopBrowser, usesOwnBrowser, type BrowserDeps } from "../src/browser.js";
 import { run } from "../src/cli.js";
 import { pathsFor } from "../src/project.js";
 
@@ -187,3 +187,22 @@ describe("aidw browser", () => {
     }
   });
 });
+
+describe("which browser E2E_CDP_URL names", () => {
+  it("is the user's own only when the URL is not the one aidw recorded", () => {
+    const { p } = project();
+    const none = {} as NodeJS.ProcessEnv;
+    expect(usesOwnBrowser(none, p)).toBe(false); // nothing set
+    // aidw recorded a browser, and copied its URL into the environment of this command (even if that Chrome has since died)
+    writeFileSync(browserFile(p), JSON.stringify({ port: 43117, url: "http://127.0.0.1:43117", pid: 4000, browser: "Chrome/999", headless: true }));
+    expect(usesOwnBrowser({ E2E_CDP_URL: "http://127.0.0.1:43117" } as NodeJS.ProcessEnv, p)).toBe(false);
+    // a URL the user set themselves
+    expect(usesOwnBrowser({ E2E_CDP_URL: "http://127.0.0.1:9333" } as NodeJS.ProcessEnv, p)).toBe(true);
+  });
+
+  it("is the user's own when no browser was recorded at all", () => {
+    const { p } = project();
+    expect(usesOwnBrowser({ E2E_CDP_URL: "http://127.0.0.1:9333" } as NodeJS.ProcessEnv, p)).toBe(true);
+  });
+});
+

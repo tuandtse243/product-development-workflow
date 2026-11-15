@@ -6,7 +6,7 @@ import { runBackstop } from "./backstop.js";
 import { ChangeError, isState, listChangeIds, loadChange, resolveChangeId, stateOf, STATES } from "./change.js";
 import { runGate } from "./gate.js";
 import { pluginRoot } from "./plugin.js";
-import { BrowserError, browserEnv, browserStatus, readBrowser, startBrowser, stopBrowser } from "./browser.js";
+import { BrowserError, browserEnv, browserStatus, startBrowser, stopBrowser, usesOwnBrowser } from "./browser.js";
 import { checkArtifacts } from "./artifacts.js";
 import { boundaryOf } from "./boundary.js";
 import { buildAuditBrief, chosenLenses, compileReport, lensRoles, pickFindings } from "./audit.js";
@@ -602,7 +602,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           // The runner runs outside the sandbox that wraps each session, so it hosts the test browser for them.
           prepare: () => {
             // The user's own browser is a URL that is not the one aidw recorded (project() copies the recorded one into the environment).
-            if (env.E2E_CDP_URL && env.E2E_CDP_URL !== readBrowser(p)?.url) return null;
+            if (usesOwnBrowser(env, p)) return null;
             const qtext = readText(qualityFile(loadChange(p, id)));
             const config = qtext === null ? null : parseQuality(qtext, "quality.yaml").config;
             if (!config || !drivesBrowser(config)) return null;

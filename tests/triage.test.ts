@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import YAML from "yaml";
 import { describe, expect, it } from "vitest";
@@ -48,6 +48,16 @@ describe("triage of a task that ran out of attempts", () => {
     expect(text).toMatch(/2 of 2 attempts used/);
     expect(text).toMatch(/expected-2-slots-got-1/);
     expect(text).toMatch(/CAUSE: <one of implementation, environment, plan, spec, architecture>/);
+  });
+
+  it("removes an answer left by an earlier change when it makes the brief, so it cannot pass for this diagnosis", () => {
+    const root = exhausted();
+    answer(root, "CAUSE: environment\nLeft by an earlier change whose task also had the id T02.\n");
+    expect(cli(root, "brief", "T02", "--for", "triage").code).toBe(0);
+    expect(existsSync(join(root, ".aidw/run/triage-T02.md"))).toBe(false);
+    const r = cli(root, "triage", "T02", "--json"); // the Agent wrote nothing this time
+    expect(r.code).not.toBe(0);
+    expect(task(root, "T02")).not.toHaveProperty("triage");
   });
 
   it("implementation: grants one further attempt with the diagnosis in the brief, and escalates if that fails too", () => {

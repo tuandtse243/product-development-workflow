@@ -37,6 +37,13 @@ export function readBrowser(p: Paths): BrowserRecord | null {
   }
 }
 
+/**
+ * Is `E2E_CDP_URL` the user's own browser? `aidw` copies the URL it recorded into the environment of every command, so
+ * only a URL that is not the recorded one was set by the user. A recorded URL that has gone stale must not stop `run`
+ * from starting a browser.
+ */
+export const usesOwnBrowser = (env: NodeJS.ProcessEnv, p: Paths): boolean => !!env.E2E_CDP_URL && env.E2E_CDP_URL !== readBrowser(p)?.url;
+
 /** The environment the layer commands get so their browser fixture finds the test browser. */
 export function browserEnv(p: Paths): Record<string, string> {
   const r = readBrowser(p);

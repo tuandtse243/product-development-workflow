@@ -2,6 +2,12 @@ import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
+import { run } from "../src/cli.js";
+import { OpError } from "../src/diag.js";
+import { machineOf } from "../src/machine.js";
+import { loadChange } from "../src/change.js";
+import { pathsFor } from "../src/project.js";
+import { tempProject, write } from "./fixtures.js";
 import { STATES } from "../src/change.js";
 import { machineById } from "../src/machine.js";
 import { checkWorkflows, loadWorkflow, workflowFor, workflowIds } from "../src/workflow.js";
@@ -164,3 +170,50 @@ describe("the state machine of a workflow", () => {
     expect(errors(root)).toMatch(/approval_required: "intake" is a state before the approval stage/);
   });
 });
+
+describe("a change whose workflow does not exist", () => {
+  function brokenChange(): { root: string; id: string } {
+    const root = tempProject();
+    const id = "2026-11-14-typo";
+    const go = (...argv: string[]) => {
+      let out = "";
+      const code = run([...argv, "--root", root], {}, root, { out: (x) => (out += x), err: (x) => (out += x) });
+      return { code, out };
+    };
+    expect(go("init").code).toBe(0);
+    expect(go("change", "new", id, "--workflow", "bugfix").code).toBe(0);
+    const f = `.aidw/changes/${id}/change.yaml`;
+    write(root, f, readFileSync(join(root, f), "utf8").replace("workflow: bugfix", "workflow: bugfx"));
+    return { root, id };
+  }
+
+  it("is an OpError that names the workflow, not a bare Error with a stack", () => {
+    const { root, id } = brokenChange();
+    const change = loadChange(pathsFor(root), id);
+    let caught: unknown;
+    try {
+      machineOf(pathsFor(root), change);
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(OpError);
+    expect((caught as Error).message).toMatch(/workflow "bugfx" of change "2026-11-14-typo" has no valid state machine/);
+  });
+
+  it("makes `aidw transition` print one line instead of throwing", () => {
+    const { root, id } = brokenChange();
+    let out = "";
+    let threw = false;
+    let code = 0;
+    try {
+      code = run(["transition", id, "intake", "--root", root], {}, root, { out: (x) => (out += x), err: (x) => (out += x) });
+    } catch {
+      threw = true;
+    }
+    expect(threw).toBe(false);
+    expect(code).not.toBe(0);
+    expect(out).toMatch(/no valid state machine/);
+    expect(out).not.toMatch(/\n\s+at /); // no stack trace
+  });
+});
+
