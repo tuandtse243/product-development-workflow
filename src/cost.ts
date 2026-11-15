@@ -10,6 +10,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { AGENTS } from "./roles.js";
 
 export interface Usage {
   input: number;
@@ -118,7 +119,7 @@ export function readTranscript(file: string): Transcript {
 
 export interface SessionCost extends Transcript {
   id: string;
-  subagents: { count: number; turns: number; usage: Usage; /** by agent type (aidw:implementer ...) */ roles: Record<string, { count: number; turns: number; usage: Usage; firstContext: number }> };
+  subagents: { count: number; turns: number; usage: Usage; /** by agent type (aidw:fullstack ...) */ roles: Record<string, { count: number; turns: number; usage: Usage; firstContext: number }> };
   /** Agent tool calls beyond the subagents that actually ran: a plugin hook rewrote the call and it was sent twice */
   repeatedSpawns: number;
 }
@@ -241,8 +242,8 @@ export function formatCost(sessions: SessionCost[]): string {
   const worst = sessions.reduce((a, b) => (b.contextMax > a.contextMax ? b : a));
   const advice: string[] = [];
   if (worst.contextMax > 200_000) advice.push(`session ${worst.id.slice(0, 8)} grew to ${kilo(worst.contextMax)} per turn, and every turn re-reads it: run \`aidw run\` (a fresh session per task) or /clear between phases`);
-  const impl = roles["aidw:implementer"];
-  const rev = roles["aidw:reviewer"];
+  const impl = roles[AGENTS.implement];
+  const rev = roles[AGENTS.taskReview];
   if (impl && rev && impl.firstContext / impl.count > 2 * (rev.firstContext / rev.count)) {
     advice.push(`an implementer's first turn is ${kilo(Math.round(impl.firstContext / impl.count))} tokens against ${kilo(Math.round(rev.firstContext / rev.count))} for a reviewer: tool schemas of MCP servers and plugins ride along in every turn; use \`aidw run\` (it drops MCP servers) or disable them for the run`);
   }

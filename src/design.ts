@@ -64,7 +64,10 @@ export function parseTokens(text: string, file: string, d: Diags): Token[] {
     }
     out.push(token);
   });
-  if (!out.some((t) => t.kind === "color")) d.error(file, "needs at least one color token");
+  // A UI change that reuses the existing design may add no color: it still needs one token that says where the look is
+  // checked. Without a color token reviewers cannot check color use, which is said, not forced with an invented color.
+  if (out.length === 0) d.error(file, "needs at least one token");
+  else if (!out.some((t) => t.kind === "color")) d.warn(file, "no color token: reviewers cannot check color use (fine when the change reuses the existing design; do not invent a color to have one)");
   return out;
 }
 

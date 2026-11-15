@@ -2,7 +2,7 @@
  * Review layers (slice S7, decision D-28): the brief for an independent layer reviewer.
  *
  * A layer with `review: ui | security` in quality.yaml is judged by a fresh read-only subagent
- * (`aidw:ui-reviewer`, `aidw:security-reviewer`) after its commands pass. `aidw verify` writes the
+ * (`aidw:ui-ux-designer`, `aidw:security`) after its commands pass. `aidw verify` writes the
  * brief below and stops; the orchestrator spawns the agent with the brief path and records the
  * verdict with `aidw layer-review <layer> pass|fix`. The brief carries everything the reviewer
  * needs as pointers and artifacts, never chat history.

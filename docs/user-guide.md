@@ -64,6 +64,7 @@ Các lệnh CLI hữu ích khi bạn tự gõ `aidw` (xem mục 2 để đưa n�
 | Lệnh | Việc nó làm |
 |---|---|
 | `aidw doctor [<id>]` | kiểm máy trước khi chạy: binary của các lệnh chất lượng, pnpm store, registry, Chrome CDP, đăng nhập và liên kết Vercel. Thoát mã 1 nếu có FAIL |
+| `aidw browser start\|status\|url\|stop` | trình duyệt test riêng của project cho các layer e2e, a11y, ui-ux, performance (`aidw run` tự khởi động nó trước mỗi phiên vì runner chạy ngoài sandbox): Chrome chạy headless trên cổng trống do chính Chrome chọn (không cố định 9222), mỗi project một profile. Các layer nhận `E2E_CDP_URL` và `E2E_CDP_PORT` tự động. Nếu sandbox chặn việc mở Chrome, chạy `aidw browser start` trong terminal của bạn. |
 | `aidw task reopen <T> [--revert]` | task đã xong nhưng sai: về pending; `--revert` hoàn tác commit của nó (chỉ code, `.aidw/` giữ nguyên) |
 | `aidw pr [<id>] [--create]` | sau bàn giao: in nội dung PR; `--create` push nhánh và mở PR bằng `gh` (luôn hỏi bạn trước) |
 
@@ -77,7 +78,7 @@ cùng bằng chứng; task bị sửa hoặc mới sẽ chạy lại (output `ai
 **Commit.** Mọi commit theo Conventional Commits (`docs/commit-guide.md`). aidw tự dựng message `type(capability): title` từ trường
 `type` của task.
 
-**Stack pack.** Công cụ theo ngôn ngữ nằm ở `plugins/aidw/profiles/stacks/<ngôn ngữ>.md` (hiện có `node.md`); thêm ngôn ngữ mới là thêm một file.
+**Stack pack.** Công cụ theo ngôn ngữ nằm ở `plugins/aidw/stacks/<ngôn ngữ>.md` (hiện có `node.md`); thêm ngôn ngữ mới là thêm một file.
 
 ## 4. Đường đi của một change
 
@@ -208,7 +209,7 @@ Xem [`diagrams/components.html`](diagrams/components.html).
 | **backstop** (Stop) | khi session dừng | báo file bị sửa mà không do bước aidw nào giải thích (file do tool sinh ra như `*.tsbuildinfo` được bỏ qua) |
 | **pause** (StopFailure) | khi API lỗi hoặc hết quota | đặt change về `paused`, ghi lý do |
 
-Quyền được chia theo bậc (xem [`plugins/aidw/policies/permissions.md`](../plugins/aidw/policies/permissions.md)):
+Quyền được chia theo bậc (xem [`plugins/aidw/company/permissions.md`](../plugins/aidw/company/permissions.md)):
 bậc 0 và 1 tự do sau approve; bậc 2 (deploy preview, dự án cloud miễn phí) chỉ khi có trong danh sách bạn đã
 duyệt; bậc 3 (tốn tiền, production, push) luôn hỏi bạn; bậc x (secret cá nhân) không bao giờ.
 

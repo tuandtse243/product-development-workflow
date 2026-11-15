@@ -40,7 +40,7 @@ ${PLACEHOLDER}: prerequisites and exact commands (install, local services, dev s
 
 ## Environment
 
-${PLACEHOLDER}: every environment variable, what it is for and where its value comes from; point to .env.example. Write "None" if there are none.
+${PLACEHOLDER}: every environment variable the app reads, what it is for and where its value comes from; point to .env.example. Variables only the tests use go under Run locally. Write "None" if the app reads none.
 
 ## Deploy
 
@@ -75,10 +75,17 @@ function readEvidence(change: Change, taskId: string): Evidence | null {
   }
 }
 
-function commitOf(p: Paths, taskId: string): string {
+/**
+ * The commit of a task, found by the trailers aidw writes (`Change: <id>`, `Task: <id>`), because the subject is a
+ * Conventional Commits header and no longer starts with the task id. Both must match: task ids repeat across changes.
+ */
+export function commitOf(p: Paths, changeId: string, taskId: string): string {
   if (!isGitRepo(p.project)) return "";
-  const r = git(p.project, ["log", "--format=%h", "-n", "1", "--grep", `^${taskId}: `]);
-  return r.ok ? r.out : "";
+  const r = git(p.project, ["log", "--format=%h", "-n", "1", "--all-match", "--grep", `^Change: ${changeId}$`, "--grep", `^Task: ${taskId}$`]);
+  if (r.ok && r.out) return r.out;
+  // A change run before the trailers existed: its commits start with the task id, and only on the change's own branch.
+  const old = git(p.project, ["log", "--format=%h", "-n", "1", "--grep", `^${taskId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}: `, `aidw/${changeId}`]);
+  return old.ok ? old.out : "";
 }
 
 const cell = (s: string) => s.replace(/\|/g, "\\|").replace(/\n/g, " ");
@@ -87,7 +94,7 @@ function tasksMd(p: Paths, change: Change, tasks: Task[]): string {
   const rows = tasks.map((t) => {
     const ev = readEvidence(change, t.id);
     const reviews = (ev?.reviews ?? []).map((r) => r.verdict).join(", ") || "-";
-    return `| ${t.id} | ${cell(String(t.title ?? ""))} | ${String(t.origin ?? "plan")} | ${statusOf(t)} | ${String(t.attempts ?? 0)} | ${reviews} | ${commitOf(p, t.id) || "-"} |`;
+    return `| ${t.id} | ${cell(String(t.title ?? ""))} | ${String(t.origin ?? "plan")} | ${statusOf(t)} | ${String(t.attempts ?? 0)} | ${reviews} | ${commitOf(p, change.id, t.id) || "-"} |`;
   });
   const outside = tasks.flatMap((t) => {
     const files = readEvidence(change, t.id)?.checkpoints.at(-1)?.outside_touches ?? [];

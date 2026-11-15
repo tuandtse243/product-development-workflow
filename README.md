@@ -12,7 +12,7 @@ autonomous build → layered quality gates → living specs → complete deliver
   milestone-A code is in and ran end to end in Claude Code (blueprint section 27). **S6 code done** (design tokens with
   use rules for all four design modes, checkpoint token and screenshot checks, reviewer design and
   decisions-to-honor checks, README command check at delivery). **S7 code done** (review layers `review: ui|security` in
-  `quality.yaml` with read-only `aidw:ui-reviewer` / `aidw:security-reviewer` agents and `aidw layer-review`; a11y and
+  `quality.yaml` with read-only `aidw:ui-ux-designer` / `aidw:security` agents and `aidw layer-review`; a11y and
   performance layers over Chrome CDP in the quality profile). **S8-S10 code done** (parallel waves in git worktrees
   with merge per task and integration verify; `aidw run`, the headless auto-resume runner; brownfield detection,
   `## Existing system`, lazy baseline specs). Milestone B awaits trial 3: [`docs/trial-3.md`](docs/trial-3.md).
@@ -44,7 +44,7 @@ See [`docs/roadmap.md`](docs/roadmap.md) for what is planned.
 ## Vendored skills
 
 Selected skills from `mattpocock/skills` and `addyosmani/agent-skills` (both MIT) live verbatim in
-`plugins/aidw/vendor/`; see each `UPSTREAM.md`. Update with `node scripts/vendor.mjs <pocock|addy>` and review
+`plugins/aidw/library/vendor/`; see each `UPSTREAM.md`. Update with `node scripts/vendor.mjs <pocock|addy>` and review
 the diff. They sit outside `skills/`, so Claude Code never auto-loads them; aidw skills load them by path.
 
 ## Layout
@@ -52,10 +52,22 @@ the diff. They sit outside `skills/`, so Claude Code never auto-loads them; aidw
 ```
 .claude-plugin/marketplace.json   this repo is a Claude Code marketplace
 plugins/aidw/                     the plugin (bin/aidw is the bundled CLI)
+plugins/aidw/roster.yaml          the factory's Roles: department, status, who carries a planned Role
+plugins/aidw/roles/<id>/          a Role: role.md (profile), rules.md; the source of its agent file
+plugins/aidw/agents/              GENERATED from roles/ by the build; never edit (`aidw roster` checks)
 src/                              TypeScript source of the aidw CLI
 tests/                            vitest suites
 docs/                             blueprint and decisions log
 ```
+
+## Try it on a demo
+
+```bash
+node scripts/make-demo.mjs ~/aidw-demo     # a tiny Next.js app, git, packages installed, `aidw init` done
+```
+
+It prints the exact commands and the request to give `/aidw:start`; `DEMO.md` in the demo lists what to check.
+The template is `evals/demo/todo-board` (unit and e2e tests known to pass; the e2e test uses the test browser).
 
 ## Develop
 
@@ -89,6 +101,7 @@ aidw plugin-path <path>                      path of a plugin file
 aidw next [--change <id>]                    orchestrator's next step: implement | review | escalate | complete
 aidw task start|retry|reopen <task>          running (attempts, base commit) | user-granted retry | done task back to pending (--revert)
 aidw doctor [<id>]                           check the machine for the run (binaries, store, registry, CDP, Vercel)
+aidw browser start|status|url|stop           the project's own test browser (Chrome on a free port it picks; layers get E2E_CDP_URL)
 aidw pr [<id>] [--create]                    pull request body from evidence; --create pushes and opens it (asks)
 aidw brief <task> [--for implement|review]   context packet for a fresh subagent (prints its path)
 aidw skills <task> [--for implement|review]  vendored skills selected for the task

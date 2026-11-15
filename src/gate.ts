@@ -15,7 +15,7 @@
  */
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { approvalStatus, baseSpecFiles, CHANGE_PACKAGE_FILES, FROZEN_PROJECT_DIRS } from "./approval.js";
-import { listChangeIds, loadChange, POST_APPROVAL, stateOf, type State } from "./change.js";
+import { listChangeIds, loadChange, stateOf, type State } from "./change.js";
 import { AIDW_DIR, findProject, pathsFor, rel, type Paths } from "./project.js";
 import {
   AIDW_COMMAND,
@@ -32,6 +32,9 @@ import {
   RUNNER_COMMAND,
 } from "./policy.js";
 import { grantedResources } from "./quality.js";
+import { machineOf } from "./machine.js";
+import { bundledRoot, pluginRoot } from "./plugin.js";
+import { roleAccess } from "./roles.js";
 
 export interface HookInput {
   hook_event_name?: string;
@@ -45,9 +48,6 @@ export type Decision = { decision: "allow" | "deny" | "ask"; reason: string } | 
 
 /** States in which code may be written: approved and actively executing. */
 export const OPEN_STATES: ReadonlySet<State> = new Set<State>(["approved", "executing", "verifying", "converging", "deploying"]);
-
-/** States in which the approved package is frozen against edits. */
-const FROZEN_STATES: ReadonlySet<State> = new Set<State>([...POST_APPROVAL].filter((s) => s !== "escalated"));
 
 export interface GateState {
   open: boolean;
@@ -67,12 +67,14 @@ export function gateState(p: Paths): GateState {
     try {
       const c = loadChange(p, id);
       state = stateOf(c);
-      if (state && POST_APPROVAL.has(state)) {
+      const machine = machineOf(p, c);
+      if (state && machine.approvalRequired.has(state)) {
         const a = approvalStatus(p, c).status;
         if (a === "drift") st.drift.push(id);
         if (a === "valid" && OPEN_STATES.has(state)) st.open = true;
         if (a === "valid" && state === "delivered") st.delivered = true;
-        if (FROZEN_STATES.has(state)) st.frozen.push(id);
+        // the approved package is frozen against edits in every approved state but escalated
+        if (state !== "escalated") st.frozen.push(id);
       }
     } catch {
       // an unreadable change never opens the gate
@@ -113,13 +115,23 @@ const REPORT_FILE = /^report-[A-Za-z0-9._-]+\.md$/;
 /** The only file a reviewer may write: its verdict, in .aidw/run/. */
 const VERDICT_FILE = /^(?:layer-)?review-[A-Za-z0-9._-]+\.md$/;
 
+/** An audit reviewer's answer: .aidw/run/audit-<lens>.md. */
+const AUDIT_FILE = /^audit-[a-z0-9-]+\.md$/;
+
 /**
- * aidw subagent role from the hook's agent_type ("aidw:reviewer", "reviewer", "aidw:ui-reviewer", ...).
- * Every `*-reviewer` (ui, security) is read-only like the task reviewer.
+ * What an aidw subagent may do, from the hook's agent_type ("aidw:code-reviewer", "fullstack", ...). The name is a
+ * Role id and the Role's profile declares its access: `write` -> "implementer", `read-only` -> "reviewer".
+ * `artifacts` -> "author": it drafts Artifacts under `.aidw/` and never touches project files, before or after approval.
+ * An unknown name ending in "reviewer" is still treated as read-only, so a renamed reviewer never gains write access.
  */
-export function agentRole(agentType: string | undefined): "implementer" | "reviewer" | null {
+export function agentRole(agentType: string | undefined, env: NodeJS.ProcessEnv = process.env): "implementer" | "reviewer" | "author" | null {
   const name = (agentType ?? "").split(":").pop() ?? "";
-  if (name === "implementer") return "implementer";
+  if (!name) return null;
+  // A Role's access is what keeps a reviewer read-only: it comes from the bundled plugin, never from an environment override.
+  const access = roleAccess(bundledRoot() ?? pluginRoot(env), name);
+  if (access === "write") return "implementer";
+  if (access === "read-only") return "reviewer";
+  if (access === "artifacts") return "author";
   return name === "reviewer" || name.endsWith("-reviewer") ? "reviewer" : null;
 }
 
@@ -154,7 +166,7 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
     return secret && !inside(project, resolve(cwd, file)) ? deny(`reading ${secret.why} is forbidden (tier x)`) : null;
   }
 
-  const role = agentRole(input.agent_type);
+  const role = agentRole(input.agent_type, env);
 
   if (tool === "Write" || tool === "Edit" || tool === "MultiEdit" || tool === "NotebookEdit") {
     const raw = String(ti.file_path ?? ti.notebook_path ?? "");
@@ -164,10 +176,14 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
     if (secret && !inside(project, file)) return deny(`writing ${secret.why} is forbidden (tier x)`);
     if (!inside(project, file)) return null; // outside the project: normal permission rules apply
 
+    if (role === "author" && !inside(p.aidw, file)) {
+      return deny("an authoring role drafts Artifacts under .aidw/ only; project files are written by the implementing roles after approval");
+    }
+
     if (role === "reviewer") {
       // The one thing a reviewer writes is its verdict file: the orchestrator reads it from disk instead of
       // carrying the whole reply in its context.
-      if (dirname(file) === p.run && VERDICT_FILE.test(basename(file))) return allow("reviewer verdict file");
+      if (dirname(file) === p.run && (VERDICT_FILE.test(basename(file)) || AUDIT_FILE.test(basename(file)))) return allow("reviewer verdict file");
       return deny("the reviewer is read-only; report issues in the verdict instead of fixing them (it may write only .aidw/run/review-<task>.md or layer-review-<layer>.md)");
     }
     // S8: a wave task's git worktree is project code, not aidw state; its own .aidw/ is a stale copy.
@@ -242,6 +258,7 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
     const writes = firstMatch(WRITE_COMMANDS, maskQuotedAngles(cmd));
     if (writes) {
       if (role === "reviewer") return deny(`the reviewer is read-only (this command ${writes.why})`);
+      if (role === "author") return deny(`an authoring role writes its files with the Write tool, inside ${AIDW_DIR}/ (this command ${writes.why})`);
       const st = gateState(p);
       if (!st.open) return deny(`this command ${writes.why}. ${closedReason(st)} Use the Write tool for files in ${AIDW_DIR}/.`);
     }

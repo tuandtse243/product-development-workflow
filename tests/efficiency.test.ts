@@ -38,11 +38,11 @@ describe("fewer orchestrator turns", () => {
     const root = executingProject();
     const start = cli(root, {}, "task", "start", "T01");
     expect(start.out).toMatch(/brief .*T01\.implement\.md/);
-    expect(start.out).toMatch(/SPAWN aidw:implementer with: Task brief: .*T01\.implement\.md\. Read it and implement the task\./);
+    expect(start.out).toMatch(/SPAWN aidw:fullstack with: Task brief: .*T01\.implement\.md\. Read it and implement the task\./);
 
     write(root, "tests/a.test.ts", TEST);
     const cp = cli(root, {}, "checkpoint", "T01");
-    expect(cp.out).toMatch(/SPAWN aidw:reviewer with: Review brief: .*T01\.review\.md/);
+    expect(cp.out).toMatch(/SPAWN aidw:code-reviewer with: Review brief: .*T01\.review\.md/);
     expect(cp.out).toMatch(/Then: aidw verdict T01/);
     const brief = readFileSync(join(root, ".aidw/run/briefs", ID, "T01.review.md"), "utf8");
     expect(brief).toMatch(/Write the whole verdict to `.*\.aidw\/run\/review-T01\.md`/);
@@ -103,7 +103,7 @@ describe("a converge task that only adds tests skips the reviewer subagent", () 
     write(root, "tests/a.test.ts", TEST);
     const cp = cli(root, {}, "checkpoint", "C01");
     expect(cp.out).toMatch(/review C01: auto-passed/);
-    expect(cp.out).not.toMatch(/SPAWN aidw:reviewer/);
+    expect(cp.out).not.toMatch(/SPAWN aidw:code-reviewer/);
     expect(execFileSync("git", ["log", "-1", "--format=%s"], { cwd: root, encoding: "utf8" }).trim()).toMatch(/^feat\(config\): cover scenario/);
   });
 
@@ -116,7 +116,7 @@ describe("a converge task that only adds tests skips the reviewer subagent", () 
     write(root, "tests/a.test.ts", TEST);
     write(root, "lib/booking.ts", "export const x = 1;\n");
     const cp = cli(root, {}, "checkpoint", "C01");
-    expect(cp.out).toMatch(/SPAWN aidw:reviewer/);
+    expect(cp.out).toMatch(/SPAWN aidw:code-reviewer/);
     expect(cp.out).not.toMatch(/auto-passed/);
   });
 });
@@ -132,9 +132,9 @@ describe("reviewer writes only its verdict file", () => {
 
   it("allows .aidw/run/review-*.md and layer-review-*.md, denies everything else", () => {
     const root = executingProject();
-    const d = (file: string, agent = "aidw:reviewer") => decide(hook(root, file, agent), {} as NodeJS.ProcessEnv)?.decision;
+    const d = (file: string, agent = "aidw:code-reviewer") => decide(hook(root, file, agent), {} as NodeJS.ProcessEnv)?.decision;
     expect(d(join(root, ".aidw/run/review-T01.md"))).toBe("allow");
-    expect(d(join(root, ".aidw/run/layer-review-ui-ux.md"), "aidw:ui-reviewer")).toBe("allow");
+    expect(d(join(root, ".aidw/run/layer-review-ui-ux.md"), "aidw:ui-ux-designer")).toBe("allow");
     expect(d(join(root, ".aidw/run/review-T01.txt"))).toBe("deny");
     expect(d(join(root, ".aidw/changes", ID, "tasks.yaml"))).toBe("deny");
     expect(d(join(root, "lib/a.ts"))).toBe("deny");

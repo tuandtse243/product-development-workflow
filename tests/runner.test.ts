@@ -67,6 +67,30 @@ describe("waitMs", () => {
   });
 });
 
+describe("aidw run host-side preparation", () => {
+  it("prepares before every session and before the machine check, so the check sees what it set up", () => {
+    const t = setup("executing", [{ progress: true }, { progress: true }]);
+    const order: string[] = [];
+    t.go({ prepare: (st: string) => (order.push(`prepare:${st}`), null), preflight: () => (order.push("preflight"), null), maxRuns: 2 });
+    expect(order.slice(0, 2)).toEqual(["prepare:executing", "preflight"]);
+    expect(order.filter((o) => o.startsWith("prepare")).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("stops with needs_user, spending no session, when the preparation fails", () => {
+    const t = setup("executing", [{ progress: true }]);
+    const r = t.go({ prepare: () => "the test browser could not start" });
+    expect(r).toMatchObject({ outcome: "needs_user", runs: 0, message: "the test browser could not start" });
+    expect(t.calls()).toHaveLength(0);
+  });
+
+  it("calls onFinish with the outcome so what prepare started can be stopped", () => {
+    const t = setup("executing", [{ progress: true }]);
+    const seen: string[] = [];
+    const r = t.go({ prepare: () => "stop here", onFinish: (o: string) => seen.push(o) });
+    expect(seen).toEqual([r.outcome]);
+  });
+});
+
 describe("aidw run preflight", () => {
   it("stops before spending a session when the machine check fails, and filters settings noise from the log", () => {
     const t = setup("deploying", [{ state: "deploying", progress: true }]);

@@ -11,8 +11,8 @@
  * session resumes from files, never from conversation memory.
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { join, relative, sep } from "node:path";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import YAML from "yaml";
 import { decisionsToHonor, requirementsAfterChange } from "./analyze.js";
 import { approvalStatus } from "./approval.js";
@@ -21,9 +21,12 @@ import { hardcodedColors, loadTokens, missingTokens, shotsDir, taskShots, tokens
 import { header as commitHeader, scopeOf, taskCommitMessage } from "./commit.js";
 import { changedSince, git, headCommit, isGitRepo, junkMessage, stagedJunk } from "./git.js";
 import { matchesAny } from "./glob.js";
+import { detectProject } from "./detect.js";
+import { defaultTaskRole, implementerOf } from "./roles.js";
+import { packsFor } from "./stackpacks.js";
 import { OpError, transition } from "./ops.js";
 import { readText, rel, walkFiles, type Paths } from "./project.js";
-import { ensureWorktree, integrate, mergeWorktree, parallelConfig, pendingIntegration, planWave, removeWorktree, taskDir, type IntegrateResult } from "./parallel.js";
+import { ensureWorktree, removeSnapshot, snapshotBase, integrate, mergeWorktree, parallelConfig, pendingIntegration, planWave, removeWorktree, taskDir, type IntegrateResult } from "./parallel.js";
 import { parseQuality, qualityFile, resetQualitySummary } from "./quality.js";
 import { selectSkills, touchesUi, isSecuritySensitive, type BriefKind } from "./skills.js";
 import { DEFAULT_MAX_ATTEMPTS, parseTasks, planSha, validateTasksText, type Task } from "./tasks.js";
@@ -73,7 +76,10 @@ function setField(tf: TaskFile, i: number, key: string, value: unknown): void {
 
 const statusOf = (t: Task) => String(t.status ?? "pending");
 const attemptsOf = (t: Task) => (Number.isInteger(t.attempts) ? Number(t.attempts) : 0);
-const maxAttemptsOf = (t: Task) => (Number.isInteger(t.max_attempts) ? Number(t.max_attempts) : DEFAULT_MAX_ATTEMPTS);
+/** The planned attempts (`max_attempts` is part of the approved plan), plus the one a triage of cause `implementation` grants. */
+const maxAttemptsOf = (t: Task) =>
+  (Number.isInteger(t.max_attempts) ? Number(t.max_attempts) : DEFAULT_MAX_ATTEMPTS) +
+  (typeof t.triage === "object" && t.triage !== null && (t.triage as { cause?: unknown }).cause === "implementation" ? 1 : 0);
 
 /** Tasks only run while the change is executing with a valid approval. */
 function requireExecuting(p: Paths, change: Change): void {
@@ -99,6 +105,7 @@ export type NextAction =
   | { action: "wave"; tasks: { task: string; title: string }[] }
   | { action: "integrate"; tasks: string[] }
   | { action: "review"; task: string; title: string }
+  | { action: "triage"; task: string; title: string; reason: string }
   | { action: "escalate"; task?: string; reason: string }
   | { action: "complete"; done: number };
 
@@ -117,6 +124,8 @@ export function nextAction(p: Paths, id: string): NextAction {
   for (const t of tf.tasks) {
     if (statusOf(t) !== "failed") continue;
     if (attemptsOf(t) >= maxAttemptsOf(t)) {
+      // A task that ran out of attempts is diagnosed once by an independent Agent before the user hears about it.
+      if (t.triage === undefined) return { action: "triage", task: t.id, title: title(t), reason: `task ${t.id} used ${attemptsOf(t)} of ${maxAttemptsOf(t)} attempts: ${String(t.notes ?? "")}` };
       return { action: "escalate", task: t.id, reason: `task ${t.id} failed ${attemptsOf(t)} of ${maxAttemptsOf(t)} attempts: ${String(t.notes ?? "")}` };
     }
     return { action: "implement", task: t.id, title: title(t), reason: "retry" };
@@ -141,6 +150,8 @@ export function nextAction(p: Paths, id: string): NextAction {
 
 export interface StartResult {
   task: string;
+  /** the Role that owns the task (`role:` in tasks.yaml); the Agent that runs it is derived from it */
+  role?: string;
   attempt: number;
   maxAttempts: number;
   base: string | null;
@@ -202,7 +213,7 @@ export function startTask(p: Paths, id: string, taskId: string, opts: { worktree
   if (!t.started_at) setField(tf, i, "started_at", now());
   if (base) setField(tf, i, "base", base);
   saveTasks(tf);
-  return { task: taskId, attempt, maxAttempts: max, base, resumed, ...(worktree ? { worktree } : {}) };
+  return { task: taskId, ...(typeof t.role === "string" ? { role: t.role } : {}), attempt, maxAttempts: max, base, resumed, ...(worktree ? { worktree } : {}) };
 }
 
 /** User-granted retry of an escalated or failed task: a fresh attempt budget, same base commit. */
@@ -295,6 +306,24 @@ export interface CheckpointRecord {
   outside_touches: string[];
   /** UI tasks with approved design tokens only */
   design?: DesignEvidence;
+  /** `type: fix` tasks only: does the new test fail on the old code? */
+  regression?: RegressionEvidence;
+}
+
+/**
+ * Proof that a bugfix's regression test reproduces the bug: the changed test files are run, with the task's unit-test
+ * verify commands, against a checkout of the base commit. `red` = they fail there (good); `not-red` = they pass on the
+ * old code or the task changed no test (the checkpoint fails); `unproven` = it could not be checked (the reviewer is told).
+ */
+export interface RegressionEvidence {
+  status: "red" | "not-red" | "unproven";
+  reason: string;
+  files: string[];
+  /** how the old code was checked out: a git worktree, or a plain copy when git may not write under .git */
+  via?: "worktree" | "snapshot";
+  command?: string;
+  exit?: number | null;
+  tail?: string;
 }
 
 export interface DesignEvidence {
@@ -390,6 +419,58 @@ export interface CheckpointResult extends CheckpointRecord {
   evidence: string;
 }
 
+const UNIT_TEST_COMMAND = /\b(vitest|jest|mocha|pytest|test)\b|go test|cargo test/;
+const BROWSER_COMMAND = /playwright|cypress|\be2e\b/i;
+
+/** Output of a test run that failed before running any assertion: a missing module or export. */
+const NOT_LOADABLE = /Cannot find module|ERR_MODULE_NOT_FOUND|Failed to resolve import|Failed to load url|ModuleNotFoundError|ImportError|does not provide an export named/i;
+
+function proveRegression(p: Paths, id: string, t: Task, dir: string, base: string | null, changed: string[] | null, runner: CommandRunner, timeoutMs: number): RegressionEvidence {
+  const files = (changed ?? []).filter((f) => TEST_FILE.test(f));
+  if (!base || !isGitRepo(dir)) return { status: "unproven", reason: "there is no base commit to compare with", files };
+  if (!files.length) return { status: "not-red", reason: "the task changed no test file: a fix needs a regression test that fails on the old code", files };
+  const commands = list(t.verify).filter((c) => UNIT_TEST_COMMAND.test(c) && !BROWSER_COMMAND.test(c));
+  if (!commands.length) return { status: "unproven", reason: "no verify command runs unit tests, so the old code could not be checked", files };
+  // Prefer a git worktree; when git may not write under `.git` (a sandbox), fall back to a plain copy of the base commit.
+  let wt: { dir: string; branch?: string };
+  let via: "worktree" | "snapshot" = "worktree";
+  try {
+    wt = ensureWorktree(p, id, `${String(t.id)}-red`, base);
+  } catch (e) {
+    try {
+      wt = { dir: snapshotBase(p, id, `${String(t.id)}-red`, base) };
+      via = "snapshot";
+    } catch (e2) {
+      return { status: "unproven", reason: `could not check out the base commit: ${(e as Error).message}; a plain copy failed too: ${(e2 as Error).message}`, files };
+    }
+  }
+  const wdir = join(p.project, wt.dir);
+  try {
+    for (const f of files) {
+      if (!existsSync(join(dir, f))) continue; // a deleted test
+      mkdirSync(dirname(join(wdir, f)), { recursive: true });
+      copyFileSync(join(dir, f), join(wdir, f));
+    }
+    let last: { command: string; exit: number | null; tail: string } = { command: commands[0] as string, exit: 0, tail: "" };
+    for (const command of commands) {
+      const r = runner(command, wdir, Math.min(timeoutMs, 5 * 60 * 1000));
+      if (r.timedOut) return { status: "unproven", reason: `\`${command}\` timed out on the old code`, files, command, via };
+      last = { command, exit: r.exit, tail: r.tail };
+      if (r.exit !== 0) {
+        // A test that cannot even load on the old code (it imports a module the fix adds) fails for that, not for the bug.
+        if (NOT_LOADABLE.test(r.tail)) {
+          return { status: "unproven", reason: "the new tests fail on the old code, but because something they import does not exist there yet, not necessarily because of the bug: check that the assertion itself fails", files, via, ...last };
+        }
+        return { status: "red", reason: "the new tests fail on the old code", files, via, ...last };
+      }
+    }
+    return { status: "not-red", reason: "the new tests pass on the old code: they do not reproduce the bug", files, via, ...last };
+  } finally {
+    if (via === "worktree") removeWorktree(p, wt.dir, wt.branch);
+    else removeSnapshot(p, wt.dir);
+  }
+}
+
 export function checkpoint(
   p: Paths,
   id: string,
@@ -426,7 +507,9 @@ export function checkpoint(
   const previous = readEvidence(tf.change, t).checkpoints.at(-1)?.at;
   const design = designEvidence(p, id, t, changed, previous ?? (typeof t.started_at === "string" ? t.started_at : undefined));
   const designOk = !design || (design.missing_tokens.length === 0 && design.screenshots.length > 0);
-  const ok = verifyOk && missing.length === 0 && designOk;
+  const regression = t.type === "fix" && verifyOk ? proveRegression(p, id, t, dir, base, changed, runner, timeoutMs) : undefined;
+  const regressionOk = !regression || regression.status !== "not-red";
+  const ok = verifyOk && missing.length === 0 && designOk && regressionOk;
 
   const record: CheckpointRecord = {
     attempt: attemptsOf(t),
@@ -439,6 +522,7 @@ export function checkpoint(
     changed_files: changed,
     outside_touches: outside,
     ...(design ? { design } : {}),
+    ...(regression ? { regression } : {}),
   };
   const ev = readEvidence(tf.change, t);
   ev.checkpoints.push(record);
@@ -448,6 +532,7 @@ export function checkpoint(
   if (missing.length) problems.push(`no test names scenario ${missing.join(", ")}`);
   const failed = verify.find((v) => v.exit !== 0);
   if (failed) problems.push(`verify failed: \`${failed.command}\`${failed.timedOut ? " (timed out)" : ` (exit ${failed.exit})`}`);
+  if (regression?.status === "not-red") problems.push(`no regression proof: ${regression.reason}`);
   if (design?.missing_tokens.length) problems.push(`design tokens not in the code: ${design.missing_tokens.join(", ")}`);
   if (design && design.screenshots.length === 0) problems.push(`no fresh screenshot in ${rel(p, shotsDir(p, id, taskId))}`);
   setField(tf, i, "status", ok ? "review" : "failed");
@@ -723,6 +808,14 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
     ...(touchesUi(t) ? [pointer(p, p.design, "design direction and assets (UI task)")] : []),
   ].filter((x): x is string => x !== null);
   const adrs = adrPointers(p);
+  // The framework pack of the stack the project uses, for the Roles that build with it (never another side's framework).
+  const pluginDir = resolve(vendorDir, "..", "..");
+  const packLines =
+    kind === "implement"
+      ? packsFor(pluginDir, detectProject(p.project).stack, implementerOf(pluginDir, typeof t.role === "string" ? t.role : undefined) ?? defaultTaskRole()).map(
+          (k) => `- \`${k.file}\`: how to build with ${k.framework} (framework pack)`,
+        )
+      : [];
 
   const touches = list(t.touches);
   const verify = list(t.verify);
@@ -750,7 +843,7 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
     ...h("Builds on (finished tasks; see `git log`)", done),
     ...h("Touches (files this task may change)", touches.map((g) => `- \`${g}\``)),
     ...h("Verify", verify.map((v) => `- \`${v}\``)),
-    ...h("Read first (context pointers; read only what you need)", [...pointers, ...adrs]),
+    ...h("Read first (context pointers; read only what you need)", [...pointers, ...adrs, ...packLines]),
     ...h("Skills (read each SKILL.md and apply it)", skills.map((s) => `- \`${s.path}\`: ${s.reason}`)),
   ];
 
@@ -761,10 +854,15 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
       if (failedCheckpoint.missing_scenarios.length) previous.push(`- Missing scenario tests: ${failedCheckpoint.missing_scenarios.map((s) => `\`${s}\``).join(", ")}`);
       const failed = failedCheckpoint.verify.find((v) => v.exit !== 0);
       if (failed) previous.push(`- \`${failed.command}\` failed${failed.timedOut ? " (timed out)" : ` with exit ${failed.exit}`}:`, "", "```", failed.tail, "```");
+      if (failedCheckpoint.regression?.status === "not-red") previous.push(`- Regression proof failed: ${failedCheckpoint.regression.reason}. Write a test that fails on the old code (it is run against the base commit), then fix.`);
       if (failedCheckpoint.design?.missing_tokens.length) previous.push(`- Design tokens not found in the code: ${failedCheckpoint.design.missing_tokens.map((x) => `\`${x}\``).join(", ")}`);
       if (failedCheckpoint.design && failedCheckpoint.design.screenshots.length === 0) previous.push(`- No fresh screenshot in \`${shots}\``);
     }
     if (fixReview) previous.push("- The reviewer asked for fixes:", "", fixReview.notes.split("\n").map((l) => `  ${l}`).join("\n"));
+    const triaged = readTriage(p, taskId);
+    if (triaged && isRecord(t.triage) && t.triage.cause === "implementation") {
+      previous.push("- The attempts ran out and an independent architect diagnosed the cause as the implementation. Its diagnosis (follow it; this is your last attempt):", "", triaged.diagnosis.split("\n").map((l) => `  ${l}`).join("\n"));
+    }
     body = [
       "You are the implementer of exactly this task, in a fresh context. Work from this brief and the files it points to.",
       "",
@@ -786,7 +884,7 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
           ]
         : []),
       ...(t.type === "fix"
-        ? ["- **Bugfix**: first write a regression test that reproduces the bug and run it to watch it FAIL on the current code; only then fix it. The test name keeps the scenario id."]
+        ? ["- **Bugfix**: first write a regression test that reproduces the bug and run it to watch it FAIL on the current code; only then fix it. The test name keeps the scenario id. The checkpoint proves it: your new test files are run against the base commit, and a test that passes there fails the checkpoint."]
         : []),
       "- Report in at most 10 lines: what works now, files changed, verify result.",
       `- Only if the reviewer needs to know something (a file outside Touches and why, a scenario you narrowed or could not cover, a risk), write it to \`${reportFile}\` with the Write tool (the only .aidw file you may write besides screenshots). Otherwise write nothing: do not create the file.`,
@@ -815,6 +913,13 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
       "",
       `- The task's changes: ${diff}.`,
       `- Checkpoint evidence: \`${rel(p, join(tf.change.dir, evidenceRel(taskId)))}\` (verify output, where each scenario test lives).`,
+      ...(lastCheckpoint?.regression
+        ? [
+            lastCheckpoint.regression.status === "red"
+              ? `- Regression proof (done by aidw): the new tests (${lastCheckpoint.regression.files.map((f) => `\`${f}\``).join(", ")}) FAIL on the base commit (\`${lastCheckpoint.regression.command}\`, exit ${lastCheckpoint.regression.exit}) and pass now. Judge whether they fail for the bug's reason, not for a missing import.`
+              : `- Regression proof NOT done by aidw: ${lastCheckpoint.regression.reason}. Check by hand that the new test fails on the old code (\`git stash\` is not allowed to you: read the diff and reason about it), and say what you could not verify.`,
+          ]
+        : []),
       ...(existsSync(reportFile) ? [`- Implementer notes: \`${rel(p, reportFile)}\` (read it first; it explains files outside Touches and anything the implementer flagged).`] : []),
       ...(outside.length ? [`- Files changed outside Touches: ${outside.map((f) => `\`${f}\``).join(", ")}. Decide whether each is justified.`] : []),
       ...(design?.screenshots.length ? [`- Screenshots (open each with Read): ${design.screenshots.map((f) => `\`${join(p.project, f)}\``).join(", ")}`] : []),
@@ -830,6 +935,8 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
         ? ["5. Design: look at every screenshot. Each token is used where its **Use** says (e.g. the accent color really appears on what it names), the layout matches the design direction, and no stray colors. A visible mismatch is a blocking issue."]
         : []),
       ...(isSecuritySensitive(t) ? ["6. Security: authorization on every path, input validation, secrets handling, data exposure (security skill below)."] : []),
+      "7. Tests are independent: each one sets up its own data and passes alone and in any order. A test that only passes after another test ran (shared in-memory state, a list the previous test filled) is a blocking issue: it breaks when the tests are reordered or run in parallel.",
+      ...(touchesUi(t) ? ["8. Accessibility beyond what axe finds (axe misses names that are wrong rather than missing, keyboard traps and focus order): controls have readable accessible names, a keyboard user can reach and operate them, dialogs and menus move and return focus, and state is not shown by color alone."] : []),
       "",
       "## Verdict",
       "",
@@ -848,4 +955,141 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
   const path = join(dir, `${taskId}.${kind}.md`);
   writeFileSync(path, text);
   return { kind, task: taskId, path, text, skills };
+}
+
+// ---------------------------------------------------------------- triage
+
+/**
+ * Why a task ran out of attempts (docs/factory-architecture.md, section 7). One independent Agent (the Software Architect
+ * with its triage skill) reads the evidence and names the cause; the CLI decides what follows:
+ *   implementation  one further attempt, with the diagnosis in the brief; if that fails too the task escalates
+ *   environment     escalates with the exact thing the user must fix
+ *   plan, spec, architecture  escalates: the approved package would change, so the user decides
+ */
+export const TRIAGE_CAUSES = ["implementation", "environment", "plan", "spec", "architecture"] as const;
+export type TriageCause = (typeof TRIAGE_CAUSES)[number];
+
+const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+export const triageFile = (p: Paths, taskId: string) => join(p.run, `triage-${taskId}.md`);
+
+/** `CAUSE: <cause>` on the first line, then the diagnosis. Null when the first line is not one. */
+export function parseTriage(text: string): { cause: TriageCause; diagnosis: string } | null {
+  const m = /^\s*CAUSE:\s*([a-z]+)\s*\n?([\s\S]*)$/.exec(text);
+  if (!m || !(TRIAGE_CAUSES as readonly string[]).includes(m[1] as string)) return null;
+  return { cause: m[1] as TriageCause, diagnosis: (m[2] ?? "").trim() };
+}
+
+function readTriage(p: Paths, taskId: string): { cause: TriageCause; diagnosis: string } | null {
+  const text = readText(triageFile(p, taskId));
+  return text === null ? null : parseTriage(text);
+}
+
+/** The context packet of the triage Agent: the evidence of every attempt, the spec it was held to, and how to answer. */
+export function buildTriageBrief(p: Paths, id: string, taskId: string): { path: string; text: string } {
+  const tf = loadTasks(p, id);
+  const t = tf.tasks[indexOf(tf, taskId)] as Task;
+  if (statusOf(t) !== "failed" || attemptsOf(t) < maxAttemptsOf(t)) throw new OpError(`task ${taskId} is "${statusOf(t)}" with ${attemptsOf(t)} of ${maxAttemptsOf(t)} attempts: triage is for a failed task that ran out of attempts`);
+  if (t.triage !== undefined) throw new OpError(`task ${taskId} was already triaged: one triage per task`);
+  rmSync(triageFile(p, taskId), { force: true }); // task ids repeat across changes: an old diagnosis must not be read as this one
+  const ev = readEvidence(tf.change, t);
+  const reqs = requirementsAfterChange(p, id);
+  const scenarioIds = list(t.scenarios);
+  const reqIds = [...new Set([...list(t.specs), ...scenarioIds.map((s) => s.split("/").slice(0, -1).join("/"))])];
+  const reqBlocks = reqIds.map((r) => (reqs.get(r) ? `<!-- ${r} -->\n${reqs.get(r)!.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`));
+  const attempts = ev.checkpoints.map((c, i) => {
+    const failed = c.verify.find((v) => v.exit !== 0);
+    return [
+      `### Checkpoint ${i + 1}: ${c.ok ? "passed" : "failed"}`,
+      ...(c.missing_scenarios.length ? [`- Missing scenario tests: ${c.missing_scenarios.map((s) => `\`${s}\``).join(", ")}`] : []),
+      ...(failed ? [`- \`${failed.command}\` failed${failed.timedOut ? " (timed out)" : ` with exit ${failed.exit}`}:`, "", "```", failed.tail, "```"] : []),
+    ].join("\n");
+  });
+  const reviews = ev.reviews.map((r, i) => `### Review ${i + 1}: ${r.verdict}\n${r.notes.trim()}`);
+  const out = triageFile(p, taskId);
+  const pointers = [
+    pointer(p, p.constitution, "engineering principles"),
+    pointer(p, join(p.architecture, "overview.md"), "architecture"),
+    pointer(p, join(p.requirements, `${id}.md`), "requirements"),
+    pointer(p, join(tf.change.dir, "tasks.yaml"), "the plan (this task and its neighbours)"),
+  ].filter((x): x is string => x !== null);
+  const text = [
+    `# Triage brief: ${taskId} - ${String(t.title ?? "")}`,
+    "",
+    `Change \`${id}\` · role ${String(t.role ?? "?")} · ${attemptsOf(t)} of ${maxAttemptsOf(t)} attempts used, all unsuccessful.`,
+    "",
+    "You are the Software Architect in a fresh context, asked once to say WHY this task keeps failing. You did not write this code. You may read files and run read-only commands; you edit nothing. Write only the file named at the end.",
+    "",
+    "## Task",
+    "",
+    `- Scenarios: ${scenarioIds.length ? scenarioIds.map((s) => `\`${s}\``).join(", ") : "(none)"}`,
+    `- Touches: ${list(t.touches).map((g) => `\`${g}\``).join(", ")}`,
+    `- Verify: ${list(t.verify).map((v) => `\`${v}\``).join(", ")}`,
+    `- Depends on: ${list(t.depends_on).join(", ") || "nothing"}`,
+    ...(t.notes ? [`- Last note: ${String(t.notes)}`] : []),
+    "",
+    "## Requirements the task was held to (spec text after this change)",
+    "",
+    ...(reqBlocks.length ? ["```markdown", reqBlocks.join("\n\n"), "```"] : ["(none)"]),
+    "",
+    "## What happened",
+    "",
+    ...(attempts.length ? attempts : ["(no checkpoint recorded)"]),
+    ...(reviews.length ? ["", ...reviews] : []),
+    "",
+    "## Read if you need it",
+    "",
+    ...pointers,
+    `- the task's changes: \`git diff ${typeof t.base === "string" ? t.base : "HEAD"}\``,
+    "",
+    "## Decide the cause: exactly one",
+    "",
+    "- `implementation`: the plan, spec and architecture are sound and the code is wrong or incomplete. A fresh attempt with your diagnosis can fix it.",
+    "- `environment`: the machine, not the code: a missing binary, package registry, credential, port, browser, permission or network. Say the exact thing the user must fix.",
+    "- `plan`: the task cannot succeed as planned (wrong `touches`, missing dependency, scope too big or too small, `verify` that cannot pass).",
+    "- `spec`: a scenario contradicts another, cannot be observed or tested, or asks for something the requirement text does not support.",
+    "- `architecture`: the approved architecture or a Decision to honor cannot be met together with the requirements.",
+    "",
+    "Judge from the evidence above, not from the number of failures. Prefer `implementation` only when you can say concretely what to change.",
+    "",
+    "## Answer",
+    "",
+    `**Write the answer to \`${out}\` with the Write tool** (the only file you may write): the first line is exactly \`CAUSE: <one of implementation, environment, plan, spec, architecture>\`, then the diagnosis: the evidence that shows it (file, command, error), and what must change. For \`implementation\` say what to do differently; for \`environment\` the exact fix for the user; for \`plan\`, \`spec\` or \`architecture\` what the user must decide. Reply with only the first line.`,
+    "",
+  ].join("\n");
+  const dir = join(p.run, "briefs", id);
+  mkdirSync(dir, { recursive: true });
+  const path = join(dir, `${taskId}.triage.md`);
+  writeFileSync(path, text);
+  return { path, text };
+}
+
+export interface TriageResult {
+  task: string;
+  cause: TriageCause;
+  /** retry: one further attempt was granted; escalate: the task stopped for the user */
+  outcome: "retry" | "escalate";
+  diagnosis: string;
+}
+
+/** Records the triage Agent's answer and applies the rule of its cause. One triage per task. */
+export function recordTriage(p: Paths, id: string, taskId: string, text: string): TriageResult {
+  const tf = loadTasks(p, id);
+  requireExecuting(p, tf.change);
+  const i = indexOf(tf, taskId);
+  const t = tf.tasks[i] as Task;
+  if (statusOf(t) !== "failed" || attemptsOf(t) < maxAttemptsOf(t)) throw new OpError(`task ${taskId} is "${statusOf(t)}" with ${attemptsOf(t)} of ${maxAttemptsOf(t)} attempts: triage is for a failed task that ran out of attempts`);
+  if (t.triage !== undefined) throw new OpError(`task ${taskId} was already triaged: one triage per task`);
+  const parsed = parseTriage(text);
+  if (!parsed) throw new OpError(`the triage answer must start with "CAUSE: ${TRIAGE_CAUSES.join("|")}"; spawn the triage Agent once more`);
+  const { cause, diagnosis } = parsed;
+  const gist = diagnosis.split("\n").find((l) => l.trim()) ?? "";
+  setField(tf, i, "triage", { cause, at: now() });
+  if (cause === "implementation") {
+    setField(tf, i, "notes", `triage: implementation, one more attempt: ${gist}`.slice(0, 500));
+  } else {
+    setField(tf, i, "status", "escalated");
+    setField(tf, i, "notes", `triage: ${cause}. ${gist} (full diagnosis: .aidw/run/triage-${taskId}.md)`.slice(0, 500));
+  }
+  saveTasks(tf);
+  return { task: taskId, cause, outcome: cause === "implementation" ? "retry" : "escalate", diagnosis };
 }

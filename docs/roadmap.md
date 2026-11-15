@@ -86,6 +86,91 @@ batch 2 (features). Tick items as they land.
 - [ ] Skill digests: 1–2 KB checklists of the vendored addy skills (each full SKILL.md is 10–21 KB, read by every implementer and
   kept in its context). Only if trial-3C shows implementers still dominate the cost.
 
+## Factory (decided 2026-11-14, awaiting approval of the design)
+
+aidw becomes a software factory with a Roster of Roles, Workflows as data and declared Decision Points:
+[`factory-architecture.md`](factory-architecture.md), [ADR-0003](adr/0003-cli-owns-flow-declared-decision-points.md),
+[ADR-0004](adr/0004-role-folders-are-the-source.md).
+
+- [x] **Step 1.** `roles/` for the 21 Roles, `roster.yaml`, agents generated from `role.md`. No behavior change.
+  Checked on the demo (`scripts/make-demo.mjs`, 2026-11-14): `/aidw:start`, approval, two tasks with `aidw:fullstack` and
+  `aidw:code-reviewer`, three layers, converge and archive all ran on the new paths. The same run showed that headless
+  `/aidw:resume` could not reach the run loop; fixed (it reads `skills/run/SKILL.md` by path) but not yet re-run.
+  Also in step 1: a test browser per project on a free port (`aidw browser`, hosted by the runner), authoring Roles
+  (`access: artifacts`) kept inside `.aidw/` by the gate.
+  - [x] `roster.yaml` (21 Roles), `tiers.yaml`, `aidw roster`, agents generated at build; the four existing agents are
+    Roles (`fullstack`, `code-reviewer`, `security`, `ui-ux-designer`); the gate reads a Role's access from its profile.
+  - [x] Profiles for the five other active Roles (`product-manager`, `software-architect`, `technical-planner`,
+    `frontend`, `backend`). The knowledge of `/aidw:start` sections 2 to 4, 6 and 7 moved into them; the skill now
+    points at the profiles. `access: artifacts`, a skill index and `includes` added to profiles.
+  - [x] Profiles for the 12 Planned Roles (responsibility, boundaries, what to write before activating).
+  - [x] `profiles/`, `policies/`, `vendor/` moved: stack packs to `stacks/`, permissions to `company/`, shared text and
+    `vendor/` to `library/`, and the references each Role uses to `roles/<id>/references/`.
+- [x] **Step 2.** `product` and `feature` Workflows as YAML drive `aidw next`; `artifacts.yaml`; interview in the
+  main session, drafting in worker Agents.
+  - [x] A: `artifacts.yaml` and `reads` / `writes` in the profiles; `aidw roster` checks owners and what each Role writes.
+  - [x] B: `workflows/product.yaml` and `feature.yaml` describe the flow that exists today (no new stage);
+    `aidw roster` checks them against the roster, `artifacts.yaml` and the state machine. The CLI now reads the Change
+    state machine (`transitions:`) and the Agents it spawns (build stage `agents:`) from `product.yaml`; the task
+    order of `aidw next` is scheduling and stays in code.
+  - [x] Interview in the main session, drafting in worker Agents: `/aidw:start` interviews as the Product Manager and the
+    Software Architect (answers recorded in `analysis.md`), then spawns `aidw:product-manager`, `aidw:software-architect`
+    and `aidw:technical-planner` to draft. Design (step 5 of the skill) and the brownfield assessment stay in the main
+    session. Not yet run end to end: a run on `~/aidw-demo` is the check.
+- [x] **Step 3.** Decision Points, triage, Slice shape; `bugfix` and `audit` Workflows.
+  - [x] Slice shape: a task runs with the Agent of its `role` (`aidw:fullstack`, `frontend` or `backend`; a Planned Role runs
+    through the Role that carries it); `aidw analyze` warns when the plan names a Role that cannot run tasks.
+  - [x] Triage (section 12, point 6 and the user's point 4): a task out of attempts is diagnosed once by `aidw:software-architect`
+    (`aidw brief <T> --for triage`, `aidw triage <T>`); `implementation` grants one more attempt, `environment`, `plan`, `spec`
+    and `architecture` escalate with the diagnosis. Not yet run with a real Agent.
+  - [x] State machine per Workflow: `transitions`, `approval_required` and `analysis_required` live in each `workflows/<id>.yaml`
+    (`src/machine.ts`); `product`, `feature` and `bugfix` walk the same machine, so behavior is unchanged. Needed by `audit` and
+    the scope gate.
+  - [x] Decision Points (ADR-0003): `decisions:` in a Workflow file, `aidw decide` / `aidw decisions`, answers in `decisions.yaml`
+    (part of the approved package); `design-needed` in `product` and `feature`. `aidw analyze` refuses `no-ui` with UI tasks.
+  - [x] Scope gate of `product` (Approval Gate 1): state `awaiting_scope_approval`, `brief.md` (vision, scope, MVP, out of scope),
+    `aidw approve` approves the scope, `awaiting_approval` is refused until it is approved and again if the brief changed.
+    A change gets it when created with `--workflow product`; one created without `--workflow` keeps the single gate.
+  - [x] `audit` Workflow (read-only; its own machine: analyzing -> delivered, no approval): `aidw decide audit-lenses`, `aidw audit
+    brief|report|picks`; reviewers write `.aidw/run/audit-<lens>.md`, the CLI assembles one report by severity. `performance` joins
+    when its Role is activated. Not yet run with real Agents.
+  - [x] `bugfix` Workflow (`workflows/bugfix.yaml`, chosen per request): `aidw approve <id> --auto` approves a small fix itself
+    (at most 3 tasks, no migration, no delta spec) and reclassifies a bigger one to `feature`; `aidw change new --workflow`.
+    Not yet run end to end.
+  - [x] Bugfix hardening (from the first real bugfix run): a `type: fix` task's checkpoint copies the new test files onto the base
+    commit and runs the unit verify commands there (`proveRegression`: `red`, `not-red` or `unproven`; `not-red` fails the task;
+    evidence field `regression`). When `git worktree add` is not allowed (a sandbox with a read-only `.git`), the old code is checked out as a plain copy (`git archive`; evidence `via: snapshot`) and nothing under `.git` is written. `start` does not spawn the product-manager or architect for a bugfix; only the planner runs. A task
+    may carry `scope:` so the commit reads `fix(todos): ...` rather than `fix(config): ...`. Gap: a test that is red only because of
+    a missing import still counts as red; e2e is not re-run on the old code.
+  - [x] a11y: `aidw analyze` requires an `a11y` layer for a UI change; `aidw detect` reports axe-core; `start` installs it by default.
+- [ ] **Step 4.** Activate Planned Roles one at a time with their evals; Next.js and NestJS framework packs.
+  - [x] Role evals: every active Role ships at least one case (`roles/<id>/evals/<case>.md`: `## Input`, `## Criteria` with
+    must / must not bullets); `aidw roster` fails an active Role without one.
+  - [x] Case runner: `aidw eval [<role>] [--case <name>] [--model <m>]` (`src/evalrun.ts`) answers each case with the Role's agent
+    instructions through `claude -p` (no tools) and grades the answer against the criteria in a second call. The model calls
+    are injected, so the tests use a fake; it has not been run against a real model (the sandbox blocks `claude -p`).
+  - [x] First planned Role activated: `database` (skills for Prisma, Drizzle and Supabase migrations, expand-contract, indexes and
+    seeds; an eval case). A task with `role: database` now runs `aidw:database`. It took no CLI change: `roster.yaml`, the
+    profile, its knowledge and the planner's text. `tests/activation.test.ts` repeats this for `api-designer`.
+  - [x] Second planned Role activated: `devops` (skills for Docker and compose, and for a CI pipeline that mirrors the quality
+    layers without leaking a secret; one case). A task with `role: devops` runs `aidw:devops`; it never deploys. Ten Roles
+    stay planned. `qa` is held back on purpose: the CLI carries it (it runs and judges the layers), so an Agent would only
+    duplicate it until there is a gap the CLI cannot close.
+  - [x] Third planned Role activated: `integration` (skills for contract tests and external APIs; a case about one field that the
+    server names differently from the contract). The planner now ends a split Slice with an `integration` task. Nine Roles stay
+    planned; the tests now use `api-designer` to show that activation is data only.
+  - [x] Framework packs `stacks/nextjs.md` and `stacks/nestjs.md` (front matter: the framework `aidw detect` reports and the Roles
+    that read it). An implementer's brief points at the pack of the project's framework; `frontend` never gets NestJS. Adding a
+    framework is adding one file.
+  - [x] Two more packs for the other frameworks `aidw detect` reports as a full-stack framework: `stacks/nuxt.md` and
+    `stacks/sveltekit.md`. Astro and React Router / Remix are detected but have no pack yet.
+  - [x] Python: `aidw detect` reads `pyproject.toml` (PEP 621, Poetry, dependency groups), `requirements*.txt` and `Pipfile`
+    (`src/pydetect.ts`, no TOML library), names the tool (uv, Poetry, Pipenv, pip), reports the stack (Django, FastAPI, Flask,
+    SQLAlchemy, pytest, ruff, mypy...) and proposes the `code` and `unit` layers (`uv run ruff check .`, `uv run pytest`). A
+    project with both `package.json` and Python files gets both test suites in the same layers. New packs: `stacks/python.md`
+    (the stack pack) and the framework packs `django.md` and `fastapi.md`. Flask is detected but has no pack. Not yet run on a
+    real Python project; the tests use synthetic ones.
+
 ## Backlog
 
 - Per-server MCP tier map (for example Vercel deploy as tier 3).

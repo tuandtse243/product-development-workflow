@@ -236,8 +236,8 @@ describe("bundled bin", () => {
     const out = execFileSync(bin, ["status", "--json"], { cwd: root, encoding: "utf8" });
     expect(JSON.parse(out).specs).toEqual({ capabilities: 0, requirements: 0 });
     const grilling = execFileSync(bin, ["vendor-path", "pocock/grilling"], { cwd: root, encoding: "utf8" }).trim();
-    expect(grilling).toBe(resolve("plugins/aidw/vendor/pocock/grilling/SKILL.md"));
-    const pool = execFileSync(bin, ["plugin-path", "profiles/stack-pool.md"], { cwd: root, encoding: "utf8" }).trim();
+    expect(grilling).toBe(resolve("plugins/aidw/library/vendor/pocock/grilling/SKILL.md"));
+    const pool = execFileSync(bin, ["plugin-path", "roles/software-architect/references/stack-pool.md"], { cwd: root, encoding: "utf8" }).trim();
     expect(existsSync(pool)).toBe(true);
     const gate = execFileSync(bin, ["gate"], {
       cwd: root,

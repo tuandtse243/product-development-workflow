@@ -171,11 +171,13 @@ describe("execution loop (exit criterion [4])", () => {
     expect(task(root, "T02").notes).toMatch(/verify failed: `node -e .*` \(exit 3\)/);
     cli(root, "task", "start", "T02");
     cli(root, "checkpoint", "T02");
+    // out of attempts: one independent triage first (step 3); a spec cause stops for the user
+    expect(cli(root, "next", "--json").json()).toMatchObject({ action: "triage", task: "T02" });
+    write(root, ".aidw/run/triage-T02.md", "CAUSE: spec\nThe THEN of the scenario cannot be observed.\n");
+    expect(cli(root, "triage", "T02").code).toBe(0);
     const n = cli(root, "next", "--json").json();
     expect(n).toMatchObject({ action: "escalate", task: "T02" });
-    expect(n.reason).toMatch(/failed 2 of 2 attempts/);
-    const again = cli(root, "task", "start", "T02");
-    expect(again.err).toMatch(/used all 2 attempts; it is now escalated/);
+    expect(n.reason).toMatch(/triage: spec/);
     expect(task(root, "T02").status).toBe("escalated");
 
     // the orchestrator escalates the change; the user resolves it and grants a retry
@@ -355,16 +357,31 @@ describe("gate for subagents", () => {
   });
   const d = (h: HookInput) => decide(h, {})?.decision ?? "none";
 
+  it("keeps an authoring role inside .aidw/, with the Write tool, and out of aidw state", () => {
+    for (const a of ["aidw:product-manager", "aidw:software-architect", "aidw:technical-planner"]) {
+      expect(d(hook(a, "Write", { file_path: "src/a.ts" })), a).toBe("deny");
+      expect(d(hook(a, "Edit", { file_path: "README.md" })), a).toBe("deny");
+      expect(d(hook(a, "Bash", { command: "echo x > src/a.ts" })), a).toBe("deny");
+      expect(d(hook(a, "Bash", { command: "aidw transition T01 executing" })), a).toBe("deny");
+      expect(d(hook(a, "Bash", { command: "git commit -m x" })), a).toBe("deny");
+      expect(d(hook(a, "Bash", { command: "aidw validate" })), a).toBe("none");
+    }
+    // inside .aidw/ the normal rules apply: the approved package is frozen, the task list is not
+    expect(d(hook("aidw:technical-planner", "Edit", { file_path: `.aidw/changes/${ID}/analysis.md` }))).toBe("deny");
+    expect(d(hook("aidw:technical-planner", "Write", { file_path: `.aidw/changes/${ID}/tasks.yaml` }))).toBe("allow");
+    expect(d(hook("aidw:product-manager", "Write", { file_path: ".aidw/domain/model.md" }))).toBe("deny"); // frozen while executing
+  });
+
   it("keeps the reviewer read-only and the implementer out of aidw state", () => {
-    expect(d(hook("aidw:reviewer", "Write", { file_path: "src/a.ts" }))).toBe("deny");
-    expect(d(hook("aidw:reviewer", "Bash", { command: "echo x > src/a.ts" }))).toBe("deny");
-    expect(d(hook("aidw:reviewer", "Bash", { command: "pnpm vitest run" }))).toBe("none");
-    expect(d(hook("aidw:reviewer", "Bash", { command: "aidw review T01 pass" }))).toBe("deny");
-    expect(d(hook("aidw:implementer", "Write", { file_path: "src/a.ts" }))).toBe("allow");
-    expect(d(hook("aidw:implementer", "Edit", { file_path: `.aidw/changes/${ID}/tasks.yaml` }))).toBe("deny");
-    expect(d(hook("aidw:implementer", "Bash", { command: "aidw checkpoint T01" }))).toBe("deny");
-    expect(d(hook("aidw:implementer", "Bash", { command: "git commit -m done" }))).toBe("deny");
-    expect(d(hook("aidw:implementer", "Bash", { command: "aidw status" }))).toBe("none");
+    expect(d(hook("aidw:code-reviewer", "Write", { file_path: "src/a.ts" }))).toBe("deny");
+    expect(d(hook("aidw:code-reviewer", "Bash", { command: "echo x > src/a.ts" }))).toBe("deny");
+    expect(d(hook("aidw:code-reviewer", "Bash", { command: "pnpm vitest run" }))).toBe("none");
+    expect(d(hook("aidw:code-reviewer", "Bash", { command: "aidw review T01 pass" }))).toBe("deny");
+    expect(d(hook("aidw:fullstack", "Write", { file_path: "src/a.ts" }))).toBe("allow");
+    expect(d(hook("aidw:fullstack", "Edit", { file_path: `.aidw/changes/${ID}/tasks.yaml` }))).toBe("deny");
+    expect(d(hook("aidw:fullstack", "Bash", { command: "aidw checkpoint T01" }))).toBe("deny");
+    expect(d(hook("aidw:fullstack", "Bash", { command: "git commit -m done" }))).toBe("deny");
+    expect(d(hook("aidw:fullstack", "Bash", { command: "aidw status" }))).toBe("none");
     // the orchestrator (main session) does all of it
     expect(d(hook(undefined, "Bash", { command: "aidw checkpoint T01" }))).toBe("none");
     expect(d(hook(undefined, "Edit", { file_path: `.aidw/changes/${ID}/tasks.yaml` }))).toBe("allow");

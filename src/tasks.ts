@@ -26,6 +26,8 @@ export const RUNTIME_FIELDS = [
   "sequential",
   // re-approval keeps done work: the plan the task was finished against
   "plan_sha",
+  // the one triage of a task that ran out of attempts: { cause, at }
+  "triage",
 ] as const;
 
 export const DEFAULT_MAX_ATTEMPTS = 3;
@@ -92,6 +94,7 @@ export function validateTasksText(text: string, file: string): Diags {
     if (t.max_attempts !== undefined && !(Number.isInteger(t.max_attempts) && Number(t.max_attempts) >= 1)) {
       d.error(file, `${where}: "max_attempts" must be a positive integer`);
     }
+    if (t.scope !== undefined && !(typeof t.scope === "string" && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(t.scope))) d.error(file, `${where}: "scope" must be a kebab-case capability name (the scope of the commit)`);
     const tp = typeProblem(t);
     if (tp) d.error(file, `${where} ${tp}`);
     if (t.risk !== undefined && t.risk !== "normal" && t.risk !== "high") d.error(file, `${where}: "risk" must be normal or high`);

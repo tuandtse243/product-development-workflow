@@ -1,10 +1,10 @@
-// Vendors selected upstream skills into plugins/aidw/vendor/<upstream>/ (blueprint 7.3, decision D-17).
+// Vendors selected upstream skills into plugins/aidw/library/vendor/<upstream>/ (blueprint 7.3, decision D-17).
 //
 //   node scripts/vendor.mjs <upstream> [--ref <git ref>]
 //
 // Downloads the upstream tarball, copies only the skills listed in scripts/vendor.config.json,
 // copies the upstream LICENSE and records the exact commit in UPSTREAM.md.
-// Review the result with `git diff plugins/aidw/vendor/<upstream>` and keep or revert per skill.
+// Review the result with `git diff plugins/aidw/library/vendor/<upstream>` and keep or revert per skill.
 import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -34,7 +34,7 @@ curl("-o", tarball, `https://codeload.github.com/${up.repo}/tar.gz/${sha}`);
 execFileSync("tar", ["-xzf", tarball, "-C", work]);
 const srcRoot = join(work, readdirSync(work).find((d) => d !== "src.tar.gz"));
 
-const dest = join("plugins/aidw/vendor", name);
+const dest = join("plugins/aidw/library/vendor", name);
 rmSync(dest, { recursive: true, force: true });
 mkdirSync(dest, { recursive: true });
 

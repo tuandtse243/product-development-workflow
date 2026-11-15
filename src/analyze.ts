@@ -3,7 +3,7 @@
  * Spec Kit "analyze"). The user should never be asked to approve a package whose parts
  * contradict each other.
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadChange } from "./change.js";
 import { deltaFiles } from "./check.js";
@@ -15,6 +15,9 @@ import { parseQuality } from "./quality.js";
 import { loadTokens, tokensFile } from "./design.js";
 import { touchesUi } from "./skills.js";
 import { planAdvice } from "./plan.js";
+import { pluginRoot } from "./plugin.js";
+import { implementerOf } from "./roles.js";
+import { answerOf, checkDecisions } from "./decisions.js";
 
 const TITLE_ADVISED = 60;
 const isPlanned = (t: { origin?: unknown }): boolean => t.origin === undefined || t.origin === "plan";
@@ -172,7 +175,7 @@ const MIGRATION_TOUCH = /(^|\/)(migrations?|db\/migrate)(\/|$)/i;
 export const SIZES = ["small", "normal"] as const;
 export type Size = (typeof SIZES)[number];
 /** Layers a small change may run: code and unit always, e2e when it touches UI. */
-const SMALL_LAYERS = new Set(["code", "unit", "integration", "e2e"]);
+const SMALL_LAYERS = new Set(["code", "unit", "integration", "e2e", "a11y"]);
 export const SMALL_MAX_TASKS = 3;
 
 /** `Size: small | normal` in the Analysis (default normal); the user confirms it at the gate with the rest of the file. */
@@ -234,12 +237,32 @@ export function analyzeChange(p: Paths, id: string): Diags {
   const { tasks, error } = parseTasks(tasksText);
   if (error) return d; // structural errors are reported by validate
 
+  // Decision Points of the Workflow (ADR-0003): required ones recorded, answers inside their options, consistent with the plan.
+  if (existsSync(join(pluginRoot(process.env), "roster.yaml"))) {
+    d.add(checkDecisions(p, change, pluginRoot(process.env)));
+    const design = answerOf(change, "design-needed");
+    const uiTasks = tasks.filter((t: Task) => touchesUi(t)).map((t) => t.id);
+    if (design?.[0] === "no-ui" && uiTasks.length) {
+      d.error(rel(p, join(change.dir, "decisions.yaml")), `decision "design-needed" is no-ui, but task(s) ${uiTasks.join(", ")} change UI`);
+    }
+  }
+
   // UI work is reviewed against machine-readable design tokens, so a UI plan needs them before approval.
   const tokens = loadTokens(p);
   d.add(tokens.diags);
   const ui = tasks.filter((t: Task) => touchesUi(t)).map((t) => t.id);
   if (ui.length && !tokens.exists) {
     d.error(rel(p, tokensFile(p)), `missing: task(s) ${ui.join(", ")} change UI, so the design needs tokens with use rules (see /aidw:start step 5)`);
+  }
+
+  // Every planned task is run by the Agent of its Role: an unknown Role, or one that cannot write code, falls back to fullstack.
+  const root = pluginRoot(process.env);
+  if (existsSync(join(root, "roster.yaml"))) {
+    for (const t of tasks) {
+      if (isPlanned(t) && typeof t.role === "string" && implementerOf(root, t.role) === null) {
+        d.warn(rel(p, tasksFile), `task ${t.id}: role "${t.role}" cannot run a task (use fullstack, frontend or backend, or a Planned Role that one of them carries); fullstack will run it`);
+      }
+    }
   }
 
   const { ids, changed } = idsAfterChange(p, id);
@@ -272,7 +295,14 @@ export function analyzeChange(p: Paths, id: string): Diags {
     }
     const globs = Array.isArray(t.touches) ? (t.touches as unknown[]).map(String) : [];
     if (globs.some((g) => MIGRATION_TOUCH.test(g)) && t.risk !== "high") {
-      d.warn(tf, `task ${t.id} touches database migrations but is not "risk: high": migrations run alone, must be reversible and tested against a seeded database (profiles/quality-layers.md)`);
+      d.warn(tf, `task ${t.id} touches database migrations but is not "risk: high": migrations run alone, must be reversible and tested against a seeded database (roles/qa/references/quality-layers.md)`);
+    }
+  }
+  // A change with UI gets the a11y layer (axe) by default; leaving it out needs a reason in "## Quality profile".
+  if (quality && ui.length && !quality.layers.some((l) => l.name === "a11y")) {
+    const profile = sections(analysis ?? "").find((s) => s.name.toLowerCase() === "quality profile")?.body ?? "";
+    if (!/a11y|accessib/i.test(profile)) {
+      d.error(rel(p, join(change.dir, "quality.yaml")), `task(s) ${ui.join(", ")} change UI but there is no a11y layer: add it (axe through Playwright, see roles/qa/references/quality-layers.md) or say in "## Quality profile" why a11y is left out`);
     }
   }
   const size = sizeOf(analysis);
@@ -280,7 +310,7 @@ export function analyzeChange(p: Paths, id: string): Diags {
   if (size === "small") {
     if (tasks.length > SMALL_MAX_TASKS) d.error(tf, `Size: small allows at most ${SMALL_MAX_TASKS} tasks (${tasks.length} planned): make it Size: normal or cut the scope`);
     for (const l of quality?.layers ?? []) {
-      if (!SMALL_LAYERS.has(l.name)) d.warn(rel(p, analysisFile), `Size: small normally runs only code, unit and e2e (UI); layer "${l.name}" was added: say why in "## Quality profile" or drop it`);
+      if (!SMALL_LAYERS.has(l.name)) d.warn(rel(p, analysisFile), `Size: small normally runs only code, unit, e2e and a11y (UI); layer "${l.name}" was added: say why in "## Quality profile" or drop it`);
     }
     if (quality && quality.deploy.target !== "none") d.warn(rel(p, analysisFile), "Size: small does not deploy unless the user asked for it; set the deploy target to none");
   }

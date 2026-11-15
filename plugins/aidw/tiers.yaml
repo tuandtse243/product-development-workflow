@@ -1,0 +1,7 @@
+# A Role names the class of model it needs (its `tier`); this file maps tiers to models per platform.
+# `inherit` = the model of the session that spawns the Agent (no model line in the generated agent file).
+# Change a mapping only after the Role's own evals pass on the cheaper model.
+claude-code:
+  deep: inherit
+  standard: sonnet
+  fast: haiku

@@ -54,6 +54,10 @@ that aidw creates; everything else runs sequentially on the main checkout.
    - FAIL: stop and tell the user what to fix (the line says how), then run it again.
    - `pnpm store` WARN (not writable): ask the user to run the first `pnpm install` in their own terminal after
      T01's `package.json` exists, or to allow the path; do not let T01 sit waiting.
+   - `chrome cdp` FAIL: no Chromium-family browser can start inside this session's sandbox (macOS denies it
+     registering its processes), so the project's test browser has to be started outside it. Tell the user to run
+     `! aidw browser start` once, or to use `aidw run`, which starts the browser itself because the runner is not
+     sandboxed. Do not try to launch Chrome from here.
    - `vercel project` WARN (not linked): run `vercel link --yes` now (creating a free project is covered by the
      `vercel-preview` permission). Without it the first deploy is forced to Production, which is tier 3.
 4. Not running under the runner (`echo $AIDW_RUNNER` is empty) and more than 3 tasks remain: **recommend the runner first**:
@@ -84,7 +88,8 @@ aidw next --change <id> --json
 **`implement <T>`** (reason `new`, `retry` or `interrupted`):
 1. `aidw task start <T> --change <id>`. It prints the brief path and the exact prompt to use. If it fails
    because attempts are exhausted, go to *Escalate*.
-2. Spawn the `aidw:implementer` subagent (Agent tool, `subagent_type: "aidw:implementer"`) with the printed
+2. Spawn the Agent named on the `SPAWN` line of `task start` (Agent tool, `subagent_type: "<that name>"`: `aidw:fullstack`,
+   `aidw:frontend` or `aidw:backend`, from the task's `role`) with the printed
    prompt (`Task brief: <path>. Read it and implement the task.`). Wait for it.
 3. If the implementer reports a blocker it cannot resolve (missing decision, contradictory spec, credential),
    go to *Escalate* with its words.
@@ -93,11 +98,11 @@ aidw next --change <id> --json
      brief carries the failure and the debugging skill).
    - PASS with `auto-passed`: a converge task that only added tests; it is reviewed and committed already.
      Follow the printed `NEXT:`.
-   - PASS with `SPAWN aidw:reviewer`: go to the review step below.
+   - PASS with `SPAWN aidw:code-reviewer`: go to the review step below.
 
 **`review <T>`**:
 1. The checkpoint printed the review brief and prompt (if you only have `NEXT: review <T>`, run
-   `aidw brief <T> --change <id> --for review`). Spawn the `aidw:reviewer` subagent with
+   `aidw brief <T> --change <id> --for review`). Spawn the `aidw:code-reviewer` subagent with
    `Review brief: <path>. Review the task and reply with the verdict.`
 2. The reviewer writes its verdict to `.aidw/run/review-<T>.md` and replies with its first line. Run
    `aidw verdict <T> --change <id>`: it reads that file, records `pass` (marks done, commits the task, keeps the
@@ -114,7 +119,7 @@ aidw next --change <id> --json
 1. For each task: `aidw task start <T> --worktree --change <id>`. If one fails because its worktree setup
    failed, it is marked sequential and runs later on its own; continue with the others.
 2. Each `task start` printed the brief path and prompt.
-3. Spawn one `aidw:implementer` per task **in a single message** (parallel Agent calls), each with only its
+3. Spawn one Agent per task, the one named on its `SPAWN` line, **in a single message** (parallel Agent calls), each with only its
    printed prompt (`Task brief: <path>. Read it and implement the task.`). Wait for all of them.
 4. A blocker from any implementer: finish the others, then *Escalate*.
 5. `aidw checkpoint <T>` for each task, one after the other (checkpoints run builds; never in parallel).
@@ -130,6 +135,18 @@ commands and the `code` layer on the merged code.
 - `FAIL` with a fix task `Inn`: loop; `next` returns it before anything else (it runs on the main checkout).
 - Fix rounds exhausted: the change is `escalated`; tell the user (section 2, step 2) and stop.
 
+**`triage <T>`** (the task used all its attempts): an independent diagnosis comes before the user hears about it.
+1. `aidw brief <T> --for triage --change <id>`. It prints the brief path and the `SPAWN` line.
+2. Spawn the Agent named there (`aidw:software-architect`) with the printed prompt and nothing else. It reads the
+   evidence of every attempt and writes `.aidw/run/triage-<T>.md` (first line `CAUSE: ...`).
+3. `aidw triage <T> --change <id>` records it and applies the rule of the cause:
+   - `implementation`: one further attempt with the diagnosis in its brief. Follow the printed `NEXT:`.
+   - `environment`: the task is escalated; the output names what the user must fix.
+   - `plan`, `spec`, `architecture`: the task is escalated; the approved package would change. Do not retry.
+   Escalated: go to *Escalate* and give the user the diagnosis (`.aidw/run/triage-<T>.md`) with its cause.
+4. No clear `CAUSE:` line: spawn it once more; still unclear, escalate with the task's own notes.
+A task is triaged once: if the extra attempt fails too, it escalates without another triage.
+
 **`escalate`**: see below.
 
 **`complete`**: go to *Finish*.
@@ -137,8 +154,8 @@ commands and the `code` layer on the merged code.
 ## 2. Escalate
 
 1. `aidw transition <id> escalated --reason "<short reason>"`.
-2. Tell the user what is blocked and why (task, attempts, the last checkpoint failure or review notes from
-   `.aidw/changes/<id>/evidence/<T>.json`), and the options:
+2. Tell the user what is blocked and why (task, attempts, the triage diagnosis in `.aidw/run/triage-<T>.md` when there is
+   one, else the last checkpoint failure or review notes from `.aidw/changes/<id>/evidence/<T>.json`), and the options:
    - fix the cause yourself or give the missing decision, then `/aidw:resume`;
    - change scope: `aidw transition <id> analyzing`, revise the Analysis, approve again.
 3. Stop.
@@ -154,7 +171,7 @@ commands and the `code` layer on the merged code.
      (section 1): the fix task runs through implement, checkpoint and review like any other, then come back here.
    - `REVIEW`: a **review layer** (`review: ui` or `review: security`) passed its commands and waits for an
      independent reviewer. The output names the agent, the brief and the prompt:
-     1. Spawn that agent (`subagent_type: "aidw:ui-reviewer"` or `"aidw:security-reviewer"`) with exactly the
+     1. Spawn that agent (`subagent_type: "aidw:ui-ux-designer"` or `"aidw:security"`) with exactly the
         printed prompt: `Layer review brief: <path>. Review the layer and reply with the verdict.`
      2. The reviewer writes its verdict to `.aidw/run/layer-review-<layer>.md` and replies with one line. Run
         `aidw layer-review <layer> --change <id>` (no verdict argument): it reads that file and records
@@ -202,7 +219,9 @@ their own terminal (never run it yourself; the gate denies it):
 aidw run <id> --permission-mode auto -- --plugin-dir <plugin dir if not installed>
 ```
 
-It loops `claude -p "/aidw:resume <id>"` until the change is archived, **one task per session** (a fresh session
+Before every session the runner prepares what a sandboxed session cannot do: it starts the project's test browser
+(`aidw browser start`, a free port, one profile per project) when a layer drives a browser, and stops it when the
+change is archived. The sessions then connect to it over localhost. It loops `claude -p "/aidw:resume <id>"` until the change is archived, **one task per session** (a fresh session
 starts at about 55K tokens instead of carrying hundreds of thousands), waits out each limit (the reset time from
 the error, or 5 to 60 minutes of backoff), and stops on escalation or when two sessions make no progress
 (log: `.aidw/run/runner.log`). Tier-3 questions cannot be answered headless; they end in an escalation.

@@ -7,6 +7,7 @@ export const STATES = [
   "draft",
   "intake",
   "analyzing",
+  "awaiting_scope_approval",
   "awaiting_approval",
   "approved",
   "executing",
@@ -19,41 +20,6 @@ export const STATES = [
   "escalated",
 ] as const;
 export type State = (typeof STATES)[number];
-
-/** States that require a valid (non-drifted) approval. */
-export const POST_APPROVAL: ReadonlySet<State> = new Set<State>([
-  "approved",
-  "executing",
-  "paused",
-  "verifying",
-  "converging",
-  "deploying",
-  "delivered",
-  "escalated",
-]);
-
-/** States where the full Analysis package must exist. */
-export const NEEDS_ANALYSIS: ReadonlySet<State> = new Set<State>([...POST_APPROVAL, "awaiting_approval", "archived"]);
-
-/**
- * Allowed transitions via `aidw transition`. "approved" is reachable only through `aidw approve`
- * and "archived" only through `aidw archive`. "paused" resumes to the state it paused from.
- */
-export const TRANSITIONS: Record<State, readonly State[]> = {
-  draft: ["intake"],
-  intake: ["analyzing"],
-  analyzing: ["awaiting_approval"],
-  awaiting_approval: ["analyzing"],
-  approved: ["executing"],
-  executing: ["verifying", "paused", "escalated"],
-  paused: [],
-  verifying: ["executing", "converging", "paused", "escalated"],
-  converging: ["executing", "deploying", "paused", "escalated"],
-  deploying: ["delivered", "paused", "escalated"],
-  delivered: [],
-  archived: [],
-  escalated: ["executing", "verifying", "converging", "deploying", "analyzing"],
-};
 
 export const CHANGE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 

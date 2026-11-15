@@ -133,7 +133,7 @@ describe("tiers", () => {
   });
 
   it("gates MCP tools: read-like names pass, others are denied before approval and asked after", () => {
-    const sub = (h: HookInput) => ({ ...h, agent_type: "aidw:implementer" });
+    const sub = (h: HookInput) => ({ ...h, agent_type: "aidw:fullstack" });
     for (const t of ["mcp__vercel__list_deployments", "mcp__github__get_file", "mcp__figma__whoami", "mcp__x__search_docs"]) {
       expect([t, decision(hook(t, {}))]).toEqual([t, "none"]);
     }
@@ -151,11 +151,11 @@ describe("tiers", () => {
     readyForApproval();
     expect(cli("approve", ID)).toBe(0);
     expect(cli("transition", ID, "executing")).toBe(0);
-    const sub = (f: string) => ({ ...hook("Write", { file_path: join(root, f) }), agent_type: "aidw:implementer" });
+    const sub = (f: string) => ({ ...hook("Write", { file_path: join(root, f) }), agent_type: "aidw:fullstack" });
     expect(decision(sub(".aidw/run/report-T01.md"))).toBe("allow");
     expect(decision(sub(".aidw/run/progress.json"))).toBe("deny");
     expect(decision(sub(".aidw/changes/app/tasks.yaml"))).toBe("deny");
-    expect(decision({ ...sub(".aidw/run/report-T01.md"), agent_type: "aidw:reviewer" })).toBe("deny");
+    expect(decision({ ...sub(".aidw/run/report-T01.md"), agent_type: "aidw:code-reviewer" })).toBe("deny");
   });
 
   it("tells a session where the run stands after a compaction, and only then", () => {
@@ -212,14 +212,14 @@ describe("backstop", () => {
 describe("AIDW_HOOK_LOG", () => {
   it("appends each hook call with its input and output, and stays silent without the variable", () => {
     const log = join(root, "hooks.jsonl");
-    const input = JSON.stringify({ ...hook("Write", { file_path: join(root, "src/a.ts"), content: "x" }), agent_type: "aidw:implementer" });
+    const input = JSON.stringify({ ...hook("Write", { file_path: join(root, "src/a.ts"), content: "x" }), agent_type: "aidw:fullstack" });
     const io = { out: () => {}, err: () => {}, stdin: () => input };
     expect(run(["gate"], { AIDW_HOOK_LOG: log }, root, io)).toBe(0);
     expect(run(["stop-failure"], { AIDW_HOOK_LOG: log }, root, io)).toBe(0);
     expect(run(["gate"], {}, root, io)).toBe(0);
     const lines = readFileSync(log, "utf8").trim().split("\n").map((l) => JSON.parse(l));
     expect(lines.map((l) => l.hook)).toEqual(["gate", "stop-failure"]);
-    expect(lines[0].input.agent_type).toBe("aidw:implementer");
+    expect(lines[0].input.agent_type).toBe("aidw:fullstack");
     expect(lines[0].output).toContain("deny");
   });
 });

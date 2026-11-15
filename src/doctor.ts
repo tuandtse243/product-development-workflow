@@ -7,6 +7,7 @@ import { spawnSync } from "node:child_process";
 import { accessSync, constants, existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { loadChange } from "./change.js";
+import { readBrowser } from "./browser.js";
 import { claudeHome } from "./cost.js";
 import { isDefaultBranch } from "./ops.js";
 import { git, isGitRepo } from "./git.js";
@@ -44,7 +45,7 @@ export function binaryOf(command: string): { bin: string; sub?: string } | null 
 
 const commandsOf = (q: QualityConfig): string[] => [...q.layers.flatMap((l) => [...l.setup, ...l.run]), ...(q.deploy.command ? [q.deploy.command] : []), ...q.deploy.smoke];
 
-const drivesBrowser = (q: QualityConfig): boolean => q.layers.some((l) => ["e2e", "a11y", "ui-ux"].includes(l.name) || l.run.some((c) => /playwright|cypress/i.test(c)));
+export const drivesBrowser = (q: QualityConfig): boolean => q.layers.some((l) => ["e2e", "a11y", "ui-ux"].includes(l.name) || l.run.some((c) => /playwright|cypress/i.test(c)));
 
 function writable(path: string): boolean {
   let dir = path;
@@ -110,8 +111,14 @@ export function doctor(p: Paths, id: string | null, env: NodeJS.ProcessEnv = pro
   if (id) {
     const change = loadChange(p, id);
     const text = readText(qualityFile(change));
-    if (text !== null) quality = parseQuality(text, "quality.yaml").config;
-    else add("quality.yaml", "warn", "missing: nothing to check beyond the machine");
+    if (text !== null) {
+      const parsed = parseQuality(text, "quality.yaml");
+      quality = parsed.config;
+      // An invalid file must not look like a clean one: without it no layer, browser or deploy check runs.
+      if (parsed.diags.errors.length) {
+        add("quality.yaml", "fail", `${parsed.diags.errors.map((e) => e.message).join("; ")} (nothing else can be checked until this is fixed)`);
+      }
+    } else add("quality.yaml", "warn", "missing: nothing to check beyond the machine");
   }
 
   if (isGitRepo(p.project)) {
@@ -169,12 +176,20 @@ export function doctor(p: Paths, id: string | null, env: NodeJS.ProcessEnv = pro
   }
 
   if (drivesBrowser(quality)) {
-    const url = env.E2E_CDP_URL ?? "http://127.0.0.1:9222";
-    const r = probe("curl", ["-sS", "-m", "5", `${url}/json/version`], p.project, 8_000);
-    add("chrome cdp", r.ok && /Browser/.test(r.out) ? "ok" : "fail", r.ok && /Browser/.test(r.out) ? url : `${url} does not answer: start Chrome with --remote-debugging-port=9222 (see profiles/quality-layers.md)`);
+    // No fixed port: the endpoint is the one the user set, or the project's own test browser (`aidw browser start`).
+    const url = env.E2E_CDP_URL ?? readBrowser(p)?.url;
+    if (!url) {
+      add("chrome cdp", "fail", "no test browser for this project: run `aidw browser start` (it picks a free port; in your own terminal when the sandbox blocks launching Chrome)");
+    } else {
+      const r = probe("curl", ["-sS", "-m", "5", `${url}/json/version`], p.project, 8_000);
+      const up = r.ok && /Browser/.test(r.out);
+      add("chrome cdp", up ? "ok" : "fail", up ? url : `${url} does not answer: run \`aidw browser start\` (see roles/qa/references/quality-layers.md)`);
+    }
   }
 
   if (quality.deploy.target !== "none" && /\bvercel\b/.test(quality.deploy.command ?? "")) {
+    // `vercel whoami` is not read-only: with an expired token the CLI refreshes it and, when the refresh fails,
+    // logs out by deleting its auth file. A failure here can therefore leave the user logged out.
     const who = probe("vercel", ["whoami"], p.project, 20_000);
     add("vercel login", who.ok ? "ok" : "fail", who.ok ? who.out.split("\n").pop() ?? "" : `${who.out.split("\n").pop() ?? "not logged in"}: run \`vercel login\` in your own terminal and allow vercel.com and *.vercel.com in the sandbox`);
     const linked = existsSync(join(p.project, ".vercel", "project.json"));

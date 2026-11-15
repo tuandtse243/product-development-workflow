@@ -12,3 +12,12 @@ language means adding one file and one test, not editing many.
 
 - Keep the knowledge where it is and add a column or section per language when a second one arrives.
   Rejected: every new language would touch about six files, and they would drift apart.
+
+## Amendment (2026-11-14): framework packs
+
+The factory design adds a second layer. A language pack still answers the tooling questions above. A
+**framework pack** (first: Next.js, NestJS) answers how to build with that framework: structure, conventions
+and common mistakes. Roles stay stack-neutral and load the language pack plus the framework pack the project
+uses, so an Agent never reads the framework of the other side. Framework knowledge inside a Role folder was
+rejected: one Role per stack would multiply the Roster. Packs move from `profiles/stacks/` to `stacks/` in
+migration step 1 ([factory architecture](../factory-architecture.md)).

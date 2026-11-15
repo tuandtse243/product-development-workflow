@@ -11,6 +11,8 @@
  *   integrate  after a wave, the merged code runs every wave task's verify plus the `code` layer; a failure
  *              becomes a fix task (origin: integration) before anything new starts
  */
+import { defaultTaskRole } from "./roles.js";
+import { spawnSync } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import YAML from "yaml";
@@ -90,7 +92,10 @@ export function ensureWorktree(p: Paths, id: string, taskId: string, base: strin
   mkdirSync(join(dir, ".."), { recursive: true });
   const hasBranch = git(p.project, ["rev-parse", "--verify", "-q", `refs/heads/${branch}`]).ok;
   const r = hasBranch ? git(p.project, ["worktree", "add", "-q", dir, branch]) : git(p.project, ["worktree", "add", "-q", "-b", branch, dir, base]);
-  if (!r.ok) throw new OpError(`could not create the worktree for ${taskId}: ${r.err || r.out}`);
+  if (!r.ok) {
+    if (!hasBranch) git(p.project, ["branch", "-q", "-D", branch]); // git may have made the branch before it failed to make the folder
+    throw new OpError(`could not create the worktree for ${taskId}: ${r.err || r.out}`);
+  }
   linkDependencies(p, dir);
   return { dir: rel(p, dir), branch, created: true };
 }
@@ -103,6 +108,35 @@ export function removeWorktree(p: Paths, worktree: string | undefined, branch: s
     git(p.project, ["worktree", "prune"]);
   }
   if (branch) git(p.project, ["branch", "-q", "-D", branch]);
+}
+
+/**
+ * A plain copy of the files of `base` (no git metadata, so no branch and nothing under `.git` is written), with the
+ * project's `node_modules` linked in. The way to check out old code when `git worktree add` is not allowed (a sandbox that
+ * keeps `.git` read-only). Returns the project-relative folder; remove it with `removeSnapshot`.
+ */
+export function snapshotBase(p: Paths, id: string, taskId: string, base: string): string {
+  const dir = worktreeDir(p, id, taskId);
+  rmSync(dir, { recursive: true, force: true });
+  mkdirSync(dir, { recursive: true });
+  const r = spawnSync("sh", ["-c", 'git archive --format=tar "$0" | tar -x -C "$1"', base, dir], { cwd: p.project, encoding: "utf8" });
+  if (r.status !== 0) {
+    rmSync(dir, { recursive: true, force: true });
+    throw new OpError(`could not copy the base commit: ${(r.stderr || r.error?.message || `exit ${r.status}`).trim()}`);
+  }
+  const source = join(p.project, "node_modules");
+  if (existsSync(source) && !isSymlink(join(dir, "node_modules"))) {
+    try {
+      symlinkSync(source, join(dir, "node_modules"), "dir");
+    } catch {
+      /* the tests then fail visibly on the old code, which is reported as unproven or red */
+    }
+  }
+  return rel(p, dir);
+}
+
+export function removeSnapshot(p: Paths, folder: string): void {
+  rmSync(join(p.project, folder), { recursive: true, force: true });
 }
 
 export type MergeOutcome = { ok: true } | { ok: false; conflict: string };
@@ -222,7 +256,7 @@ export function integrate(
     ? `Integration verify after merging ${record.tasks.join(", ")} failed: \`${failed.command}\`${failed.timedOut ? " timed out" : ` exited ${failed.exit}`}.\nEach task passed on its own; the merged code does not. Find the interaction between the tasks.\n\n${failed.tail}`
     : "Integration verify did not complete.";
   (tf.doc.get("tasks") as YAML.YAMLSeq).add(
-    tf.doc.createNode({ id: taskId, title: `Fix the integration of ${record.tasks.join(", ")}`, role: "fullstack-engineer", origin: "integration", depends_on: [], touches: ["**"], verify: commands, problem, status: "pending" }),
+    tf.doc.createNode({ id: taskId, title: `Fix the integration of ${record.tasks.join(", ")}`, role: defaultTaskRole(), origin: "integration", depends_on: [], touches: ["**"], verify: commands, problem, status: "pending" }),
   );
   deps.save(tf);
   record.fixTask = taskId;

@@ -93,7 +93,7 @@ booking: +1 requirement.
 
 ## Quality profile
 
-code, unit, integration, e2e, review.
+code, unit, integration, e2e, review. a11y is left out: the fixture has no axe.
 
 ## Deploy strategy
 

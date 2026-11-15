@@ -3,8 +3,21 @@ import { join } from "node:path";
 import { analyzeChange, idsAfterChange, mainSpecIds } from "./analyze.js";
 import { approvalStatus, computeApprovalHash } from "./approval.js";
 import { runBackstop } from "./backstop.js";
-import { ChangeError, isState, listChangeIds, loadChange, NEEDS_ANALYSIS, resolveChangeId, stateOf, STATES } from "./change.js";
+import { ChangeError, isState, listChangeIds, loadChange, resolveChangeId, stateOf, STATES } from "./change.js";
 import { runGate } from "./gate.js";
+import { pluginRoot } from "./plugin.js";
+import { BrowserError, browserEnv, browserStatus, startBrowser, stopBrowser, usesOwnBrowser } from "./browser.js";
+import { checkArtifacts } from "./artifacts.js";
+import { boundaryOf } from "./boundary.js";
+import { buildAuditBrief, chosenLenses, compileReport, lensRoles, pickFindings } from "./audit.js";
+import { DecisionError, readDecisions, recordDecision, workflowOfChange } from "./decisions.js";
+import { machineOf } from "./machine.js";
+import { packsFor } from "./stackpacks.js";
+import { git } from "./git.js";
+import { checkEvals } from "./evals.js";
+import { claudeExec, printResults, runCases, type Exec } from "./evalrun.js";
+import { checkWorkflows, loadWorkflow, workflowIds } from "./workflow.js";
+import { agentForTask, AGENTS, checkRoster, rosterTable, writeAgents } from "./roles.js";
 import { checkChange, checkSpecs } from "./check.js";
 import { Diags, type Diagnostic } from "./diag.js";
 import {
@@ -29,15 +42,15 @@ import { parseTasks, type Task } from "./tasks.js";
 import { converge } from "./converge.js";
 import { formatCost, parallelSavings, readSessions } from "./cost.js";
 import { detectProject } from "./detect.js";
-import { doctor, doctorText } from "./doctor.js";
+import { doctor, doctorText, drivesBrowser } from "./doctor.js";
 import { createPr, planPr } from "./pr.js";
 import { planAdvice, planShape, planSummary } from "./plan.js";
 import { detachRun, runLoop, runnerPid, stopRunner } from "./runner.js";
 import { deliver } from "./deliver.js";
-import { deploy, recordLayerReview, verify } from "./quality.js";
+import { deploy, parseQuality, qualityFile, recordLayerReview, verify } from "./quality.js";
 import { firstDeploy } from "./firstdeploy.js";
 import { reconcileDoneTasks, reopenTask } from "./run.js";
-import { autoReview, buildBrief, checkpoint, integrateChange, nextAction, parseVerdict, recordReview, retryTask, startTask, type NextAction } from "./run.js";
+import { autoReview, buildBrief, buildTriageBrief, checkpoint, integrateChange, nextAction, parseVerdict, recordReview, recordTriage, retryTask, startTask, triageFile, type NextAction } from "./run.js";
 import { VERSION } from "./version.js";
 
 function reviewLine(r: { task: string; verdict: string; status: string; commit: string | null; warning?: string; conflict?: string }, verdict: string, notes: string): string {
@@ -93,7 +106,9 @@ function nextText(n: NextAction): string {
     ? `implement ${n.task} (${n.reason}): ${n.title}${n.reason === "interrupted" ? " (if an implementer you spawned for it has not reported yet, it is still running: wait for it, do not spawn another)" : ""}`
     : n.action === "review"
       ? `review ${n.task}: ${n.title}`
-      : n.action === "escalate"
+      : n.action === "triage"
+        ? `triage ${n.task} (${n.reason}): \`aidw brief ${n.task} --for triage\`, spawn ${AGENTS.triage} with the brief, then \`aidw triage ${n.task}\``
+        : n.action === "escalate"
         ? `escalate: ${n.reason}`
         : n.action === "wave"
           ? `wave of ${n.tasks.length}: ${n.tasks.map((x) => `${x.task} (${x.title})`).join(", ")}`
@@ -133,14 +148,24 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
   pr [<id>] [--base B] [--create] [--draft]
                                          after delivery: print the pull request (title, summary, evidence, merge danger);
                                          --create pushes the change branch and opens it with gh (asks first)
+  browser start [--headed] | status | url | stop
+                                         the project's own test browser for the e2e, a11y, ui-ux and performance layers:
+                                         Chrome on a free port it picks itself, one profile per project; layers get it
+                                         as E2E_CDP_URL and E2E_CDP_PORT (no fixed 9222)
   doctor [<id>]                          check the machine for the run: binaries of the quality commands, package store, registry,
                                          Chrome CDP, Vercel login and link; exit 1 on a blocking problem
   detect                                 what the existing code uses (stack, package manager, suggested layers)
   baseline <capability> [--change <id>]  brownfield: skeleton spec of a capability's current behavior
-  change new <id> [--title T] [--input-type ${INPUT_TYPES.join("|")}]
+  change new <id> [--title T] [--input-type ${INPUT_TYPES.join("|")}] [--workflow W]
   status [<id>]                          project and change status
   validate [<id>] [--strict]             validate specs and changes (all when no id)
-  approve <id>                           approve the Analysis package (hashes it)
+  decide <decision> <answer> --reason R  record a Decision Point of the Workflow (the answer must be one of its options;
+                                         several answers separated by commas where the decision allows)
+  audit brief <lens> | report | picks <F-01,..>   the audit workflow: a brief for the reviewer of one lens, the report
+                                         assembled from their answers, the picked findings as the request of a new change
+  decisions [<id>]                       the Workflow's Decision Points of a change and their answers
+  approve <id> [--auto]                  approve the Analysis package (hashes it); --auto: aidw approves a small change of
+                                         a workflow with an automatic approval (bugfix), or reclassifies one that is too big
   approval check <id>                    exit 1 when the approved package drifted
   transition <id> <state|resume> [--reason R]
   merge <id> [--write]                   merge delta specs into .aidw/specs (dry run by default)
@@ -148,7 +173,15 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
   analyze [<id>]                         pre-gate consistency checks (analysis.md, task coverage)
   ids [<id>]                             requirement and scenario ids (after applying the change)
   vendor-path <upstream>/<skill>         absolute path of a vendored SKILL.md (e.g. pocock/grilling)
-  plugin-path <path>                     absolute path of a plugin file (e.g. profiles/stack-pool.md)
+  plugin-path <path>                     absolute path of a plugin file (e.g. roles/software-architect/references/stack-pool.md)
+  eval [<role>] [--case <name>] [--model <m>] [--runs <n>] [--answers]
+                                         run a Role's cases with claude -p (no tools) and grade each answer against its
+                                         criteria; without a Role, every active Role. Costs tokens; exits 1 when a case fails.
+                                         --runs <n> runs each case n times (1-10): a case that passes only some runs is FLAKY
+                                         --answers also prints each answer, to see why a case failed
+  roster [--write]                       the factory's Roles; checks roster.yaml, role profiles, artifacts.yaml (one owner
+                                         per artifact, reads/writes of each Role), workflows/*.yaml and the generated agent files
+                                         (--write regenerates agents/ from roles/)
 
 Execution (state executing; add --change <id> when several changes are active):
   next                                   what the orchestrator does next (implement | review | escalate | complete)
@@ -161,6 +194,8 @@ Unattended (in your own terminal, not inside Claude Code):
   run --status | --stop                  the background runner started with --detach
                                          loop \`claude -p "/aidw:resume <id>"\` until archived; waits out usage
                                          limits (stated reset time or 5-60 min backoff); stops on escalation
+  triage <task> [--notes-file F]         a task out of attempts: record the architect's diagnosis from .aidw/run/triage-<task>.md
+                                         (CAUSE: implementation -> one more attempt; anything else escalates with the diagnosis)
   task retry <task>                      user-granted fresh attempt budget for an escalated/failed task
   task reopen <task> [--revert]          a done task was wrong: back to pending (and git revert its commit with --revert)
   brief <task> [--for implement|review]  write the context packet for a fresh subagent; prints its path
@@ -196,7 +231,7 @@ interface Args {
   flags: Record<string, string | true>;
 }
 
-const VALUE_FLAGS = new Set(["session", "last", "root", "title", "input-type", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude"]);
+const VALUE_FLAGS = new Set(["session", "last", "root", "title", "input-type", "workflow", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude", "model", "case", "runs"]);
 
 export function parseArgs(argv: string[]): Args {
   const pos: string[] = [];
@@ -226,15 +261,11 @@ interface Io {
   out: (s: string) => void;
   err: (s: string) => void;
   stdin?: () => string;
+  /** Test seam: the model calls of the case runner. */
+  modelExec?: (model?: string) => Exec;
 }
 
-/** Root of the installed plugin (bin/ lives in it). */
-export function pluginRoot(env: NodeJS.ProcessEnv): string {
-  if (env.AIDW_PLUGIN_ROOT) return env.AIDW_PLUGIN_ROOT;
-  if (typeof __dirname !== "undefined") return join(__dirname, "..");
-  if (env.CLAUDE_PLUGIN_ROOT) return env.CLAUDE_PLUGIN_ROOT;
-  return join(process.cwd(), "plugins", "aidw");
-}
+export { pluginRoot };
 
 /**
  * Appends the plugin bin/ to the END of PATH via $CLAUDE_ENV_FILE, once. Appending keeps any shims the user puts
@@ -304,6 +335,8 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
     if (!dir) throw new OpError("no .aidw/ found in this directory or its parents; run `aidw init`");
     const p = pathsFor(dir);
     assertProject(p);
+    // The commands that run layer or verify commands pass the project's test browser on to them (no fixed port).
+    if (env === process.env) for (const [k, v] of Object.entries(browserEnv(p))) if (!process.env[k]) process.env[k] = v;
     return p;
   };
   const need = (v: string | undefined, what: string): string => {
@@ -403,10 +436,11 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           return 0;
         }
         const r = startTask(p, id, need(rest[1], "task id"), { worktree: args.flags.worktree === true });
-        const brief = buildBrief(p, id, r.task, "implement", join(pluginRoot(env), "vendor"));
+        const brief = buildBrief(p, id, r.task, "implement", join(pluginRoot(env), "library", "vendor"));
+        const agent = agentForTask(pluginRoot(env), r.role);
         emit(
-          { ok: true, change: id, ...r, brief: brief.path },
-          `${r.task} running: attempt ${r.attempt} of ${r.maxAttempts}${r.resumed ? " (resumed)" : ""}${r.base ? `, base ${r.base.slice(0, 8)}` : ""}${r.worktree ? `, worktree ${r.worktree}` : ""}\nbrief ${brief.path}\nSPAWN aidw:implementer with: Task brief: ${brief.path}. Read it and implement the task.\n`,
+          { ok: true, change: id, ...r, agent, brief: brief.path },
+          `${r.task} running: attempt ${r.attempt} of ${r.maxAttempts}${r.resumed ? " (resumed)" : ""}${r.base ? `, base ${r.base.slice(0, 8)}` : ""}${r.worktree ? `, worktree ${r.worktree}` : ""}\nbrief ${brief.path}\nSPAWN ${agent} with: Task brief: ${brief.path}. Read it and implement the task.\n`,
         );
         return 0;
       }
@@ -417,8 +451,13 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const id = resolveChangeId(p, str(args.flags.change));
         const taskId = need(rest[0], "task id");
         const kind = str(args.flags.for) ?? "implement";
-        if (kind !== "implement" && kind !== "review") throw new UsageError('--for must be "implement" or "review"');
-        const b = buildBrief(p, id, taskId, kind, join(pluginRoot(env), "vendor"));
+        if (kind === "triage" && cmd === "brief") {
+          const tb = buildTriageBrief(p, id, taskId);
+          emit({ change: id, task: taskId, for: kind, path: tb.path }, `${tb.path}\nSPAWN ${AGENTS.triage} with: Triage brief: ${tb.path}. Read it and write your answer as it says.\nThen: aidw triage ${taskId}\n`);
+          return 0;
+        }
+        if (kind !== "implement" && kind !== "review") throw new UsageError('--for must be "implement" or "review" (or "triage" for brief)');
+        const b = buildBrief(p, id, taskId, kind, join(pluginRoot(env), "library", "vendor"));
         if (cmd === "skills") {
           emit({ change: id, task: taskId, for: kind, skills: b.skills }, b.skills.map((s) => `${s.path}  # ${s.reason}\n`).join(""));
         } else {
@@ -449,8 +488,8 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           if (auto) {
             after = `review ${auto.task}: auto-passed (converge tests, or a layer fix its own reviewer judges again)${auto.commit ? ` (commit ${auto.commit.slice(0, 8)})` : ""}\n${nextLine(p, id)}${sessionEnd(env, p, id)}`;
           } else {
-            reviewBrief = buildBrief(p, id, r.task, "review", join(pluginRoot(env), "vendor")).path;
-            after = `review brief ${reviewBrief}\nSPAWN aidw:reviewer with: ${REVIEWER_PROMPT(reviewBrief)}\nThen: aidw verdict ${r.task}\n`;
+            reviewBrief = buildBrief(p, id, r.task, "review", join(pluginRoot(env), "library", "vendor")).path;
+            after = `review brief ${reviewBrief}\nSPAWN ${AGENTS.taskReview} with: ${REVIEWER_PROMPT(reviewBrief)}\nThen: aidw verdict ${r.task}\n`;
           }
         } else {
           after = nextLine(p, id);
@@ -468,7 +507,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           ...(str(args.flags.layer) ? { layer: str(args.flags.layer) as string } : {}),
           fresh: args.flags.fresh === true,
           ...(timeout ? { timeoutMs: Number(timeout) * 1000 } : {}),
-          vendorDir: join(pluginRoot(env), "vendor"),
+          vendorDir: join(pluginRoot(env), "library", "vendor"),
         });
         const lines = r.layers.map((l) => {
           const bad = l.runs.find((x) => x.exit !== 0);
@@ -554,11 +593,34 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         }
         const maxRuns = str(args.flags["max-runs"]);
         if (maxRuns !== undefined && !(Number.isInteger(Number(maxRuns)) && Number(maxRuns) >= 1)) throw new UsageError("--max-runs must be a positive integer");
+        let startedBrowser = false;
         const r = runLoop(p, id, {
           ...(str(args.flags.claude) ? { claude: str(args.flags.claude) as string } : {}),
           ...(str(args.flags["permission-mode"]) ? { permissionMode: str(args.flags["permission-mode"]) as string } : {}),
           ...(maxRuns ? { maxRuns: Number(maxRuns) } : {}),
           ...(args.flags["keep-mcp"] === true ? { keepMcp: true } : {}),
+          // The runner runs outside the sandbox that wraps each session, so it hosts the test browser for them.
+          prepare: () => {
+            // The user's own browser is a URL that is not the one aidw recorded (project() copies the recorded one into the environment).
+            if (usesOwnBrowser(env, p)) return null;
+            const qtext = readText(qualityFile(loadChange(p, id)));
+            const config = qtext === null ? null : parseQuality(qtext, "quality.yaml").config;
+            if (!config || !drivesBrowser(config)) return null;
+            try {
+              const b = startBrowser(p, { env });
+              if (env === process.env) Object.assign(process.env, browserEnv(p)); // a stale URL copied earlier must not win
+              if (b.started) {
+                startedBrowser = true;
+                if (!json) io.out(`[aidw run] test browser started at ${b.record?.url} for the sessions to connect to\n`);
+              }
+              return null;
+            } catch (e) {
+              return `the test browser could not start, even outside a session: ${(e as Error).message}`;
+            }
+          },
+          onFinish: (outcome) => {
+            if (startedBrowser && outcome === "archived") stopBrowser(p); // "denied" cannot happen here: the runner started it
+          },
           preflight: () => {
             const bad = doctor(p, id, env).filter((c) => c.status === "fail");
             return bad.length ? `fix this first, then run the same command again: ${bad.map((c) => `${c.name}: ${c.detail}`).join("; ")}` : null;
@@ -643,6 +705,25 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         return 0;
       }
 
+      case "triage": {
+        // The triage Agent wrote its answer to .aidw/run/triage-<task>.md; the rule of its cause is applied here.
+        const p = project();
+        const id = resolveChangeId(p, str(args.flags.change));
+        const taskId = need(rest[0], "task id");
+        const file = str(args.flags["notes-file"]) ?? triageFile(p, taskId);
+        if (!existsSync(file)) throw new OpError(`no triage answer at ${file}: the Agent did not write it. Spawn it once more with \`aidw brief ${taskId} --for triage\``);
+        const r = recordTriage(p, id, taskId, readFileSync(file, "utf8"));
+        const first = r.diagnosis.split("\n").find((l) => l.trim()) ?? "";
+        const line =
+          r.outcome === "retry"
+            ? `${r.task} triaged: the cause is the implementation. One further attempt is granted with the diagnosis in its brief: ${first}\n`
+            : r.cause === "environment"
+              ? `${r.task} triaged: the cause is the environment, so it escalated. What the user must fix: ${first}\n(full diagnosis: ${rel(p, file)})\n`
+              : `${r.task} triaged: the cause is the ${r.cause}, so it escalated: the approved package would change and the user decides. ${first}\n(full diagnosis: ${rel(p, file)})\n`;
+        emit({ ok: true, change: id, ...r }, `${line}${nextLine(p, id)}`);
+        return 0;
+      }
+
       case "verdict": {
         // The reviewer wrote its verdict to .aidw/run/review-<task>.md; read it from there.
         const p = project();
@@ -664,7 +745,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
       case "vendor-path": {
         const ref = need(rest[0], "<upstream>/<skill>");
         if (!/^[a-z0-9-]+\/[a-z0-9-]+$/.test(ref)) throw new UsageError(`invalid vendored skill "${ref}"`);
-        const file = join(pluginRoot(env), "vendor", ...ref.split("/"), "SKILL.md");
+        const file = join(pluginRoot(env), "library", "vendor", ...ref.split("/"), "SKILL.md");
         if (!existsSync(file)) throw new OpError(`vendored skill "${ref}" not found at ${file}`);
         emit({ path: file }, `${file}\n`);
         return 0;
@@ -679,6 +760,37 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         if (!existsSync(file)) throw new OpError(`"${ref}" not found in the plugin (${file})`);
         emit({ path: file }, `${file}\n`);
         return 0;
+      }
+
+      case "eval": {
+        const root = pluginRoot(env);
+        const runs = args.flags.runs === undefined ? 1 : Number(args.flags.runs);
+        if (!Number.isInteger(runs) || runs < 1 || runs > 10) throw new OpError("--runs takes a whole number from 1 to 10");
+        let results;
+        try {
+          results = runCases(root, rest[0], str(args.flags.case), (io.modelExec ?? claudeExec)(str(args.flags.model)), (r) => io.err(`  ... ${r.role}/${r.name}: ${r.error ? "ERROR" : r.pass ? "pass" : "fail"}${r.runs ? ` (${r.runs.passed}/${r.runs.total})` : ""}\n`), runs);
+        } catch (e) {
+          throw new OpError((e as Error).message);
+        }
+        const ok = results.every((r) => r.pass);
+        emit({ ok, results }, printResults(results, args.flags.answers === true));
+        return ok ? 0 : 1;
+      }
+
+      case "roster": {
+        const root = pluginRoot(env);
+        const written = args.flags.write === true ? writeAgents(root) : [];
+        const d = checkRoster(root);
+        d.add(checkArtifacts(root));
+        d.add(checkWorkflows(root));
+        d.add(checkEvals(root));
+        const table = d.errors.length ? "" : rosterTable(root);
+        const summary = `${d.errors.length ? "FAILED" : "OK"}: ${d.errors.length} error(s), ${d.warnings.length} warning(s)\n`;
+        emit(
+          { ok: d.errors.length === 0, written, ...diagsJson(d) },
+          `${table}${written.length ? `wrote agents/: ${written.join(", ")}\n` : ""}${printDiags(d)}${summary}`,
+        );
+        return d.errors.length ? 1 : 0;
       }
 
       case "analyze": {
@@ -754,6 +866,34 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         return 0;
       }
 
+      case "browser": {
+        const p = project();
+        const sub = rest[0];
+        if (sub === "start") {
+          const r = startBrowser(p, { headed: args.flags.headed === true, env });
+          emit({ ok: true, started: r.started, ...r.record }, `${r.started ? "started" : "already running"}: ${r.record?.url} (${r.browser}, pid ${r.record?.pid}, ${r.record?.headless ? "headless" : "headed"})\nlayers get it as E2E_CDP_URL and E2E_CDP_PORT; for your own shell: export E2E_CDP_URL=$(aidw browser url)\n`);
+          return 0;
+        }
+        if (sub === "status") {
+          const s = browserStatus(p);
+          emit({ ok: s.running, ...s }, s.running ? `running: ${s.record?.url} (${s.browser}, pid ${s.record?.pid})\n` : s.record ? `not running: ${s.stale}\n` : "no test browser: run `aidw browser start`\n");
+          return s.running ? 0 : 1;
+        }
+        if (sub === "url") {
+          const s = browserStatus(p);
+          if (!s.running || !s.record) throw new OpError("no test browser is running: run `aidw browser start`");
+          emit({ url: s.record.url, port: s.record.port }, `${s.record.url}\n`);
+          return 0;
+        }
+        if (sub === "stop") {
+          const result = stopBrowser(p);
+          if (result === "denied") throw new OpError("the test browser is running but this session may not stop it (the sandbox blocks signalling it): run `aidw browser stop` in your own terminal");
+          emit({ ok: true, stopped: result === "stopped" }, result === "stopped" ? "test browser stopped\n" : "no test browser was running\n");
+          return 0;
+        }
+        throw new UsageError("browser needs start, status, url or stop");
+      }
+
       case "doctor": {
         const p = project();
         let id: string | null = rest[0] ?? null;
@@ -773,9 +913,10 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const dir = findProject({ root: str(args.flags.root), cwd, env }) ?? str(args.flags.root) ?? cwd;
         const d = detectProject(dir);
         const text = [
-          `${d.kind}${d.packageManager ? ` (${d.packageManager})` : ""}${d.languages.length ? `, ${d.languages.join(", ")}` : ""}`,
+          `${d.kind}${d.packageManager || d.pythonTool ? ` (${d.packageManager ?? d.pythonTool})` : ""}${d.languages.length ? `, ${d.languages.join(", ")}` : ""}`,
           ...d.signals.map((s) => `  signal  ${s}`),
           ...Object.entries(d.stack).map(([k, v]) => `  stack   ${k}: ${v}`),
+          ...packsFor(pluginRoot(env), d.stack, "fullstack").concat(packsFor(pluginRoot(env), d.stack, "frontend"), packsFor(pluginRoot(env), d.stack, "backend")).filter((k, i, a) => a.findIndex((x) => x.id === k.id) === i).map((k) => `  pack    ${k.id} (read by ${k.roles.join(", ")})`),
           ...d.layers.map((l) => `  layer   ${l.name}: ${l.run.join(" && ")}`),
           ...d.warnings.map((w) => `  WARNING ${w}`),
         ];
@@ -795,7 +936,8 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         if (rest[0] !== "new") throw new UsageError("usage: aidw change new <id>");
         const p = project();
         const id = need(rest[1], "change id");
-        const dir = newChange(p, id, { title: str(args.flags.title), inputType: str(args.flags["input-type"]) });
+        const wf = str(args.flags.workflow);
+        const dir = newChange(p, id, { title: str(args.flags.title), inputType: str(args.flags["input-type"]), ...(wf ? { workflow: wf, workflows: workflowIds(pluginRoot(env)), skipSpecs: boundaryOf(pluginRoot(env), wf)?.spec_changes === false, scopeGate: loadWorkflow(pluginRoot(env), wf)?.scope_gate === true } : {}) });
         emit({ ok: true, id, dir: rel(p, dir) }, `created change ${id} at ${rel(p, dir)}\n`);
         return 0;
       }
@@ -826,8 +968,8 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           d.add(checkChange(p, id));
           // Once the package is presented for approval, analyze findings are validation errors too.
           try {
-            const state = loadChange(p, id).data.state;
-            if (isState(state) && NEEDS_ANALYSIS.has(state)) d.add(analyzeChange(p, id));
+            const c = loadChange(p, id);
+            if (isState(c.data.state) && machineOf(p, c).analysisRequired.has(c.data.state)) d.add(analyzeChange(p, id));
           } catch {
             // load errors are already reported by checkChange
           }
@@ -844,14 +986,85 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         return failed ? 1 : 0;
       }
 
+      case "decide": {
+        // A Decision Point of the Workflow: the answer must be one of its options; the reason is shown at the next gate.
+        const p = project();
+        const id = resolveChangeId(p, str(args.flags.change));
+        const name = need(rest[0], "decision id");
+        try {
+          const r = recordDecision(p, id, name, need(rest[1], "answer"), str(args.flags.reason) ?? "", pluginRoot(env));
+          emit({ ok: true, change: id, decision: name, ...r.recorded }, `${id}: ${name} = ${[r.recorded.answer].flat().join(", ")} (${r.decision.decide}): ${r.recorded.reason}\n`);
+          return 0;
+        } catch (e) {
+          if (e instanceof DecisionError) throw new OpError(e.message);
+          throw e;
+        }
+      }
+
+      case "audit": {
+        // The audit Workflow: one brief per lens for its read-only reviewer, one report assembled from their answers.
+        const p = project();
+        const sub = need(rest[0], "brief | report | picks");
+        const id = resolveChangeId(p, str(args.flags.change));
+        const c = loadChange(p, id);
+        const w = workflowOfChange(p, c, pluginRoot(env));
+        const roles = lensRoles(w);
+        if (!Object.keys(roles).length) throw new OpError(`change "${id}" runs under the "${w.id}" workflow, which is not an audit`);
+        if (sub === "brief") {
+          const lens = need(rest[1], "lens");
+          const chosen = chosenLenses(p, id);
+          if (!chosen) throw new OpError('no lenses decided: run `aidw decide audit-lenses <lens,lens> --reason "..."` first');
+          if (!chosen.includes(lens)) throw new OpError(`lens "${lens}" was not decided for this audit (decided: ${chosen.join(", ")})`);
+          const role = roles[lens] as string;
+          const b = buildAuditBrief(p, id, lens, role);
+          emit({ change: id, lens, agent: `aidw:${role}`, brief: b.path }, `${b.path}\nSPAWN aidw:${role} with: Audit brief: ${b.path}. Read it and write your answer as it says.\n`);
+          return 0;
+        }
+        if (sub === "report") {
+          const r = compileReport(p, id);
+          const ok = r.diags.errors.length === 0;
+          emit({ ok, change: id, report: ok ? rel(p, r.path) : null, findings: r.findings, ...diagsJson(r.diags) }, ok ? `${rel(p, r.path)}: ${r.findings.length} finding(s)\n` : `${printDiags(r.diags)}INCOMPLETE: every decided lens must answer\n`);
+          return ok ? 0 : 1;
+        }
+        if (sub === "picks") {
+          const picks = need(rest[1], "finding ids, e.g. F-01,F-03").split(",").map((x) => x.trim().toUpperCase()).filter(Boolean);
+          const r = pickFindings(p, id, picks);
+          if (r.missing.length) throw new OpError(`no such finding: ${r.missing.join(", ")} (see the report: aidw audit report)`);
+          emit({ ok: true, change: id, picks, request: r.text }, r.text);
+          return 0;
+        }
+        throw new UsageError("usage: aidw audit brief <lens> | report | picks <F-01,F-02>");
+      }
+
+      case "decisions": {
+        const p = project();
+        const id = resolveChangeId(p, rest[0]);
+        const c = loadChange(p, id);
+        const w = workflowOfChange(p, c, pluginRoot(env));
+        const all = readDecisions(c);
+        const rows = w.decisions.map((x) => ({ id: x.id, decide: x.decide, options: x.options, required: x.required, recorded: all[x.id] ?? null }));
+        emit(
+          { change: id, workflow: w.id, decisions: rows },
+          rows.length
+            ? `${rows.map((r) => `${r.id.padEnd(20)} ${r.recorded ? `${[r.recorded.answer].flat().join(", ")}: ${r.recorded.reason}` : `(open: ${r.options.join(" | ")}${r.required ? ", required" : ""})`}`).join("\n")}\n`
+            : `workflow ${w.id} has no decision points\n`,
+        );
+        return 0;
+      }
+
       case "approve": {
         const p = project();
         const id = resolveChangeId(p, rest[0]);
-        const { hash, files } = approve(p, id);
+        const auto = args.flags.auto === true;
+        const { hash, files, by, scope } = approve(p, id, auto ? { auto: { pluginRoot: pluginRoot(env) } } : {});
+        if (scope) {
+          emit({ ok: true, id, hash, files, scope: true }, `scope approved ${id}\n  ${hash}\n  The change is back in analyzing: continue with the domain model, requirements and specs (step 3 of /aidw:start).\n`);
+          return 0;
+        }
         const { kept, reopened } = reconcileDoneTasks(p, id);
         emit(
           { ok: true, id, hash, files, kept, reopened },
-          `approved ${id}\n  ${hash}\n  covers ${files.length} file(s)\n${kept.length ? `  done work kept: ${kept.join(", ")}\n` : ""}${reopened.length ? `  edited tasks run again: ${reopened.join(", ")}\n` : ""}  cheapest build (about a quarter of the tokens): in your own terminal, ${join(pluginRoot(env), "bin", "aidw")} run ${id} --permission-mode auto\n`,
+          `${scope ? "scope approved" : "approved"} ${id}${by === "user" ? "" : ` by ${by}`}\n  ${hash}\n  covers ${files.length} file(s)\n${kept.length ? `  done work kept: ${kept.join(", ")}\n` : ""}${reopened.length ? `  edited tasks run again: ${reopened.join(", ")}\n` : ""}  cheapest build (about a quarter of the tokens): in your own terminal, ${join(pluginRoot(env), "bin", "aidw")} run ${id} --permission-mode auto\n`,
         );
         return 0;
       }
@@ -910,9 +1123,11 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const p = project();
         const id = resolveChangeId(p, rest[0]);
         const { target, merges, commit } = archiveChange(p, id);
+        // The archive commit also carries the project files the delivery wrote (README.md, .env.example): say so, they are not left uncommitted.
+        const alsoCommitted = commit ? git(p.project, ["show", "--name-only", "--format=", commit]).out.split("\n").filter((f) => f && !f.startsWith(".aidw/")) : [];
         emit(
-          { ok: true, id, archived: rel(p, target), capabilities: merges.map((m) => m.capability), commit: commit ?? null },
-          `archived ${id} -> ${rel(p, target)} (${merges.length} capability spec(s) updated)${commit ? `, committed ${commit.slice(0, 8)}` : ""}\n`,
+          { ok: true, id, archived: rel(p, target), capabilities: merges.map((m) => m.capability), commit: commit ?? null, also_committed: alsoCommitted },
+          `archived ${id} -> ${rel(p, target)} (${merges.length} capability spec(s) updated)${commit ? `, committed ${commit.slice(0, 8)}` : ""}\n${alsoCommitted.length ? `also committed with it: ${alsoCommitted.join(", ")}\n` : ""}`,
         );
         return 0;
       }
@@ -925,7 +1140,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
       io.err(`aidw: ${e.message}\n\n${HELP}`);
       return 2;
     }
-    if (e instanceof OpError || e instanceof ChangeError) {
+    if (e instanceof OpError || e instanceof ChangeError || e instanceof BrowserError) {
       const d = e instanceof OpError ? e.diags : undefined;
       if (json) io.out(`${JSON.stringify({ ok: false, error: e.message, ...(d ? diagsJson(d) : {}) }, null, 2)}\n`);
       else io.err(`aidw: ${e.message}\n${d ? printDiags(d) : ""}`);

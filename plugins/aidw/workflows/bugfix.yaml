@@ -1,0 +1,108 @@
+# The `bugfix` Workflow: a defect in an existing codebase. It is the small path of `feature` (at most 3 tasks, a regression
+# test that fails first) with one difference: no approval gate while the fix stays small. aidw records the approval itself
+# (`aidw approve <id> --auto`, hash and drift protection unchanged); a fix that is bigger than `boundary` allows is
+# reclassified to `feature` and waits for the user. A production deploy still asks.
+id: bugfix
+description: Defect in an existing codebase, fixed with a regression test that fails first; approved by aidw while the fix stays small.
+applies_to: request
+existing: [project-config, specs, constitution, domain-model, architecture, design-tokens]
+interrupts: [paused, escalated]
+
+# The Change state machine of this Workflow: from each state, the states `aidw transition` may move to. `approved` is reached by
+# `aidw approve` and `archived` by `aidw archive`, so no state lists them. The CLI reads this table (src/machine.ts).
+transitions:
+  draft: [intake]
+  intake: [analyzing]
+  analyzing: [awaiting_approval]
+  awaiting_approval: [analyzing]
+  approved: [executing]
+  executing: [verifying, paused, escalated]
+  paused: []
+  verifying: [executing, converging, paused, escalated]
+  converging: [executing, deploying, paused, escalated]
+  deploying: [delivered, paused, escalated]
+  delivered: []
+  archived: []
+  escalated: [executing, verifying, converging, deploying, analyzing]
+
+# States in which the approved package must exist and match its hash, and in which intake, analysis, tasks and quality
+# files must exist. `archived` needs the package but not a live approval (it is the end of the Change).
+approval_required: [approved, executing, paused, verifying, converging, deploying, delivered, escalated]
+analysis_required: [awaiting_approval, approved, executing, paused, verifying, converging, deploying, delivered, escalated, archived]
+
+stages:
+  - id: intake
+    title: Bug report and how to reproduce it
+    states: [draft, intake]
+    roles: [product-manager]
+    writes: [intake]
+
+  - id: diagnosis
+    title: Diagnosis of the defect (at most 3 questions, only what the code cannot answer)
+    states: [analyzing]
+    roles: [product-manager, software-architect, ui-ux-designer]
+    reads: [intake, project-config, specs, constitution, domain-model, architecture]
+    writes: [analysis-discovery-qa, analysis-scope, analysis-domain, analysis-specs, analysis-existing-system, analysis-stack, analysis-architecture, analysis-design]
+
+  - id: plan
+    title: Task graph
+    states: [analyzing]
+    roles: [technical-planner]
+    reads: [specs, architecture, constitution, design-tokens]
+    writes: [tasks, analysis-plan]
+
+  - id: quality-profile
+    title: Quality layers, deploy strategy and permissions
+    states: [analyzing]
+    roles: [qa, release]
+    reads: [tasks, architecture]
+    writes: [quality, analysis-quality-profile, analysis-deploy-strategy, analysis-permissions]
+
+  - id: approval
+    title: Analyze, present and approve
+    states: [awaiting_approval, approved]
+    roles: [product-manager]
+    reads: [intake, analysis-discovery-qa, architecture, tasks, quality]
+    writes: [analysis-summary, analysis-decisions-to-honor, analysis-risks]
+    gate: approval-auto
+    boundary:
+      max_tasks: 3
+      migrations: false
+      spec_changes: false
+      reclassify_to: feature
+
+  - id: build
+    title: Build, one task at a time, each reviewed
+    states: [executing]
+    roles: [fullstack, frontend, backend, database, devops, integration, code-reviewer, software-architect]
+    reads: [tasks, specs, constitution, architecture, design-tokens]
+    writes: [task-review, triage-report]
+    agents:
+      implement: fullstack
+      review: code-reviewer
+      triage: software-architect
+      layer-review: { ui: ui-ux-designer, security: security }
+
+  - id: verify
+    title: Quality layers
+    states: [verifying]
+    roles: [security, ui-ux-designer]
+    reads: [architecture, constitution, design-tokens]
+    writes: [layer-review-security, layer-review-ui-ux]
+
+  - id: converge
+    title: Every scenario has a passing test
+    states: [converging]
+    roles: []
+    reads: [specs, tasks]
+
+  - id: deploy
+    title: Deploy and smoke checks
+    states: [deploying]
+    roles: []
+    gate: production-deploy
+
+  - id: deliver
+    title: Delivery package and archive
+    states: [delivered, archived]
+    roles: []

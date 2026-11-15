@@ -1,0 +1,59 @@
+# The `audit` Workflow: read-only. Independent reviewers look at the current code through the lenses the Change decided on
+# and each writes its findings; the CLI assembles one report by severity (`aidw audit report`). No code changes, no build,
+# no approval gate: the gate stays closed to project files for the whole Change. The user then picks findings
+# (`aidw audit picks`) and each pick becomes the request of a new `bugfix` or `feature` Change.
+# `performance` joins the lenses when its Role is activated (a Planned Role has no Agent to review through).
+id: audit
+description: Read-only review of the current code through chosen lenses, ending in one report of findings by severity.
+applies_to: request
+existing: [project-config, specs, constitution, domain-model, architecture, design-tokens]
+interrupts: [paused, escalated]
+
+# The Change state machine of this Workflow: audit goes from analyzing straight to delivered, and needs no approval.
+transitions:
+  draft: [intake]
+  intake: [analyzing]
+  analyzing: [delivered, paused, escalated]
+  paused: []
+  delivered: []
+  archived: []
+  escalated: [analyzing]
+approval_required: []
+analysis_required: []
+
+decisions:
+  - id: audit-lenses
+    decide: software-architect
+    options: [security, code-quality, ui]
+    multiple: true
+    stage: lenses
+    required: true
+
+stages:
+  - id: intake
+    title: What to audit and why
+    states: [draft, intake]
+    roles: [product-manager]
+    writes: [intake]
+
+  - id: lenses
+    title: Choose the lenses
+    states: [analyzing]
+    roles: [software-architect]
+    reads: [intake, architecture]
+    writes: [decision-audit-lenses]
+
+  - id: review
+    title: One independent reviewer per lens
+    states: [analyzing]
+    roles: [security, code-reviewer, ui-ux-designer]
+    reads: [intake, decision-audit-lenses, architecture, constitution, design-tokens]
+    writes: [audit-security, audit-code-quality, audit-ui]
+    lenses: { security: security, code-quality: code-reviewer, ui: ui-ux-designer }
+
+  - id: report
+    title: One report, findings by severity
+    states: [delivered, archived]
+    roles: [documentation]
+    reads: [audit-security, audit-code-quality, audit-ui]
+    writes: [audit-report]

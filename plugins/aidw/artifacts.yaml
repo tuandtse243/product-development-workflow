@@ -1,0 +1,202 @@
+# The Artifact registry (docs/factory-architecture.md, section 6): every file a Role hands to the next one.
+# Check with `aidw roster`.
+#
+#   path      inside .aidw/ (<id> = change id, <T> = task id, <capability>, NNNN-<slug> are placeholders)
+#   owner     exactly ONE Role writes it; a Role's `writes:` header lists only what it owns, `reads:` any artifact
+#   validate  how it is checked: `aidw validate` | `aidw analyze` | `aidw plan` | `none` (the user reads it at the gate)
+#   part      only when several artifacts share one file or folder: which part this one is (the heading of an
+#             analysis.md section, or what kind of ADR). Two artifacts never share a path without a `part`.
+#
+# Owners are the Roles that do the work today. `qa` and `release` are Planned Roles: the registry names them as
+# the true owners while the main session carries the work (carried_by in roster.yaml).
+
+# --- Intake and discovery ------------------------------------------------------------------------------------
+intake:
+  path: changes/<id>/intake.md
+  owner: product-manager
+  validate: aidw analyze
+
+# --- analysis.md: one file, one owner per section --------------------------------------------------------------
+analysis-summary:
+  path: changes/<id>/analysis.md
+  part: "## Summary"
+  owner: product-manager
+  validate: aidw analyze
+analysis-decisions-to-honor:
+  path: changes/<id>/analysis.md
+  part: "## Decisions to honor"
+  owner: product-manager
+  validate: aidw analyze
+analysis-scope:
+  path: changes/<id>/analysis.md
+  part: "## Requirements and scope"
+  owner: product-manager
+  validate: aidw analyze
+analysis-existing-system:
+  path: changes/<id>/analysis.md
+  part: "## Existing system"
+  owner: software-architect
+  validate: aidw analyze
+analysis-domain:
+  path: changes/<id>/analysis.md
+  part: "## Domain"
+  owner: product-manager
+  validate: aidw analyze
+analysis-stack:
+  path: changes/<id>/analysis.md
+  part: "## Stack"
+  owner: software-architect
+  validate: aidw analyze
+analysis-design:
+  path: changes/<id>/analysis.md
+  part: "## Design"
+  owner: ui-ux-designer
+  validate: aidw analyze
+analysis-architecture:
+  path: changes/<id>/analysis.md
+  part: "## Architecture"
+  owner: software-architect
+  validate: aidw analyze
+analysis-specs:
+  path: changes/<id>/analysis.md
+  part: "## Specs"
+  owner: product-manager
+  validate: aidw analyze
+analysis-plan:
+  path: changes/<id>/analysis.md
+  part: "## Plan"
+  owner: technical-planner
+  validate: aidw analyze
+analysis-quality-profile:
+  path: changes/<id>/analysis.md
+  part: "## Quality profile"
+  owner: qa
+  validate: aidw analyze
+analysis-deploy-strategy:
+  path: changes/<id>/analysis.md
+  part: "## Deploy strategy"
+  owner: release
+  validate: aidw analyze
+analysis-permissions:
+  path: changes/<id>/analysis.md
+  part: "## Permissions"
+  owner: release
+  validate: aidw analyze
+analysis-risks:
+  path: changes/<id>/analysis.md
+  part: "## Risks and assumptions"
+  owner: product-manager
+  validate: aidw analyze
+analysis-discovery-qa:
+  path: changes/<id>/analysis.md
+  part: "## Appendix: discovery Q&A"
+  owner: product-manager
+  validate: aidw analyze
+
+# --- Product and analysis -------------------------------------------------------------------------------------
+product-brief:
+  path: changes/<id>/brief.md
+  owner: product-manager
+  validate: aidw analyze
+domain-model:
+  path: domain/model.md
+  owner: product-manager
+  validate: none
+decisions-domain:
+  path: decisions/NNNN-<slug>.md
+  part: domain and product decisions (ADRs)
+  owner: product-manager
+  validate: none
+requirements:
+  path: requirements/<id>.md
+  owner: product-manager
+  validate: none
+delta-specs:
+  path: changes/<id>/specs/<capability>/spec.md
+  owner: product-manager
+  validate: aidw validate
+specs:
+  path: specs/<capability>/spec.md
+  owner: product-manager
+  validate: aidw validate
+
+# --- Design and architecture ----------------------------------------------------------------------------------
+design-direction:
+  path: design/direction.md
+  owner: ui-ux-designer
+  validate: none
+design-tokens:
+  path: design/tokens.yaml
+  owner: ui-ux-designer
+  validate: aidw analyze
+decision-design-needed:
+  path: changes/<id>/decisions.yaml
+  part: "design-needed: full-design, reuse-existing or no-ui"
+  owner: ui-ux-designer
+  validate: aidw analyze
+architecture:
+  path: architecture/overview.md
+  owner: software-architect
+  validate: none
+decisions-architecture:
+  path: decisions/NNNN-<slug>.md
+  part: architecture decisions (ADRs)
+  owner: software-architect
+  validate: none
+constitution:
+  path: constitution.md
+  owner: software-architect
+  validate: none
+project-config:
+  path: project.yaml
+  owner: software-architect
+  validate: none
+
+# --- Plan and quality profile ---------------------------------------------------------------------------------
+tasks:
+  path: changes/<id>/tasks.yaml
+  owner: technical-planner
+  validate: aidw plan
+quality:
+  path: changes/<id>/quality.yaml
+  owner: qa
+  validate: aidw analyze
+
+# --- Verdicts of the independent reviewers --------------------------------------------------------------------
+task-review:
+  path: run/review-<T>.md
+  owner: code-reviewer
+  validate: none
+decision-audit-lenses:
+  path: changes/<id>/decisions.yaml
+  part: "audit-lenses: the lenses an audit looks through"
+  owner: software-architect
+  validate: none
+audit-security:
+  path: run/audit-security.md
+  owner: security
+  validate: none
+audit-code-quality:
+  path: run/audit-code-quality.md
+  owner: code-reviewer
+  validate: none
+audit-ui:
+  path: run/audit-ui.md
+  owner: ui-ux-designer
+  validate: none
+audit-report:
+  path: changes/<id>/audit-report.md
+  owner: documentation
+  validate: none
+triage-report:
+  path: run/triage-<T>.md
+  owner: software-architect
+  validate: none
+layer-review-security:
+  path: run/layer-review-security.md
+  owner: security
+  validate: none
+layer-review-ui-ux:
+  path: run/layer-review-ui-ux.md
+  owner: ui-ux-designer
+  validate: none

@@ -4,19 +4,20 @@ import { approvalStatus, computeApprovalHash } from "./approval.js";
 import {
   CHANGE_ID,
   ChangeError,
+  isState,
   changeDir,
   listChangeIds,
   loadChange,
-  POST_APPROVAL,
   saveChange,
   stateOf,
-  TRANSITIONS,
   type State,
 } from "./change.js";
 import { analyzeChange, PLACEHOLDER } from "./analyze.js";
+import { boundaryExceeded, boundaryOf } from "./boundary.js";
+import { BRIEF_FILE, BRIEF_TEMPLATE, briefHash, checkBrief } from "./scope.js";
 import { recordBaseline } from "./backstop.js";
 import { checkChange, deltaFiles } from "./check.js";
-import { Diags } from "./diag.js";
+import { Diags, OpError } from "./diag.js";
 import { aidwCommitMessage } from "./commit.js";
 import { capabilityOf, findProject, isDir, KEBAB_SEGMENT, pathsFor, projectKind, readText, rel, walkFiles, type Paths } from "./project.js";
 import { applyDelta, type MergeSummary } from "./spec/merge.js";
@@ -29,19 +30,11 @@ import { VERSION } from "./version.js";
 import { detectProject, type Detection } from "./detect.js";
 import YAML from "yaml";
 
-export class OpError extends Error {
-  constructor(
-    message: string,
-    readonly diags?: Diags,
-  ) {
-    super(message);
-  }
-}
+export { OpError };
 
 const now = () => new Date().toISOString();
 
-/** States a paused change can resume to (every state that can transition to "paused"). */
-const RESUMABLE = (Object.keys(TRANSITIONS) as State[]).filter((s) => TRANSITIONS[s].includes("paused"));
+import { machineOf } from "./machine.js";
 
 // ---------------------------------------------------------------- init
 
@@ -87,6 +80,7 @@ function projectYaml(name: string, det: Detection): string {
     "detected",
     doc.createNode({
       package_manager: det.packageManager,
+      ...(det.pythonTool ? { python_tool: det.pythonTool } : {}),
       languages: det.languages,
       signals: det.signals,
       suggested_layers: Object.fromEntries(det.layers.map((l) => [l.name, l.run])),
@@ -180,11 +174,12 @@ const INTAKE = (title: string) => `# Intake: ${title}
 - Deadline / budget / other: <...>
 `;
 
-export function newChange(p: Paths, id: string, opts: { title?: string; inputType?: string }): string {
+export function newChange(p: Paths, id: string, opts: { title?: string; inputType?: string; workflow?: string; workflows?: string[]; skipSpecs?: boolean; scopeGate?: boolean }): string {
   if (!CHANGE_ID.test(id)) throw new OpError(`change id "${id}" must be kebab-case (e.g. 2026-11-08-booking-app)`);
   if (opts.inputType && !(INPUT_TYPES as readonly string[]).includes(opts.inputType)) {
     throw new OpError(`unknown input type "${opts.inputType}" (expected ${INPUT_TYPES.join(", ")})`);
   }
+  if (opts.workflow && opts.workflows && !opts.workflows.includes(opts.workflow)) throw new OpError(`unknown workflow "${opts.workflow}" (expected ${opts.workflows.join(", ")})`);
   const dir = changeDir(p, id);
   if (existsSync(dir)) throw new OpError(`change "${id}" already exists`);
   const title = opts.title ?? id;
@@ -196,9 +191,11 @@ export function newChange(p: Paths, id: string, opts: { title?: string; inputTyp
       `id: ${id}`,
       `title: ${JSON.stringify(title)}`,
       `input_type: ${opts.inputType ?? "null"}`,
+      ...(opts.workflow ? [`workflow: ${opts.workflow}`] : []),
       "state: draft",
       `created_at: ${now()}`,
-      "skip_specs: false",
+      `skip_specs: ${opts.skipSpecs === true}`,
+      ...(opts.scopeGate ? ["scope_gate: true", "scope_approval: null"] : []),
       "approval: null",
       "run:",
       "  paused: null",
@@ -206,6 +203,7 @@ export function newChange(p: Paths, id: string, opts: { title?: string; inputTyp
     ].join("\n"),
   );
   writeFileSync(join(dir, "intake.md"), INTAKE(title));
+  if (opts.scopeGate) writeFileSync(join(dir, BRIEF_FILE), BRIEF_TEMPLATE(title));
   writeFileSync(join(dir, "analysis.md"), ANALYSIS(title, projectKind(p) === "brownfield"));
   recordBaseline(p);
   return dir;
@@ -300,19 +298,53 @@ export function readinessCheck(p: Paths, id: string, asState?: string): Diags {
 
 // ---------------------------------------------------------------- approve
 
-export function approve(p: Paths, id: string): { hash: string; files: string[] } {
+/**
+ * The user approves. With `auto` (the Workflow of the Change has a stage with `gate: approval-auto`, e.g. bugfix) aidw
+ * records the approval itself, but only while the plan stays inside the Workflow's boundary; beyond it the Change is
+ * reclassified to the Workflow named there and waits for the user.
+ */
+export function approve(p: Paths, id: string, opts: { auto?: { pluginRoot: string } } = {}): { hash: string; files: string[]; by: string; scope?: boolean } {
   const change = loadChange(p, id);
+  let by = "user";
+  if (stateOf(change) === "awaiting_scope_approval") {
+    // Approval Gate 1: the user approves the product brief, and drafting continues.
+    if (opts.auto) throw new OpError("the scope is always approved by the user");
+    const d = checkBrief(change);
+    if (d.errors.length) throw new OpError(`the product brief of "${id}" is not ready for approval`, d);
+    const hash = briefHash(change);
+    change.doc.set("scope_approval", change.doc.createNode({ hash, at: now(), by: "user" }));
+    change.doc.set("state", "analyzing");
+    saveChange(change);
+    return { hash, files: [rel(p, join(change.dir, BRIEF_FILE))], by, scope: true };
+  }
+  if (opts.auto) {
+    const workflow = typeof change.data.workflow === "string" ? change.data.workflow : "";
+    const boundary = workflow ? boundaryOf(opts.auto.pluginRoot, workflow) : null;
+    if (!boundary) throw new OpError(`change "${id}" runs under ${workflow ? `the "${workflow}" workflow` : "no named workflow"}, which has no automatic approval: the user approves with /aidw:approve`);
+  }
   const state = stateOf(change);
   if (state !== "awaiting_approval") {
     throw new OpError(`change "${id}" is in state "${String(change.data.state)}"; only "awaiting_approval" can be approved`);
   }
   const d = readinessCheck(p, id);
   if (d.errors.length) throw new OpError(`change "${id}" has validation errors; fix them before approving`, d);
+  if (opts.auto) {
+    const workflow = String(change.data.workflow);
+    const boundary = boundaryOf(opts.auto.pluginRoot, workflow)!;
+    const exceeded = boundaryExceeded(p, id, boundary);
+    if (exceeded.length) {
+      change.doc.set("workflow", boundary.reclassify_to);
+      if (!boundary.spec_changes && walkFiles(join(change.dir, "specs")).some((f) => f.endsWith("spec.md"))) change.doc.set("skip_specs", false); // it has delta specs after all
+      saveChange(change);
+      throw new OpError(`change "${id}" is too big to approve itself (${exceeded.join("; ")}). It is now a "${boundary.reclassify_to}" change and waits for the user: present the package and ask for /aidw:approve`);
+    }
+    by = `aidw (${workflow} boundary)`;
+  }
   const { hash, files } = computeApprovalHash(p, change);
-  change.doc.set("approval", change.doc.createNode({ hash, at: now(), by: "user" }));
+  change.doc.set("approval", change.doc.createNode({ hash, at: now(), by }));
   change.doc.set("state", "approved");
   saveChange(change);
-  return { hash, files };
+  return { hash, files, by };
 }
 
 // ---------------------------------------------------------------- transition
@@ -322,26 +354,29 @@ export function transition(p: Paths, id: string, to: string, opts: { reason?: st
   const from = stateOf(change);
   if (!from) throw new OpError(`change "${id}" has an unknown state "${String(change.data.state)}"`);
 
+  const machine = machineOf(p, change);
   let target: State;
   if (to === "resume") {
     if (from !== "paused") throw new OpError(`change "${id}" is not paused`);
     const back = (change.data.run as { paused?: { from?: string } } | undefined)?.paused?.from;
-    if (!back || !(RESUMABLE as readonly string[]).includes(back)) {
+    // a paused change resumes to a state that can pause (every state that can transition to "paused")
+    if (!back || !isState(back) || !(machine.transitions[back] ?? []).includes("paused")) {
       throw new OpError(`change "${id}" has no valid paused.from state to resume to`);
     }
     target = back as State;
   } else {
     if (to === "approved") throw new OpError("use `aidw approve` to approve a change");
     if (to === "archived") throw new OpError("use `aidw archive` to archive a change");
-    if (!(TRANSITIONS[from] as readonly string[]).includes(to)) {
-      const allowed = TRANSITIONS[from].join(", ") || "none";
+    const next = machine.transitions[from] ?? [];
+    if (!(next as readonly string[]).includes(to)) {
+      const allowed = next.join(", ") || "none";
       throw new OpError(`cannot go from "${from}" to "${to}" (allowed: ${allowed})`);
     }
     target = to as State;
   }
 
   // "escalated" is the escape hatch (e.g. after drift), so it is reachable without a valid approval.
-  if (POST_APPROVAL.has(target) && target !== "escalated") {
+  if (machine.approvalRequired.has(target) && target !== "escalated") {
     const a = approvalStatus(p, change);
     if (a.status !== "valid") {
       throw new OpError(
@@ -512,7 +547,8 @@ export function archiveChange(p: Paths, id: string): { target: string; merges: C
   }
   const d = checkChange(p, id);
   if (d.errors.length) throw new OpError(`change "${id}" has validation errors; nothing was archived`, d);
-  const delivery = checkDelivery(p, id);
+  // A Workflow that never deploys (audit) has no delivery package.
+  const delivery = "deploying" in machineOf(p, change).transitions ? checkDelivery(p, id) : new Diags();
   if (delivery.errors.length) throw new OpError(`the delivery package of "${id}" is incomplete; run \`aidw deliver\` and complete it`, delivery);
   const merges = planMerge(p, id);
 

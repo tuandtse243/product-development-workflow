@@ -31,6 +31,8 @@ export function typeProblem(t: Task): string | null {
 /** `<capability>/<requirement-id>` of the first spec -> kebab-case capability; a quality fix -> its layer; else "config". */
 export function scopeOf(t: Task): string {
   if (t.origin === "quality" && KEBAB_SEGMENT.test(String(t.layer ?? ""))) return String(t.layer);
+  // A task with no spec (a bugfix) names the capability it touches in `scope:`; without one the scope is `config`.
+  if (typeof t.scope === "string" && KEBAB_SEGMENT.test(t.scope)) return t.scope;
   const spec = Array.isArray(t.specs) ? String(t.specs[0] ?? "") : "";
   const cap = spec.split("/").slice(0, -1).join("-").toLowerCase();
   return KEBAB_SEGMENT.test(cap) ? cap : DEFAULT_SCOPE;

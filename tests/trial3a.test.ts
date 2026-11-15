@@ -251,9 +251,9 @@ describe("migration rule", () => {
   it("is in the profile and both reviewers", () => {
     const plugin = join(__dirname, "..", "plugins", "aidw");
     const read = (f: string) => readFileSync(join(plugin, f), "utf8");
-    expect(read("profiles/quality-layers.md")).toMatch(/## Database migrations[\s\S]*reversible[\s\S]*seeded database/);
-    expect(read("agents/reviewer.md")).toMatch(/Migrations in the diff must be reversible/);
-    expect(read("agents/security-reviewer.md")).toMatch(/Migrations:/);
+    expect(read("roles/qa/references/quality-layers.md")).toMatch(/## Database migrations[\s\S]*reversible[\s\S]*seeded database/);
+    expect(read("agents/code-reviewer.md")).toMatch(/Migrations in the diff must be reversible/);
+    expect(read("agents/security.md")).toMatch(/Migrations:/);
   });
 });
 
@@ -262,9 +262,9 @@ describe("token optimizations", () => {
   const front = (f: string) => /^---\n([\s\S]*?)\n---/.exec(readFileSync(join(plugin, f), "utf8"))?.[1] ?? "";
 
   it("the implementer has a tool allowlist and reviewers run on sonnet", () => {
-    expect(front("agents/implementer.md")).toMatch(/^tools: Read, Write, Edit, Glob, Grep, Bash$/m);
-    expect(front("agents/implementer.md")).not.toMatch(/disallowedTools/);
-    for (const r of ["reviewer", "ui-reviewer", "security-reviewer"]) expect(front(`agents/${r}.md`)).toMatch(/^model: sonnet$/m);
+    expect(front("agents/fullstack.md")).toMatch(/^tools: Read, Write, Edit, Glob, Grep, Bash$/m);
+    expect(front("agents/fullstack.md")).not.toMatch(/disallowedTools/);
+    for (const r of ["code-reviewer", "ui-ux-designer", "security"]) expect(front(`agents/${r}.md`)).toMatch(/^model: sonnet$/m);
   });
 
   it("auto-reviews a quality fix whose layer has its own reviewer, but not other fixes", () => {

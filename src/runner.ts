@@ -29,6 +29,15 @@ export interface RunnerOptions {
    * (a failed `aidw doctor` check), so no session is spent finding that out (trial-3C: six sessions at "deploying").
    */
   preflight?: (state: string) => string | null;
+  /**
+   * Host-side preparation, run by the runner itself before every session. The runner is the user's own process,
+   * outside the sandbox that wraps each `claude -p` session, so it can do what a session cannot (launch Chrome).
+   * A message means the preparation failed and the run needs the user. It runs before `preflight`, so the
+   * machine check sees what it set up.
+   */
+  prepare?: (state: string) => string | null;
+  /** called once with the final outcome, for cleanup (stopping what `prepare` started) */
+  onFinish?: (outcome: RunnerOutcome) => void;
   maxRuns?: number;
   /** per-session limit; a hung session is killed and counts as a run */
   sessionTimeoutMs?: number;
@@ -150,6 +159,11 @@ export function runLoop(p: Paths, id: string, opts: RunnerOptions = {}): RunnerR
   const result = (outcome: RunnerOutcome, state: string, message: string): RunnerResult => {
     if (env.AIDW_RUN_DETACHED === "1") rmSync(pidFile(p), { force: true });
     record(`stop: ${outcome}: ${message}`);
+    try {
+      opts.onFinish?.(outcome);
+    } catch {
+      /* cleanup must never hide the outcome */
+    }
     return { outcome, runs, waits, state, message };
   };
 
@@ -166,6 +180,10 @@ export function runLoop(p: Paths, id: string, opts: RunnerOptions = {}): RunnerR
       waits++;
       record(`paused (${reason || "no reason"}): waiting ${Math.round(w.ms / MINUTE)} min, ${w.why}`);
       sleep(w.ms);
+    }
+    if (opts.prepare) {
+      const problem = opts.prepare(state);
+      if (problem) return result("needs_user", state, problem);
     }
     if (opts.preflight && (runs === 0 || state === "deploying")) {
       const problem = opts.preflight(state);

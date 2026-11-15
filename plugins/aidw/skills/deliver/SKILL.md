@@ -13,7 +13,9 @@ The `aidw` CLI ships with this plugin as `${CLAUDE_PLUGIN_ROOT}/bin/aidw`. If a 
 
 The change is `delivered`: the code is final, verified, converged and deployed. You now package it for the
 client (blueprint section 14). Do not change product code: the gate only lets you write `.aidw/` and the
-project's `.env.example`.
+project's `.env.example` and `README.md`. Write every file with the Write tool: the gate denies a shell redirect or heredoc into a file
+(`cat > file <<EOF`) and each denial costs a turn. `aidw archive` commits `README.md` and `.env.example` together with the
+archive (its output lists them): do not tell the user they are uncommitted.
 
 Read and apply, for the writing: `$(aidw vendor-path addy/documentation-and-adrs)` and
 `$(aidw vendor-path addy/shipping-and-launch)` (handoff and launch checklists).
@@ -33,8 +35,9 @@ quality report.
 
 - `## Run locally`: exact commands, in order, that a developer runs on a clean machine (install, local
   services such as Supabase/Docker, dev server, tests).
-- `## Environment`: every variable the code reads (search for `process.env.` / `import.meta.env.`), what it is
-  for, where its value comes from. If there are any, make sure the project root has `.env.example` with the
+- `## Environment`: every variable the **app** reads (search for `process.env.` / `import.meta.env.`), what it is
+  for, where its value comes from. Variables only the tests use (a browser endpoint, a report path) belong under `## Run locally`,
+  not here: listing them forces a `.env.example` for an app that needs none. If there are any, make sure the project root has `.env.example` with the
   names and **no real values**; create it if missing. If none, write `None`.
 - `## Deploy`: list every deploy that happened, from `evidence/deploy.json` and anything the user ran by hand (for example `aidw first-deploy`, a failed `--prod`). Never write "Production was not touched" unless you checked (`vercel ls`): the user may have deployed by hand. What was deployed (target, URL from the quality report) and how the client deploys to
   production themselves. Production was not touched by this workflow.

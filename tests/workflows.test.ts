@@ -1,0 +1,219 @@
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterAll, describe, expect, it } from "vitest";
+import { run } from "../src/cli.js";
+import { OpError } from "../src/diag.js";
+import { machineOf } from "../src/machine.js";
+import { loadChange } from "../src/change.js";
+import { pathsFor } from "../src/project.js";
+import { tempProject, write } from "./fixtures.js";
+import { STATES } from "../src/change.js";
+import { machineById } from "../src/machine.js";
+import { checkWorkflows, loadWorkflow, workflowFor, workflowIds } from "../src/workflow.js";
+
+const plugin = join(__dirname, "..", "plugins", "aidw");
+const temps: string[] = [];
+afterAll(() => temps.forEach((t) => rmSync(t, { recursive: true, force: true })));
+
+function copy(): string {
+  const root = mkdtempSync(join(tmpdir(), "aidw-workflows-"));
+  temps.push(root);
+  for (const f of ["roster.yaml", "artifacts.yaml", "roles", "workflows"]) cpSync(join(plugin, f), join(root, f), { recursive: true });
+  return root;
+}
+const edit = (root: string, file: string, from: string | RegExp, to: string) => {
+  const path = join(root, file);
+  const before = readFileSync(path, "utf8");
+  const after = before.replace(from, to);
+  expect(after, `${file} must change`).not.toBe(before);
+  writeFileSync(path, after);
+};
+const errors = (root: string) => checkWorkflows(root).errors.map((e) => `${e.file}: ${e.message}`).join("\n");
+
+describe("the workflows of the plugin", () => {
+  it("are product (greenfield), feature (brownfield), bugfix and audit (on request), and pass their own check", () => {
+    expect(workflowIds(plugin)).toEqual(["audit", "bugfix", "feature", "product"]);
+    expect(workflowFor(plugin, "greenfield")?.id).toBe("product");
+    expect(workflowFor(plugin, "brownfield")?.id).toBe("feature");
+    const d = checkWorkflows(plugin);
+    expect(d.errors).toEqual([]);
+    expect(d.warnings).toEqual([]);
+  });
+
+  it("cover every state of the Change state machine, in the order aidw walks them (all but audit)", () => {
+    for (const id of workflowIds(plugin).filter((w) => w !== "audit")) {
+      const w = loadWorkflow(plugin, id)!;
+      const states = new Set([...w.interrupts, ...w.stages.flatMap((s) => s.states)]);
+      // product walks every state; feature and bugfix lack the scope gate
+      expect([...states].sort(), id).toEqual(STATES.filter((s) => id === "product" || s !== "awaiting_scope_approval").sort());
+      const path = w.stages.flatMap((s) => s.states).filter((s, i, a) => s !== a[i - 1]);
+      const tail = ["awaiting_approval", "approved", "executing", "verifying", "converging", "deploying", "delivered", "archived"];
+      expect(path, id).toEqual(["draft", "intake", "analyzing", ...(id === "product" ? ["awaiting_scope_approval", "analyzing"] : []), ...tail]);
+    }
+  });
+
+  it("have one approval gate, before the build (all but audit, which has none)", () => {
+    for (const id of workflowIds(plugin).filter((w) => w !== "audit")) {
+      const stages = loadWorkflow(plugin, id)!.stages.map((s) => s.id);
+      const gates = loadWorkflow(plugin, id)!.stages.filter((s) => s.gate === "approval" || s.gate === "approval-auto");
+      expect(gates, id).toHaveLength(1);
+      expect(stages.indexOf(gates[0]!.id), id).toBeLessThan(stages.indexOf("build"));
+    }
+  });
+
+  it("differ only by the assessment stage and the baseline specs: feature adds no new kind of stage", () => {
+    const product = loadWorkflow(plugin, "product")!.stages.map((s) => s.id);
+    const feature = loadWorkflow(plugin, "feature")!.stages.map((s) => s.id);
+    expect(feature.filter((s) => !product.includes(s))).toEqual(["assessment"]);
+    expect(product.filter((s) => !feature.includes(s))).toEqual(["scope"]); // Approval Gate 1
+  });
+});
+
+describe("workflow consistency", () => {
+  it("rejects a stage that reads an artifact no earlier stage writes", () => {
+    const root = copy();
+    edit(root, "workflows/product.yaml", /(id: discovery[\s\S]*?reads: \[)intake\]/, "$1intake, architecture]");
+    expect(errors(root)).toMatch(/stage discovery: reads "architecture", which no earlier stage writes/);
+  });
+
+  it("rejects a stage that writes an artifact owned by a role that is not in the stage", () => {
+    const root = copy();
+    edit(root, "workflows/product.yaml", /(id: design[\s\S]*?roles: \[)ui-ux-designer\]/, "$1software-architect]");
+    expect(errors(root)).toMatch(/stage design: writes "design-direction", owned by ui-ux-designer/);
+  });
+
+  it("rejects a role that is not in the roster and an artifact that is not registered", () => {
+    const root = copy();
+    edit(root, "workflows/product.yaml", /(id: plan[\s\S]*?roles: \[)technical-planner\]/, "$1ghost]");
+    edit(root, "workflows/product.yaml", /(id: plan[\s\S]*?writes: \[)tasks,/, "$1made-up,");
+    const out = errors(root);
+    expect(out).toMatch(/role "ghost" is not in roster\.yaml/);
+    expect(out).toMatch(/writes "made-up", which is not an artifact/);
+  });
+
+  it("rejects a flow that skips a state aidw does not let it skip", () => {
+    const root = copy();
+    edit(root, "workflows/product.yaml", "states: [verifying]", "states: [deploying]");
+    expect(errors(root)).toMatch(/the stages go from state "executing" to "deploying", which its transitions do not allow/);
+  });
+
+  it("rejects a workflow with no approval gate, or with a state no stage covers", () => {
+    const root = copy();
+    edit(root, "workflows/product.yaml", "    gate: approval\n", "");
+    edit(root, "workflows/product.yaml", "states: [converging]", "states: [verifying]");
+    const out = errors(root);
+    expect(out).toMatch(/approval_required lists states, but no stage has gate: approval or approval-auto/);
+    expect(out).toMatch(/no stage covers the state "converging"/);
+  });
+
+  it("rejects build agents that differ from the ones the CLI spawns", () => {
+    const root = copy();
+    edit(root, "workflows/product.yaml", "review: code-reviewer", "review: security");
+    expect(errors(root)).toMatch(/agents review is "security" but the CLI spawns "code-reviewer"/);
+  });
+
+  it("rejects two workflows for the same project kind", () => {
+    const root = copy();
+    edit(root, "workflows/feature.yaml", "applies_to: brownfield", "applies_to: greenfield");
+    expect(errors(root)).toMatch(/already serves greenfield projects/);
+  });
+
+  it("warns about an artifact that no workflow writes", () => {
+    const root = copy();
+    edit(root, "workflows/product.yaml", "writes: [analysis-summary, analysis-decisions-to-honor, analysis-risks]", "writes: [analysis-summary, analysis-decisions-to-honor]");
+    for (const f of ["feature", "bugfix"]) edit(root, `workflows/${f}.yaml`, "writes: [analysis-summary, analysis-decisions-to-honor, analysis-risks]", "writes: [analysis-summary, analysis-decisions-to-honor]");
+    expect(checkWorkflows(root).warnings.map((w) => w.message).join("\n")).toMatch(/artifact "analysis-risks" is written by no workflow stage/);
+  });
+});
+
+describe("the state machine of a workflow", () => {
+  const FLOW: Record<string, string[]> = {
+    draft: ["intake"],
+    intake: ["analyzing"],
+    analyzing: ["awaiting_approval"],
+    awaiting_approval: ["analyzing"],
+    approved: ["executing"],
+    executing: ["verifying", "paused", "escalated"],
+    paused: [],
+    verifying: ["executing", "converging", "paused", "escalated"],
+    converging: ["executing", "deploying", "paused", "escalated"],
+    deploying: ["delivered", "paused", "escalated"],
+    delivered: [],
+    archived: [],
+    escalated: ["executing", "verifying", "converging", "deploying", "analyzing"],
+  };
+
+  it("is read from the workflow file and equals the table aidw ran before it moved there", () => {
+    for (const id of ["product", "feature", "bugfix"]) {
+      const m = machineById(id)!;
+      // product adds the scope gate: analyzing may also go to awaiting_scope_approval, and back
+      const flow = id === "product" ? { ...FLOW, analyzing: ["awaiting_scope_approval", "awaiting_approval"], awaiting_scope_approval: ["analyzing"] } : FLOW;
+      expect(m.transitions, id).toEqual(flow);
+      expect([...m.approvalRequired].sort(), id).toEqual(["approved", "converging", "delivered", "deploying", "escalated", "executing", "paused", "verifying"]);
+      expect([...m.analysisRequired].sort(), id).toEqual(["approved", "archived", "awaiting_approval", "converging", "delivered", "deploying", "escalated", "executing", "paused", "verifying"]);
+    }
+  });
+
+  it("is checked: a table that points at a state it does not list, or misses a covered one, is rejected", () => {
+    const root = copy();
+    edit(root, "workflows/feature.yaml", "  analyzing: [awaiting_approval]", "  analyzing: [awaiting_approval, nowhere]");
+    expect(errors(root)).toMatch(/feature\.yaml: "transitions:" .* required/);
+    const root2 = copy();
+    edit(root2, "workflows/feature.yaml", "  archived: []\n", "");
+    expect(errors(root2)).toMatch(/a stage covers the state "archived", which is not in the transitions/);
+  });
+
+  it("rejects approval_required states that come before the approval stage", () => {
+    const root = copy();
+    edit(root, "workflows/product.yaml", "approval_required: [approved,", "approval_required: [intake, approved,");
+    expect(errors(root)).toMatch(/approval_required: "intake" is a state before the approval stage/);
+  });
+});
+
+describe("a change whose workflow does not exist", () => {
+  function brokenChange(): { root: string; id: string } {
+    const root = tempProject();
+    const id = "2026-11-14-typo";
+    const go = (...argv: string[]) => {
+      let out = "";
+      const code = run([...argv, "--root", root], {}, root, { out: (x) => (out += x), err: (x) => (out += x) });
+      return { code, out };
+    };
+    expect(go("init").code).toBe(0);
+    expect(go("change", "new", id, "--workflow", "bugfix").code).toBe(0);
+    const f = `.aidw/changes/${id}/change.yaml`;
+    write(root, f, readFileSync(join(root, f), "utf8").replace("workflow: bugfix", "workflow: bugfx"));
+    return { root, id };
+  }
+
+  it("is an OpError that names the workflow, not a bare Error with a stack", () => {
+    const { root, id } = brokenChange();
+    const change = loadChange(pathsFor(root), id);
+    let caught: unknown;
+    try {
+      machineOf(pathsFor(root), change);
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(OpError);
+    expect((caught as Error).message).toMatch(/workflow "bugfx" of change "2026-11-14-typo" has no valid state machine/);
+  });
+
+  it("makes `aidw transition` print one line instead of throwing", () => {
+    const { root, id } = brokenChange();
+    let out = "";
+    let threw = false;
+    let code = 0;
+    try {
+      code = run(["transition", id, "intake", "--root", root], {}, root, { out: (x) => (out += x), err: (x) => (out += x) });
+    } catch {
+      threw = true;
+    }
+    expect(threw).toBe(false);
+    expect(code).not.toBe(0);
+    expect(out).toMatch(/no valid state machine/);
+    expect(out).not.toMatch(/\n\s+at /); // no stack trace
+  });
+});
+

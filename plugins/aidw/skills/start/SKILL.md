@@ -18,6 +18,8 @@ Input: `$ARGUMENTS` (an idea, a path to a PRD/JD, pasted client text, or "this c
 
 ## Ground rules
 
+- **Write files with the Write tool, never with a shell redirect or heredoc** (`cat > file <<EOF`, `echo > file`): the gate
+  denies those before approval and each denial costs a turn. This holds for `intake.md`, `quality.yaml`, `tokens.yaml` and every file below.
 - Until approval you may write **only inside `.aidw/`**. The aidw gate hook denies everything else. Do not
   scaffold, install packages or create source files. Read the codebase freely.
 - All state changes go through the `aidw` CLI (on PATH while the plugin is enabled). Never hand-edit `state:`
@@ -39,7 +41,11 @@ already `awaiting_approval` or later, tell the user and stop: one change at a ti
 ## 1. Intake
 
 1. Pick a change id: `YYYY-MM-DD-<short-kebab-slug>` (today's date).
-2. `aidw change new <id> --title "<title>" --input-type <idea|prd|upwork_jd|client_request|codebase>`
+2. Pick the Workflow. The default follows the project (`product` for a new project, `feature` for an existing codebase); you
+   only propose another: a **bug report** in an existing codebase is a `bugfix` and a request to **review** the code ("audit", "check", "is it secure") is an `audit` (see "Bugfix" and "Audit" below). Say which one you
+   propose and why, and wait for the user to confirm it.
+   `aidw change new <id> --title "<title>" --input-type <idea|prd|upwork_jd|client_request|codebase> --workflow <product|feature|bugfix|audit>`
+   Always pass `--workflow`: it records the confirmed Workflow, and a `product` change gets its scope gate (step 2b) that way.
 3. `aidw transition <id> intake`
 4. Fill `.aidw/changes/<id>/intake.md`: paste the original request **verbatim** (or its path), record the
    client's explicit constraints, including any stack the client requires.
@@ -67,97 +73,43 @@ system before asking anything; the grilling then asks only what the code cannot 
 6. Keep the stack: `Source: client` (the existing code is the client's choice, Q9). Never migrate frameworks,
    package manager or libraries unless the user asks for exactly that.
 
-## 1c. Size
+## 1c. Size, 2. Discovery (grilling + clarify)
 
-Decide with the user whether this is a **small** change (a bugfix or a tweak to one behavior) or a **normal** one, and
-write `Size: small` or `Size: normal` in the Analysis Summary; the user confirms it at the gate. Small means:
+These two steps are the **Interview** of the Product Manager Role, and they stay in this session because only you can
+talk with the user. Read `$(aidw plugin-path roles/product-manager/role.md)` and follow its "Interview (main session)"
+section: it decides the size (`Size: small|normal` in the Summary, which the user confirms at the gate), runs the
+grilling and the clarify categories, and records every round in `analysis.md`. Start with
+`aidw transition <id> analyzing`. The interview ends when the record is complete on disk: the drafting Agents below
+read that record, not this conversation.
 
-- at most 3 grilling questions (only what the code cannot answer), no new domain model, design tokens or ADRs
-  unless the change really needs one;
-- at most 3 tasks, and `aidw analyze` refuses more;
-- quality layers `code` + `unit`, plus `e2e` when UI is touched; deploy target `none` unless the user asked;
-- a bugfix (`type: fix`) needs a regression test that fails first (its implementer brief says so).
+## 2b. Scope gate (`product` only)
 
-Everything else (intake, specs, one gate, independent review, evidence) is unchanged.
+A `product` change has a first approval before any requirement is written (`brief.md` exists in the change folder). Skip
+this step for `feature`, `bugfix` and `audit`. It stops for the user:
 
-## 2. Discovery (grilling + clarify)
+1. Spawn **`aidw:product-manager`** with this prompt and nothing else:
+   `Change <id>. The discovery interview is recorded in .aidw/changes/<id>/analysis.md. Write only the product brief, .aidw/changes/<id>/brief.md (vision, scope, MVP, out of scope), as your Procedure step 0 says, and reply with every decision still open.`
+2. Settle open decisions with the user, as in step 3. `aidw transition <id> awaiting_scope_approval` refuses a brief that is still a skeleton.
+3. Present the brief in a few lines (vision, scope, MVP, what is out) and tell the user: `/aidw:approve` to approve the
+   scope, or tell you what to change (`aidw transition <id> analyzing`, revise, present again). **Stop.**
+4. After the user approves the scope the change is back in `analyzing` (`aidw status` shows it). Continue with step 3.
+   The final approval at step 9 is refused until the scope is approved.
 
-1. `aidw transition <id> analyzing`
-2. Read `$(aidw vendor-path pocock/grilling)` and run it: rounds over the decision frontier, numbered questions,
-   each with your recommended answer.
-3. Make sure the tree covers these ambiguity categories (Spec Kit *clarify*): users and roles, core flows,
-   data and its lifecycle, edge cases and failure paths, non-functional needs (performance, security,
-   accessibility, i18n), integrations, constraints (deadline, budget, hosting), and what is out of scope.
-4. For a client JD the client is not here: the user answers what they know, and every remaining guess becomes
-   an explicit **assumption** to put in the Analysis.
-5. Record every round (questions, recommendations, answers) in `analysis.md` under
-   `## Appendix: discovery Q&A` as you go.
-6. Done when the frontier is empty and the user confirms you share an understanding.
+## 3. Domain model, 4. Requirements and specs (drafting Agent)
 
-## 3. Domain model
+Spawn the **`aidw:product-manager`** Agent with this prompt and nothing else:
+`Change <id>. The discovery interview is recorded in .aidw/changes/<id>/analysis.md. Draft the domain model, the requirements and the delta specs as your Procedure says, run aidw validate <id>, and reply with the paths you wrote and every decision still open.`
 
-Read `$(aidw vendor-path pocock/domain-modeling)` and apply it, with this **adapter**:
-
-- Glossary, entities, relationships and business rules go to `.aidw/domain/model.md` (sections
-  `## Glossary`, `## Entities and relationships`, `## Business rules`). Use the glossary format in
-  `$(dirname $(aidw vendor-path pocock/domain-modeling))/GLOSSARY-FORMAT.md`.
-- ADRs go to `.aidw/decisions/NNNN-<slug>.md` in the format of `ADR-FORMAT.md` next to it. Not `docs/adr/`.
-
-## 4. Requirements and specs
-
-Read `$(aidw vendor-path pocock/to-spec)` and apply its synthesis (no new interview), with this **adapter**:
-
-- Write `.aidw/requirements/<id>.md` with its template sections (Problem Statement, Solution, User Stories,
-  Implementation Decisions, Testing Decisions, Out of Scope, Further Notes). Do not publish anywhere.
-- Then express the behavior as **delta specs**, one per capability, at
-  `.aidw/changes/<id>/specs/<capability>/spec.md`. Capability = a durable behavior area (`booking`,
-  `identity/auth`), kebab-case, never the name of this work. Check existing ones with `aidw ids`.
-
-Delta grammar (the CLI parses it; it is strict):
-
-```markdown
-## Purpose
-<new capability only: what it is for, 50+ characters>
-
-## ADDED Requirements
-
-### Requirement: <one behavior>
-The system SHALL <behavior>.
-
-#### Scenario: <name>
-- **GIVEN** <precondition>          (optional)
-- **WHEN** <trigger>
-- **THEN** <observable outcome>
-
-## MODIFIED Requirements
-<copy the WHOLE existing block from .aidw/specs/<capability>/spec.md, keep its header exactly, then edit>
-
-## REMOVED Requirements
-### Requirement: <exact existing name>
-**Reason**: <why>
-**Migration**: <what users or code do instead>
-
-## RENAMED Requirements
-- FROM: <old name>
-- TO: <new name>
-```
-
-Every requirement needs at least one scenario; scenarios become the E2E and integration tests later.
-Run `aidw validate <id>` and fix every error.
-
-**Brownfield: lazy baseline specs.** Existing behavior has no spec yet, and aidw does not spec the whole
-system. When this change modifies or removes behavior of a capability that has no `.aidw/specs/<capability>/`,
-first run `aidw baseline <capability> --change <id>` and replace every `TODO(aidw)` in the skeleton with the
-behavior the code has **today** (read the code and its tests; one requirement per behavior the change touches,
-plus the neighbours it must not break). Then write the delta against it (`## MODIFIED Requirements` copies the
-baseline block). The baseline is approved with the change and frozen while it runs. Capabilities the change
-only adds to need no baseline. When a modified behavior has no test today, plan a first task that adds a
-characterization test (it must pass on the current code) before changing it.
+It drafts in a fresh context from the recorded interview (its "Procedure (drafting)" in
+`$(aidw plugin-path roles/product-manager/role.md)`: the domain model, ADRs, `.aidw/requirements/<id>.md`, the delta
+specs and the brownfield baselines). Do not redo its work or read the artifacts back in full. Run
+`aidw validate <id>`; for each open decision in its reply, ask the user, record the answer in `analysis.md`'s
+discovery appendix and spawn the Agent again with the answer, until validation is clean and nothing is open.
 
 ## 5. Design decision (Q3)
 
 Detect design assets: Figma links, screenshots, an existing design system, brand guides. Then choose the
-mode with the user. Read `$(aidw plugin-path profiles/design-tokens.md)` for how each mode produces tokens.
+mode with the user. Read `$(aidw plugin-path roles/ui-ux-designer/references/design-tokens.md)` for how each mode produces tokens.
 
 - `existing`: assets exist. Collect them into `.aidw/design/` (Figma via the Figma MCP tools, screenshots, notes)
   and extract the tokens from them (Figma variables, the brand guide, the live site's CSS).
@@ -168,6 +120,10 @@ mode with the user. Read `$(aidw plugin-path profiles/design-tokens.md)` for how
   and the tokens. The user approves the look at the gate.
 - `hybrid`: say which parts follow references and which parts AI designs; tokens cover both.
 
+Record the outcome as a Decision Point: `aidw decide design-needed <full-design|reuse-existing|no-ui> --reason "<why>"`
+(`existing` -> `reuse-existing`; `claude_design`, `ai_design`, `hybrid` -> `full-design`; a change with no UI -> `no-ui`).
+`aidw analyze` refuses `no-ui` when a task changes UI. The user sees every decision at the gate: `aidw decisions <id>`.
+
 **Every mode ends with `.aidw/design/tokens.yaml`** whenever the plan has UI work (`aidw analyze` refuses the
 package without it). Each token has a `use` rule saying where it must appear ("accent: Focus mode label, start
 button, progress ring"). The `use` rules are what reviewers check on screenshots, so make them concrete. Show
@@ -175,100 +131,43 @@ the user the token table (name, value, use) as part of the Design discussion.
 
 ## 6. Architecture and stack
 
-1. Read `$(aidw plugin-path profiles/stack-pool.md)` and apply its priority: **client > AI within the pool >
-   fallback**. Record `Source: client|ai|fallback` and the reasons.
-2. Write `.aidw/architecture/overview.md`: components, data model outline, folder structure, integrations,
-   auth and payment choices.
-   Read `$(aidw vendor-path pocock/codebase-design)` first and use it as design principles (deep modules, where a seam
-   goes, the interface is the test surface), not as required vocabulary: the project's own `domain/model.md` terms win.
-   For a task that creates a new module or interface, add `skills: [pocock/codebase-design]` in tasks.yaml so its
-   implementer loads it; do not add it to every task (about 1.5k tokens each).
-3. ADRs for hard-to-reverse, surprising, real trade-offs only (domain-modeling's rule).
-   Brownfield: extend the existing architecture; record only what the change adds.
-4. Fill `.aidw/constitution.md`: engineering principles and stack conventions every agent must follow.
-5. Update `stack:` and `design_mode:` in `.aidw/project.yaml`.
+**Interview (this session).** The architecture is mostly decided from the requirements and the stack pool, so ask the
+user only what they cannot answer: a stack the client requires, hosting, auth or payment providers, integrations,
+limits. Read `$(aidw plugin-path roles/software-architect/references/stack-pool.md)` and put each question with your
+recommendation. Record the answers under `## Stack` in `analysis.md` (`Source: client|ai|fallback` and why) before
+drafting.
+
+**Drafting Agent.** Spawn **`aidw:software-architect`** with this prompt and nothing else:
+`Change <id>. The requirements and specs are drafted; the stack decisions are in .aidw/changes/<id>/analysis.md under "## Stack". Draft the architecture, ADRs, constitution and project fields as your Procedure says, run aidw validate <id>, and reply with the paths you wrote and every decision still open.`
+
+Its Procedure (`$(aidw plugin-path roles/software-architect/role.md)`) holds the stack priority
+(client > AI within the pool > fallback), `.aidw/architecture/overview.md`, ADRs, `.aidw/constitution.md` and the
+`stack:` and `design_mode:` fields of `.aidw/project.yaml`. Handle its open decisions as in step 3.
 
 ## 7. Plan (task graph)
 
-Read `$(aidw vendor-path pocock/to-tickets)` and apply its slicing rules (tracer-bullet vertical slices,
-blocking edges, prefactor first, expand-contract for wide refactors), with this **adapter**:
+Spawn **`aidw:technical-planner`** with this prompt and nothing else:
+`Change <id>. Requirements, specs, design, architecture and constitution are drafted. Break them into .aidw/changes/<id>/tasks.yaml as your Procedure says, run aidw plan and aidw analyze <id>, and reply with the number of tasks and waves and every decision still open.`
 
-- Do **not** quiz the user separately and do not publish tickets: the breakdown is reviewed at the gate.
-- Write `.aidw/changes/<id>/tasks.yaml`:
-
-```yaml
-tasks:
-  - id: T01
-    title: <end-to-end behavior this slice makes work, under 60 characters: it becomes the commit subject>
-    role: fullstack-engineer   # fullstack-engineer | frontend-engineer | backend-engineer | database-engineer | qa-engineer | architect
-    type: feat                 # Conventional Commits type of the task commit: feat fix refactor test docs style perf build ci chore revert
-    specs: [<capability>/<requirement-id>]                 # from `aidw ids <id>`
-    scenarios: [<capability>/<requirement-id>/<scenario-id>]
-    depends_on: []             # blocking edges: only a real data dependency (trial-3C: a near-chain ran with no wave)
-    touches: ["app/(site)/booking/**", "lib/booking/**"]   # file globs this task may change
-    risk: normal               # normal | high (high never runs in parallel)
-    verify:
-      - <command that proves it works, e.g. pnpm vitest run lib/booking>
-    status: pending
-```
-
-- Every requirement and scenario marked `*` (changed) in `aidw ids <id>` must be referenced by some task.
-- **Parallel waves.** Tasks whose `touches` do not overlap and whose dependencies are done run side by side,
-  each in its own git worktree. Keep `touches` tight (exact folders, not `src/**`) so independent slices can
-  run together, and list shared files (`package.json`, the root layout, a shared schema) only in the task
-  that really changes them. `risk: high` (auth, payments, migrations, wide refactors) always runs alone. At
-  most one task per wave may drive a browser (UI or e2e verify), since they share the e2e port.
-- **Check the shape before the gate.** Run `aidw plan <id>`: it prints the stages (tasks that can run side by side
-  are joined with `+`) and advice. Aim for a widest stage of 3 where the work allows. Split a task that carries a
-  third of the scenarios (list / create / edit / delete are separate slices touching different files), and quote the
-  one-line shape in the Summary so the user sees how long the build will take.
-- **Every UI scenario has a UI owner.** A scenario whose WHEN is a user action on a screen ("the user clicks Export CSV")
-  must be listed by a task that touches the UI files (and the API task may list it too). `aidw analyze` warns when
-  its only owners touch no UI files; fix the plan, do not leave the button to chance.
-- **One shared file is a chain.** When every slice must edit the same central file (the page shell or main component),
-  the slices cannot overlap and no wave runs (trial-3C: T04 and T05 both edited `components/notes-app.tsx` outside
-  their `touches`). Build that file in the first slice with a clear extension point (a list of sections, a router
-  table), and list it in the `touches` of every slice that adds to it, so the plan shows the real conflict.
-- **Vercel needs its framework in the repo.** When the deploy target is Vercel, the scaffold task must commit a
-  `vercel.json` with `{"framework": "nextjs"}` (or the framework in use) and put it in its `touches`: a project
-  linked before the app exists is saved as preset "Other" and fails with `STATIC_BUILD_NO_OUT_DIR`. Add that line to
-  the scaffold task's scenarios or verify command. A brand-new project's first deployment is Production
-  (`aidw first-deploy --yes`, run by the user), so tell the user at the gate.
-- **Slice vertically, not by layer.** A plan that is one `depends_on` chain (T01 types, T02 API, T03 UI, T04
-  tests...) can never run a wave. After scaffolding, cut the work into slices that each carry their own API,
-  UI and tests for one behavior; give a task `depends_on` only for something it truly needs (a shared type or
-  file it imports), not for "it comes next". `aidw analyze` warns when the plan is one chain or when
-  `depends_on` links tasks whose `touches` do not overlap: act on that warning, or keep the chain when the
-  dependency is real.
-- The first tasks usually scaffold the project with the approved stack and set up the test harness, the
-  JUnit reporters of quality.yaml, and `.env.example` for every environment variable (names only).
-- **Code style and commits.** For a greenfield project the scaffold task also sets up the formatter, linter, hooks
-  and commit lint of the project's **stack pack** (`$(aidw plugin-path profiles/stacks/node.md)` for JS/TS; the
-  language-neutral rules are in `$(aidw plugin-path profiles/code-style.md)`); put those files in its `touches`
-  and tell it to follow both. A stack without a pack gets the language's usual equivalents. Brownfield projects keep
-  their own tooling.
-- **Migrations.** A task that adds or changes a database migration is `risk: high` and follows the migration rule
-  in `$(aidw plugin-path profiles/quality-layers.md)` (reversible, tested against a seeded database, additive first).
-- **CI.** A greenfield project that will live on GitHub also gets `.github/workflows/ci.yml` from the scaffold task,
-  mirroring the `code`, `unit` and `integration` layers (`$(aidw plugin-path profiles/ci.md)`). Brownfield keeps its own.
-- **Test reports.** Every layer in quality.yaml with `reports:` needs its runner configured to write that JUnit file
-  (Playwright `reporter: [['list'], ['junit', { outputFile: process.env.PLAYWRIGHT_JUNIT_OUTPUT_NAME ?? '...' }]]`).
-  Put it in the scaffold task's brief: a layer that passes without writing its report now fails verify.
-- **Commits.** Every planned task states a `type` (analysis fails without one). The task commit becomes
-  `type(capability): title`, the scope being the capability of its first spec (`config` when it has none), so
-  a task spanning several capabilities lists the main one first. Add `breaking: true` only for a breaking change.
-  Greenfield scaffolds commitlint with the same rules (the stack pack); see `docs/commit-guide.md`.
+Its Procedure (`$(aidw plugin-path roles/technical-planner/role.md)`) holds the `tasks.yaml` format, who owns a task,
+and the rules of a good plan (vertical slices, parallel waves, `aidw plan` shape, UI owners, commit types); its
+`scaffold-tasks` and `migration-tasks` skills cover a new project and a migration. Handle its open decisions as in
+step 3.
 
 ## 8. Quality, deploy and permissions
 
-Read `$(aidw plugin-path profiles/quality-layers.md)` and `$(aidw plugin-path policies/permissions.md)`.
+Read `$(aidw plugin-path roles/qa/references/quality-layers.md)` and `$(aidw plugin-path company/permissions.md)`.
 
 - Write `.aidw/changes/<id>/quality.yaml`: the layers with the exact commands for the chosen stack, the deploy
   target and command, the smoke checks, and the tier-2 resource keys. These commands run unattended after
   approval, so make them non-interactive.
 - `## Quality profile`: which layers run and why, scaled to the project's risk (Q5: comprehensive by default).
-  `code`, `unit`, `e2e` are expected. Add `ui-ux` (screenshots at three viewports + `review: ui`) and `a11y`
-  (axe) whenever the change has UI; `security` (audit + secret scan + `review: security`) whenever it has
+  `code`, `unit`, `e2e` are expected. **A change with UI always gets the `a11y` layer (axe through Playwright)**, even a small
+  one: `aidw analyze` refuses a UI plan without it unless `## Quality profile` says why. Run `aidw detect`: when it shows no
+  `a11y tests: axe-core`, the plan adds it, and that is the one dependency a small UI change may add even when the request says
+  "no new dependencies" (a dev dependency for tests, never a runtime one): `@axe-core/playwright`, the `a11y` Playwright project
+  and `e2e/a11y.spec.ts` go in the `touches` of the UI task (or the plan's first task), and you say so at the gate. Add `ui-ux`
+  (screenshots at three viewports + `review: ui`) whenever the change has UI; `security` (audit + secret scan + `review: security`) whenever it has
   server code, auth, user data or a database; `performance` (Lighthouse budgets) for a public web app. The
   profile's "Recommended layers" section has the commands and the test files the scaffold task must add.
   Justify every layer you leave out; the quality report lists it as not covered.
@@ -281,11 +180,11 @@ Read `$(aidw plugin-path profiles/quality-layers.md)` and `$(aidw plugin-path po
   check `npx lighthouse --version` yourself when the profile has a `performance` layer.
 - **E2E browser.** Claude Code's sandbox usually blocks launching Chromium, so the default is **Chrome over
   CDP**: the user runs Chrome outside the sandbox with a debugging port, and Playwright connects to it (setup
-  and fixture in the quality-layers profile, "E2E browser over CDP"). Check now that this session reaches it:
-  `node -e "fetch('http://127.0.0.1:9222/json/version').then(r=>r.json()).then(j=>console.log(j.Browser))"`.
-  If it fails, give the user the Chrome command from the profile and check again. Write the CDP setup into the
-  e2e layer and a Decision to honor (`E2E connects to Chrome over CDP at E2E_CDP_URL, default
-  http://127.0.0.1:9222`). Use a launched browser instead only if the user prefers it and a real launch works
+  and fixture in the quality-layers profile, "E2E browser over CDP"). There is no fixed port: run
+  `aidw browser start` (Chrome on a free port it picks, one profile per project) and check with `aidw browser status`.
+  If the sandbox blocks the launch, ask the user to run `aidw browser start` in their own terminal and check again.
+  Write the CDP setup into the e2e layer and a Decision to honor (`E2E connects to Chrome over CDP at E2E_CDP_URL,
+  which aidw sets from aidw browser start; no default port`). Use a launched browser instead only if the user prefers it and a real launch works
   in this session.
 - **Parallel.** `parallel: { max: 3 }` in quality.yaml is the default (1 turns waves off). A wave task runs in
   `.aidw/run/worktrees/<change>/<task>`, inside the project, so dependencies resolve from the main checkout's
@@ -297,7 +196,9 @@ Read `$(aidw plugin-path profiles/quality-layers.md)` and `$(aidw plugin-path po
 
 ## 9. Analyze and present
 
-1. Complete every section of `.aidw/changes/<id>/analysis.md`. Replace every `TODO(aidw)`.
+1. Complete every section of `.aidw/changes/<id>/analysis.md`. Replace every `TODO(aidw)`: read the file once, then write the
+   whole completed file with **one Write** (keep every heading and the `Source:` / `Mode:` / `Size:` lines). One Edit per section
+   is about twenty calls in a row, and the orchestrator's context is re-read on each.
    `## Decisions to honor` lists, as `- D1: <decision>`, every concrete choice the code must keep and a reviewer
    can check: names and keys (storage keys, routes, env var names), formats, tools and package manager,
    libraries, conventions, limits. Take them from the discovery answers, the stack, the architecture and the
@@ -306,10 +207,56 @@ Read `$(aidw plugin-path profiles/quality-layers.md)` and `$(aidw plugin-path po
    must fit one page: goal, scope, the key decisions, and the risks and assumptions that need attention.
 2. Run `aidw analyze <id>` and `aidw validate <id>`. Fix every error and re-run until both are clean.
 3. `aidw transition <id> awaiting_approval` (it re-runs both checks).
-4. Present to the user: the summary, the key decisions, risks and assumptions, requested permissions, and
-   the plan size. Point them to `.aidw/changes/<id>/analysis.md` and tell them:
+4. Present to the user: the summary, the key decisions, the Decision Points and their answers (`aidw decisions <id>`),
+   risks and assumptions, requested permissions, and the plan size. Point them to `.aidw/changes/<id>/analysis.md` and tell them:
    `/aidw:approve` to approve, or tell you what to change.
 5. **Stop.** Do not start building.
+
+## Bugfix
+
+A change created with `--workflow bugfix` takes the small path (steps 1c to 9 with `Size: small`: at most 3 questions, at
+most 3 tasks, no domain model, design tokens or ADRs; layers `code` + `unit`, plus `e2e` and `a11y` when UI is touched, plus `security` when the fix touches an HTTP route's input handling, auth or secrets: a bug in input validation is a security-relevant change even when an earlier audit covered the same code) with two
+differences. The behavior is already specified, so the change has **no delta spec** (`skip_specs` is set for you), and the
+planner writes a `type: fix` task whose regression test fails first on the current code (the implementer's brief says so).
+
+**Skip the drafting Agents.** A defect has no new domain, requirements or architecture: do **not** spawn
+`aidw:product-manager` or `aidw:software-architect`, and write no `requirements/` file, domain model, ADR or constitution change
+(a run that spawned the Product Manager produced a requirements document and an extra Agent for a one-line fix). Do steps 1b to
+2 and the health baseline yourself, then write the diagnosis into `analysis.md` in your one Write: the **root cause** (file and
+line), the **scope** (what changes, what does not), the **Decisions to honor** (the exact response or behavior after the fix, what
+must stay as it is), and the regression test the fix needs. The sections for Domain, Stack, Design, Architecture and Specs say
+"n/a for a bugfix". A bugfix has no `design-needed` decision (do not run `aidw decide design-needed`). Then spawn only the planner (step 7) with this
+prompt instead of the one there:
+`Change <id>. The diagnosis (root cause, scope, decisions to honor) is in .aidw/changes/<id>/analysis.md; there are no specs. Write .aidw/changes/<id>/tasks.yaml with one task of type fix (at most 3), with scope: <the capability it touches> and a regression test in its touches, run aidw plan and aidw analyze <id>, and reply with the number of tasks and every decision still open.`
+
+The task's **regression test is proven by the CLI**: at its checkpoint aidw runs the new test files against the base commit, and a
+test that passes on the old code fails the checkpoint.
+
+There is **no approval gate** while the fix stays small. After `aidw transition <id> awaiting_approval` run
+`aidw approve <id> --auto` instead of stopping:
+
+- It approves itself (`approved by aidw (bugfix boundary)`; hash and drift protection apply as ever). Tell the user in
+  one line what will be fixed, then continue with `/aidw:run`. A production deploy still asks.
+- It refuses when the plan has more than 3 tasks, adds a migration or needs a delta spec. The change is now a `feature`
+  change: present the package as in step 9 and stop for `/aidw:approve`.
+
+## Audit
+
+A change created with `--workflow audit` is **read-only**: no spec, plan, approval or build, and the gate stays closed to
+project files for the whole change. Do not follow steps 1b to 9. Instead:
+
+1. Intake as in step 1: write what to audit, and why, in `intake.md`. `aidw transition <id> intake`, then `analyzing`.
+2. Choose the lenses with the user (`security`, `code-quality`, `ui`), recommending the ones the request implies, and
+   record them: `aidw decide audit-lenses security,code-quality --reason "<why>"`.
+3. For each lens: `aidw audit brief <lens>`. It prints the brief and the `SPAWN` line; spawn that Agent (`aidw:security`,
+   `aidw:code-reviewer`, `aidw:ui-ux-designer`), all of them in one message, each with exactly the printed prompt. Each writes
+   `.aidw/run/audit-<lens>.md` and replies with one line.
+4. `aidw audit report`. It assembles `audit-report.md` (findings by severity, numbered `F-01`...). A lens that answered in a
+   wrong shape is named: spawn that reviewer once more.
+5. `aidw transition <id> delivered`, then `aidw archive <id>`. Present the report to the user: the counts, the critical and
+   high findings, and what was not covered.
+6. The user picks what to act on. `aidw audit picks F-01,F-03 --change <id>` prints the picked findings as the request of
+   a new change; start it with this skill as a `bugfix` (a small, clear defect) or a `feature`.
 
 ## Revising
 

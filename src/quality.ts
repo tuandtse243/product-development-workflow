@@ -10,6 +10,7 @@
  *   aidw deploy   runs the approved preview deploy, then smoke checks against its URL
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { AGENTS, defaultTaskRole } from "./roles.js";
 import { join } from "node:path";
 import YAML from "yaml";
 import { approvalStatus } from "./approval.js";
@@ -33,7 +34,7 @@ export const EXPECTED_LAYERS = ["code", "unit", "e2e"] as const;
 export const RECOMMENDED_LAYERS = ["ui-ux", "a11y", "security", "performance"] as const;
 /**
  * Review layers (S7, D-28): after its commands pass, the layer waits for an independent read-only reviewer
- * subagent (`aidw:<kind>-reviewer`) whose verdict the orchestrator records with `aidw layer-review`.
+ * subagent (`aidw:ui-ux-designer` for ui, `aidw:security` for security) whose verdict the orchestrator records with `aidw layer-review`.
  */
 export const REVIEW_KINDS = ["ui", "security"] as const;
 export type ReviewKind = (typeof REVIEW_KINDS)[number];
@@ -95,7 +96,7 @@ export function parseQuality(text: string, file: string): { config: QualityConfi
       else if (layers.some((x) => x.name === l.name)) d.error(file, `duplicate layer "${l.name}"`);
       const review = l.review === undefined || l.review === null ? null : String(l.review);
       if (review !== null && !(REVIEW_KINDS as readonly string[]).includes(review)) {
-        d.error(file, `${where}: "review" must be one of ${REVIEW_KINDS.join(", ")} (an aidw:<kind>-reviewer agent exists for each)`);
+        d.error(file, `${where}: "review" must be one of ${REVIEW_KINDS.join(", ")} (a reviewing Role exists for each)`);
       }
       if (l.run === undefined && review !== null) {
         // a pure review layer: nothing to run, the reviewer judges the code and the artifacts
@@ -362,7 +363,7 @@ export interface VerifyLayerOutcome {
 export interface AwaitingReview {
   layer: string;
   kind: ReviewKind;
-  /** subagent to spawn, e.g. aidw:ui-reviewer */
+  /** subagent to spawn, e.g. aidw:ui-ux-designer */
   agent: string;
   /** project-relative path of the review brief */
   brief: string;
@@ -403,7 +404,7 @@ export function requireVerifying(p: Paths, id: string, what: string): Change {
   return change;
 }
 
-const reviewAgent = (kind: ReviewKind) => `aidw:${kind}-reviewer`;
+const reviewAgent = (kind: ReviewKind) => AGENTS.layerReview[kind];
 
 function awaiting(layer: Layer, r: LayerResult): AwaitingReview {
   return { layer: layer.name, kind: layer.review as ReviewKind, agent: reviewAgent(layer.review as ReviewKind), brief: r.brief ?? "", artifacts: r.artifacts ?? [] };
@@ -511,7 +512,7 @@ export function addFixTask(p: Paths, id: string, config: QualityConfig, layer: L
   const task = {
     id: taskId,
     title: `Fix the ${layer.name} quality layer`,
-    role: "fullstack-engineer",
+    role: defaultTaskRole(),
     origin: "quality",
     layer: layer.name,
     depends_on: [],
