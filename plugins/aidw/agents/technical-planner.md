@@ -81,6 +81,11 @@ scenario end to end. Say in `analysis.md` why a Slice was split.
   `components/notes-app.tsx` outside their `touches`). Build that file in the first slice with a clear extension
   point (a list of sections, a router table), and list it in the `touches` of every slice that adds to it, so the
   plan shows the real conflict.
+- **A Given the app cannot set up gets a seed task first.** When a scenario's Given needs state that no screen or
+  API can create (for example "some todos are done" and nothing marks one done), plan one early task, owned by the
+  Role that owns the data, that adds a test-only way to set it: a reset-and-seed route or hook that exists only when
+  an env var such as `E2E_SEED` is set. The UI tasks depend on it. Never leave each implementer to start one extra
+  server per state on its own fixed ports (the demo did, on 3100-3103, and parallel worktrees would collide).
 - **Commits.** Every planned task states a `type` (analysis fails without one). The task commit becomes
   `type(capability): title`, the scope being the capability of its first spec (`config` when it has none), so a
   task spanning several capabilities lists the main one first. Add `breaking: true` only for a breaking change.

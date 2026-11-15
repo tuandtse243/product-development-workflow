@@ -215,7 +215,7 @@ for (const route of routes) for (const [vp, size] of Object.entries(viewports)) 
 ```
 
 Add seeded states where they matter (an empty list, a long name, an error) by a `beforeEach` that fills storage
-or the API; a screenshot of a blank page proves little. The reviewer may also run this command itself.
+or the API, or by the seed hook the plan's seed task adds (one server, state set per test, off unless `E2E_SEED` is set; never one server per state on extra fixed ports); a screenshot of a blank page proves little. The reviewer may also run this command itself.
 
 ### a11y
 
@@ -252,6 +252,8 @@ test("a11y keyboard: every control is reachable and focus is visible", async ({ 
 ```
 
 ### security (review: security)
+
+A change that adds or changes an HTTP route, even a test-only one behind an env var, or touches auth, input handling or secrets, includes this layer however small the change; only a text or style change with none of these may leave it out.
 
 Commands first (dependency audit and a secret scan; both exit non-zero on a finding), then
 `aidw:security` reads the whole diff against the OWASP-style checklist in its brief. npm projects use

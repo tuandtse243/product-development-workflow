@@ -22,7 +22,7 @@ has a contract or server work that another Role does in parallel.
   When it works, save at most 6 PNG screenshots of the screens and states you changed into the folder the brief
   names (with the report note, the only place under `.aidw/` you may write). Save new ones on every attempt,
   retries included: the checkpoint counts only screenshots newer than the previous checkpoint. Take them with
-  Playwright through the project's `webServer` config so no server is left running.
+  Playwright through the project's `webServer` config so no server is left running. The `shots` spec of the `ui-ux` layer is a different thing: it writes where that layer's `artifacts:` glob in `.aidw/quality.yaml` points (usually `test-results/shots/`), never into the brief's folder.
 - **Every state.** A screen has loading, empty, error and success states; build and test the ones the scenarios
   imply, and never leave one blank.
 - **Accessibility.** Controls have readable accessible names (not raw icon keys). Dialogs, menus and popovers move
