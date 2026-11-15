@@ -139,7 +139,7 @@ aidw becomes a software factory with a Roster of Roles, Workflows as data and de
     Not yet run end to end.
   - [x] Bugfix hardening (from the first real bugfix run): a `type: fix` task's checkpoint copies the new test files onto the base
     commit and runs the unit verify commands there (`proveRegression`: `red`, `not-red` or `unproven`; `not-red` fails the task;
-    evidence field `regression`). `start` does not spawn the product-manager or architect for a bugfix; only the planner runs. A task
+    evidence field `regression`). When `git worktree add` is not allowed (a sandbox with a read-only `.git`), the old code is checked out as a plain copy (`git archive`; evidence `via: snapshot`) and nothing under `.git` is written. `start` does not spawn the product-manager or architect for a bugfix; only the planner runs. A task
     may carry `scope:` so the commit reads `fix(todos): ...` rather than `fix(config): ...`. Gap: a test that is red only because of
     a missing import still counts as red; e2e is not re-run on the old code.
   - [x] a11y: `aidw analyze` requires an `a11y` layer for a UI change; `aidw detect` reports axe-core; `start` installs it by default.

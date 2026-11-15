@@ -9305,7 +9305,7 @@ var import_node_fs17 = require("node:fs");
 var import_node_path19 = require("node:path");
 
 // src/run.ts
-var import_node_child_process3 = require("node:child_process");
+var import_node_child_process4 = require("node:child_process");
 var import_node_fs16 = require("node:fs");
 var import_node_path18 = require("node:path");
 var import_yaml9 = __toESM(require_dist(), 1);
@@ -9895,6 +9895,7 @@ function packsFor(root, stack, role) {
 }
 
 // src/parallel.ts
+var import_node_child_process3 = require("node:child_process");
 var import_node_fs15 = require("node:fs");
 var import_node_path17 = require("node:path");
 
@@ -10007,7 +10008,10 @@ function ensureWorktree(p, id, taskId, base) {
   (0, import_node_fs15.mkdirSync)((0, import_node_path17.join)(dir, ".."), { recursive: true });
   const hasBranch = git(p.project, ["rev-parse", "--verify", "-q", `refs/heads/${branch}`]).ok;
   const r = hasBranch ? git(p.project, ["worktree", "add", "-q", dir, branch]) : git(p.project, ["worktree", "add", "-q", "-b", branch, dir, base]);
-  if (!r.ok) throw new OpError(`could not create the worktree for ${taskId}: ${r.err || r.out}`);
+  if (!r.ok) {
+    if (!hasBranch) git(p.project, ["branch", "-q", "-D", branch]);
+    throw new OpError(`could not create the worktree for ${taskId}: ${r.err || r.out}`);
+  }
   linkDependencies(p, dir);
   return { dir: rel(p, dir), branch, created: true };
 }
@@ -10019,6 +10023,27 @@ function removeWorktree(p, worktree, branch) {
     git(p.project, ["worktree", "prune"]);
   }
   if (branch) git(p.project, ["branch", "-q", "-D", branch]);
+}
+function snapshotBase(p, id, taskId, base) {
+  const dir = worktreeDir(p, id, taskId);
+  (0, import_node_fs15.rmSync)(dir, { recursive: true, force: true });
+  (0, import_node_fs15.mkdirSync)(dir, { recursive: true });
+  const r = (0, import_node_child_process3.spawnSync)("sh", ["-c", 'git archive --format=tar "$0" | tar -x -C "$1"', base, dir], { cwd: p.project, encoding: "utf8" });
+  if (r.status !== 0) {
+    (0, import_node_fs15.rmSync)(dir, { recursive: true, force: true });
+    throw new OpError(`could not copy the base commit: ${(r.stderr || r.error?.message || `exit ${r.status}`).trim()}`);
+  }
+  const source = (0, import_node_path17.join)(p.project, "node_modules");
+  if ((0, import_node_fs15.existsSync)(source) && !isSymlink((0, import_node_path17.join)(dir, "node_modules"))) {
+    try {
+      (0, import_node_fs15.symlinkSync)(source, (0, import_node_path17.join)(dir, "node_modules"), "dir");
+    } catch {
+    }
+  }
+  return rel(p, dir);
+}
+function removeSnapshot(p, folder) {
+  (0, import_node_fs15.rmSync)((0, import_node_path17.join)(p.project, folder), { recursive: true, force: true });
 }
 function mergeWorktree(p, t, message) {
   const wt = taskDir(p, t);
@@ -10346,7 +10371,7 @@ function writeEvidence(change, ev) {
 }
 var tailOf = (s, lines = 60) => s.split(/\r?\n/).slice(-lines).join("\n").trim();
 var shellRunner = (command, cwd, timeoutMs, env) => {
-  const r = (0, import_node_child_process3.spawnSync)(command, {
+  const r = (0, import_node_child_process4.spawnSync)(command, {
     cwd,
     shell: true,
     encoding: "utf8",
@@ -10373,10 +10398,16 @@ function proveRegression(p, id, t, dir, base, changed, runner, timeoutMs) {
   const commands = list3(t.verify).filter((c) => UNIT_TEST_COMMAND.test(c) && !BROWSER_COMMAND.test(c));
   if (!commands.length) return { status: "unproven", reason: "no verify command runs unit tests, so the old code could not be checked", files };
   let wt;
+  let via = "worktree";
   try {
     wt = ensureWorktree(p, id, `${String(t.id)}-red`, base);
   } catch (e) {
-    return { status: "unproven", reason: `could not check out the base commit: ${e.message}`, files };
+    try {
+      wt = { dir: snapshotBase(p, id, `${String(t.id)}-red`, base) };
+      via = "snapshot";
+    } catch (e2) {
+      return { status: "unproven", reason: `could not check out the base commit: ${e.message}; a plain copy failed too: ${e2.message}`, files };
+    }
   }
   const wdir = (0, import_node_path18.join)(p.project, wt.dir);
   try {
@@ -10388,13 +10419,14 @@ function proveRegression(p, id, t, dir, base, changed, runner, timeoutMs) {
     let last = { command: commands[0], exit: 0, tail: "" };
     for (const command of commands) {
       const r = runner(command, wdir, Math.min(timeoutMs, 5 * 60 * 1e3));
-      if (r.timedOut) return { status: "unproven", reason: `\`${command}\` timed out on the old code`, files, command };
+      if (r.timedOut) return { status: "unproven", reason: `\`${command}\` timed out on the old code`, files, command, via };
       last = { command, exit: r.exit, tail: r.tail };
-      if (r.exit !== 0) return { status: "red", reason: "the new tests fail on the old code", files, ...last };
+      if (r.exit !== 0) return { status: "red", reason: "the new tests fail on the old code", files, via, ...last };
     }
-    return { status: "not-red", reason: "the new tests pass on the old code: they do not reproduce the bug", files, ...last };
+    return { status: "not-red", reason: "the new tests pass on the old code: they do not reproduce the bug", files, via, ...last };
   } finally {
-    removeWorktree(p, wt.dir, wt.branch);
+    if (via === "worktree") removeWorktree(p, wt.dir, wt.branch);
+    else removeSnapshot(p, wt.dir);
   }
 }
 function checkpoint(p, id, taskId, opts = {}) {
@@ -13053,7 +13085,7 @@ function uiScenarioAdvice(p, id, tasks, d, tf) {
 }
 
 // src/browser.ts
-var import_node_child_process4 = require("node:child_process");
+var import_node_child_process5 = require("node:child_process");
 var import_node_crypto4 = require("node:crypto");
 var import_node_fs26 = require("node:fs");
 var import_node_os = require("node:os");
@@ -13092,7 +13124,7 @@ var CHROME_CANDIDATES = [
 ];
 var realBrowserDeps = {
   probe: (url) => {
-    const r = (0, import_node_child_process4.spawnSync)("curl", ["-sS", "-m", "3", `${url}/json/version`], { encoding: "utf8", timeout: 6e3 });
+    const r = (0, import_node_child_process5.spawnSync)("curl", ["-sS", "-m", "3", `${url}/json/version`], { encoding: "utf8", timeout: 6e3 });
     if (r.status !== 0) return null;
     try {
       const b = JSON.parse(r.stdout).Browser;
@@ -13104,7 +13136,7 @@ var realBrowserDeps = {
   launch: (bin, args, log) => {
     const fd = (0, import_node_fs26.openSync)(log, "w");
     try {
-      const child = (0, import_node_child_process4.spawn)(bin, args, { detached: true, stdio: ["ignore", fd, fd] });
+      const child = (0, import_node_child_process5.spawn)(bin, args, { detached: true, stdio: ["ignore", fd, fd] });
       let failed = false;
       child.on("error", () => {
         failed = true;
@@ -13272,13 +13304,13 @@ function checkEvals(root) {
 // src/evalrun.ts
 var import_node_fs28 = require("node:fs");
 var import_node_os2 = require("node:os");
-var import_node_child_process5 = require("node:child_process");
+var import_node_child_process6 = require("node:child_process");
 var import_node_path30 = require("node:path");
 var claudeExec = (model) => (prompt, system) => {
   const cwd = (0, import_node_fs28.mkdtempSync)((0, import_node_path30.join)((0, import_node_os2.tmpdir)(), "aidw-eval-"));
   try {
     const args = ["-p", "--tools", "", "--setting-sources", "project", ...model ? ["--model", model] : [], ...system ? ["--append-system-prompt", system] : []];
-    const r = (0, import_node_child_process5.spawnSync)("claude", args, { cwd, input: prompt, encoding: "utf8", timeout: 10 * 60 * 1e3, maxBuffer: 16 * 1024 * 1024 });
+    const r = (0, import_node_child_process6.spawnSync)("claude", args, { cwd, input: prompt, encoding: "utf8", timeout: 10 * 60 * 1e3, maxBuffer: 16 * 1024 * 1024 });
     if (r.error || r.status !== 0) throw new Error(`claude -p failed: ${r.error?.message ?? ((r.stderr || r.stdout || "").trim().slice(0, 500) || `exit ${r.status}`)}`);
     return r.stdout;
   } finally {
@@ -13635,11 +13667,11 @@ function formatCost(sessions) {
 }
 
 // src/doctor.ts
-var import_node_child_process6 = require("node:child_process");
+var import_node_child_process7 = require("node:child_process");
 var import_node_fs30 = require("node:fs");
 var import_node_path32 = require("node:path");
 var shellProbe = (cmd2, args, cwd, timeoutMs = 15e3) => {
-  const r = (0, import_node_child_process6.spawnSync)(cmd2, args, { cwd, encoding: "utf8", timeout: timeoutMs });
+  const r = (0, import_node_child_process7.spawnSync)(cmd2, args, { cwd, encoding: "utf8", timeout: timeoutMs });
   return { ok: r.status === 0 && !r.error, out: `${r.stdout ?? ""}${r.stderr ?? ""}`.trim() };
 };
 var SHELL_WORDS = /* @__PURE__ */ new Set(["!", "cd", "echo", "test", "[", "true", "false", "export", "set", "exit", "sh", "bash", "git"]);
@@ -13800,7 +13832,7 @@ ${bad ? `${bad} problem(s) to fix before the run` : warn ? `no blocking problem,
 }
 
 // src/pr.ts
-var import_node_child_process7 = require("node:child_process");
+var import_node_child_process8 = require("node:child_process");
 var import_node_fs31 = require("node:fs");
 var import_node_path33 = require("node:path");
 var import_yaml13 = __toESM(require_dist(), 1);
@@ -13890,13 +13922,13 @@ function createPr(p, id, opts = {}) {
   return { url: r, plan };
 }
 function ghCreate(p, plan, draft) {
-  const r = (0, import_node_child_process7.spawnSync)("gh", ["pr", "create", "--base", plan.base, "--head", plan.head, "--title", plan.title, "--body-file", plan.bodyFile, ...draft ? ["--draft"] : []], { cwd: p.project, encoding: "utf8" });
+  const r = (0, import_node_child_process8.spawnSync)("gh", ["pr", "create", "--base", plan.base, "--head", plan.head, "--title", plan.title, "--body-file", plan.bodyFile, ...draft ? ["--draft"] : []], { cwd: p.project, encoding: "utf8" });
   if (r.error || r.status !== 0) throw new OpError(`gh pr create failed: ${(r.stderr || String(r.error ?? "")).trim().split("\n")[0]} (the branch is pushed; open the PR by hand with the body in ${rel(p, plan.bodyFile)})`);
   return r.stdout.trim().split("\n").pop() ?? "";
 }
 
 // src/runner.ts
-var import_node_child_process8 = require("node:child_process");
+var import_node_child_process9 = require("node:child_process");
 var import_node_crypto5 = require("node:crypto");
 var import_node_fs32 = require("node:fs");
 var import_node_path34 = require("node:path");
@@ -14018,7 +14050,7 @@ function runLoop(p, id, opts = {}) {
     const prompt = state === "delivered" ? `/aidw:deliver ${id}` : `/aidw:resume ${id}`;
     const args = ["-p", prompt, "--permission-mode", mode, ...opts.keepMcp ? [] : ["--strict-mcp-config"], ...opts.extraArgs ?? []];
     record(`session ${runs + 1}: ${claude} ${args.map((a) => /\s/.test(a) ? JSON.stringify(a) : a).join(" ")}`);
-    const r = (0, import_node_child_process8.spawnSync)(claude, args, {
+    const r = (0, import_node_child_process9.spawnSync)(claude, args, {
       cwd: p.project,
       encoding: "utf8",
       env: { ...process.env, ...opts.env ?? {}, AIDW_RUNNER: "1" },
@@ -14090,7 +14122,7 @@ function detachRun(p, argv, env) {
   const fd = (0, import_node_fs32.openSync)(log, "a");
   const clean = { ...env, AIDW_RUN_DETACHED: "1" };
   delete clean.CLAUDECODE;
-  const child = (0, import_node_child_process8.spawn)(process.execPath, [process.argv[1], ...argv], { cwd: p.project, detached: true, stdio: ["ignore", fd, fd], env: clean });
+  const child = (0, import_node_child_process9.spawn)(process.execPath, [process.argv[1], ...argv], { cwd: p.project, detached: true, stdio: ["ignore", fd, fd], env: clean });
   child.unref();
   (0, import_node_fs32.writeFileSync)(pidFile(p), String(child.pid));
   return { pid: child.pid, log };
@@ -14108,12 +14140,12 @@ function stopRunner(p) {
 }
 
 // src/firstdeploy.ts
-var import_node_child_process9 = require("node:child_process");
+var import_node_child_process10 = require("node:child_process");
 function productionCommand(command) {
   const swapped = command.replace(/\s--(?:environment|target)(?:=|\s+)preview\b/, " --prod");
   return /\s--prod\b/.test(swapped) ? swapped : `${swapped} --prod`;
 }
-function firstDeploy(p, id, yes, run2 = import_node_child_process9.spawnSync) {
+function firstDeploy(p, id, yes, run2 = import_node_child_process10.spawnSync) {
   const text = readText(qualityFile(loadChange(p, id)));
   const q = text === null ? null : parseQuality(text, "quality.yaml").config;
   if (!q?.deploy.command || !/\bvercel\b/.test(q.deploy.command)) throw new OpError("first-deploy is for Vercel projects: quality.yaml has no vercel deploy command");

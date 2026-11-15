@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
@@ -50,6 +50,29 @@ describe("a bugfix proves its regression test on the old code", () => {
     // the check left nothing behind
     expect(existsSync(join(root, ".aidw/run/worktrees", ID, "T01-red"))).toBe(false);
     expect(git(root, "branch", "--list", "*T01-red").trim()).toBe("");
+  });
+
+  it("proves it from a plain copy of the base commit when git may not write under .git", () => {
+    const root = running();
+    writeFileSync(join(root, ".git/worktrees"), ""); // `git worktree add` cannot create .git/worktrees/<name>: the sandbox's "Operation not permitted"
+    write(root, "lib/bug.js", "exports.add = (a, b) => a + b;\n");
+    write(root, "tests/regress.test.js", test("assert.strictEqual(add(2, 3), 5);"));
+    const r = cli(root, "checkpoint", "T01");
+    expect(r.code, r.out + r.err).toBe(0);
+    expect(evidence(root).regression).toMatchObject({ status: "red", via: "snapshot", files: ["tests/regress.test.js"] });
+    expect(existsSync(join(root, ".aidw/run/worktrees", ID, "T01-red"))).toBe(false); // the copy is removed
+    expect(git(root, "branch", "--list", "*T01-red").trim()).toBe(""); // and no branch was made
+  });
+
+  it("still fails a test that passes on the old code when the proof runs from the copy", () => {
+    const root = running();
+    writeFileSync(join(root, ".git/worktrees"), "");
+    write(root, "lib/bug.js", "exports.add = (a, b) => a + b;\n");
+    write(root, "tests/regress.test.js", test("assert.strictEqual(add(2, 0), 2);"));
+    const r = cli(root, "checkpoint", "T01");
+    expect(r.code).toBe(1);
+    expect(r.out).toMatch(/no regression proof: the new tests pass on the old code/);
+    expect(evidence(root).regression).toMatchObject({ status: "not-red", via: "snapshot" });
   });
 
   it("fails when the new test passes on the old code: it does not reproduce the bug", () => {

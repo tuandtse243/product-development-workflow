@@ -26,7 +26,7 @@ import { DEFAULT_TASK_ROLE, implementerOf } from "./roles.js";
 import { packsFor } from "./stackpacks.js";
 import { OpError, transition } from "./ops.js";
 import { readText, rel, walkFiles, type Paths } from "./project.js";
-import { ensureWorktree, integrate, mergeWorktree, parallelConfig, pendingIntegration, planWave, removeWorktree, taskDir, type IntegrateResult } from "./parallel.js";
+import { ensureWorktree, removeSnapshot, snapshotBase, integrate, mergeWorktree, parallelConfig, pendingIntegration, planWave, removeWorktree, taskDir, type IntegrateResult } from "./parallel.js";
 import { parseQuality, qualityFile, resetQualitySummary } from "./quality.js";
 import { selectSkills, touchesUi, isSecuritySensitive, type BriefKind } from "./skills.js";
 import { DEFAULT_MAX_ATTEMPTS, parseTasks, planSha, validateTasksText, type Task } from "./tasks.js";
@@ -319,6 +319,8 @@ export interface RegressionEvidence {
   status: "red" | "not-red" | "unproven";
   reason: string;
   files: string[];
+  /** how the old code was checked out: a git worktree, or a plain copy when git may not write under .git */
+  via?: "worktree" | "snapshot";
   command?: string;
   exit?: number | null;
   tail?: string;
@@ -426,11 +428,18 @@ function proveRegression(p: Paths, id: string, t: Task, dir: string, base: strin
   if (!files.length) return { status: "not-red", reason: "the task changed no test file: a fix needs a regression test that fails on the old code", files };
   const commands = list(t.verify).filter((c) => UNIT_TEST_COMMAND.test(c) && !BROWSER_COMMAND.test(c));
   if (!commands.length) return { status: "unproven", reason: "no verify command runs unit tests, so the old code could not be checked", files };
-  let wt: { dir: string; branch: string };
+  // Prefer a git worktree; when git may not write under `.git` (a sandbox), fall back to a plain copy of the base commit.
+  let wt: { dir: string; branch?: string };
+  let via: "worktree" | "snapshot" = "worktree";
   try {
     wt = ensureWorktree(p, id, `${String(t.id)}-red`, base);
   } catch (e) {
-    return { status: "unproven", reason: `could not check out the base commit: ${(e as Error).message}`, files };
+    try {
+      wt = { dir: snapshotBase(p, id, `${String(t.id)}-red`, base) };
+      via = "snapshot";
+    } catch (e2) {
+      return { status: "unproven", reason: `could not check out the base commit: ${(e as Error).message}; a plain copy failed too: ${(e2 as Error).message}`, files };
+    }
   }
   const wdir = join(p.project, wt.dir);
   try {
@@ -442,13 +451,14 @@ function proveRegression(p: Paths, id: string, t: Task, dir: string, base: strin
     let last: { command: string; exit: number | null; tail: string } = { command: commands[0] as string, exit: 0, tail: "" };
     for (const command of commands) {
       const r = runner(command, wdir, Math.min(timeoutMs, 5 * 60 * 1000));
-      if (r.timedOut) return { status: "unproven", reason: `\`${command}\` timed out on the old code`, files, command };
+      if (r.timedOut) return { status: "unproven", reason: `\`${command}\` timed out on the old code`, files, command, via };
       last = { command, exit: r.exit, tail: r.tail };
-      if (r.exit !== 0) return { status: "red", reason: "the new tests fail on the old code", files, ...last };
+      if (r.exit !== 0) return { status: "red", reason: "the new tests fail on the old code", files, via, ...last };
     }
-    return { status: "not-red", reason: "the new tests pass on the old code: they do not reproduce the bug", files, ...last };
+    return { status: "not-red", reason: "the new tests pass on the old code: they do not reproduce the bug", files, via, ...last };
   } finally {
-    removeWorktree(p, wt.dir, wt.branch);
+    if (via === "worktree") removeWorktree(p, wt.dir, wt.branch);
+    else removeSnapshot(p, wt.dir);
   }
 }
 
