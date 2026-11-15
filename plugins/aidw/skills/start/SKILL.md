@@ -215,7 +215,7 @@ Read `$(aidw plugin-path roles/qa/references/quality-layers.md)` and `$(aidw plu
 ## Bugfix
 
 A change created with `--workflow bugfix` takes the small path (steps 1c to 9 with `Size: small`: at most 3 questions, at
-most 3 tasks, no domain model, design tokens or ADRs; layers `code` + `unit`, plus `e2e` and `a11y` when UI is touched) with two
+most 3 tasks, no domain model, design tokens or ADRs; layers `code` + `unit`, plus `e2e` and `a11y` when UI is touched, plus `security` when the fix touches an HTTP route's input handling, auth or secrets: a bug in input validation is a security-relevant change even when an earlier audit covered the same code) with two
 differences. The behavior is already specified, so the change has **no delta spec** (`skip_specs` is set for you), and the
 planner writes a `type: fix` task whose regression test fails first on the current code (the implementer's brief says so).
 
@@ -225,7 +225,7 @@ planner writes a `type: fix` task whose regression test fails first on the curre
 2 and the health baseline yourself, then write the diagnosis into `analysis.md` in your one Write: the **root cause** (file and
 line), the **scope** (what changes, what does not), the **Decisions to honor** (the exact response or behavior after the fix, what
 must stay as it is), and the regression test the fix needs. The sections for Domain, Stack, Design, Architecture and Specs say
-"n/a for a bugfix", and `aidw decide design-needed no-ui` records a fix without UI. Then spawn only the planner (step 7) with this
+"n/a for a bugfix". A bugfix has no `design-needed` decision (do not run `aidw decide design-needed`). Then spawn only the planner (step 7) with this
 prompt instead of the one there:
 `Change <id>. The diagnosis (root cause, scope, decisions to honor) is in .aidw/changes/<id>/analysis.md; there are no specs. Write .aidw/changes/<id>/tasks.yaml with one task of type fix (at most 3), with scope: <the capability it touches> and a regression test in its touches, run aidw plan and aidw analyze <id>, and reply with the number of tasks and every decision still open.`
 
