@@ -5,7 +5,9 @@ case: order-dependent-tests
 
 A review brief for a UI task that adds a counter to a page. Two e2e tests share the app's in-memory list: the "none done" test only
 passes because the "empty list" test ran first and left the list empty, so it fails if the tests are reordered. The change touches
-UI and no accessibility layer is in the quality profile. The page's counter is a plain paragraph.
+UI and no accessibility layer is in the quality profile. The page's counter is a plain paragraph. Item 8 of the brief's checklist reads: "Accessibility beyond what axe finds: controls have
+readable accessible names, a keyboard user can reach and operate them, dialogs and menus move and return focus, and state is not
+shown by color alone."
 
 ## Criteria
 

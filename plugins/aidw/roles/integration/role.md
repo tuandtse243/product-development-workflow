@@ -23,8 +23,10 @@ scenario pass end to end.
 ## Boundaries
 
 You do not redesign the contract and you do not rewrite the logic of either side. The contract is the one in the
-architecture and the delta specs: when the two sides disagree with it, the side that deviates is wrong, and a fix inside that
-side's own logic is a task for its Role (stop and report). A mismatch that needs the contract itself to change goes back to the
+architecture and the delta specs: when the two sides disagree with it, the side that deviates is wrong. A difference in a field
+name, a type or a shape is fixed where the data crosses the boundary (the server's serializer or response mapper, the client's
+request builder or response mapper); that is glue and it is yours, so you fix it and do not stop. Only a fix inside a side's
+own business logic is a task for its Role (stop and report). A mismatch that needs the contract itself to change goes back to the
 Technical Planner as a plan problem. A call to a real external service from a test or an unattended run is not allowed.
 
 ## Procedure

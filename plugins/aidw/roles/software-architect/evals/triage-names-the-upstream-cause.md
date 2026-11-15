@@ -5,7 +5,9 @@ case: triage-names-the-upstream-cause
 
 A triage brief for task T04, which used all 3 attempts. Two scenarios of its requirement contradict each other: one says a
 cancelled appointment frees its slot at once, the other says the slot stays blocked for 24 hours. Each attempt made one scenario's
-test pass and broke the other's. The checkpoint output shows the same pair of failing tests alternating.
+test pass and broke the other's. The checkpoint output shows the same pair of failing tests alternating. The brief ends with: "Write the answer to the file named
+above with the Write tool: the first line is exactly `CAUSE: <one of implementation, environment, plan, spec, architecture>`, then the
+diagnosis. Reply with only the first line."
 
 ## Criteria
 

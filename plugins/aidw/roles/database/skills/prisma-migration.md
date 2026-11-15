@@ -2,7 +2,8 @@
 
 - The schema is `prisma/schema.prisma`; a migration is a folder `prisma/migrations/<timestamp>_<name>/migration.sql`.
 - Create it locally with `pnpm exec prisma migrate dev --name <name>`. It needs a database and creates a shadow database, so run
-  it only against the **local** one (`DATABASE_URL` points at localhost or a SQLite file). Never run `migrate dev` or
+  it only against the **local** one (`DATABASE_URL` points at localhost or a SQLite file). Set `DATABASE_URL` to the local database in the same command (`DATABASE_URL=file:./test.db pnpm exec prisma ...`), so a stale
+  `.env` can never point it elsewhere; `migrate reset --force` only ever runs that way. Never run `migrate dev` or
   `migrate reset` against a remote database; production and CI use `prisma migrate deploy`, which only applies what exists.
 - **Prisma has no down migrations.** Write the reverse by hand as `prisma/migrations/<timestamp>_<name>/down.sql` (it sits
   beside the migration; Prisma ignores it). `prisma migrate diff --from-schema-datamodel <new schema> --to-schema-datamodel <old schema> --script`

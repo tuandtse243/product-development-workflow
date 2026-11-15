@@ -1,4 +1,5 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { loadEvalCases, type EvalCase } from "./evals.js";
@@ -22,27 +23,54 @@ export interface CaseResult {
   pass: boolean;
   criteria: CriterionResult[];
   answer: string;
+  /** set when the model call failed (a refusal, a timeout): the case is neither passed nor graded */
+  error?: string;
+  /** with --runs N: how the N runs went; `pass` is true only when every run passed */
+  runs?: { total: number; passed: number; errors: number };
 }
 
 export const claudeExec =
   (model?: string): Exec =>
   (prompt, system) => {
-    const args = ["-p", "--tools", "", ...(model ? ["--model", model] : []), ...(system ? ["--append-system-prompt", system] : [])];
-    const r = spawnSync("claude", args, { input: prompt, encoding: "utf8", timeout: 10 * 60 * 1000, maxBuffer: 16 * 1024 * 1024 });
-    if (r.error || r.status !== 0) throw new Error(`claude -p failed: ${r.error?.message ?? (r.stderr || "").slice(0, 300)}`);
-    return r.stdout;
+    // Run from an empty directory and read only that directory's settings: the answer must not depend on the user's own
+    // settings, hooks or CLAUDE.md, and a broken rule in them must not fail a run.
+    const cwd = mkdtempSync(join(tmpdir(), "aidw-eval-"));
+    try {
+      const args = ["-p", "--tools", "", "--setting-sources", "project", ...(model ? ["--model", model] : []), ...(system ? ["--append-system-prompt", system] : [])];
+      const r = spawnSync("claude", args, { cwd, input: prompt, encoding: "utf8", timeout: 10 * 60 * 1000, maxBuffer: 16 * 1024 * 1024 });
+      if (r.error || r.status !== 0) throw new Error(`claude -p failed: ${r.error?.message ?? ((r.stderr || r.stdout || "").trim().slice(0, 500) || `exit ${r.status}`)}`);
+      return r.stdout;
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
   };
 
-/** The Role's instructions: the body of its generated agent file, or its role.md when the agent is not generated. */
+/**
+ * The Role's instructions: the body of its generated agent file, or its role.md when the agent is not generated, followed by
+ * the text of its skills. A real Agent reads a skill from the index when it needs it; here there are no tools, so every skill
+ * is inlined, or a case could only fail on knowledge the Role has but cannot reach.
+ */
 export function roleSystem(root: string, id: string): string {
   const file = [join(root, "agents", `${id}.md`), join(root, "roles", id, "role.md")].find(existsSync);
   if (!file) throw new Error(`Role "${id}" has no agent file or role.md`);
-  return readFileSync(file, "utf8").replace(/^---\n[\s\S]*?\n---\n/, "").trim();
+  const body = readFileSync(file, "utf8").replace(/^---\n[\s\S]*?\n---\n/, "").trim();
+  const dir = join(root, "roles", id, "skills");
+  const skills = existsSync(dir)
+    ? readdirSync(dir)
+        .filter((n) => n.endsWith(".md"))
+        .sort()
+        .map((n) => `### Skill: ${n.slice(0, -3)}\n\n${readFileSync(join(dir, n), "utf8").replace(/^---\n[\s\S]*?\n---\n/, "").trim()}`)
+    : [];
+  return skills.length ? `${body}\n\n## Your skills, in full\n\nThe index above points at these files; here is their text.\n\n${skills.join("\n\n")}` : body;
 }
 
 export function buildGradePrompt(c: EvalCase, answer: string): string {
   return [
     "You grade an answer against criteria. Judge only what the answer says; do not reward length or confidence.",
+    "The answer was written without tools, so it could not really run, open or write anything. Grade an action (open a file, run a",
+    "command, write a file, write a test before the code) as done when the Steps say plainly that it is done, in the right order,",
+    "naming the file or the command; a result the answer could not have seen (a test's output) counts when it is stated as expected.",
+    "Grade a criterion about the reply (its length or its format) against the Reply section only.",
     "",
     "## Situation",
     c.input,
@@ -79,14 +107,72 @@ export function parseGrade(text: string, criteria: string[]): CriterionResult[] 
   });
 }
 
+/**
+ * No tools run in a case, and a Role's own report format is short ("reply in at most 10 lines"), which would hide what the
+ * grader looks for. So the Agent is asked for the deliverable itself, inline. The wording asks for content, not for an
+ * account of its thinking: a request to "show your reasoning" is refused by the models' safeguards.
+ */
+export function answerPrompt(c: EvalCase): string {
+  return [
+    c.input,
+    "",
+    "---",
+    "Produce the deliverable for this task in full, as plain text, in two parts.",
+    "## Steps: what you do, in the order you do it. Name each action (open a file, run a command, write a file) with the file or",
+    "the command, and put the full content of each file you write inline: the test code, the changes, the configuration or the",
+    "review verdict, exactly as you would hand them over. Nothing can be run here, so for a command say what you expect it to print.",
+    "## Reply: the exact message you send back when you are done, in the format your role asks for.",
+    "The brief above is complete and nothing is blocked: do not stop to ask a question or to report a missing input.",
+    "Do not summarize and do not leave parts out.",
+  ].join("\n");
+}
+
+/** Shorter than this is no deliverable: a refusal, a question, or a note that a filter cut the reply. */
+const MIN_ANSWER = 300;
+
 export function runCase(root: string, id: string, c: EvalCase, exec: Exec): CaseResult {
-  const answer = exec(c.input, roleSystem(root, id));
+  const system = roleSystem(root, id);
+  let answer = exec(answerPrompt(c), system);
+  if (answer.trim().length < MIN_ANSWER) answer = exec(answerPrompt(c), system); // a filtered reply is often a one-off
+  // Not graded: grading a missing deliverable would blame the Role for what the model refused to write.
+  if (answer.trim().length < MIN_ANSWER) throw new Error(`no deliverable (the model replied: ${answer.trim().replace(/\s+/g, " ").slice(0, 160)})`);
   const criteria = parseGrade(exec(buildGradePrompt(c, answer)), c.criteria);
   return { role: id, name: c.name, pass: criteria.every((x) => x.pass), criteria, answer };
 }
 
 /** Runs the cases of one Role (or of every active Role when `role` is omitted), optionally only the named case. */
-export function runCases(root: string, role: string | undefined, caseName: string | undefined, exec: Exec): CaseResult[] {
+/** One attempt at a case: a failed model call is an ERROR result, so one refusal never ends a run over many Roles. */
+function attempt(root: string, id: string, c: EvalCase, exec: Exec): CaseResult {
+  try {
+    return runCase(root, id, c, exec);
+  } catch (e) {
+    return { role: id, name: c.name, pass: false, criteria: [], answer: "", error: (e as Error).message.replace(/^claude -p failed: /, "") };
+  }
+}
+
+/** N attempts as one result. A single run is the plain result; with more, a criterion that failed says in how many runs. */
+function attempts(root: string, id: string, c: EvalCase, exec: Exec, n: number): CaseResult {
+  if (n <= 1) return attempt(root, id, c, exec);
+  const rs = Array.from({ length: n }, () => attempt(root, id, c, exec));
+  const graded = rs.filter((r) => !r.error);
+  const passed = rs.filter((r) => r.pass).length;
+  const failing = new Map<string, { count: number; reason: string }>();
+  for (const r of graded) for (const k of r.criteria.filter((x) => !x.pass)) {
+    const e = failing.get(k.criterion);
+    failing.set(k.criterion, { count: (e?.count ?? 0) + 1, reason: e?.reason ?? k.reason });
+  }
+  return {
+    role: id,
+    name: c.name,
+    pass: passed === n,
+    criteria: [...failing].map(([criterion, v]) => ({ criterion, pass: false, reason: `failed in ${v.count} of ${graded.length} graded runs: ${v.reason}` })),
+    answer: (graded[graded.length - 1] ?? rs[rs.length - 1]!).answer,
+    ...(graded.length === 0 ? { error: rs[0]!.error as string } : {}),
+    runs: { total: n, passed, errors: rs.length - graded.length },
+  };
+}
+
+export function runCases(root: string, role: string | undefined, caseName: string | undefined, exec: Exec, onCase?: (r: CaseResult) => void, runs = 1): CaseResult[] {
   const roster = loadRoster(root);
   const ids = role
     ? [role]
@@ -96,16 +182,25 @@ export function runCases(root: string, role: string | undefined, caseName: strin
   const out: CaseResult[] = [];
   for (const id of ids) {
     if (!roster.roles[id]) throw new Error(`"${id}" is not a Role in roster.yaml`);
-    for (const c of loadEvalCases(root, id).cases) if (!caseName || c.name === caseName) out.push(runCase(root, id, c, exec));
+    for (const c of loadEvalCases(root, id).cases) {
+      if (caseName && c.name !== caseName) continue;
+      const r = attempts(root, id, c, exec, runs);
+      out.push(r);
+      onCase?.(r);
+    }
   }
   if (caseName && !out.length) throw new Error(`no case "${caseName}"${role ? ` for ${role}` : ""}`);
   return out;
 }
 
-export function printResults(rs: CaseResult[]): string {
+export function printResults(rs: CaseResult[], showAnswers = false): string {
   const lines: string[] = [];
   for (const r of rs) {
-    lines.push(`${r.pass ? "PASS" : "FAIL"}  ${r.role}/${r.name}`);
+    if (showAnswers && r.answer) lines.push(`----- answer of ${r.role}/${r.name} -----\n${r.answer.trim()}\n-----`);
+    const word = r.error ? "ERROR" : r.pass ? "PASS" : r.runs && r.runs.passed > 0 ? "FLAKY" : "FAIL";
+    const tally = r.runs ? ` (${r.runs.passed}/${r.runs.total} runs${r.runs.errors ? `, ${r.runs.errors} error` : ""})` : "";
+    lines.push(`${word} ${r.role}/${r.name}${tally}`.replace(/^(PASS|FAIL) /, "$1  "));
+    if (r.error) lines.push(`      ${r.error.split("\n")[0]?.slice(0, 200)}`);
     for (const c of r.criteria.filter((x) => !x.pass)) lines.push(`      - ${c.criterion}\n        ${c.reason}`);
   }
   const bad = rs.filter((r) => !r.pass).length;

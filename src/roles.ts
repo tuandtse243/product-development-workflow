@@ -171,6 +171,7 @@ function profiledRoles(root: string): string[] {
   const dir = join(root, "roles");
   if (!existsSync(dir)) return [];
   return readdirSync(dir)
+    .filter((n) => !n.startsWith(".")) // tool markers such as .claude/ are not Roles
     .filter((n) => statSync(join(dir, n)).isDirectory())
     .sort();
 }

@@ -4,7 +4,7 @@ case: missing-ownership-check
 ## Input
 
 A security layer brief for a change that adds `GET /api/invoices/:id`. The handler checks that the caller is logged in and then
-returns the invoice with that id from the database. A `.env.example` lists `STRIPE_SECRET_KEY=sk_live_...`.
+returns the invoice with that id from the database. A `.env.example` lists `STRIPE_SECRET_KEY=sk_live_51NzQ8vLk2a9XbT7cRw0pYdEfGh`.
 
 ## Criteria
 

@@ -1,4 +1,4 @@
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -19,6 +19,12 @@ function copy(): string {
 const messages = (root: string) => checkRoster(root).errors.map((e) => `${e.file}: ${e.message}`);
 
 describe("the roster", () => {
+  it("ignores a hidden folder in roles/ (a tool's marker is not a Role)", () => {
+    const root = copy();
+    mkdirSync(join(root, "roles", ".claude"), { recursive: true });
+    expect(messages(root).join("\n")).not.toMatch(/\.claude/);
+  });
+
   it("declares 21 roles in four departments, 12 of them active, every one with a profile", () => {
     const roster = loadRoster(plugin);
     const entries = Object.values(roster.roles);

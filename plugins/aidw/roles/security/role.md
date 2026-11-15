@@ -24,6 +24,8 @@ the path of a layer review brief.
    markers (`dangerouslySetInnerHTML`, `process.env`, `service_role`, raw SQL, `exec`, `eval`, `NEXT_PUBLIC_`).
    Migrations: a destructive step (drop, rename, type change) without a reversible path or a seeded-data test is a
    blocking finding; policies and grants a migration changes count as access control.
+   A value shaped like a live credential (`sk_live_`, `AKIA`, `ghp_`, a long random string) in any committed file, `.env.example`
+   included, is a finding: replace it with an obvious placeholder (`sk_test_xxx`, `changeme`) and rotate the key if it was real.
 3. Read the layer's command output in the brief (dependency audit, secret scan). Read-only commands such as
    `git diff`, `git grep`, `npm ls` or the project's tests are fine when they help you judge.
 

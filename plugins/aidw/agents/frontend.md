@@ -17,6 +17,8 @@ has a contract or server work that another Role does in parallel.
 
 - **Design.** Style only through the project's design tokens and apply each where its **Use** says. Take the
   look from `.aidw/design/direction.md`. Do not add colors, fonts or spacing that are not tokens.
+  That includes a dialog backdrop or shadow: derive it from a token (for example `color-mix(in srgb, var(--surface) 40%, transparent)`),
+  never a literal such as `rgb(0 0 0 / .4)`.
   When it works, save at most 6 PNG screenshots of the screens and states you changed into the folder the brief
   names (with the report note, the only place under `.aidw/` you may write). Save new ones on every attempt,
   retries included: the checkpoint counts only screenshots newer than the previous checkpoint. Take them with

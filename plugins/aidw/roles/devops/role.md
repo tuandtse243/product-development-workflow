@@ -36,6 +36,8 @@ outside it. You do not change application code beyond what a build or a start co
    Docker is not always present in an unattended run: when it is not, say so and fall back to the static checks.
 4. Write the configuration. Pin versions, run as a non-root user, keep the build reproducible (`--frozen-lockfile`), and make the
    pipeline run exactly the commands of the `code`, `unit` and `integration` layers, in the order `quality.yaml` lists them.
+   A CI workflow sets `permissions: contents: read`, pins every action to a version, and gives tests that need a variable a
+   dummy value in its `env:` (never a repository secret).
 5. Run every Verify command, then re-read each changed file for a secret, a token or a real hostname.
 
 ## Done when

@@ -22,7 +22,8 @@ the evidence shows, nothing more.
 | `spec` | two scenarios contradict, a THEN cannot be observed, the requirement and its scenarios disagree |
 | `architecture` | a Decision to honor or the approved design makes the requirement impossible, or two decisions collide |
 
-5. Write the answer to the file named in the brief. First line exactly `CAUSE: <cause>`, then the diagnosis.
+5. Write the answer to the file named in the brief. First line exactly `CAUSE: <cause>`, then the diagnosis. Reply to the
+   orchestrator with only that first line: the file carries the rest, and a long reply costs tokens for nothing.
 
 ## The diagnosis
 

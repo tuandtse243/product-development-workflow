@@ -8345,7 +8345,7 @@ ${role.body}${shared}${rules}${skills}
 function profiledRoles(root) {
   const dir = (0, import_node_path6.join)(root, "roles");
   if (!(0, import_node_fs6.existsSync)(dir)) return [];
-  return (0, import_node_fs6.readdirSync)(dir).filter((n) => (0, import_node_fs6.statSync)((0, import_node_path6.join)(dir, n)).isDirectory()).sort();
+  return (0, import_node_fs6.readdirSync)(dir).filter((n) => !n.startsWith(".")).filter((n) => (0, import_node_fs6.statSync)((0, import_node_path6.join)(dir, n)).isDirectory()).sort();
 }
 function generateAgents(root) {
   const roster = loadRoster(root);
@@ -10221,9 +10221,9 @@ function startTask(p, id, taskId, opts = {}) {
     throw new OpError(`task ${taskId} is "${status}"; only pending, failed or interrupted (running) tasks can start`);
   }
   const resumed = status === "running";
-  const attempt = resumed ? Math.max(attemptsOf(t), 1) : attemptsOf(t) + 1;
+  const attempt2 = resumed ? Math.max(attemptsOf(t), 1) : attemptsOf(t) + 1;
   const max = maxAttemptsOf(t);
-  if (attempt > max) {
+  if (attempt2 > max) {
     setField(tf, i, "status", "escalated");
     setField(tf, i, "notes", `attempts exhausted (${max}); last: ${String(t.notes ?? "unknown")}`);
     saveTasks(tf);
@@ -10254,11 +10254,11 @@ ${r.tail}`);
     setField(tf, i, "branch", wt.branch);
   }
   setField(tf, i, "status", "running");
-  setField(tf, i, "attempts", attempt);
+  setField(tf, i, "attempts", attempt2);
   if (!t.started_at) setField(tf, i, "started_at", now2());
   if (base) setField(tf, i, "base", base);
   saveTasks(tf);
-  return { task: taskId, ...typeof t.role === "string" ? { role: t.role } : {}, attempt, maxAttempts: max, base, resumed, ...worktree ? { worktree } : {} };
+  return { task: taskId, ...typeof t.role === "string" ? { role: t.role } : {}, attempt: attempt2, maxAttempts: max, base, resumed, ...worktree ? { worktree } : {} };
 }
 function retryTask(p, id, taskId) {
   const tf = loadTasks(p, id);
@@ -10797,7 +10797,7 @@ function buildTriageBrief(p, id, taskId) {
   const reqIds = [.../* @__PURE__ */ new Set([...list3(t.specs), ...scenarioIds.map((s) => s.split("/").slice(0, -1).join("/"))])];
   const reqBlocks = reqIds.map((r) => reqs.get(r) ? `<!-- ${r} -->
 ${reqs.get(r).raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`);
-  const attempts = ev.checkpoints.map((c, i) => {
+  const attempts2 = ev.checkpoints.map((c, i) => {
     const failed = c.verify.find((v) => v.exit !== 0);
     return [
       `### Checkpoint ${i + 1}: ${c.ok ? "passed" : "failed"}`,
@@ -10835,7 +10835,7 @@ ${r.notes.trim()}`);
     "",
     "## What happened",
     "",
-    ...attempts.length ? attempts : ["(no checkpoint recorded)"],
+    ...attempts2.length ? attempts2 : ["(no checkpoint recorded)"],
     ...reviews.length ? ["", ...reviews] : [],
     "",
     "## Read if you need it",
@@ -13271,22 +13271,43 @@ function checkEvals(root) {
 
 // src/evalrun.ts
 var import_node_fs28 = require("node:fs");
+var import_node_os2 = require("node:os");
 var import_node_child_process5 = require("node:child_process");
 var import_node_path30 = require("node:path");
 var claudeExec = (model) => (prompt, system) => {
-  const args = ["-p", "--tools", "", ...model ? ["--model", model] : [], ...system ? ["--append-system-prompt", system] : []];
-  const r = (0, import_node_child_process5.spawnSync)("claude", args, { input: prompt, encoding: "utf8", timeout: 10 * 60 * 1e3, maxBuffer: 16 * 1024 * 1024 });
-  if (r.error || r.status !== 0) throw new Error(`claude -p failed: ${r.error?.message ?? (r.stderr || "").slice(0, 300)}`);
-  return r.stdout;
+  const cwd = (0, import_node_fs28.mkdtempSync)((0, import_node_path30.join)((0, import_node_os2.tmpdir)(), "aidw-eval-"));
+  try {
+    const args = ["-p", "--tools", "", "--setting-sources", "project", ...model ? ["--model", model] : [], ...system ? ["--append-system-prompt", system] : []];
+    const r = (0, import_node_child_process5.spawnSync)("claude", args, { cwd, input: prompt, encoding: "utf8", timeout: 10 * 60 * 1e3, maxBuffer: 16 * 1024 * 1024 });
+    if (r.error || r.status !== 0) throw new Error(`claude -p failed: ${r.error?.message ?? ((r.stderr || r.stdout || "").trim().slice(0, 500) || `exit ${r.status}`)}`);
+    return r.stdout;
+  } finally {
+    (0, import_node_fs28.rmSync)(cwd, { recursive: true, force: true });
+  }
 };
 function roleSystem(root, id) {
   const file = [(0, import_node_path30.join)(root, "agents", `${id}.md`), (0, import_node_path30.join)(root, "roles", id, "role.md")].find(import_node_fs28.existsSync);
   if (!file) throw new Error(`Role "${id}" has no agent file or role.md`);
-  return (0, import_node_fs28.readFileSync)(file, "utf8").replace(/^---\n[\s\S]*?\n---\n/, "").trim();
+  const body = (0, import_node_fs28.readFileSync)(file, "utf8").replace(/^---\n[\s\S]*?\n---\n/, "").trim();
+  const dir = (0, import_node_path30.join)(root, "roles", id, "skills");
+  const skills = (0, import_node_fs28.existsSync)(dir) ? (0, import_node_fs28.readdirSync)(dir).filter((n) => n.endsWith(".md")).sort().map((n) => `### Skill: ${n.slice(0, -3)}
+
+${(0, import_node_fs28.readFileSync)((0, import_node_path30.join)(dir, n), "utf8").replace(/^---\n[\s\S]*?\n---\n/, "").trim()}`) : [];
+  return skills.length ? `${body}
+
+## Your skills, in full
+
+The index above points at these files; here is their text.
+
+${skills.join("\n\n")}` : body;
 }
 function buildGradePrompt(c, answer) {
   return [
     "You grade an answer against criteria. Judge only what the answer says; do not reward length or confidence.",
+    "The answer was written without tools, so it could not really run, open or write anything. Grade an action (open a file, run a",
+    "command, write a file, write a test before the code) as done when the Steps say plainly that it is done, in the right order,",
+    "naming the file or the command; a result the answer could not have seen (a test's output) counts when it is stated as expected.",
+    "Grade a criterion about the reply (its length or its format) against the Reply section only.",
     "",
     "## Situation",
     c.input,
@@ -13316,26 +13337,81 @@ function parseGrade(text, criteria) {
     return { criterion, pass: e.pass, reason: typeof e.reason === "string" ? e.reason : "" };
   });
 }
+function answerPrompt(c) {
+  return [
+    c.input,
+    "",
+    "---",
+    "Produce the deliverable for this task in full, as plain text, in two parts.",
+    "## Steps: what you do, in the order you do it. Name each action (open a file, run a command, write a file) with the file or",
+    "the command, and put the full content of each file you write inline: the test code, the changes, the configuration or the",
+    "review verdict, exactly as you would hand them over. Nothing can be run here, so for a command say what you expect it to print.",
+    "## Reply: the exact message you send back when you are done, in the format your role asks for.",
+    "Do not summarize and do not leave parts out."
+  ].join("\n");
+}
+var MIN_ANSWER = 300;
 function runCase(root, id, c, exec) {
-  const answer = exec(c.input, roleSystem(root, id));
+  const system = roleSystem(root, id);
+  let answer = exec(answerPrompt(c), system);
+  if (answer.trim().length < MIN_ANSWER) answer = exec(answerPrompt(c), system);
+  if (answer.trim().length < MIN_ANSWER) throw new Error(`no deliverable (the model replied: ${answer.trim().replace(/\s+/g, " ").slice(0, 160)})`);
   const criteria = parseGrade(exec(buildGradePrompt(c, answer)), c.criteria);
   return { role: id, name: c.name, pass: criteria.every((x) => x.pass), criteria, answer };
 }
-function runCases(root, role, caseName, exec) {
+function attempt(root, id, c, exec) {
+  try {
+    return runCase(root, id, c, exec);
+  } catch (e) {
+    return { role: id, name: c.name, pass: false, criteria: [], answer: "", error: e.message.replace(/^claude -p failed: /, "") };
+  }
+}
+function attempts(root, id, c, exec, n) {
+  if (n <= 1) return attempt(root, id, c, exec);
+  const rs = Array.from({ length: n }, () => attempt(root, id, c, exec));
+  const graded = rs.filter((r) => !r.error);
+  const passed = rs.filter((r) => r.pass).length;
+  const failing = /* @__PURE__ */ new Map();
+  for (const r of graded) for (const k of r.criteria.filter((x) => !x.pass)) {
+    const e = failing.get(k.criterion);
+    failing.set(k.criterion, { count: (e?.count ?? 0) + 1, reason: e?.reason ?? k.reason });
+  }
+  return {
+    role: id,
+    name: c.name,
+    pass: passed === n,
+    criteria: [...failing].map(([criterion, v]) => ({ criterion, pass: false, reason: `failed in ${v.count} of ${graded.length} graded runs: ${v.reason}` })),
+    answer: (graded[graded.length - 1] ?? rs[rs.length - 1]).answer,
+    ...graded.length === 0 ? { error: rs[0].error } : {},
+    runs: { total: n, passed, errors: rs.length - graded.length }
+  };
+}
+function runCases(root, role, caseName, exec, onCase, runs = 1) {
   const roster = loadRoster(root);
   const ids = role ? [role] : Object.entries(roster.roles).filter(([, e]) => e?.status === "active").map(([k]) => k);
   const out = [];
   for (const id of ids) {
     if (!roster.roles[id]) throw new Error(`"${id}" is not a Role in roster.yaml`);
-    for (const c of loadEvalCases(root, id).cases) if (!caseName || c.name === caseName) out.push(runCase(root, id, c, exec));
+    for (const c of loadEvalCases(root, id).cases) {
+      if (caseName && c.name !== caseName) continue;
+      const r = attempts(root, id, c, exec, runs);
+      out.push(r);
+      onCase?.(r);
+    }
   }
   if (caseName && !out.length) throw new Error(`no case "${caseName}"${role ? ` for ${role}` : ""}`);
   return out;
 }
-function printResults(rs) {
+function printResults(rs, showAnswers = false) {
   const lines = [];
   for (const r of rs) {
-    lines.push(`${r.pass ? "PASS" : "FAIL"}  ${r.role}/${r.name}`);
+    if (showAnswers && r.answer) lines.push(`----- answer of ${r.role}/${r.name} -----
+${r.answer.trim()}
+-----`);
+    const word = r.error ? "ERROR" : r.pass ? "PASS" : r.runs && r.runs.passed > 0 ? "FLAKY" : "FAIL";
+    const tally = r.runs ? ` (${r.runs.passed}/${r.runs.total} runs${r.runs.errors ? `, ${r.runs.errors} error` : ""})` : "";
+    lines.push(`${word} ${r.role}/${r.name}${tally}`.replace(/^(PASS|FAIL) /, "$1  "));
+    if (r.error) lines.push(`      ${r.error.split("\n")[0]?.slice(0, 200)}`);
     for (const c of r.criteria.filter((x) => !x.pass)) lines.push(`      - ${c.criterion}
         ${c.reason}`);
   }
@@ -13373,7 +13449,7 @@ function runStopFailure(stdin, env) {
 
 // src/cost.ts
 var import_node_fs29 = require("node:fs");
-var import_node_os2 = require("node:os");
+var import_node_os3 = require("node:os");
 var import_node_path31 = require("node:path");
 var emptyUsage = () => ({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
 function addUsage(a, b) {
@@ -13441,7 +13517,7 @@ function readTranscript(file) {
 }
 var projectSlug = (projectDir) => projectDir.replace(/[^A-Za-z0-9]/g, "-");
 function claudeHome(env) {
-  return env.CLAUDE_CONFIG_DIR || (0, import_node_path31.join)(env.HOME || (0, import_node_os2.homedir)(), ".claude");
+  return env.CLAUDE_CONFIG_DIR || (0, import_node_path31.join)(env.HOME || (0, import_node_os3.homedir)(), ".claude");
 }
 function transcriptDir(projectDir, env) {
   return (0, import_node_path31.join)(claudeHome(env), "projects", projectSlug(projectDir));
@@ -13832,7 +13908,7 @@ var sleepSync = (ms) => {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 };
 var UNIT = { ms: 1, s: 1e3, sec: 1e3, second: 1e3, seconds: 1e3, m: MINUTE, min: MINUTE, minute: MINUTE, minutes: MINUTE, h: 60 * MINUTE, hour: 60 * MINUTE, hours: 60 * MINUTE };
-function waitMs(reason, attempt, now6 = /* @__PURE__ */ new Date()) {
+function waitMs(reason, attempt2, now6 = /* @__PURE__ */ new Date()) {
   const margin = MINUTE;
   const rel2 = /(?:retry[- ]after|try again in|again in|resets? in|wait)\D{0,4}(\d+(?:\.\d+)?)\s*(ms|s|sec|seconds?|m|min|minutes?|h|hours?)\b/i.exec(reason);
   if (rel2) {
@@ -13858,7 +13934,7 @@ function waitMs(reason, attempt, now6 = /* @__PURE__ */ new Date()) {
       return { ms: at.getTime() - now6.getTime() + margin, why: `the limit resets at ${at.toLocaleTimeString()}` };
     }
   }
-  const minutes = BACKOFF_MINUTES[Math.min(attempt, BACKOFF_MINUTES.length - 1)];
+  const minutes = BACKOFF_MINUTES[Math.min(attempt2, BACKOFF_MINUTES.length - 1)];
   return { ms: minutes * MINUTE, why: `no reset time given: backoff ${minutes} min` };
 }
 function archived(p, id) {
@@ -14152,9 +14228,11 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
   ids [<id>]                             requirement and scenario ids (after applying the change)
   vendor-path <upstream>/<skill>         absolute path of a vendored SKILL.md (e.g. pocock/grilling)
   plugin-path <path>                     absolute path of a plugin file (e.g. roles/software-architect/references/stack-pool.md)
-  eval [<role>] [--case <name>] [--model <m>]
+  eval [<role>] [--case <name>] [--model <m>] [--runs <n>] [--answers]
                                          run a Role's cases with claude -p (no tools) and grade each answer against its
-                                         criteria; without a Role, every active Role. Costs tokens; exits 1 when a case fails
+                                         criteria; without a Role, every active Role. Costs tokens; exits 1 when a case fails.
+                                         --runs <n> runs each case n times (1-10): a case that passes only some runs is FLAKY
+                                         --answers also prints each answer, to see why a case failed
   roster [--write]                       the factory's Roles; checks roster.yaml, role profiles, artifacts.yaml (one owner
                                          per artifact, reads/writes of each Role), workflows/*.yaml and the generated agent files
                                          (--write regenerates agents/ from roles/)
@@ -14201,7 +14279,7 @@ Hooks:
 States: ${STATES.join(", ")}
 Exit codes: 0 ok, 1 failed check or refused operation, 2 usage error
 `;
-var VALUE_FLAGS = /* @__PURE__ */ new Set(["session", "last", "root", "title", "input-type", "workflow", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude"]);
+var VALUE_FLAGS = /* @__PURE__ */ new Set(["session", "last", "root", "title", "input-type", "workflow", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude", "model", "case", "runs"]);
 function parseArgs(argv) {
   const pos = [];
   const flags = {};
@@ -14728,14 +14806,17 @@ ${r.ok && r.ran ? "Previews work from now on: run aidw deploy.\n" : ""}`);
       }
       case "eval": {
         const root = pluginRoot(env);
+        const runs = args.flags.runs === void 0 ? 1 : Number(args.flags.runs);
+        if (!Number.isInteger(runs) || runs < 1 || runs > 10) throw new OpError("--runs takes a whole number from 1 to 10");
         let results;
         try {
-          results = runCases(root, rest[0], str(args.flags.case), (io.modelExec ?? claudeExec)(str(args.flags.model)));
+          results = runCases(root, rest[0], str(args.flags.case), (io.modelExec ?? claudeExec)(str(args.flags.model)), (r) => io.err(`  ... ${r.role}/${r.name}: ${r.error ? "ERROR" : r.pass ? "pass" : "fail"}${r.runs ? ` (${r.runs.passed}/${r.runs.total})` : ""}
+`), runs);
         } catch (e) {
           throw new OpError(e.message);
         }
         const ok = results.every((r) => r.pass);
-        emit({ ok, results }, printResults(results));
+        emit({ ok, results }, printResults(results, args.flags.answers === true));
         return ok ? 0 : 1;
       }
       case "roster": {

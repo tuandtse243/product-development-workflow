@@ -14,5 +14,5 @@ open todo, when I mark it done, then the list shows it done with the date". The 
 - must name the single field that differs (`completed_at` against `completedAt`) and say the server deviates from the contract
 - must write the end-to-end test of the scenario first and show it failing on the missing date
 - must fix it in the server's serializer (the glue) so the response matches the contract, without changing the client's own logic
-- must add a contract test that fails when either side changes the field name
+- must add a contract test that pins the field name from the contract (it checks the server's real response against the contract's shape, so a rename on the server fails it)
 - must not change the contract to match the server, nor rewrite the client to read `completed_at`

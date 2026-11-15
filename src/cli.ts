@@ -174,9 +174,11 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
   ids [<id>]                             requirement and scenario ids (after applying the change)
   vendor-path <upstream>/<skill>         absolute path of a vendored SKILL.md (e.g. pocock/grilling)
   plugin-path <path>                     absolute path of a plugin file (e.g. roles/software-architect/references/stack-pool.md)
-  eval [<role>] [--case <name>] [--model <m>]
+  eval [<role>] [--case <name>] [--model <m>] [--runs <n>] [--answers]
                                          run a Role's cases with claude -p (no tools) and grade each answer against its
-                                         criteria; without a Role, every active Role. Costs tokens; exits 1 when a case fails
+                                         criteria; without a Role, every active Role. Costs tokens; exits 1 when a case fails.
+                                         --runs <n> runs each case n times (1-10): a case that passes only some runs is FLAKY
+                                         --answers also prints each answer, to see why a case failed
   roster [--write]                       the factory's Roles; checks roster.yaml, role profiles, artifacts.yaml (one owner
                                          per artifact, reads/writes of each Role), workflows/*.yaml and the generated agent files
                                          (--write regenerates agents/ from roles/)
@@ -229,7 +231,7 @@ interface Args {
   flags: Record<string, string | true>;
 }
 
-const VALUE_FLAGS = new Set(["session", "last", "root", "title", "input-type", "workflow", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude"]);
+const VALUE_FLAGS = new Set(["session", "last", "root", "title", "input-type", "workflow", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude", "model", "case", "runs"]);
 
 export function parseArgs(argv: string[]): Args {
   const pos: string[] = [];
@@ -760,14 +762,16 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
 
       case "eval": {
         const root = pluginRoot(env);
+        const runs = args.flags.runs === undefined ? 1 : Number(args.flags.runs);
+        if (!Number.isInteger(runs) || runs < 1 || runs > 10) throw new OpError("--runs takes a whole number from 1 to 10");
         let results;
         try {
-          results = runCases(root, rest[0], str(args.flags.case), (io.modelExec ?? claudeExec)(str(args.flags.model)));
+          results = runCases(root, rest[0], str(args.flags.case), (io.modelExec ?? claudeExec)(str(args.flags.model)), (r) => io.err(`  ... ${r.role}/${r.name}: ${r.error ? "ERROR" : r.pass ? "pass" : "fail"}${r.runs ? ` (${r.runs.passed}/${r.runs.total})` : ""}\n`), runs);
         } catch (e) {
           throw new OpError((e as Error).message);
         }
         const ok = results.every((r) => r.pass);
-        emit({ ok, results }, printResults(results));
+        emit({ ok, results }, printResults(results, args.flags.answers === true));
         return ok ? 0 : 1;
       }
 

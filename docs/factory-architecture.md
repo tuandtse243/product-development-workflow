@@ -320,7 +320,7 @@ In the user's project, `.aidw/` keeps its current shape and gains `roles/<id>/` 
   criteria). Editing a Role's knowledge is checked against its own cases without running a whole Workflow.
   `aidw eval [<role>] [--case <name>]` runs them: the Role's agent instructions are the system prompt, the case input is the
   task, and a second call grades the answer against each criterion (a missing verdict fails). It costs tokens, so it is run on
-  demand and not part of `npm test`.
+  demand and not part of `npm test`. One run is one sample of a model, so `--runs <n>` runs each case n times and calls a case that passes only some of them FLAKY; a reply that is no deliverable (a refusal, a filtered reply) is an ERROR, not a FAIL.
 - **End to end:** the existing fixtures (`evals/fixtures/brownfield-app`, `greenfield-jd`) and `aidw cost`,
   which already reports cost per agent type, catch coordination problems and cost regressions.
 
