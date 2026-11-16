@@ -6,6 +6,7 @@ import { runBackstop } from "./backstop.js";
 import { ChangeError, isState, listChangeIds, loadChange, resolveChangeId, stateOf, STATES } from "./change.js";
 import { runGate } from "./gate.js";
 import { pluginRoot } from "./plugin.js";
+import { installRunner } from "./installcheck.js";
 import { BrowserError, browserEnv, browserStatus, startBrowser, stopBrowser, usesOwnBrowser } from "./browser.js";
 import { checkArtifacts } from "./artifacts.js";
 import { boundaryOf } from "./boundary.js";
@@ -152,8 +153,9 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
                                          the project's own test browser for the e2e, a11y, ui-ux and performance layers:
                                          Chrome on a free port it picks itself, one profile per project; layers get it
                                          as E2E_CDP_URL and E2E_CDP_PORT (no fixed 9222)
-  doctor [<id>]                          check the machine for the run: binaries of the quality commands, package store, registry,
-                                         Chrome CDP, Vercel login and link; exit 1 on a blocking problem
+  doctor [<id>] [--fresh]                check the machine for the run: binaries of the quality commands, package store, registry,
+                                         a real test install (retried; --fresh ignores a recent pass), Chrome CDP, Vercel login and
+                                         link; exit 1 on a blocking problem
   detect                                 what the existing code uses (stack, package manager, suggested layers)
   baseline <capability> [--change <id>]  brownfield: skeleton spec of a capability's current behavior
   change new <id> [--title T] [--input-type ${INPUT_TYPES.join("|")}] [--workflow W]
@@ -622,7 +624,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
             if (startedBrowser && outcome === "archived") stopBrowser(p); // "denied" cannot happen here: the runner started it
           },
           preflight: () => {
-            const bad = doctor(p, id, env).filter((c) => c.status === "fail");
+            const bad = doctor(p, id, env, undefined, { run: installRunner() }).filter((c) => c.status === "fail");
             return bad.length ? `fix this first, then run the same command again: ${bad.map((c) => `${c.name}: ${c.detail}`).join("; ")}` : null;
           },
           extraArgs: passthrough,
@@ -904,7 +906,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
             id = null; // no change yet: machine checks only
           }
         }
-        const checks = doctor(p, id, env);
+        const checks = doctor(p, id, env, undefined, { run: installRunner(), fresh: args.flags.fresh === true });
         emit({ ok: !checks.some((c) => c.status === "fail"), change: id, checks }, doctorText(checks));
         return checks.some((c) => c.status === "fail") ? 1 : 0;
       }

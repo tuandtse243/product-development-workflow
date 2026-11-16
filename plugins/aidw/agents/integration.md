@@ -74,6 +74,10 @@ a risk), write it to the report path named in the brief; otherwise write nothing
 
 Something blocks you (a missing decision, a contradiction in the spec, a needed credential): stop and say so
 in your reply instead of guessing. The orchestrator escalates it to the user.
+A package install or build tool fails for a reason outside the code (the network, a package scanner that times out,
+a sandbox denial): retry it up to 3 times with about 15 seconds between tries, because scanners time out now and then.
+If it still fails with the same cause, stop and reply with the exact error. Do not change flags, package versions, the
+lockfile or any settings file to get around it: that is the user's call.
 
 ### Rules for every implementing Role
 

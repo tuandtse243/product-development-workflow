@@ -11,6 +11,7 @@ import { readBrowser } from "./browser.js";
 import { claudeHome } from "./cost.js";
 import { isDefaultBranch } from "./ops.js";
 import { git, isGitRepo } from "./git.js";
+import { installProblem, installStatus, type ShellRun } from "./installcheck.js";
 import { readText, type Paths } from "./project.js";
 import { parseQuality, qualityFile, type QualityConfig } from "./quality.js";
 
@@ -100,7 +101,13 @@ function vercelJsonFramework(root: string): boolean {
   }
 }
 
-export function doctor(p: Paths, id: string | null, env: NodeJS.ProcessEnv = process.env, probe: Probe = shellProbe): Check[] {
+/** `install` makes the check install a real package (a few seconds to minutes); tests and plain library use leave it out. */
+export interface InstallOptions {
+  run: ShellRun;
+  fresh?: boolean;
+}
+
+export function doctor(p: Paths, id: string | null, env: NodeJS.ProcessEnv = process.env, probe: Probe = shellProbe, install?: InstallOptions): Check[] {
   const out: Check[] = [];
   const add = (name: string, status: CheckStatus, detail: string) => out.push({ name, status, detail });
 
@@ -173,6 +180,11 @@ export function doctor(p: Paths, id: string | null, env: NodeJS.ProcessEnv = pro
   if (pm && !hasModules) {
     const reg = probe("curl", ["-sSI", "-m", "8", "https://registry.npmjs.org/"], p.project, 12_000);
     add("npm registry", reg.ok ? "ok" : "warn", reg.ok ? "reachable" : "not reachable from here: installs will fail until the network is allowed");
+  }
+  if (pm && !hasModules && install) {
+    // A reachable registry proves little: a package scanner that wraps the install can still time out (notes-app run).
+    const r = installStatus(p, pm, install.run, { fresh: install.fresh });
+    add("package install", r.status === "ok" ? "ok" : r.status === "flaky" ? "warn" : "fail", r.status === "fail" ? installProblem(r, id) : r.detail);
   }
 
   if (drivesBrowser(quality)) {

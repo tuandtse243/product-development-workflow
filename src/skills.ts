@@ -32,6 +32,10 @@ export function isSecuritySensitive(t: Task): boolean {
   return SECURITY_HINT.test(text);
 }
 
+export function touchesApi(t: Task): boolean {
+  return list(t.touches).some((g) => API_TOUCH.test(g));
+}
+
 export function touchesUi(t: Task): boolean {
   return list(t.touches).some((g) => UI_TOUCH.test(g));
 }

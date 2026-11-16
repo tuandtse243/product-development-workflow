@@ -17,8 +17,8 @@ function cli(root: string, ...argv: string[]) {
 }
 const change = (root: string) => YAML.parse(readFileSync(join(root, ".aidw/changes", ID, "change.yaml"), "utf8")) as Record<string, unknown>;
 
-const task = (n: number, touches = '"lib/cancel.ts"', scenario = "") =>
-  `  - id: T0${n}\n    title: Fix cancel ${n}\n    role: fullstack\n    type: fix\n${scenario ? `    specs: [booking/cancel-appointment]\n    scenarios: [${scenario}]\n` : ""}    touches: [${touches}]\n    verify: ['node -e "process.exit(0)"']\n    status: pending\n`;
+const task = (n: number, touches = '"lib/cancel.ts"', scenario = "", role = "fullstack") =>
+  `  - id: T0${n}\n    title: Fix cancel ${n}\n    role: ${role}\n    type: fix\n${scenario ? `    specs: [booking/cancel-appointment]\n    scenarios: [${scenario}]\n` : ""}    touches: [${touches}]\n    verify: ['node -e "process.exit(0)"']\n    status: pending\n`;
 
 /** A bugfix change waiting at the gate. */
 function atGate(opts: { tasks?: string; delta?: boolean; workflow?: string | null } = {}): string {
@@ -72,7 +72,8 @@ describe("aidw approve --auto", () => {
 
   it.each([
     ["more than 3 tasks", { tasks: task(1) + task(2) + task(3) + task(4) }, /the plan has 4 tasks \(at most 3\)/],
-    ["a migration", { tasks: task(1, '"prisma/migrations/**"') }, /T01 change a database migration/],
+    ["a migration", { tasks: task(1, '"prisma/migrations/**"', "", "database") }, /T01 change the database schema or a migration/],
+    ["a schema change in an ORM folder the old check did not know", { tasks: task(1, '"drizzle/**", "src/db/schema.ts"', "", "database") }, /T01 change the database schema or a migration/],
     ["a change of behavior written in a spec", { delta: true }, /changes behavior written in a spec/],
   ])("reclassifies a fix with %s to feature and waits for the user", (_name, opts, message) => {
     const root = atGate(opts);

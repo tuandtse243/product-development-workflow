@@ -49,6 +49,20 @@ both sides are large enough that running them in parallel pays for the extra age
 graph: backend task, frontend task (parallel), then an `integration` task that runs the
 scenario end to end. Say in `analysis.md` why a Slice was split.
 
+### Who owns the database
+
+A project with a database gets its first tables in a task of their own. Divide the files like this (`aidw analyze` refuses a plan that does not):
+
+| Task | Role | Owns | Never |
+|---|---|---|---|
+| Scaffold | `fullstack` | `package.json`, tool config, test harness, the database **client and config** (`src/db/client.ts`, `drizzle.config.ts`, `prisma/` datasource) | the schema, a migration, a table |
+| Schema | `database`, `risk: high`, `depends_on` the scaffold | the schema file (`src/db/schema.ts`, `prisma/schema.prisma`), the migration folder (`drizzle/`, `prisma/migrations/`, `migrations/`), seeds, indexes, and their tests (`tests/db/**`) | UI or API files |
+| Data access | `backend` or `fullstack`, `depends_on` the schema | the store functions and validation that read and write the tables | the schema or a migration |
+| Screens | `frontend` or `fullstack`, `depends_on` what they call | components, pages, styles, their tests | the schema |
+
+A later change that adds or alters a column is a schema task again, even if it is one line. A bugfix that needs one is not small:
+it leaves the automatic approval and waits for the user.
+
 ### Rules of a good plan
 
 - Every requirement and scenario marked `*` (changed) in `aidw ids <id>` must be referenced by some task.

@@ -52,6 +52,8 @@ that aidw creates; everything else runs sequentially on the main checkout.
 3. **Preflight (once per change, before the first task).** Run `aidw doctor <id>`. Greenfield tasks install
    packages and the last step deploys; both fail inside the sandbox in known ways (trial-3A lost over an hour):
    - FAIL: stop and tell the user what to fix (the line says how), then run it again.
+   - `package install` FAIL: packages cannot be installed from here (a scanner, a proxy, the sandbox). No implementer can fix
+     that. Give the user the line as it is, and do not spawn anything until `aidw doctor <id> --fresh` passes.
    - `pnpm store` WARN (not writable): ask the user to run the first `pnpm install` in their own terminal after
      T01's `package.json` exists, or to allow the path; do not let T01 sit waiting.
    - `chrome cdp` FAIL: no Chromium-family browser can start inside this session's sandbox (macOS denies it
@@ -93,6 +95,11 @@ aidw next --change <id> --json
    prompt (`Task brief: <path>. Read it and implement the task.`). Wait for it.
 3. If the implementer reports a blocker it cannot resolve (missing decision, contradictory spec, credential),
    go to *Escalate* with its words.
+   A package install or build tool that fails for a reason outside the code (the network, a package scanner that
+   times out, a sandbox denial) is such a blocker too: escalate at once with the exact error. Never spawn an
+   implementer to find out whether the environment was fixed (two minutes and its tokens each time): run
+   `aidw doctor <id> --fresh` (ten seconds). `aidw transition <id> executing` also refuses to resume while its
+   `package install` check fails, and prints what the user must change.
 4. `aidw checkpoint <T> --change <id>`. Read its last lines:
    - FAIL: the task is marked failed with the reason. It prints `NEXT: implement <T> (retry)`; loop (the retry
      brief carries the failure and the debugging skill).

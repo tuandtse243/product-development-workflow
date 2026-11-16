@@ -170,6 +170,17 @@ aidw becomes a software factory with a Roster of Roles, Workflows as data and de
     project with both `package.json` and Python files gets both test suites in the same layers. New packs: `stacks/python.md`
     (the stack pack) and the framework packs `django.md` and `fastapi.md`. Flask is detected but has no pack. Not yet run on a
     real Python project; the tests use synthetic ones.
+  - [x] Findings of the first `product` run (a notes app from an empty folder, 2026-11-15): (1) `aidw doctor` said "all checks
+    pass", then the scaffold's first `npm install` failed in 10 seconds: a package scanner (safe-chain) wraps `npm` as a shell
+    function and timed out on its malware list, and a reachable registry proved nothing. Now `aidw doctor` runs a real install of
+    a tiny package through the user's interactive shell (`src/installcheck.ts`; retried 3 times, a pass on a later try is a
+    warning), `aidw transition <id> executing` refuses while it fails, and `aidw doctor <id> --fresh` re-checks in seconds
+    instead of spawning an implementer to find out. (2) The Stop hook repeated the same "changed files" report on every turn of a
+    stopped run (about a dozen times); it now reports a given state and file set once. (3) The scaffold task made the tables,
+    so the `database` Role never ran: the migration check knew neither Drizzle's folder nor the schema file, and only warned.
+    `src/dbpaths.ts` defines the database's paths once; `aidw analyze` now refuses a plan in which another Role changes them,
+    or in which a `database` task also touches UI or API files, and the bugfix boundary uses the same definition. The planner's
+    role carries the division as a table (scaffold, schema, data access, screens).
 
 ## Backlog
 

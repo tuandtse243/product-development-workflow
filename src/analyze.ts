@@ -13,10 +13,11 @@ import { applyDelta } from "./spec/merge.js";
 import { parseDelta, parseSpec, sections, slugify } from "./spec/parse.js";
 import { parseQuality } from "./quality.js";
 import { loadTokens, tokensFile } from "./design.js";
-import { touchesUi } from "./skills.js";
+import { isDatabasePath, touchesDatabase } from "./dbpaths.js";
+import { touchesApi, touchesUi } from "./skills.js";
 import { planAdvice } from "./plan.js";
 import { pluginRoot } from "./plugin.js";
-import { implementerOf } from "./roles.js";
+import { defaultTaskRole, implementerOf } from "./roles.js";
 import { answerOf, checkDecisions } from "./decisions.js";
 
 const TITLE_ADVISED = 60;
@@ -171,7 +172,6 @@ function checkAnalysisDoc(text: string, file: string, d: Diags): void {
   }
 }
 
-const MIGRATION_TOUCH = /(^|\/)(migrations?|db\/migrate)(\/|$)/i;
 export const SIZES = ["small", "normal"] as const;
 export type Size = (typeof SIZES)[number];
 /** Layers a small change may run: code and unit always, e2e when it touches UI. */
@@ -294,8 +294,21 @@ export function analyzeChange(p: Paths, id: string): Diags {
       d.warn(tf, `task ${t.id} title is ${String(t.title).length} characters: it becomes the commit subject (72 characters with the prefix). Keep it under ${TITLE_ADVISED}`);
     }
     const globs = Array.isArray(t.touches) ? (t.touches as unknown[]).map(String) : [];
-    if (globs.some((g) => MIGRATION_TOUCH.test(g)) && t.risk !== "high") {
-      d.warn(tf, `task ${t.id} touches database migrations but is not "risk: high": migrations run alone, must be reversible and tested against a seeded database (roles/qa/references/quality-layers.md)`);
+    if (isPlanned(t) && touchesDatabase(globs)) {
+      // The schema and its migrations are one task, owned by the Role that writes migrations, never folded into a scaffold
+      // or a feature (the notes-app run did: its scaffold task made the tables). The pieces around it depend on it.
+      const role = String(t.role ?? defaultTaskRole());
+      const root = pluginRoot(process.env);
+      const owned = globs.filter((g) => isDatabasePath(g)).slice(0, 3).map((g) => `"${g}"`).join(", ");
+      if (role !== "database" && implementerOf(root, "database") !== null) {
+        d.error(tf, `task ${t.id} changes the database schema or migrations (touches ${owned}) but its role is "${role}": a migration is always its own task, owned by "database" with "risk: high". Move those files into a database task and make the tasks that use the new tables depend on it (roles/technical-planner/skills/migration-tasks.md)`);
+      }
+      if (role === "database" && (touchesUi(t) || touchesApi(t))) {
+        d.error(tf, `task ${t.id} is owned by "database" but also touches UI or API files: a database task changes only the schema, migrations, seeds and their tests. Put the rest in its own task`);
+      }
+      if (t.risk !== "high") {
+        d.warn(tf, `task ${t.id} touches database migrations but is not "risk: high": migrations run alone, must be reversible and tested against a seeded database (roles/qa/references/quality-layers.md)`);
+      }
     }
   }
   // A change with UI gets the a11y layer (axe) by default; leaving it out needs a reason in "## Quality profile".

@@ -7,6 +7,7 @@
  * It never reverts anything: files may belong to the user.
  */
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { closedReason, gateState } from "./gate.js";
@@ -88,6 +89,16 @@ export function runBackstop(stdin: string, env: NodeJS.ProcessEnv, dirtyProvider
   if (!dirty) return "";
   const unexpected = unexpectedChanges(dirty, readBaseline(p));
   if (!unexpected.length) return "";
+
+  // The same report is not repeated on every turn: a stopped run can last hours, and each repeat made the agent answer
+  // "the same old warning" (the notes-app run did so about a dozen times). A changed state or file set reports again.
+  const key = createHash("sha1").update(`${st.summary}\n${unexpected.join("\n")}`).digest("hex");
+  const seen = join(p.run, "backstop-reported");
+  if (!input.stop_hook_active) {
+    if (existsSync(seen) && readFileSync(seen, "utf8") === key) return "";
+    mkdirSync(p.run, { recursive: true });
+    writeFileSync(seen, key);
+  }
 
   const list = unexpected.slice(0, 20).map((f) => `  - ${f}`).join("\n");
   const more = unexpected.length > 20 ? `\n  ... and ${unexpected.length - 20} more` : "";
