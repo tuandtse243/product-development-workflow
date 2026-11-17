@@ -70,6 +70,12 @@ export const usePackageLookup = (l: Lookup): void => {
   lookup = l;
 };
 
+/** Whether the lookup the Guard uses can answer from here (`aidw doctor`). Any answer counts, a 404 included. */
+export function packageLookupReachable(): { ok: boolean; error?: string } {
+  const r = lookup("npm", "left-pad", "1.3.0");
+  return r.status === "error" ? { ok: false, error: r.error } : { ok: true };
+}
+
 const EXACT = /^\d+\.\d+\.\d+(?:[-+][\w.+-]+)?$/;
 const atBase = (dir: string, base: string, file: string): string | null => {
   const r = git(dir, ["show", `${base}:${file}`]);
