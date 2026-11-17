@@ -1,5 +1,8 @@
-import { appendFileSync, existsSync, readdirSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import { stringify as toYaml } from "yaml";
+import { answersText, PAGE_NAME, pageDataFile, pageHtmlFile, pagesDir, pageSummary, parseAnswers, parsePage, picksData, renderPage, triageData, type PageSection } from "./page.js";
 import { coverageReport, diffCoverage, trunkBase } from "./diffcover.js";
 import { loadTasks } from "./run.js";
 import { skillPath } from "./skills.js";
@@ -169,6 +172,10 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
   audit brief <lens> | report | picks <F-01,..>   the audit workflow: a brief for the reviewer of one lens, the report
                                          assembled from their answers, the picked findings as the request of a new change
   decisions [<id>]                       the Workflow's Decision Points of a change and their answers
+  page render <name> [--stdin]           a Decision Page from .aidw/run/pages/<name>.yaml (questions | picks | gate): prints its link
+  page answers <name> [--text T]         check the text the user copied from the page (or on stdin) before recording it
+  page audit [--lang vi]                 the audit findings as a pick list; its answer feeds \`aidw audit picks\`
+  page triage <task> [--lang vi]         the decision an escalated task asks of the user, from its triage diagnosis
   approve <id> [--auto]                  approve the Analysis package (hashes it); --auto: aidw approves a small change of
                                          a workflow with an automatic approval (bugfix), or reclassifies one that is too big
   approval check <id>                    exit 1 when the approved package drifted
@@ -237,7 +244,7 @@ interface Args {
   flags: Record<string, string | true>;
 }
 
-const VALUE_FLAGS = new Set(["session", "last", "root", "title", "input-type", "workflow", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude", "model", "case", "runs"]);
+const VALUE_FLAGS = new Set(["session", "last", "root", "title", "input-type", "workflow", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude", "model", "case", "runs", "text", "lang"]);
 
 export function parseArgs(argv: string[]): Args {
   const pos: string[] = [];
@@ -1062,6 +1069,103 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           return 0;
         }
         throw new UsageError("usage: aidw audit brief <lens> | report | picks <F-01,F-02>");
+      }
+
+      case "page": {
+        // Decision Pages (ADR-0007): a view of one round of questions, a pick list or a gate. Nothing is recorded here.
+        const p = project();
+        const sub = need(rest[0], "render | answers | audit | triage");
+        const lang = str(args.flags.lang);
+        const gateExtras = (id: string): PageSection[] => {
+          const c = loadChange(p, id);
+          const all = readDecisions(c);
+          const points = workflowOfChange(p, c, pluginRoot(env)).decisions.map((x) => {
+            const r = all[x.id];
+            return r ? `**${x.id}**: ${[r.answer].flat().join(", ")} (${r.reason || "no reason recorded"})` : `**${x.id}**: open (${x.options.join(" | ")})`;
+          });
+          const tasks = parseTasks(readText(join(c.dir, "tasks.yaml")) ?? "").tasks;
+          return [
+            ...(points.length ? [{ id: "decision-points", title: "Decision Points", body: "", points, html: "" }] : []),
+            ...(tasks.length ? [{ id: "plan", title: "Plan", body: planSummary(tasks), points: [], html: "" }] : []),
+          ];
+        };
+        const load = (name: string) => {
+          if (!PAGE_NAME.test(name)) throw new UsageError(`invalid page name "${name}": lowercase letters, digits and "-"`);
+          const source = readText(pageDataFile(p, name));
+          if (source === null) throw new OpError(`no page data at ${rel(p, pageDataFile(p, name))}: write it first (aidw plugin-path library/decision-pages.md says how)`);
+          const first = parsePage(name, source);
+          const r = first.page.layout === "gate" && first.page.change ? parsePage(name, source, gateExtras(resolveChangeId(p, first.page.change))) : first;
+          if (r.problems.length) throw new OpError(`the data of page "${name}" (${rel(p, pageDataFile(p, name))}) has ${r.problems.length} problem(s):\n${r.problems.map((x) => `  - ${x}`).join("\n")}\nFix the file and render again.`);
+          return r.page;
+        };
+        const save = (name: string, data: unknown) => {
+          mkdirSync(pagesDir(p), { recursive: true });
+          writeFileSync(pageDataFile(p, name), typeof data === "string" ? data : toYaml(data));
+        };
+        const show = (name: string): number => {
+          const page = load(name);
+          const file = pageHtmlFile(p, name);
+          writeFileSync(file, renderPage(page));
+          const url = pathToFileURL(file).href;
+          emit(
+            { ok: true, page: name, version: page.version, layout: page.layout, file, url },
+            `Decision Page: ${url}\n${pageSummary(page)}\nSHOW the user that link and one or two lines on what the page asks, nothing more: they choose on the page, press the copy button and paste the text here.\nNEXT: when they paste it, run \`aidw page answers ${name} --text "<the pasted text>"\` before recording anything.\n`,
+          );
+          return 0;
+        };
+        if (sub === "render") {
+          const name = need(rest[1], "page name");
+          if (args.flags.stdin === true) {
+            if (!PAGE_NAME.test(name)) throw new UsageError(`invalid page name "${name}": lowercase letters, digits and "-"`);
+            save(name, io.stdin?.() ?? "");
+          }
+          return show(name);
+        }
+        if (sub === "answers") {
+          const name = need(rest[1], "page name");
+          const page = load(name);
+          const pasted = str(args.flags.text) ?? io.stdin?.() ?? "";
+          const a = parseAnswers(page, pasted);
+          emit(
+            { page: name, ...a },
+            a.ok
+              ? `OK ${name}: the answer matches the page. Record it word for word:\n${answersText(page, a)}`
+              : `REFUSED ${name}: ${a.problems.length} problem(s)\n${a.problems.map((x) => `  - ${x}`).join("\n")}\nAsk the user about exactly these; do not guess an answer for them.\n`,
+          );
+          return a.ok ? 0 : 1;
+        }
+        if (sub === "audit") {
+          const id = resolveChangeId(p, str(args.flags.change));
+          const r = compileReport(p, id, false);
+          if (r.diags.errors.length) throw new OpError("the audit report is not complete: run `aidw audit report` first", r.diags);
+          if (!r.findings.length) throw new OpError("the audit has no findings: there is nothing to pick");
+          const name = `audit-${id}`.toLowerCase().replace(/[^a-z0-9-]/g, "-").slice(0, 64);
+          save(
+            name,
+            picksData({
+              title: lang === "vi" ? `Audit ${id}: chọn phát hiện cần sửa` : `Audit ${id}: pick the findings to fix`,
+              intro: lang === "vi" ? `Báo cáo đầy đủ: ${rel(p, r.path)}. Các phát hiện được chọn sẽ thành một yêu cầu sửa.` : `Full report: ${rel(p, r.path)}. The findings you pick become one fix request.`,
+              ...(lang ? { lang } : {}),
+              kind: "audit",
+              items: r.findings.map((f) => {
+                const [head, ...more] = f.text.trim().split("\n");
+                return { key: f.id, title: (head ?? "").slice(0, 200), group: f.severity, tag: f.lens, detail: more.join("\n").trim().slice(0, 1200), recommend: f.severity === "critical" || f.severity === "high" };
+              }),
+            }),
+          );
+          return show(name);
+        }
+        if (sub === "triage") {
+          const taskId = need(rest[1], "task id");
+          const file = str(args.flags["notes-file"]) ?? triageFile(p, taskId);
+          const diagnosis = readText(file);
+          if (diagnosis === null) throw new OpError(`no triage diagnosis at ${rel(p, file)}: this task was not triaged, so put the decision to the user in the chat`);
+          const cause = /^CAUSE:\s*(\S+)/m.exec(diagnosis)?.[1] ?? "unknown";
+          const name = `triage-${taskId}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");
+          save(name, triageData({ task: taskId, cause, diagnosis, ...(lang ? { lang } : {}) }));
+          return show(name);
+        }
+        throw new UsageError("usage: aidw page render <name> [--stdin] | answers <name> [--text T] | audit | triage <task>");
       }
 
       case "decisions": {

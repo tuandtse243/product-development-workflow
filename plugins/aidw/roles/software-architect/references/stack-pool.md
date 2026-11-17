@@ -23,6 +23,20 @@ Auth and payment providers are chosen per project by the AI and listed in the An
 | Test | Vitest, Playwright |
 | Deploy | Vercel, Railway, Cloudflare, VPS / Docker |
 
+## Putting a stack question to the user
+
+A stack question is a choice on a Decision Page: two to four options from the pool that really fit, your
+recommendation and why. The criteria that usually separate them:
+
+| Question | Criteria worth showing |
+|---|---|
+| Hosting / deploy | monthly cost at this size, work to operate, long-running jobs and websockets, how hard it is to move |
+| Data | integrity the database enforces, fit with the data's shape, hosting it needs, migration effort later |
+| Backend | fit with the domain's complexity, separate API consumers, background jobs, one deploy or two |
+| Auth / payments | setup effort, monthly cost, where user data lives, lock-in |
+
+Pick the two to four that differ for this project; a criterion on which every option says the same is noise.
+
 ## Fallback
 
 Next.js + Supabase + Tailwind / shadcn/ui + Vercel (tests: Vitest + Playwright).

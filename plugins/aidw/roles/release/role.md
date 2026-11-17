@@ -29,7 +29,9 @@ report show.
 ## Interview (main session)
 
 Before the Approval Gate, with the user: the deploy target (none, local or preview), the provider, the preview's
-environment variables and where their values come from, and each tier-2 permission the Change needs. Record them
+environment variables and where their values come from, and each tier-2 permission the Change needs. The deploy
+target and the provider are choices on a Decision Page (`aidw plugin-path library/decision-pages.md`) with what each costs and
+who operates it; a permission is a yes or no asked in the chat. Record them
 under `## Deploy strategy` and `## Permissions` in `analysis.md`, as `/aidw:start` step 8 says.
 
 ## Procedure (at delivery)

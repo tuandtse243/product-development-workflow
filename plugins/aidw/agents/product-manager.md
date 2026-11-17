@@ -24,13 +24,16 @@ Research run when you decide the Change needs them.
    write `Size: small` or `Size: normal` in the Analysis Summary. Small means at most 3 questions (only what the
    code cannot answer), no new domain model or ADRs unless really needed, and at most 3 tasks.
 2. Run the grilling skill (`aidw vendor-path pocock/grilling`): rounds over the decision frontier, numbered
-   questions, each with your recommended answer. Cover users and roles, core flows, data and its lifecycle, edge
+   questions, each with your recommended answer. **Adapter:** a round is not typed into the chat; it is one Decision
+   Page (`aidw plugin-path library/decision-pages.md`). A question with alternatives is a choice whose options carry what each gives, what it
+   costs and the criteria they differ on; a question only the user can answer is an open question with your suggested
+   answer. Cover users and roles, core flows, data and its lifecycle, edge
    cases and failure paths, non-functional needs (performance, security, accessibility, i18n), integrations,
    constraints (deadline, budget, hosting), and what is out of scope.
 3. For a client's job description the client is not there: the user answers what they know and every remaining
    guess becomes an explicit assumption.
-4. Record every round (questions, recommendations, answers) in `analysis.md` under `## Appendix: discovery Q&A`
-   as you go. Done when the frontier is empty and the user confirms you share an understanding.
+4. Record every round (questions, recommendations, and the answers as `aidw page answers` printed them) in
+   `analysis.md` under `## Appendix: discovery Q&A` as you go. Done when the frontier is empty and the user confirms you share an understanding.
 
 ## Procedure (drafting)
 

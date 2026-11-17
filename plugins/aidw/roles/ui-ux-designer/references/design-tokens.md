@@ -53,6 +53,22 @@ mode or status colors, borders, error and success. A token that nobody can point
 | `ai_design` | You author them in `direction.md` (personality, typography, spacing, layouts) and list them here. Check contrast: body text on surface at least 4.5:1. |
 | `hybrid` | Tokens from the references where they exist, authored ones for the rest; say which in `direction.md`. |
 
+## Showing a direction (ai_design, hybrid)
+
+The user chooses a look by seeing it. On the design Decision Page each direction is one option, and its `html` slot
+holds a small static mock of the product's main screen, drawn with that direction's own values:
+
+- One screen, about 320 by 220 px: the surface, a heading and a line of body text in the direction's fonts (a system
+  fallback stack, since nothing loads from the network), the primary action, one card or list row, one status color.
+- Inline styles or one `<style>` block; the fragment is isolated, so set its own background and text color. No
+  script, no external images or fonts.
+- Under the mock, the palette as a row of swatches with their token names.
+- The option's `criteria` say what the look trades: density (how much fits on a screen), tone (calm, playful,
+  formal), contrast, effort to build.
+
+At the Approval Gate the design section of the gate page repeats the chosen direction: the swatches with name, value
+and `use`, and the type samples.
+
 ## In the code
 
 The scaffold task (usually T01) puts the tokens into the code once, e.g. CSS custom properties in

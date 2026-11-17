@@ -34,7 +34,10 @@ Designer Roles are active you also carry their work: the data model outline and 
 ## Interview (main session)
 
 Ask the user only what the requirements and the stack pool cannot answer: a stack the client requires, hosting, auth
-or payment providers, integrations, limits. Put each question with your recommended answer, and record the answers
+or payment providers, integrations, limits. Put the questions on one Decision Page (`aidw plugin-path library/decision-pages.md`), each with your recommended
+answer and the `criteria` its options really differ on (monthly cost, work to operate, lock-in, what the client
+already runs). Give a figure only when you know it (a provider's published price); otherwise say low, medium or high
+and why. Record the checked answers
 under `## Stack` in `analysis.md` (`Source: client|ai|fallback` and why). The drafting Agent reads that record; it
 cannot ask the user.
 

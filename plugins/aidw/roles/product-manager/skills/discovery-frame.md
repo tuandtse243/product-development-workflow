@@ -20,7 +20,8 @@ For each kind of user the request names, get these answered, in the user's own w
    embarrassing about that? The current workaround is the real competitor.
 4. **Done**: how will they know it worked? What would they see, and how soon?
 
-When the user is there to answer, ask all four as questions and wait for the answers. A recommended answer is
+When the user is there to answer, ask all four as questions and wait for the answers: four open questions on the
+first Decision Page of the interview, each with your suggested answer where you have one. A recommended answer is
 welcome, but a guess about today's workaround is not an answer: "Today" in particular is asked outright, even when
 you think you know it. No requirement is written in the same turn as these questions.
 

@@ -31,6 +31,30 @@ the evidence shows, nothing more.
 - `implementation`: what to do differently, concretely (which function, which condition, which test).
 - `environment`: the exact thing the user must fix, as a command or a setting they can act on.
 - `plan` / `spec` / `architecture`: what is wrong in the approved package and what the user must decide, with your
-  recommendation. The package is frozen: you never edit it.
+  recommendation. The package is frozen: you never edit it. End the file with the decision as data, so the user
+  gets it as options side by side instead of prose:
+
+  ````
+  ## Decide
+  ```yaml
+  question: How should T03 get the file its scenario needs?
+  criteria: [Rework, Risk]            # 2 to 4 things the options differ on, or leave out
+  recommend: widen
+  why: The scenario cannot pass without lib/db.ts and nothing else changes.
+  options:
+    - key: widen
+      name: Add lib/db.ts to the task's touches
+      pros: [Smallest change to the plan]
+      cons: [T05 touches the same file, so they can no longer run in one wave]
+      facts: { Rework: none, Risk: low }
+    - key: split
+      name: Split T03 into a data task and a screen task
+      pros: [Each task stays small]
+      cons: [The plan is approved again]
+      facts: { Rework: one new task, Risk: low }
+  ```
+  ````
+
+  Two to four options that are really different; every option answers every criterion.
 - Doubt between `implementation` and an upstream cause: choose the upstream one when the same requirement failed
   under two different fixes. Say what you could not verify.

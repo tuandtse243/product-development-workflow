@@ -180,6 +180,11 @@ A task is triaged once: if the extra attempt fails too, it escalates without ano
    one, else the last checkpoint failure or review notes from `.aidw/changes/<id>/evidence/<T>.json`), and the options:
    - fix the cause yourself or give the missing decision, then `/aidw:resume`;
    - change scope: `aidw transition <id> analyzing`, revise the Analysis, approve again.
+
+   When the task was triaged with the cause `plan`, `spec` or `architecture`, the decision is the user's and has
+   alternatives: run `aidw page triage <T> --change <id> --lang <en|vi>` and give them its link with two lines (what
+   stopped, what the page asks) instead of listing the options in the chat. Under `AIDW_RUNNER=1` nobody is there to
+   open a page: skip it; `/aidw:resume` shows it when the user is back.
 3. Stop.
 
 ## 3. Verify (quality layers)

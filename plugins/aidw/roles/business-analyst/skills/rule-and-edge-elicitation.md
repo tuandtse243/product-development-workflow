@@ -21,6 +21,10 @@ again what is already answered.
 4. **Hunt the edges** with the questions below; each answer is a new example or a new rule.
 5. **Park what nobody knows** as an open question with who could answer it. Never fill it in.
 
+A round covers one behavior: its rules as choices where there are alternatives (the options being what happens, with
+the refused case as the `example`), and the request for the user's own examples as open questions, all on one
+Decision Page.
+
 ## Edge questions
 
 - **Limits**: the smallest, the largest, zero, none, one too many. What happens exactly at the limit?

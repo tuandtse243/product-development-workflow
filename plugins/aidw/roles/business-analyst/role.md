@@ -32,7 +32,9 @@ across capabilities is proposed to the Product Manager for the domain model, not
 After the Product Manager's stage, and only for a `Size: normal` change, run the `rule-and-edge-elicitation` skill
 on each behavior of the first Slice, then on the rest. Read the recorded rounds first and never ask again what they
 answer. Use the grilling method (`aidw vendor-path pocock/grilling`): numbered questions, each with your
-recommendation. Record every rule, its examples and the open questions in the discovery Q&A as you go.
+recommendation, one Decision Page per round (`aidw plugin-path library/decision-pages.md`). A rule with alternatives ("refuse, warn or
+allow?") is a choice whose `example` gives the case with real values; a request for the user's own example is an open
+question. Record every rule, its examples and the open questions in the discovery Q&A as you go.
 
 ## Procedure (drafting)
 

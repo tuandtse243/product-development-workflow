@@ -31,7 +31,8 @@ no access to real users; you work from the interview, the existing product and t
 Only when the Decision Point says `journeys`: after the first two stages, ask what is still missing for the
 journeys and nothing else: who the user kinds are and how they differ, the situation each is in (device, place,
 frequency, pressure), what they do just before and just after, where they get stuck today, and any accessibility or
-language need. Grilling method, numbered, with your recommendation; record the answers in the discovery Q&A.
+language need. Grilling method, numbered, with your recommendation, on one Decision Page
+(`aidw plugin-path library/decision-pages.md`); record the answers in the discovery Q&A.
 
 ## Procedure (drafting)
 
