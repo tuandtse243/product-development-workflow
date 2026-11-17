@@ -93,6 +93,7 @@ describe("the install probe", () => {
     expect(text).toMatch(/aidw doctor 2026-11-15-notes --fresh/);
     expect(text).toMatch(/excludedCommands/);
     expect(text).toMatch(/rtk npm install \*/); // a command rewriter changes what has to be allowed
+    expect(text).toMatch(/aidw run 2026-11-15-notes --detach/); // the runner works outside the sandbox
     expect(text).toMatch(/AIDW_SKIP_INSTALL_CHECK=1/);
   });
 });

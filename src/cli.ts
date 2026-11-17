@@ -629,7 +629,8 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           },
           extraArgs: passthrough,
           env,
-          log: json ? () => {} : (line) => io.out(`[aidw run] ${line}\n`),
+          // Detached: stdout already is runner.log, and the runner appends each line with a timestamp itself.
+          log: json || env.AIDW_RUN_DETACHED === "1" ? () => {} : (line) => io.out(`[aidw run] ${line}\n`),
         });
         emit({ change: id, ...r }, `${r.outcome === "archived" ? "DONE" : "STOPPED"} (${r.outcome}) after ${r.runs} session(s), ${r.waits} wait(s): ${r.message}\n`);
         return r.outcome === "archived" ? 0 : r.outcome === "escalated" || r.outcome === "needs_user" ? 2 : 1;

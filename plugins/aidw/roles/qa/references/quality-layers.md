@@ -214,7 +214,7 @@ for (const route of routes) for (const [vp, size] of Object.entries(viewports)) 
 }
 ```
 
-Add seeded states where they matter (an empty list, a long name, an error) by a `beforeEach` that fills storage
+**The shots must include a populated state, not only the empty one** (seen on a real run: every shot was the empty list, so the reviewer could only judge cards, edit mode and errors from the code). For each main screen add at least: the screen with data (several items, one with a very long name), the open edit or form state, and a validation error. Aim for about 12 images, not 36: all three viewports for the screen with data, one viewport for the other states. Add seeded states where they matter (an empty list, a long name, an error) by a `beforeEach` that fills storage
 or the API, or by the seed hook the plan's seed task adds (one server, state set per test, off unless `E2E_SEED` is set; never one server per state on extra fixed ports); a screenshot of a blank page proves little. The reviewer may also run this command itself.
 
 ### a11y

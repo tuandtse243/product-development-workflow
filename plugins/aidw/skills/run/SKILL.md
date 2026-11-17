@@ -54,6 +54,13 @@ that aidw creates; everything else runs sequentially on the main checkout.
    - FAIL: stop and tell the user what to fix (the line says how), then run it again.
    - `package install` FAIL: packages cannot be installed from here (a scanner, a proxy, the sandbox). No implementer can fix
      that. Give the user the line as it is, and do not spawn anything until `aidw doctor <id> --fresh` passes.
+     Offer the shortest way out first: `aidw run <id> --detach` in the user's own terminal. Its headless sessions run
+     outside this session's sandbox, so installs skip the sandbox proxy (seen on a real run: in-session installs failed
+     for hours with scanner timeouts, 502 and 407 from that proxy; the same scaffold installed in ten minutes under
+     `aidw run`). The probe installs one tiny package, so it can pass while a large install (`next`) still times out:
+     if an implementer's install fails after a passing probe, treat it as the same blocker and offer `aidw run`.
+     Do not try other package managers, flags or settings changes to get around a scanner or proxy: those are the
+     user's policy, not a bug to route around.
    - `pnpm store` WARN (not writable): ask the user to run the first `pnpm install` in their own terminal after
      T01's `package.json` exists, or to allow the path; do not let T01 sit waiting.
    - `chrome cdp` FAIL: no Chromium-family browser can start inside this session's sandbox (macOS denies it
