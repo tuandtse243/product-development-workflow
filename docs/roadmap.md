@@ -308,8 +308,9 @@ workflows), not the behavior of the Agents with the new Skills.
   to fire. Two more fixes came out of it: the ui review rubric (an approved token does not excuse a failing
   contrast ratio) and a doctor check for deps.dev. `scripts/guard-drill.mjs` runs every Guard on a real repository
   without a model.
-- [ ] Still open from trial 4: the brownfield rows 72 to 74 (conventions followed, baseline spec, `--no-verify` denied
-  by the gate); a replanned task is reset by hand in `tasks.yaml`, which loses its attempt count (`task reopen` only
+- [ ] Still open from trial 4: row 74 (`--no-verify` denied by the gate); an existing test's assertion was weakened
+  (`toHaveLength(1)` became `.length > 0`) and no Guard saw it: list removed assertions of existing tests for the
+  reviewer; a replanned task is reset by hand in `tasks.yaml`, which loses its attempt count (`task reopen` only
   accepts a done task).
 - [x] Watch the token cost of a brief: the core set grew by one Skill, UI tasks by one, data tasks by two.
 
