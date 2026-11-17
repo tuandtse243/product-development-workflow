@@ -12810,6 +12810,10 @@ var depsDevLookup = (ecosystem, name, version) => {
   }
 };
 var lookup = depsDevLookup;
+function packageLookupReachable() {
+  const r = lookup("npm", "left-pad", "1.3.0");
+  return r.status === "error" ? { ok: false, error: r.error } : { ok: true };
+}
 var EXACT = /^\d+\.\d+\.\d+(?:[-+][\w.+-]+)?$/;
 var atBase = (dir, base2, file) => {
   const r = git(dir, ["show", `${base2}:${file}`]);
@@ -14426,6 +14430,14 @@ function doctor(p, id, env = process.env, probe = shellProbe, install) {
   const heavy = otherPlugins(env);
   if (heavy.length >= 3) {
     add("token overhead", "warn", `${heavy.length} other plugins are enabled (${heavy.slice(0, 4).join(", ")}${heavy.length > 4 ? ", ..." : ""}): their tools and hook text ride along in every turn of every subagent (trial-3A: 37K tokens in an implementer's first turn against 9K for a reviewer). Use \`aidw run\` (it drops MCP servers) or disable them for the run`);
+  }
+  if (env.AIDW_SKIP_INSTALL_CHECK !== "1") {
+    const r = packageLookupReachable();
+    add(
+      "package lookup",
+      r.ok ? "ok" : "warn",
+      r.ok ? "api.deps.dev reachable: new dependencies are checked for existence, age and advisories" : `api.deps.dev is not reachable from here (${r.error || "no answer"}): the package Guard cannot check new dependencies, so they pass as "unproven" and only the reviewer is told. Allow api.deps.dev in the sandbox (/sandbox), or set AIDW_SKIP_INSTALL_CHECK=1 to turn the check off on purpose`
+    );
   }
   if (!quality) return out;
   const cmds = commandsOf(quality);
