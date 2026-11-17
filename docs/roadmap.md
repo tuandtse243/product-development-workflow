@@ -197,7 +197,8 @@ full before vendoring it.
 - [x] Guard: test tampering and suppressions, a diff check at the task checkpoint (deleted or skipped tests, `.only`,
   `eslint-disable`, `@ts-ignore`, `as any`, `# noqa`); a violation fails the checkpoint, a suppression with a reason
   on its line goes to the reviewer. A task that removes a requirement sets `removes_tests: true`.
-- [ ] Guard: lowered thresholds and rewritten snapshots (`--update-snapshots`), not covered by the diff check yet.
+- [x] Guard: a rewritten snapshot and a changed test-runner or coverage config (where thresholds live) are listed
+  for the reviewer; they do not fail the checkpoint, because a real change of behavior rewrites them too.
 - [x] Guard: a task cannot change existing lint, tsconfig, CI or hook configuration unless its approved type is
   `build`, `ci` or `chore`; creating a missing file is allowed (so the scaffold task needs no exemption). A changed
   test-runner or coverage config goes to the reviewer. The gate denies `--no-verify` and `HUSKY=0`.

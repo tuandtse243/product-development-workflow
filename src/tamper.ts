@@ -21,10 +21,14 @@ export interface TamperEvidence {
   blocked: TamperFinding[];
   /** suppressions that state a reason on the same line: the reviewer decides whether the reason holds */
   justified: TamperFinding[];
+  /** stored expected output (snapshots) that existed before and was rewritten or removed: the reviewer checks the new one is right */
+  snapshots?: string[];
 }
 
 const CODE_FILE = /\.(?:[cm]?[jt]sx?|vue|svelte|astro|py)$/i;
 const MAX_FILE = 1024 * 1024;
+
+const SNAPSHOT = /(?:^|\/)__snapshots__\/|\.snap$|-snapshots\/[^/]+\.(?:png|txt)$|\.ambr$/;
 
 const SKIPPED = /\.(?:skip|fixme)\s*\(|\b(?:xit|xtest|xdescribe)\s*\(|@(?:pytest\.mark\.skip|unittest\.skip)|\bpytest\.skip\s*\(/;
 const FOCUSED = /\.only\s*\(|\b(?:fit|fdescribe)\s*\(/;
@@ -101,7 +105,8 @@ export function tamperEvidence(
       (ok ? justified : blocked).push({ kind: "suppression", ...at });
     }
   }
-  return { blocked, justified };
+  const snapshots = base ? changed.filter((f) => SNAPSHOT.test(f) && git(dir, ["cat-file", "-e", `${base}:${f}`]).ok) : [];
+  return { blocked, justified, ...(snapshots.length ? { snapshots } : {}) };
 }
 
 const LABEL: Record<TamperKind, string> = {

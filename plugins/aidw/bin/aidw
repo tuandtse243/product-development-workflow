@@ -9938,6 +9938,7 @@ var import_node_fs15 = require("node:fs");
 var import_node_path17 = require("node:path");
 var CODE_FILE = /\.(?:[cm]?[jt]sx?|vue|svelte|astro|py)$/i;
 var MAX_FILE2 = 1024 * 1024;
+var SNAPSHOT = /(?:^|\/)__snapshots__\/|\.snap$|-snapshots\/[^/]+\.(?:png|txt)$|\.ambr$/;
 var SKIPPED = /\.(?:skip|fixme)\s*\(|\b(?:xit|xtest|xdescribe)\s*\(|@(?:pytest\.mark\.skip|unittest\.skip)|\bpytest\.skip\s*\(/;
 var FOCUSED = /\.only\s*\(|\b(?:fit|fdescribe)\s*\(/;
 var DIRECTIVE = /(?:eslint-disable(?:-next-line|-line)?|oxlint-disable(?:-next-line|-line)?|biome-ignore|@ts-ignore|@ts-nocheck|@ts-expect-error|#\s*noqa|#\s*type:\s*ignore|#\s*pyright:\s*ignore)(.*)$/;
@@ -9993,7 +9994,8 @@ function tamperEvidence(dir, base2, changed, opts) {
       (ok ? justified : blocked).push({ kind: "suppression", ...at });
     }
   }
-  return { blocked, justified };
+  const snapshots = base2 ? changed.filter((f) => SNAPSHOT.test(f) && git(dir, ["cat-file", "-e", `${base2}:${f}`]).ok) : [];
+  return { blocked, justified, ...snapshots.length ? { snapshots } : {} };
 }
 var LABEL = {
   "deleted-test": "test file deleted",
@@ -10815,7 +10817,7 @@ function checkpoint(p, id, taskId, opts = {}) {
     verify: verify2,
     changed_files: changed,
     outside_touches: outside,
-    ...tamper && (tamper.blocked.length || tamper.justified.length) ? { tamper } : {},
+    ...tamper && (tamper.blocked.length || tamper.justified.length || tamper.snapshots?.length) ? { tamper } : {},
     ...config && (config.locked.length || config.watched.length) ? { config } : {},
     ...secrets.length ? { secrets } : {},
     ...packages ? { packages } : {},
@@ -11143,6 +11145,7 @@ ${req.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`;
       ...(0, import_node_fs18.existsSync)(reportFile2) ? [`- Implementer notes: \`${rel(p, reportFile2)}\` (read it first; it explains files outside Touches and anything the implementer flagged).`] : [],
       ...outside.length ? [`- Files changed outside Touches: ${outside.map((f) => `\`${f}\``).join(", ")}. Decide whether each is justified.`] : [],
       ...lastCheckpoint?.tamper?.justified.length ? [`- Checks the task switched off, each with a stated reason: ${lastCheckpoint.tamper.justified.map((f) => `\`${f.file}:${f.line}\``).join(", ")}. Read each reason: if fixing the code was possible, the verdict is \`fix\`.`] : [],
+      ...lastCheckpoint?.tamper?.snapshots?.length ? [`- Stored snapshots this task rewrote or removed: ${lastCheckpoint.tamper.snapshots.map((f) => `\`${f}\``).join(", ")}. Read the diff of each: a snapshot updated to match wrong output is a \`fix\`.`] : [],
       ...lastCheckpoint?.config?.watched.length ? [`- Configuration of the checks changed by this task: ${lastCheckpoint.config.watched.map((f) => `\`${f}\``).join(", ")}. Read the diff of each: a lowered threshold, a removed rule or a narrower include is a \`fix\`.`] : [],
       ...lastCheckpoint?.packages?.checked.length ? [`- Packages added (each exists, is old enough and has no known advisory): ${lastCheckpoint.packages.checked.map((x) => `\`${x}\``).join(", ")}. Judge whether each is needed.`] : [],
       ...lastCheckpoint?.packages?.unproven.length ? [`- Packages aidw could NOT check: ${lastCheckpoint.packages.unproven.join("; ")}. Check that each is a real, established package.`] : [],

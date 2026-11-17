@@ -539,7 +539,7 @@ export function checkpoint(
     verify,
     changed_files: changed,
     outside_touches: outside,
-    ...(tamper && (tamper.blocked.length || tamper.justified.length) ? { tamper } : {}),
+    ...(tamper && (tamper.blocked.length || tamper.justified.length || tamper.snapshots?.length) ? { tamper } : {}),
     ...(config && (config.locked.length || config.watched.length) ? { config } : {}),
     ...(secrets.length ? { secrets } : {}),
     ...(packages ? { packages } : {}),
@@ -962,6 +962,9 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
       ...(outside.length ? [`- Files changed outside Touches: ${outside.map((f) => `\`${f}\``).join(", ")}. Decide whether each is justified.`] : []),
       ...(lastCheckpoint?.tamper?.justified.length
         ? [`- Checks the task switched off, each with a stated reason: ${lastCheckpoint.tamper.justified.map((f) => `\`${f.file}:${f.line}\``).join(", ")}. Read each reason: if fixing the code was possible, the verdict is \`fix\`.`]
+        : []),
+      ...(lastCheckpoint?.tamper?.snapshots?.length
+        ? [`- Stored snapshots this task rewrote or removed: ${lastCheckpoint.tamper.snapshots.map((f) => `\`${f}\``).join(", ")}. Read the diff of each: a snapshot updated to match wrong output is a \`fix\`.`]
         : []),
       ...(lastCheckpoint?.config?.watched.length
         ? [`- Configuration of the checks changed by this task: ${lastCheckpoint.config.watched.map((f) => `\`${f}\``).join(", ")}. Read the diff of each: a lowered threshold, a removed rule or a narrower include is a \`fix\`.`]

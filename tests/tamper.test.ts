@@ -102,6 +102,30 @@ describe("the checkpoint refuses checks that were weakened", () => {
     expect(brief).toMatch(/Checks the task switched off, each with a stated reason: `lib\/sum\.ts:1`, `lib\/sum\.ts:3`/);
   });
 
+  it("lists a rewritten snapshot for the reviewer, not a new one", () => {
+    const root = tempProject();
+    cli(root, "init");
+    expect(cli(root, "change", "new", ID, "--workflow", "bugfix").code).toBe(0);
+    const c = `.aidw/changes/${ID}`;
+    write(root, `${c}/analysis.md`, ANALYSIS_MD);
+    write(root, `${c}/quality.yaml`, QUALITY_YAML);
+    write(root, `${c}/tasks.yaml`, 'tasks:\n  - id: T01\n    title: Card\n    role: fullstack\n    type: refactor\n    scope: ui\n    touches: ["**"]\n    verify: ["node -e 0"]\n    status: pending\n');
+    write(root, "ui/__snapshots__/card.test.tsx.snap", "exports[`card 1`] = `<p>old</p>`;\n");
+    for (const s of ["intake", "analyzing", "awaiting_approval"]) expect(cli(root, "transition", ID, s).code, s).toBe(0);
+    expect(cli(root, "approve", ID, "--auto").code).toBe(0);
+    git(root, "init", "-q");
+    git(root, "add", "-A");
+    git(root, "commit", "-q", "-m", "base");
+    expect(cli(root, "transition", ID, "executing").code).toBe(0);
+    expect(cli(root, "task", "start", "T01").code).toBe(0);
+    write(root, "ui/__snapshots__/card.test.tsx.snap", "exports[`card 1`] = `<p>new</p>`;\n");
+    write(root, "ui/__snapshots__/list.test.tsx.snap", "exports[`list 1`] = `<ul></ul>`;\n");
+    expect(cli(root, "checkpoint", "T01").code).toBe(0);
+    expect(evidence(root).tamper.snapshots).toEqual(["ui/__snapshots__/card.test.tsx.snap"]);
+    const brief = readFileSync(cli(root, "brief", "T01", "--for", "review").out.trim(), "utf8");
+    expect(brief).toMatch(/Stored snapshots this task rewrote or removed: `ui\/__snapshots__\/card\.test\.tsx\.snap`/);
+  });
+
   it("rejects removes_tests that is not a boolean", () => {
     const d = validateTasksText('tasks:\n  - id: T01\n    title: A\n    role: fullstack\n    type: feat\n    touches: ["lib/**"]\n    verify: ["true"]\n    removes_tests: "yes"\n', "tasks.yaml");
     expect(d.errors.map((e) => e.message).join("\n")).toMatch(/"removes_tests" must be true or false/);
