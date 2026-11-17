@@ -1,6 +1,6 @@
 # The Roster: every Role the factory declares (docs/factory-architecture.md, section 2).
 # status      active  = workflows may give it work
-#             planned = declared; its work is done by `carried_by` until it is activated
+#             planned = declared; its work is done by `carried_by` until it is activated (none today)
 # carried_by  a Role id, or `cli` / `skill:<name>` when deterministic code or a user command does the work today
 # A Role's profile lives in roles/<id>/role.md. Check with `aidw roster`.
 departments:
@@ -11,14 +11,14 @@ departments:
 
 roles:
   product-manager: { department: product-analysis, status: active }
-  business-analyst: { department: product-analysis, status: planned, carried_by: product-manager }
-  research: { department: product-analysis, status: planned, carried_by: product-manager }
-  ux-research: { department: product-analysis, status: planned, carried_by: product-manager }
+  business-analyst: { department: product-analysis, status: active }
+  research: { department: product-analysis, status: active }
+  ux-research: { department: product-analysis, status: active }
 
   ui-ux-designer: { department: architecture-planning, status: active }
   software-architect: { department: architecture-planning, status: active }
-  database-architect: { department: architecture-planning, status: planned, carried_by: software-architect }
-  api-designer: { department: architecture-planning, status: planned, carried_by: software-architect }
+  database-architect: { department: architecture-planning, status: active }
+  api-designer: { department: architecture-planning, status: active }
   technical-planner: { department: architecture-planning, status: active }
 
   frontend: { department: implementation, status: active }
@@ -28,9 +28,9 @@ roles:
   integration: { department: implementation, status: active }
   devops: { department: implementation, status: active }
 
-  qa: { department: quality-delivery, status: planned, carried_by: cli }
+  qa: { department: quality-delivery, status: active }
   code-reviewer: { department: quality-delivery, status: active }
   security: { department: quality-delivery, status: active }
-  performance: { department: quality-delivery, status: planned, carried_by: cli }
-  documentation: { department: quality-delivery, status: planned, carried_by: "skill:deliver" }
-  release: { department: quality-delivery, status: planned, carried_by: cli }
+  performance: { department: quality-delivery, status: active }
+  documentation: { department: quality-delivery, status: active }
+  release: { department: quality-delivery, status: active }

@@ -290,8 +290,9 @@ function checkAgents(d: Diags, file: string, at: string, s: Stage, roles: Record
     triage: AGENTS.triage.replace(/^aidw:/, ""),
     ui: AGENTS.layerReview.ui.replace(/^aidw:/, ""),
     security: AGENTS.layerReview.security.replace(/^aidw:/, ""),
+    performance: AGENTS.layerReview.performance.replace(/^aidw:/, ""),
   };
-  const got = { implement: a.implement, review: a.review, triage: a.triage, ui: a["layer-review"]?.ui, security: a["layer-review"]?.security };
+  const got = { implement: a.implement, review: a.review, triage: a.triage, ui: a["layer-review"]?.ui, security: a["layer-review"]?.security, performance: a["layer-review"]?.performance };
   for (const k of Object.keys(expect) as (keyof typeof expect)[]) {
     if (got[k] !== expect[k]) d.error(file, `${at}: agents ${k} is "${String(got[k])}" but the CLI spawns "${expect[k]}" (the build stage of workflows/product.yaml)`);
     else if (!(expect[k] in roles)) d.error(file, `${at}: agent "${expect[k]}" is not in roster.yaml`);

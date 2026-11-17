@@ -34,9 +34,9 @@ export const EXPECTED_LAYERS = ["code", "unit", "e2e"] as const;
 export const RECOMMENDED_LAYERS = ["ui-ux", "a11y", "security", "performance"] as const;
 /**
  * Review layers (S7, D-28): after its commands pass, the layer waits for an independent read-only reviewer
- * subagent (`aidw:ui-ux-designer` for ui, `aidw:security` for security) whose verdict the orchestrator records with `aidw layer-review`.
+ * subagent (`aidw:ui-ux-designer` for ui, `aidw:security` for security, `aidw:performance` for performance) whose verdict the orchestrator records with `aidw layer-review`.
  */
-export const REVIEW_KINDS = ["ui", "security"] as const;
+export const REVIEW_KINDS = ["ui", "security", "performance"] as const;
 export type ReviewKind = (typeof REVIEW_KINDS)[number];
 
 export interface Layer {
@@ -100,7 +100,7 @@ export function parseQuality(text: string, file: string): { config: QualityConfi
       }
       if (l.run === undefined && review !== null) {
         // a pure review layer: nothing to run, the reviewer judges the code and the artifacts
-      } else if (!isStrList(l.run) || l.run.length === 0) d.error(file, `${where} needs a non-empty "run" list of commands${review ? "" : ' (or "review: ui|security")'}`);
+      } else if (!isStrList(l.run) || l.run.length === 0) d.error(file, `${where} needs a non-empty "run" list of commands${review ? "" : ' (or "review: ui|security|performance")'}`);
       if (l.setup !== undefined && !isStrList(l.setup)) d.error(file, `${where}: "setup" must be a list of commands`);
       if (l.reports !== undefined && !(isStrList(l.reports) && l.reports.every(isProjectRelative))) {
         d.error(file, `${where}: "reports" must be a list of project-relative JUnit XML paths`);

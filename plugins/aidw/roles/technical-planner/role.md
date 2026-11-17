@@ -5,7 +5,7 @@ mode: worker
 tier: deep
 access: artifacts
 tools: [Read, Write, Edit, Glob, Grep, Bash]
-reads: [delta-specs, architecture, constitution, design-tokens]
+reads: [delta-specs, architecture, constitution, design-tokens, data-model-notes, api-contract-notes, test-plan]
 writes: [tasks, analysis-plan]
 includes: [library/author-artifacts.md]
 skills:

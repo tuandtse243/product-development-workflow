@@ -112,6 +112,7 @@ export function selectSkills(t: Task, kind: BriefKind, opts: { retry?: boolean; 
   // No signal, no skill: a slice touching only plain logic gets the core pair, nothing "just in case".
   if (isSecuritySensitive(t)) add("security-and-hardening", "security-sensitive task (risk or auth/payment/permissions)");
   if (list(t.verify).some((v) => BROWSER_VERIFY.test(v))) add("browser-testing-with-devtools", "verify runs browser/E2E tests");
+  if (data) add("aidw/schema-evolution", "touches the data layer: what each schema change costs on a table with rows, and the expand, migrate, contract order");
   if (data) add("supabase/supabase-postgres-best-practices", "touches the data layer: Postgres rules (read the reference a rule names only when you need it)");
   if (touches.some((g) => DOCKERFILE_TOUCH.test(g))) {
     add("docker/docker-project-foundations", "touches a Dockerfile");

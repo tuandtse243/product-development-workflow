@@ -73,14 +73,39 @@ system before asking anything; the grilling then asks only what the code cannot 
 6. Keep the stack: `Source: client` (the existing code is the client's choice, Q9). Never migrate frameworks,
    package manager or libraries unless the user asks for exactly that.
 
-## 1c. Size, 2. Discovery (grilling + clarify)
+## 1c. Size, 2. Discovery (one interview, in stages)
 
-These two steps are the **Interview** of the Product Manager Role, and they stay in this session because only you can
-talk with the user. Read `$(aidw plugin-path roles/product-manager/role.md)` and follow its "Interview (main session)"
-section: it decides the size (`Size: small|normal` in the Summary, which the user confirms at the gate), runs the
-grilling and the clarify categories, and records every round in `analysis.md`. Start with
-`aidw transition <id> analyzing`. The interview ends when the record is complete on disk: the drafting Agents below
-read that record, not this conversation.
+The **Interview** stays in this session because only you can talk with the user. It is **one conversation**: the user
+is never handed from one interviewer to another, and no stage asks again what an earlier one recorded. Start with
+`aidw transition <id> analyzing`. Each stage reads one Role's "Interview (main session)" section and its skill, and
+records its rounds in `analysis.md` before the next begins.
+
+1. **The job (Product Manager).** `$(aidw plugin-path roles/product-manager/role.md)` and its `discovery-frame` skill:
+   the size (`Size: small|normal` in the Summary, which the user confirms at the gate), the job to be done, today's
+   workaround, the measure of done, scope and what is out. A `Size: small` change stops here.
+2. **Rules and edges (Business Analyst).** `$(aidw plugin-path roles/business-analyst/role.md)` and its
+   `rule-and-edge-elicitation` skill: for each behavior, the rules behind it, an example of each, and the edge and
+   failure paths.
+3. **The users (UX Research), only when step 2c decides `journeys`.** `$(aidw plugin-path roles/ux-research/role.md)`:
+   only what the journeys still need.
+
+The interview ends when the record is complete on disk: the drafting Agents below read that record, not this conversation.
+
+## 2c. Research and user research (each only when needed)
+
+Two Decision Points, decided with the Product Manager's hat on. Most Changes answer `none` to both: an active Role
+does not run on every Change, and each of these costs an Agent. Recommend an answer and say why.
+
+- `aidw decide research-needed <market|feasibility|both|none> --reason "<why>"`. Not `none` when the scope depends on
+  what competitors do or users of similar products complain about (`market`), or when nobody knows whether the stack
+  or a named service can do something the request needs (`feasibility`). Then spawn **`aidw:research`** with this prompt
+  and nothing else:
+  `Change <id>. Question: <the one question, and the decision it serves>. Answer it as your Procedure says in .aidw/research/<id>.md and reply with the answer in three lines.`
+  Put its answer to the user where it changes a decision, and record the outcome in the discovery appendix.
+- `aidw decide ux-research-needed <journeys|none> --reason "<why>"`. `journeys` when the Change has UI and more than
+  one kind of user, a flow across several screens, or a stated accessibility need. Then run interview stage 3 above
+  and spawn **`aidw:ux-research`** with this prompt and nothing else:
+  `Change <id>. The discovery interview is recorded in .aidw/changes/<id>/analysis.md. Write .aidw/changes/<id>/journeys.md as your Procedure says and reply with the user kinds, the stages no requirement covers, and what is assumed.`
 
 ## 2b. Scope gate (`product` only)
 
@@ -95,16 +120,19 @@ this step for `feature`, `bugfix` and `audit`. It stops for the user:
 4. After the user approves the scope the change is back in `analyzing` (`aidw status` shows it). Continue with step 3.
    The final approval at step 9 is refused until the scope is approved.
 
-## 3. Domain model, 4. Requirements and specs (drafting Agent)
+## 3. Domain model and requirements, 4. Delta specs (two drafting Agents, in this order)
 
 Spawn the **`aidw:product-manager`** Agent with this prompt and nothing else:
-`Change <id>. The discovery interview is recorded in .aidw/changes/<id>/analysis.md. Draft the domain model, the requirements and the delta specs as your Procedure says, run aidw validate <id>, and reply with the paths you wrote and every decision still open.`
+`Change <id>. The discovery interview is recorded in .aidw/changes/<id>/analysis.md. Draft the domain model and the requirements as your Procedure says, and reply with the paths you wrote and every decision still open.`
 
-It drafts in a fresh context from the recorded interview (its "Procedure (drafting)" in
-`$(aidw plugin-path roles/product-manager/role.md)`: the domain model, ADRs, `.aidw/requirements/<id>.md`, the delta
-specs and the brownfield baselines). Do not redo its work or read the artifacts back in full. Run
-`aidw validate <id>`; for each open decision in its reply, ask the user, record the answer in `analysis.md`'s
-discovery appendix and spawn the Agent again with the answer, until validation is clean and nothing is open.
+When it is done, spawn the **`aidw:business-analyst`** Agent with this prompt and nothing else:
+`Change <id>. The discovery interview is recorded in .aidw/changes/<id>/analysis.md and the requirements are drafted. Draft the delta specs as your Procedure says, run aidw validate <id>, and reply with the paths you wrote and every decision still open.`
+
+Each drafts in a fresh context from the record (the "Procedure (drafting)" of its `role.md`): the Product Manager
+writes the domain model, ADRs and `.aidw/requirements/<id>.md`; the Business Analyst writes the delta specs and the
+brownfield baselines and runs its requirement quality check. Do not redo their work or read the artifacts back in
+full. Run `aidw validate <id>`; for each open decision in a reply, ask the user, record the answer in `analysis.md`'s
+discovery appendix and spawn that Agent again with the answer, until validation is clean and nothing is open.
 
 ## 5. Design decision (Q3)
 
@@ -144,6 +172,26 @@ Its Procedure (`$(aidw plugin-path roles/software-architect/role.md)`) holds the
 (client > AI within the pool > fallback), `.aidw/architecture/overview.md`, ADRs, `.aidw/constitution.md` and the
 `stack:` and `design_mode:` fields of `.aidw/project.yaml`. Handle its open decisions as in step 3.
 
+## 6b. Data model and API contract (each only when needed)
+
+Two Decision Points, decided with the Software Architect's hat on, after the architecture is drafted. Recommend an
+answer and say why; `none` is right for a Change that adds no table and no operation another part calls.
+
+- `aidw decide data-model-needed <design|none> --reason "<why>"`. `design` when the Change adds or alters tables or
+  collections beyond a column or two, has a rule the database must enforce (uniqueness, no double booking), or changes
+  something that already holds data.
+- `aidw decide api-contract-needed <openapi|actions|none> --reason "<why>"`. `openapi` when the Change adds or changes
+  HTTP routes that a separate client, another service or a parallel task will call; `actions` for server actions or
+  RPC with the same need; `none` when one task owns both sides.
+
+Spawn the chosen ones **in one message** (they do not depend on each other), each with its prompt and nothing else:
+
+- **`aidw:database-architect`**: `Change <id>. Requirements, specs and architecture are drafted. Design the data model as your Procedure says in .aidw/changes/<id>/ and reply with the paths, the entities, the irreversible steps and every decision still open.`
+- **`aidw:api-designer`**: `Change <id>. Requirements, specs and architecture are drafted; the api-contract-needed decision is <openapi|actions>. Write the contract as your Procedure says in .aidw/changes/<id>/ and reply with the paths, the number of operations, any breaking change and every decision still open.`
+
+Handle their open decisions as in step 3. A breaking change or an irreversible step goes into the Summary's risks:
+the user decides it at the gate. The planner reads `data-model.md` and `api-contract.md` when they exist.
+
 ## 7. Plan (task graph)
 
 Spawn **`aidw:technical-planner`** with this prompt and nothing else:
@@ -154,11 +202,21 @@ and the rules of a good plan (vertical slices, parallel waves, `aidw plan` shape
 `scaffold-tasks` and `migration-tasks` skills cover a new project and a migration. Handle its open decisions as in
 step 3.
 
-## 8. Quality, deploy and permissions
+## 8. Test plan, quality, deploy and permissions
 
 Read `$(aidw plugin-path roles/qa/references/quality-layers.md)` and `$(aidw plugin-path company/permissions.md)`.
 
-- Write `.aidw/changes/<id>/quality.yaml`: the layers with the exact commands for the chosen stack, the deploy
+**Drafting Agent (QA).** For a `Size: normal` change, spawn **`aidw:qa`** with this prompt and nothing else:
+`Change <id>. Specs, architecture and tasks are drafted. Write the test plan, the layers of quality.yaml and the Quality profile as your Procedure says, run aidw analyze <id>, and reply with the number of cases per layer and every decision still open.`
+It writes `test-plan.md`, the `layers:` of `quality.yaml` and `## Quality profile`. A gap between its plan and the
+task graph goes back to the planner (spawn it again with the gap). For a `Size: small` change write the layers
+yourself, as below.
+
+**This session**, wearing the QA hat for the environment and the Release hat for deploy and permissions
+(`$(aidw plugin-path roles/release/role.md)`, "Interview"), completes the file and checks what only a session with the
+user can check:
+
+- `.aidw/changes/<id>/quality.yaml`: check the layers have the exact commands for the chosen stack, and add the deploy
   target and command, the smoke checks, and the tier-2 resource keys. These commands run unattended after
   approval, so make them non-interactive.
 - `## Quality profile`: which layers run and why, scaled to the project's risk (Q5: comprehensive by default).

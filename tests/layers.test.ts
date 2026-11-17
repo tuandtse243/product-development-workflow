@@ -101,10 +101,10 @@ describe("quality.yaml review layers", () => {
     ]);
     expect(parseQuality("layers:\n  - name: code\n    run: [x]\n  - name: sec\n    review: security\n", "q").config?.layers[1]).toMatchObject({ run: [], review: "security" });
     expect(diags("layers:\n  - name: code\n    run: [x]\n  - name: perf\n    review: lighthouse\n").errors.map((e) => e.message)).toEqual([
-      'layer "perf": "review" must be one of ui, security (a reviewing Role exists for each)',
+      'layer "perf": "review" must be one of ui, security, performance (a reviewing Role exists for each)',
     ]);
     expect(diags("layers:\n  - name: code\n    run: [x]\n  - name: perf\n    artifacts: [x]\n").errors.map((e) => e.message)).toEqual([
-      'layer "perf" needs a non-empty "run" list of commands (or "review: ui|security")',
+      'layer "perf" needs a non-empty "run" list of commands (or "review: ui|security|performance")',
     ]);
     expect(diags("layers:\n  - name: code\n    run: [x]\n    artifacts: [\"/abs/*.png\"]\n").errors.map((e) => e.message)).toEqual([
       'layer "code": "artifacts" must be a list of project-relative file globs',

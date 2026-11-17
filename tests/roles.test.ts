@@ -25,13 +25,13 @@ describe("the roster", () => {
     expect(messages(root).join("\n")).not.toMatch(/\.claude/);
   });
 
-  it("declares 21 roles in four departments, 12 of them active, every one with a profile", () => {
+  it("declares 21 roles in four departments, all of them active, every one with a profile", () => {
     const roster = loadRoster(plugin);
     const entries = Object.values(roster.roles);
     expect(entries).toHaveLength(21);
     expect(Object.keys(roster.departments)).toHaveLength(4);
     expect(Object.entries(roster.roles).filter(([, e]) => e.status === "active").map(([id]) => id).sort()).toEqual(
-      ["backend", "code-reviewer", "database", "devops", "frontend", "fullstack", "integration", "product-manager", "security", "software-architect", "technical-planner", "ui-ux-designer"],
+      ["api-designer", "backend", "business-analyst", "code-reviewer", "database", "database-architect", "devops", "documentation", "frontend", "fullstack", "integration", "performance", "product-manager", "qa", "release", "research", "security", "software-architect", "technical-planner", "ui-ux-designer", "ux-research"],
     );
   });
 
@@ -52,7 +52,8 @@ describe("the roster", () => {
   it("rejects a planned role carried by a role that is not active", () => {
     const root = copy();
     const file = join(root, "roster.yaml");
-    writeFileSync(file, readFileSync(file, "utf8").replace("carried_by: product-manager }", "carried_by: qa }"));
+    // no Role is planned today: make two planned, one carried by the other
+    writeFileSync(file, readFileSync(file, "utf8").replace("qa: { department: quality-delivery, status: active }", "qa: { department: quality-delivery, status: planned, carried_by: cli }").replace("research: { department: product-analysis, status: active }", "research: { department: product-analysis, status: planned, carried_by: qa }"));
     expect(messages(root).join("\n")).toMatch(/carried_by "qa" must be an active role/);
   });
 
@@ -100,7 +101,7 @@ describe("role profiles", () => {
 
 describe("generated agents", () => {
   it("one agent file per active role that has a profile", () => {
-    expect(Object.keys(generateAgents(plugin)).sort()).toEqual(["backend.md", "code-reviewer.md", "database.md", "devops.md", "frontend.md", "fullstack.md", "integration.md", "product-manager.md", "security.md", "software-architect.md", "technical-planner.md", "ui-ux-designer.md"]);
+    expect(Object.keys(generateAgents(plugin)).sort()).toEqual(["api-designer.md", "backend.md", "business-analyst.md", "code-reviewer.md", "database.md", "database-architect.md", "devops.md", "documentation.md", "frontend.md", "fullstack.md", "integration.md", "performance.md", "product-manager.md", "qa.md", "release.md", "research.md", "security.md", "software-architect.md", "technical-planner.md", "ui-ux-designer.md", "ux-research.md"].sort());
   });
 
   it("the three implementing roles share one procedure instead of copying it", () => {
@@ -149,7 +150,7 @@ describe("generated agents", () => {
     const out = messages(root).join("\n");
     expect(out).toMatch(/agents\/security\.md: out of date with its role folder/);
     expect(out).toMatch(/agents\/extra\.md: not generated from a role/);
-    expect(writeAgents(root)).toEqual(["backend.md", "code-reviewer.md", "database.md", "devops.md", "frontend.md", "fullstack.md", "integration.md", "product-manager.md", "security.md", "software-architect.md", "technical-planner.md", "ui-ux-designer.md"]);
+    expect(writeAgents(root)).toEqual(["api-designer.md", "backend.md", "business-analyst.md", "code-reviewer.md", "database.md", "database-architect.md", "devops.md", "documentation.md", "frontend.md", "fullstack.md", "integration.md", "performance.md", "product-manager.md", "qa.md", "release.md", "research.md", "security.md", "software-architect.md", "technical-planner.md", "ui-ux-designer.md", "ux-research.md"].sort());
     expect(messages(root)).toEqual([]);
   });
 

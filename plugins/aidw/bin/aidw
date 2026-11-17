@@ -8456,11 +8456,11 @@ function loadAgents() {
   const stages = Array.isArray(data?.stages) ? data.stages : [];
   const agents = stages.map((s) => s?.agents).find(isRecord2);
   const layer = isRecord2(agents?.["layer-review"]) ? agents["layer-review"] : {};
-  const [implement, review, triage, ui, security] = [agents?.implement, agents?.review, agents?.triage, layer.ui, layer.security];
-  for (const v of [implement, review, triage, ui, security]) {
-    if (typeof v !== "string" || !ROLE_ID.test(v)) throw new Error(`the Agents are missing: ${file || "plugin root not found"} needs a stage with agents: implement, review, triage and layer-review ui and security`);
+  const [implement, review, triage, ui, security, performance] = [agents?.implement, agents?.review, agents?.triage, layer.ui, layer.security, layer.performance];
+  for (const v of [implement, review, triage, ui, security, performance]) {
+    if (typeof v !== "string" || !ROLE_ID.test(v)) throw new Error(`the Agents are missing: ${file || "plugin root not found"} needs a stage with agents: implement, review, triage and layer-review ui, security and performance`);
   }
-  return { implement: `aidw:${implement}`, taskReview: `aidw:${review}`, triage: `aidw:${triage}`, layerReview: { ui: `aidw:${ui}`, security: `aidw:${security}` } };
+  return { implement: `aidw:${implement}`, taskReview: `aidw:${review}`, triage: `aidw:${triage}`, layerReview: { ui: `aidw:${ui}`, security: `aidw:${security}`, performance: `aidw:${performance}` } };
 }
 var oneOf = (list5, v) => typeof v === "string" && list5.includes(v);
 var rosterFile = (root) => (0, import_node_path8.join)(root, "roster.yaml");
@@ -9380,9 +9380,10 @@ function checkAgents(d, file, at, s, roles) {
     review: AGENTS.taskReview.replace(/^aidw:/, ""),
     triage: AGENTS.triage.replace(/^aidw:/, ""),
     ui: AGENTS.layerReview.ui.replace(/^aidw:/, ""),
-    security: AGENTS.layerReview.security.replace(/^aidw:/, "")
+    security: AGENTS.layerReview.security.replace(/^aidw:/, ""),
+    performance: AGENTS.layerReview.performance.replace(/^aidw:/, "")
   };
-  const got = { implement: a.implement, review: a.review, triage: a.triage, ui: a["layer-review"]?.ui, security: a["layer-review"]?.security };
+  const got = { implement: a.implement, review: a.review, triage: a.triage, ui: a["layer-review"]?.ui, security: a["layer-review"]?.security, performance: a["layer-review"]?.performance };
   for (const k of Object.keys(expect)) {
     if (got[k] !== expect[k]) d.error(file, `${at}: agents ${k} is "${String(got[k])}" but the CLI spawns "${expect[k]}" (the build stage of workflows/product.yaml)`);
     else if (!(expect[k] in roles)) d.error(file, `${at}: agent "${expect[k]}" is not in roster.yaml`);
@@ -9871,6 +9872,7 @@ function selectSkills(t, kind, opts = {}) {
   else if (data) add("api-and-interface-design", "touches the data layer (schema is an interface)");
   if (isSecuritySensitive(t)) add("security-and-hardening", "security-sensitive task (risk or auth/payment/permissions)");
   if (list(t.verify).some((v) => BROWSER_VERIFY.test(v))) add("browser-testing-with-devtools", "verify runs browser/E2E tests");
+  if (data) add("aidw/schema-evolution", "touches the data layer: what each schema change costs on a table with rows, and the expand, migrate, contract order");
   if (data) add("supabase/supabase-postgres-best-practices", "touches the data layer: Postgres rules (read the reference a rule names only when you need it)");
   if (touches.some((g) => DOCKERFILE_TOUCH.test(g))) {
     add("docker/docker-project-foundations", "touches a Dockerfile");
@@ -11699,7 +11701,8 @@ var SKILLS = {
   security: [
     { id: "addy/security-and-hardening", reason: "OWASP checklist, authz, secrets, dependencies" },
     { id: "addy/code-review-and-quality", reason: "how to read a diff for defects" }
-  ]
+  ],
+  performance: [{ id: "addy/performance-optimization", reason: "what to measure and the usual causes, by metric" }]
 };
 var MAX_ARTIFACTS = 60;
 var MAX_SHOTS = 24;
@@ -11771,7 +11774,13 @@ function buildLayerBrief(p, id, layer, runs, vendorDir) {
     ...shots.length ? [`- Per-task screenshots (already reviewed per task; use them to spot inconsistency between screens):`, ...shots.map((f) => `  - \`${(0, import_node_path26.join)(p.project, f)}\``)] : [],
     ...uiTasks.length ? [`- UI tasks in this change: ${uiTasks.map((t) => `${t.id} (${String(t.title ?? "")})`).join(", ")}.`] : []
   ];
-  const checklist = kind === "ui" ? [
+  const checklist = kind === "performance" ? [
+    "1. **The measurements.** Read the command output below and every report file it names. Quote only numbers you read there, say for each whether it is lab or field data, and name the budget it is compared with. A budget passed by less than a tenth is worth a remark.",
+    "2. **Queries and data.** In the diff: a query or request per item, a list with no limit, a filter or sort with no index, work done in the application that the database should do. Judge them against the scale the specs state, not the size of the test data.",
+    "3. **What ships to the browser.** The size of what the first screen loads, a heavy dependency loaded everywhere, the same data fetched more than once, independent requests awaited one after another.",
+    "4. **Rank.** At most five findings, the most costly first, each tied to a metric or a count and to the fix.",
+    "Blocking means a budget of the Analysis is exceeded, or the diff adds a cost that will exceed it at the stated scale. Everything else is non-blocking."
+  ] : kind === "ui" ? [
     "1. **Design compliance.** Each token is used where its **Use** says; colors, type scale, spacing and radius come from the tokens; the layout and tone match the design direction. A visible mismatch is blocking.",
     "2. **Responsive.** At mobile width (320-390px): no horizontal overflow, nothing clipped or overlapping, touch targets at least 44px, text readable without zoom. Tablet and desktop use the width the way the design says (no stretched phone layout unless intended).",
     "3. **States.** Empty, loading, error, long text, many items, and the dark theme when tokens have dark values: each is designed, not accidental. Theme switching must not flash the wrong theme on load.",
@@ -11820,7 +11829,7 @@ var DEPLOY_TARGETS = ["none", "local", "preview"];
 var DEFAULT_MAX_FIX_ROUNDS = 3;
 var EXPECTED_LAYERS = ["code", "unit", "e2e"];
 var RECOMMENDED_LAYERS = ["ui-ux", "a11y", "security", "performance"];
-var REVIEW_KINDS = ["ui", "security"];
+var REVIEW_KINDS = ["ui", "security", "performance"];
 var DEFAULT_PARALLEL = { max: 3, setup: [] };
 var isStrList2 = (v) => Array.isArray(v) && v.every((x) => typeof x === "string" && x.trim() !== "");
 var isProjectRelative = (r) => !r.startsWith("/") && !r.split("/").includes("..");
@@ -11848,7 +11857,7 @@ function parseQuality(text, file) {
         d.error(file, `${where}: "review" must be one of ${REVIEW_KINDS.join(", ")} (a reviewing Role exists for each)`);
       }
       if (l.run === void 0 && review !== null) {
-      } else if (!isStrList2(l.run) || l.run.length === 0) d.error(file, `${where} needs a non-empty "run" list of commands${review ? "" : ' (or "review: ui|security")'}`);
+      } else if (!isStrList2(l.run) || l.run.length === 0) d.error(file, `${where} needs a non-empty "run" list of commands${review ? "" : ' (or "review: ui|security|performance")'}`);
       if (l.setup !== void 0 && !isStrList2(l.setup)) d.error(file, `${where}: "setup" must be a list of commands`);
       if (l.reports !== void 0 && !(isStrList2(l.reports) && l.reports.every(isProjectRelative))) {
         d.error(file, `${where}: "reports" must be a list of project-relative JUnit XML paths`);
@@ -13426,6 +13435,12 @@ ${req.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`;
     pointer2(p, (0, import_node_path32.join)(p.domain, "model.md"), "glossary, entities, business rules"),
     pointer2(p, (0, import_node_path32.join)(p.architecture, "overview.md"), "architecture, folder structure, integrations"),
     pointer2(p, (0, import_node_path32.join)(p.requirements, `${id}.md`), "user stories and implementation/testing decisions"),
+    // What the upstream Roles designed for this Change, when they ran: binding in names and shapes.
+    pointer2(p, (0, import_node_path32.join)(tf.change.dir, "data-model.md"), "the approved data model: tables, constraints, indexes and the evolution plan (keep every name)"),
+    pointer2(p, (0, import_node_path32.join)(tf.change.dir, "api-contract.md"), "the approved API contract: operations, shapes, errors (keep every name and status code)"),
+    pointer2(p, (0, import_node_path32.join)(tf.change.dir, "openapi.yaml"), "the contract as OpenAPI 3.1, with an example per scenario"),
+    pointer2(p, (0, import_node_path32.join)(tf.change.dir, "test-plan.md"), "the test cases of each scenario and the layer that proves each"),
+    ...touchesUi(t) ? [pointer2(p, (0, import_node_path32.join)(tf.change.dir, "journeys.md"), "user kinds, journeys and the usability requirements (U1, U2...) the UI must meet")] : [],
     ...touchesUi(t) ? [pointer2(p, p.design, "design direction and assets (UI task)")] : []
   ].filter((x) => x !== null);
   const adrs = adrPointers(p);

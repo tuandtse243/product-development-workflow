@@ -841,6 +841,12 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
     pointer(p, join(p.domain, "model.md"), "glossary, entities, business rules"),
     pointer(p, join(p.architecture, "overview.md"), "architecture, folder structure, integrations"),
     pointer(p, join(p.requirements, `${id}.md`), "user stories and implementation/testing decisions"),
+    // What the upstream Roles designed for this Change, when they ran: binding in names and shapes.
+    pointer(p, join(tf.change.dir, "data-model.md"), "the approved data model: tables, constraints, indexes and the evolution plan (keep every name)"),
+    pointer(p, join(tf.change.dir, "api-contract.md"), "the approved API contract: operations, shapes, errors (keep every name and status code)"),
+    pointer(p, join(tf.change.dir, "openapi.yaml"), "the contract as OpenAPI 3.1, with an example per scenario"),
+    pointer(p, join(tf.change.dir, "test-plan.md"), "the test cases of each scenario and the layer that proves each"),
+    ...(touchesUi(t) ? [pointer(p, join(tf.change.dir, "journeys.md"), "user kinds, journeys and the usability requirements (U1, U2...) the UI must meet")] : []),
     ...(touchesUi(t) ? [pointer(p, p.design, "design direction and assets (UI task)")] : []),
   ].filter((x): x is string => x !== null);
   const adrs = adrPointers(p);

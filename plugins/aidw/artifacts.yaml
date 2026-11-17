@@ -7,8 +7,7 @@
 #   part      only when several artifacts share one file or folder: which part this one is (the heading of an
 #             analysis.md section, or what kind of ADR). Two artifacts never share a path without a `part`.
 #
-# Owners are the Roles that do the work today. `qa` and `release` are Planned Roles: the registry names them as
-# the true owners while the main session carries the work (carried_by in roster.yaml).
+# Owners are the Roles that do the work. Every Role of the Roster is active.
 
 # --- Intake and discovery ------------------------------------------------------------------------------------
 intake:
@@ -60,7 +59,7 @@ analysis-architecture:
 analysis-specs:
   path: changes/<id>/analysis.md
   part: "## Specs"
-  owner: product-manager
+  owner: business-analyst
   validate: aidw analyze
 analysis-plan:
   path: changes/<id>/analysis.md
@@ -113,12 +112,30 @@ requirements:
   validate: none
 delta-specs:
   path: changes/<id>/specs/<capability>/spec.md
-  owner: product-manager
+  owner: business-analyst
   validate: aidw validate
 specs:
   path: specs/<capability>/spec.md
-  owner: product-manager
+  owner: business-analyst
   validate: aidw validate
+research-note:
+  path: research/<id>.md
+  owner: research
+  validate: none
+decision-research-needed:
+  path: changes/<id>/decisions.yaml
+  part: "research-needed: market, feasibility, both or none"
+  owner: product-manager
+  validate: aidw analyze
+user-journeys:
+  path: changes/<id>/journeys.md
+  owner: ux-research
+  validate: none
+decision-ux-research-needed:
+  path: changes/<id>/decisions.yaml
+  part: "ux-research-needed: journeys or none"
+  owner: product-manager
+  validate: aidw analyze
 
 # --- Design and architecture ----------------------------------------------------------------------------------
 design-direction:
@@ -151,6 +168,32 @@ project-config:
   path: project.yaml
   owner: software-architect
   validate: none
+data-model-dbml:
+  path: changes/<id>/data-model.dbml
+  owner: database-architect
+  validate: none
+data-model-notes:
+  path: changes/<id>/data-model.md
+  owner: database-architect
+  validate: none
+decision-data-model-needed:
+  path: changes/<id>/decisions.yaml
+  part: "data-model-needed: design or none"
+  owner: software-architect
+  validate: aidw analyze
+api-contract-openapi:
+  path: changes/<id>/openapi.yaml
+  owner: api-designer
+  validate: none
+api-contract-notes:
+  path: changes/<id>/api-contract.md
+  owner: api-designer
+  validate: none
+decision-api-contract-needed:
+  path: changes/<id>/decisions.yaml
+  part: "api-contract-needed: openapi, actions or none"
+  owner: software-architect
+  validate: aidw analyze
 
 # --- Plan and quality profile ---------------------------------------------------------------------------------
 tasks:
@@ -161,6 +204,10 @@ quality:
   path: changes/<id>/quality.yaml
   owner: qa
   validate: aidw analyze
+test-plan:
+  path: changes/<id>/test-plan.md
+  owner: qa
+  validate: none
 
 # --- Verdicts of the independent reviewers --------------------------------------------------------------------
 task-review:
@@ -199,4 +246,13 @@ layer-review-security:
 layer-review-ui-ux:
   path: run/layer-review-ui-ux.md
   owner: ui-ux-designer
+  validate: none
+layer-review-performance:
+  path: run/layer-review-performance.md
+  owner: performance
+  validate: none
+# --- Release ----------------------------------------------------------------------------------------------------
+release-plan:
+  path: changes/<id>/release.md
+  owner: release
   validate: none

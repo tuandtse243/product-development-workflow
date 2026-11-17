@@ -327,7 +327,7 @@ describe("skill selection", () => {
       "aidw/api-design-rules",
       "browser-testing-with-devtools",
     ]);
-    expect(ids({ touches: ["supabase/migrations/**"] })).toContain("supabase/supabase-postgres-best-practices");
+    expect(ids({ touches: ["supabase/migrations/**"] })).toEqual(expect.arrayContaining(["aidw/schema-evolution", "supabase/supabase-postgres-best-practices"]));
     expect(ids({ touches: ["Dockerfile", "docker-compose.yml"] })).toEqual([...core, "docker/docker-project-foundations", "docker/docker-build-strategies", "docker/docker-compose-patterns"]);
     expect(ids({ touches: ["lib/x/**"], title: "Structured logging for the export job" })).toContain("observability-and-instrumentation");
     expect(ids({ touches: [".github/workflows/ci.yml"] }, "review")).toEqual(["code-review-and-quality", "sentry/gha-security-review"]);

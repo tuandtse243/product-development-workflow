@@ -44,9 +44,9 @@ parallel:                       # waves of tasks with disjoint touches, each in 
   setup: []                     # commands run in each new worktree, e.g. ["pnpm install --offline --frozen-lockfile"]
 ```
 
-- **Review layers** carry `review: ui` or `review: security`. Their `run` commands (optional) produce the
+- **Review layers** carry `review: ui`, `review: security` or `review: performance`. Their `run` commands (optional) produce the
   artifacts; when they pass, `aidw verify` stops with a brief and the orchestrator spawns the matching
-  read-only agent (`aidw:ui-ux-designer`, `aidw:security`), then records the verdict with
+  read-only agent (`aidw:ui-ux-designer`, `aidw:security`, `aidw:performance`), then records the verdict with
   `aidw layer-review <layer> pass|fix`. A `fix` verdict becomes a fix task with the reviewer's notes, within
   `max_fix_rounds`. `artifacts` are project-relative globs of files the reviewer must open.
 - **Layers** must not need a human: no interactive prompts, no watch mode, exit non-zero on failure.
@@ -306,6 +306,7 @@ Lighthouse attaches to the CDP Chrome (`--port=$E2E_CDP_PORT`, set by aidw), so 
       - "pnpm build"
       - "pnpm exec start-server-and-test 'pnpm start -- -p 3100' http://localhost:3100 'pnpm exec lighthouse http://localhost:3100 --port=$E2E_CDP_PORT --quiet --output=json --output-path=test-results/lighthouse.json --only-categories=performance,accessibility,best-practices && node scripts/lh-budget.mjs test-results/lighthouse.json'"
     artifacts: ["test-results/lighthouse.json"]
+    review: performance      # aidw:performance reads the report and the diff (queries, bundle) and ranks what costs most
 ```
 
 ```js

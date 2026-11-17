@@ -104,3 +104,22 @@ tokens and the brief override the skill; it adds character inside them, never a 
 Ignore its "Initial Response" section (it tells the agent to wait for a question) and every pointer to
 `../<other>/SKILL.md`. `var(--transform-origin)` and `data-starting-style` belong to one component library: use the
 project's own equivalents. Add no motion library for an effect CSS can do.
+
+## mongodb/mongodb-schema-design
+
+Pattern lookup only, for design before any database exists. Ignore its ask-the-user workflow, its MCP and Atlas
+sections, both `source-*.md` files and every "Verify with" section: you have no cluster, no statistics and no logs,
+and you never run its commands. Where a pattern depends on a measurement, write the cardinality, growth bound,
+document size and read/write ratio you assumed. `createIndex`, `createCollection` and `$jsonSchema` snippets are
+content for the design document. A link written `references/x.md` inside a reference file means the sibling file.
+Its number thresholds are rules of thumb. It says nothing about index limits, transaction limits or shard keys:
+mark any decision that depends on one as unverified.
+
+Statements in it that are wrong or contradict each other (found by a read-through on 2026-11-17, not checked
+against the MongoDB manual):
+
+- `antipattern-excessive-lookups.md`: a `$lookup` on `foreignField: "_id"` is not a collection scan; it uses the `_id` index.
+- `fundamental-schema-validation.md`: `validationLevel: "moderate"` also validates every insert, not only documents that already match.
+- `pattern-schema-versioning.md`: its strict validator requires the new fields, so it rejects the old documents it says it accepts.
+- `fundamental-document-size.md`: BSON caps nesting at 100 levels, so "100+ levels" cannot occur.
+- `SKILL.md` recommends a two-way reference for many-to-many, which `fundamental-embed-vs-reference.md` advises against.

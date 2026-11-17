@@ -183,9 +183,9 @@ A task is triaged once: if the extra attempt fails too, it escalates without ano
    - `PASS`: go to section 4.
    - A layer failed and a **fix task** `Qnn` was added: the change is back in `executing`. Return to the loop
      (section 1): the fix task runs through implement, checkpoint and review like any other, then come back here.
-   - `REVIEW`: a **review layer** (`review: ui` or `review: security`) passed its commands and waits for an
+   - `REVIEW`: a **review layer** (`review: ui`, `review: security` or `review: performance`) passed its commands and waits for an
      independent reviewer. The output names the agent, the brief and the prompt:
-     1. Spawn that agent (`subagent_type: "aidw:ui-ux-designer"` or `"aidw:security"`) with exactly the
+     1. Spawn that agent (`subagent_type: "aidw:ui-ux-designer"`, `"aidw:security"` or `"aidw:performance"`, as the command names it) with exactly the
         printed prompt: `Layer review brief: <path>. Review the layer and reply with the verdict.`
      2. The reviewer writes its verdict to `.aidw/run/layer-review-<layer>.md` and replies with one line. Run
         `aidw layer-review <layer> --change <id>` (no verdict argument): it reads that file and records

@@ -142,5 +142,14 @@
     "skills": {
       "animate": "skills/animate"
     }
+  },
+  "mongodb": {
+    "repo": "mongodb/agent-skills",
+    "ref": "main",
+    "license": "LICENSE",
+    "role": "MongoDB's own schema design patterns, the lookup material of the database-architect Role (ADR-0005)",
+    "skills": {
+      "mongodb-schema-design": "plugins/mongodb/skills/mongodb-schema-design"
+    }
   }
 }

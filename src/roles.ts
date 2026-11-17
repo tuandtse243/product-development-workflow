@@ -45,18 +45,18 @@ export const AGENTS: Agents = new Proxy({} as Agents, {
 /** The Role that runs tasks the workflow adds itself (quality fixes, converge gaps, integration fixes). */
 export const defaultTaskRole = (): string => AGENTS.implement.replace(/^aidw:/, "");
 
-function loadAgents(): { implement: string; taskReview: string; triage: string; layerReview: { ui: string; security: string } } {
+function loadAgents(): { implement: string; taskReview: string; triage: string; layerReview: { ui: string; security: string; performance: string } } {
   const root = bundledRoot();
   const file = root ? join(root, "workflows", "product.yaml") : "";
   const data = file && existsSync(file) ? (YAML.parse(readFileSync(file, "utf8")) as { stages?: unknown } | null) : null;
   const stages = Array.isArray(data?.stages) ? (data.stages as Record<string, unknown>[]) : [];
   const agents = stages.map((s) => s?.agents).find(isRecord);
   const layer = isRecord(agents?.["layer-review"]) ? (agents["layer-review"] as Record<string, unknown>) : {};
-  const [implement, review, triage, ui, security] = [agents?.implement, agents?.review, agents?.triage, layer.ui, layer.security];
-  for (const v of [implement, review, triage, ui, security]) {
-    if (typeof v !== "string" || !ROLE_ID.test(v)) throw new Error(`the Agents are missing: ${file || "plugin root not found"} needs a stage with agents: implement, review, triage and layer-review ui and security`);
+  const [implement, review, triage, ui, security, performance] = [agents?.implement, agents?.review, agents?.triage, layer.ui, layer.security, layer.performance];
+  for (const v of [implement, review, triage, ui, security, performance]) {
+    if (typeof v !== "string" || !ROLE_ID.test(v)) throw new Error(`the Agents are missing: ${file || "plugin root not found"} needs a stage with agents: implement, review, triage and layer-review ui, security and performance`);
   }
-  return { implement: `aidw:${implement}`, taskReview: `aidw:${review}`, triage: `aidw:${triage}`, layerReview: { ui: `aidw:${ui}`, security: `aidw:${security}` } };
+  return { implement: `aidw:${implement}`, taskReview: `aidw:${review}`, triage: `aidw:${triage}`, layerReview: { ui: `aidw:${ui}`, security: `aidw:${security}`, performance: `aidw:${performance}` } };
 }
 
 export interface RosterEntry {

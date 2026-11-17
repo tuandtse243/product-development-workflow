@@ -264,39 +264,43 @@ are in `library/vendored-skill-notes.md`; a brief that loads one of these Skills
   which needs the separate labelled directory); shadcn (no pack and no signal to load it yet); Astral `ty` (beta);
   token references (a token whose value points at another token).
 
-### Wave 4: activate every Planned Role, one at a time
+### Wave 4: every Planned Role activated
 
-Order: `qa`, `business-analyst`, `api-designer`, `database-architect`, `performance`, `ux-research`, `research`,
-`release`, `documentation`. Each needs its Procedure, Done-when, Stop-and-report, the Skills and the eval its `role.md`
-lists, then the `carried_by` line removed. After the ninth, the Roster has no Planned Role.
+All nine were activated in one pass (the user chose to test everything together afterwards), so the Roster has 21
+active Roles and none planned. Each got its Procedure, Done-when, Stop-and-report, its Authored Skills and an eval.
 
-Across the wave:
-
-- [ ] One discovery interview in the main session, in stages (`product-manager`, `business-analyst`, `ux-research`);
+- [x] One discovery interview in the main session, in stages (`product-manager`, `business-analyst`, `ux-research`);
   each stage loads that Role's Skill, answers are recorded to disk, and no stage asks again what an earlier one settled.
-- [ ] A Decision Point for each optional upstream Role (`research`, `ux-research`, `database-architect`,
-  `api-designer`): it runs on a Change only when chosen there. An active Role does not run on every Change.
+- [x] A Decision Point for each optional upstream Role: `research-needed`, `ux-research-needed` (decided by the Product
+  Manager), `data-model-needed`, `api-contract-needed` (decided by the Software Architect). Not answered means none.
+- [x] `qa`: `test-case-derivation`, `test-layer-choice`; writes `test-plan.md`, the layers of `quality.yaml` and the
+  Quality profile. The main session keeps the environment preflight.
+- [x] `business-analyst`: `rule-and-edge-elicitation`, `requirement-quality-check` (EARS), and `delta-spec` moved from
+  the Product Manager. It owns the delta specs; the Product Manager keeps the domain model and the requirements.
+- [x] `api-designer`: `rest-contract`, `breaking-change`; writes `openapi.yaml` (OpenAPI 3.1) or a typed action table,
+  and `api-contract.md`.
+- [x] `database-architect`: `schema-design-postgres`, `schema-design-mongodb` (MongoDB's own references vendored);
+  writes `data-model.dbml` and `data-model.md`. `aidw/schema-evolution` is shared with the `database` Role and loads
+  on any task that touches the data layer; its lock table was read from the PostgreSQL 18 documentation.
+- [x] `performance`: `reading-budget-reports`, `query-cost-in-a-diff`; a quality layer may say `review: performance`.
+- [x] `ux-research`: `journey-mapping`, `usability-requirements`; writes `journeys.md`.
+- [x] `research`: `evidence-scan`, `feasibility-spike`; writes `.aidw/research/<id>.md`. The only Role with web access.
+- [x] `release`: `release-notes`, `deployment-checklist`; writes `release.md` at delivery. It never deploys.
+- [x] `documentation`: `readme-structure`, `api-docs-from-contract`; updates `README.md` and `.env.example` at delivery.
+- [x] Implementer briefs point at the data model, the API contract, the test plan and the journeys when they exist.
+- [ ] Not done: `qa` closing coverage gaps after the build (the converge step still finds them and adds tasks);
+  `performance` as an audit lens; the analyze step checking the new Artifacts (a decision that says `design` with no
+  `data-model.md` is not refused yet); `docs/factory-architecture.md` still describes some Roles as planned.
 
-The Roles:
+### Before any of this is trusted
 
-- [ ] `qa`: authored Skills for deriving test cases from scenarios and for choosing the layer per scenario.
-- [ ] `business-analyst`: authored `rule-and-edge-elicitation` (example mapping) and `requirement-quality-check`
-  (ambiguity scan, EARS). Ideas: Cucumber example mapping, spec-kit, cc-sdd.
-- [ ] `api-designer`: authored `rest-contract` and `breaking-change`. Artifact: `openapi.yaml` (OpenAPI 3.1) when the
-  Change has HTTP routes, a typed action table otherwise, both with `api-contract.md`. Ideas: Google AIP, Zalando,
-  Azure guidelines, RFC 9457 and 9745, oasdiff.
-- [ ] `database-architect`: authored `schema-design` for Postgres, `schema-design` for MongoDB (with MongoDB's own
-  reference files vendored, Apache-2.0) and `schema-evolution` (expand and contract; check every lock level against the
-  Postgres documentation before writing it). Artifact: `data-model.dbml` as the source, with `data-model.md` (access
-  paths, decisions, entity diagram). Ideas: supabase, timescale, pgroll, MongoDB.
-- [ ] `performance`: authored Skills for reading budget reports ranked by impact (never invent a measurement, say lab
-  or field) and for finding N+1 queries and unbounded lists in a diff.
-- [ ] `ux-research`: authored `journey-mapping` and `usability-requirements`. Ideas: NN/g, GOV.UK Service Manual,
-  WCAG 2.2.
-- [ ] `research`: authored `evidence-scan` (every claim cited, confidence stated) and `feasibility-spike` (a
-  time-boxed throwaway that answers one question). Ideas: deanpeters, cited-research and deep-research skills.
-- [ ] `release`: authored Skills for release notes from Conventional Commits and for the deployment checklist and rollback.
-- [ ] `documentation`: authored Skills for README structure per project kind and API docs from the contract.
+Nothing above has run through a real Change. The unit tests cover the code (guards, skill selection, the roster,
+workflows), not the behavior of the Agents with the new Skills.
+
+- [ ] Run the Role cases (the CLI's eval command): 21 Roles, about 40 cases.
+- [ ] Run a trial on the greenfield fixture and one on the brownfield fixture, and compare with trial-3: cost per
+  task, attempts per task, review `fix` rate, and whether the Guards fire on real work or only in tests.
+- [ ] Watch the token cost of a brief: the core set grew by one Skill, UI tasks by one, data tasks by two.
 
 Not chosen: timescale `postgres-database-migration` as a Vendored Skill (suspected errors, replaced by
 `schema-evolution`), Addy `interview-me` and `planning-and-task-breakdown`, `deprecation-and-migration`, Trail of Bits
