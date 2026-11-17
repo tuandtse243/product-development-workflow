@@ -164,7 +164,7 @@ describe("verify -> fix -> deploy (exit criterion [6])", () => {
     cli(root, "task", "start", "Q01");
     const brief = readFileSync(cli(root, "brief", "Q01").out.trim(), "utf8");
     expect(brief).toMatch(/## Problem to fix[\s\S]*missing unit-ok/);
-    expect(brief).toMatch(/debugging-and-error-recovery/);
+    expect(brief).toMatch(/obra\/systematic-debugging/);
     write(root, "unit-ok", "");
     expect(cli(root, "checkpoint", "Q01").code).toBe(0);
     cli(root, "review", "Q01", "pass");

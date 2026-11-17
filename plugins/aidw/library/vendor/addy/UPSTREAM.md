@@ -24,11 +24,13 @@ adapter instructions of the aidw skills that load them. Re-sync with
 - `ci-cd-and-automation` <- `skills/ci-cd-and-automation`
 - `shipping-and-launch` <- `skills/shipping-and-launch`
 - `documentation-and-adrs` <- `skills/documentation-and-adrs`
+- `observability-and-instrumentation` <- `skills/observability-and-instrumentation`
 
 ## Shared files
 
 - `../references/accessibility-checklist.md` <- `references/accessibility-checklist.md`
 - `../references/definition-of-done.md` <- `references/definition-of-done.md`
+- `../references/observability-checklist.md` <- `references/observability-checklist.md`
 - `../references/performance-checklist.md` <- `references/performance-checklist.md`
 - `../references/security-checklist.md` <- `references/security-checklist.md`
 - `../references/testing-patterns.md` <- `references/testing-patterns.md`

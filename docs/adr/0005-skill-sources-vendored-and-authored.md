@@ -17,6 +17,10 @@ cannot be copied at all. We decided to open the vendor list and to keep two kind
   structure. It lives in the Role's folder when one Role uses it and in `library/` when several do, and stays
   near 150 lines with lookup material split into references.
 
+A Vendored Skill is written for another setup (a human to ask, a pull request to open) and may contain errors.
+Because it is never edited, what differs under aidw and what is known to be wrong is kept beside the vendor
+directory in `library/vendored-skill-notes.md`, and a brief that loads such a Skill points there.
+
 Pocock and Addy keep their assignments, and their vendored Skills stay as they are: an Authored Skill adds what
 is missing and does not replace them. Skills are still loaded by signal per task (decision D-23); a framework
 pack lists the Skills that load with it. Every Authored Skill ships with at least one Role eval.

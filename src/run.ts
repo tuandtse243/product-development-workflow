@@ -28,7 +28,7 @@ import { OpError, transition } from "./ops.js";
 import { readText, rel, walkFiles, type Paths } from "./project.js";
 import { ensureWorktree, removeSnapshot, snapshotBase, integrate, mergeWorktree, parallelConfig, pendingIntegration, planWave, removeWorktree, taskDir, type IntegrateResult } from "./parallel.js";
 import { parseQuality, qualityFile, resetQualitySummary } from "./quality.js";
-import { selectSkills, touchesUi, isSecuritySensitive, type BriefKind } from "./skills.js";
+import { selectSkills, skillPath, SKILLS_WITH_NOTES, touchesUi, isSecuritySensitive, type BriefKind } from "./skills.js";
 import { configEvidence, type ConfigEvidence } from "./configlock.js";
 import { packageEvidence, packageProblems, type PackageEvidence } from "./depsafety.js";
 import { secretsInChanges, secretsMessage, secretsProblem, stagedSecrets, type SecretFinding } from "./secrets.js";
@@ -800,7 +800,7 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
   const fixReview = reviewIsLatest && lastReview?.verdict === "fix" ? lastReview : undefined;
   const retry = kind === "implement" && (!!failedCheckpoint || !!fixReview);
 
-  const skills = selectSkills(t, kind, { retry }).map((s) => ({ ...s, path: join(vendorDir, ...s.id.split("/"), "SKILL.md") }));
+  const skills = selectSkills(t, kind, { retry, reviewFix: kind === "implement" && !!fixReview }).map((s) => ({ ...s, path: skillPath(vendorDir, s.id) }));
   const reqs = requirementsAfterChange(p, id);
   const scenarioIds = list(t.scenarios);
   const reqIds = [...new Set([...list(t.specs), ...scenarioIds.map((s) => s.split("/").slice(0, -1).join("/"))])];
@@ -871,7 +871,12 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
     ...h("Touches (files this task may change)", touches.map((g) => `- \`${g}\``)),
     ...h("Verify", verify.map((v) => `- \`${v}\``)),
     ...h("Read first (context pointers; read only what you need)", [...pointers, ...adrs, ...packLines]),
-    ...h("Skills (read each SKILL.md and apply it)", skills.map((s) => `- \`${s.path}\`: ${s.reason}`)),
+    ...h("Skills (read each SKILL.md and apply it)", [
+      ...skills.map((s) => `- \`${s.path}\`: ${s.reason}`),
+      ...(skills.some((s) => SKILLS_WITH_NOTES.has(s.id))
+        ? [`- Some of these were written for another setup. Read \`${join(vendorDir, "..", "vendored-skill-notes.md")}\` first: it says what differs here and which of their statements are wrong.`]
+        : []),
+    ]),
   ];
 
   let body: string[];

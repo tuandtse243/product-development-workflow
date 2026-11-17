@@ -222,18 +222,24 @@ full before vendoring it.
 
 ### Wave 2: reviewer, security, database, devops and the shared Skills
 
-- [ ] Vendored for every implementing Role: obra `verification-before-completion` (core set), `systematic-debugging`
-  (Triage and retries), `receiving-code-review`; Addy `source-driven-development`, `observability-and-instrumentation`.
-- [ ] Authored, `code-reviewer`: task review as spec compliance then quality, with a silent-failure checklist.
-- [ ] Vendored: obra `writing-good-tests`; Playwright best practices (Microsoft docs).
-- [ ] Authored, `security`: review procedure and false-positive filter (ideas: Sentry, Anthropic); aidw keeps
-  dependencies and secrets in scope. Lookup references in the CC BY-SA directory: Sentry references, ASVS 5.0
-  Authorization and Authentication chapters.
-- [ ] Vendored, `database`: supabase Postgres best practices. Migrations are covered by the authored
-  `schema-evolution` Skill (wave 4, `database-architect`), which the `database` Role also loads.
-- [ ] Vendored, `devops`: the three docker/skills; Sentry `gha-security-review` (also `security`).
-- [ ] Authored, `integration`: contracts, webhooks, idempotency, retries and timeouts.
-- [ ] Authored, shared: API design rules (error shape, pagination, versioning, idempotency, naming).
+Every vendored Skill was read in full first. What differs under aidw, and the statements in them found to be wrong,
+are in `library/vendored-skill-notes.md`; a brief that loads one of these Skills points to the notes.
+
+- [x] Vendored, loaded by signal: obra `verification-before-completion` (core set), `systematic-debugging` (a retry or
+  a quality fix; it replaces Addy's debugging skill in the selection), `receiving-code-review` (after a `fix` verdict);
+  Addy `observability-and-instrumentation` (a task about logs, metrics or traces).
+- [x] Authored, `code-reviewer`: `task-review`, spec compliance then code quality, with a silent-failure checklist.
+- [x] Authored, `security`: `security-review`, trace each entry point and report only what can be exploited.
+- [x] Vendored, `database`: supabase Postgres best practices (any task that touches the data layer). Migrations are
+  covered by the authored `schema-evolution` Skill (wave 4, `database-architect`), which the `database` Role also loads.
+- [x] Vendored, `devops`: docker `docker-project-foundations`, `docker-build-strategies`, `docker-compose-patterns`;
+  Sentry `gha-security-review` (the review of a task that changes a workflow).
+- [x] Authored, `integration`: `resilient-integration`, webhooks, idempotency, retries and timeouts.
+- [x] Authored, shared: `aidw/api-design-rules` in `library/skills/` (error shape, lists, repeated writes, compatibility).
+- [ ] Not done: Addy `source-driven-development` (its core step needs web access the Agents do not have); obra
+  `writing-good-tests` (no such Skill upstream: the material is a file inside its TDD Skill, which overlaps Addy's);
+  Playwright best practices (documentation, not a Skill); the CC BY-SA lookup directory (Sentry security references,
+  ASVS chapters). Decide each with the wave's trial.
 
 ### Wave 3: framework packs and the upstream Roles
 

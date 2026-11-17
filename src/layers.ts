@@ -17,6 +17,7 @@ import { readText, rel, walkFiles, type Paths } from "./project.js";
 import type { Layer, ReviewKind } from "./quality.js";
 import { loadTasks, type VerifyRun } from "./run.js";
 import { touchesUi } from "./skills.js";
+import { skillPath } from "./skills.js";
 import type { Task } from "./tasks.js";
 
 const SKILLS: Record<ReviewKind, { id: string; reason: string }[]> = {
@@ -98,7 +99,7 @@ export function buildLayerBrief(p: Paths, id: string, layer: Layer, runs: Verify
   const base = changeBase(tasks);
   const uiTasks = tasks.filter((t) => touchesUi(t) && String(t.status) === "done");
   const h = (title: string, body: string[]) => (body.length ? [`## ${title}`, "", ...body, ""] : []);
-  const skills = SKILLS[kind].map((s) => `- \`${vendorDir ? join(vendorDir, ...s.id.split("/"), "SKILL.md") : `aidw vendor-path ${s.id}`}\`: ${s.reason}`);
+  const skills = SKILLS[kind].map((s) => `- \`${vendorDir ? skillPath(vendorDir, s.id) : `aidw vendor-path ${s.id}`}\`: ${s.reason}`);
   const outputs = runs.flatMap((r) => [`\`${r.command}\` (exit ${r.exit ?? "?"}, ${Math.round(r.ms / 1000)}s):`, "", "```", r.tail.split("\n").slice(-40).join("\n"), "```", ""]);
 
   const pointers = [

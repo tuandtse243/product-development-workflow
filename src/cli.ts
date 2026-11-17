@@ -2,6 +2,7 @@ import { appendFileSync, existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { coverageReport, diffCoverage, trunkBase } from "./diffcover.js";
 import { loadTasks } from "./run.js";
+import { skillPath } from "./skills.js";
 import { analyzeChange, idsAfterChange, mainSpecIds } from "./analyze.js";
 import { approvalStatus, computeApprovalHash } from "./approval.js";
 import { runBackstop } from "./backstop.js";
@@ -751,8 +752,8 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
       case "vendor-path": {
         const ref = need(rest[0], "<upstream>/<skill>");
         if (!/^[a-z0-9-]+\/[a-z0-9-]+$/.test(ref)) throw new UsageError(`invalid vendored skill "${ref}"`);
-        const file = join(pluginRoot(env), "library", "vendor", ...ref.split("/"), "SKILL.md");
-        if (!existsSync(file)) throw new OpError(`vendored skill "${ref}" not found at ${file}`);
+        const file = skillPath(join(pluginRoot(env), "library", "vendor"), ref);
+        if (!existsSync(file)) throw new OpError(`skill "${ref}" not found at ${file}`);
         emit({ path: file }, `${file}\n`);
         return 0;
       }

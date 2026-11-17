@@ -33,16 +33,58 @@
       "git-workflow-and-versioning": "skills/git-workflow-and-versioning",
       "ci-cd-and-automation": "skills/ci-cd-and-automation",
       "shipping-and-launch": "skills/shipping-and-launch",
-      "documentation-and-adrs": "skills/documentation-and-adrs"
+      "documentation-and-adrs": "skills/documentation-and-adrs",
+      "observability-and-instrumentation": "skills/observability-and-instrumentation"
     },
     "shared": {
       "references": [
         "accessibility-checklist.md",
         "definition-of-done.md",
+        "observability-checklist.md",
         "performance-checklist.md",
         "security-checklist.md",
         "testing-patterns.md"
       ]
+    }
+  },
+  "obra": {
+    "repo": "obra/superpowers",
+    "ref": "main",
+    "license": "LICENSE",
+    "role": "Working discipline of every implementing Role: verify before claiming done, debug systematically, take review feedback (ADR-0005)",
+    "skills": {
+      "verification-before-completion": "skills/verification-before-completion",
+      "systematic-debugging": "skills/systematic-debugging",
+      "receiving-code-review": "skills/receiving-code-review"
+    }
+  },
+  "supabase": {
+    "repo": "supabase/agent-skills",
+    "ref": "main",
+    "license": "LICENSE",
+    "role": "Postgres rules for the database Roles (ADR-0005)",
+    "skills": {
+      "supabase-postgres-best-practices": "skills/supabase-postgres-best-practices"
+    }
+  },
+  "docker": {
+    "repo": "docker/skills",
+    "ref": "main",
+    "license": "LICENSE",
+    "role": "Dockerfile, build and compose practice for the devops Role (ADR-0005)",
+    "skills": {
+      "docker-project-foundations": "skills/docker-project-foundations",
+      "docker-build-strategies": "skills/docker-build-strategies",
+      "docker-compose-patterns": "skills/docker-compose-patterns"
+    }
+  },
+  "sentry": {
+    "repo": "getsentry/skills",
+    "ref": "main",
+    "license": "LICENSE",
+    "role": "Security review of GitHub Actions workflows for the devops and security Roles (ADR-0005)",
+    "skills": {
+      "gha-security-review": "skills/gha-security-review"
     }
   }
 }

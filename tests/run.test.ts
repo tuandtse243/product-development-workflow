@@ -117,7 +117,7 @@ describe("execution loop (exit criterion [4])", () => {
     const brief = readFileSync(cli(root, "brief", "T01").out.trim(), "utf8");
     expect(brief).toMatch(/## Previous attempt/);
     expect(brief).toMatch(/Missing scenario tests: `booking\/reschedule-appointment\/reschedule-appointment-works`/);
-    expect(brief).toMatch(/addy\/debugging-and-error-recovery\/SKILL\.md/);
+    expect(brief).toMatch(/obra\/systematic-debugging\/SKILL\.md/);
 
     // implementer notes: the brief says where to write them; the review brief links the file only when it exists
     expect(brief).toMatch(/Only if the reviewer needs to know something[^\n]*report-T01\.md/);
@@ -232,9 +232,12 @@ describe("briefs", () => {
     expect(out.skills.map((s: { id: string }) => s.id)).toEqual([
       "addy/incremental-implementation",
       "addy/test-driven-development",
+      "obra/verification-before-completion",
       "addy/frontend-ui-engineering",
       "addy/api-and-interface-design",
+      "aidw/api-design-rules",
     ]);
+    for (const s of out.skills as { path: string }[]) expect(existsSync(s.path), s.path).toBe(true);
 
     const review = readFileSync(cli(root, "brief", "T01", "--for", "review").out.trim(), "utf8");
     expect(review).toMatch(/You are an independent reviewer/);
@@ -312,20 +315,28 @@ describe("skill selection", () => {
     selectSkills({ ...base, ...t } as never, kind, { retry }).map((s) => s.id.replace("addy/", ""));
 
   it("loads the core plus what touches, risk and verify call for", () => {
-    expect(ids({ touches: ["lib/booking/**"] })).toEqual(["incremental-implementation", "test-driven-development"]);
-    expect(ids({ touches: ["components/calendar/**"] })).toEqual(["incremental-implementation", "test-driven-development", "frontend-ui-engineering"]);
+    const core = ["incremental-implementation", "test-driven-development", "obra/verification-before-completion"];
+    expect(ids({ touches: ["lib/booking/**"] })).toEqual(core);
+    expect(ids({ touches: ["components/calendar/**"] })).toEqual([...core, "frontend-ui-engineering"]);
     expect(ids({ touches: ["app/api/bookings/**"], verify: ["pnpm playwright test"] })).toEqual([
-      "incremental-implementation",
-      "test-driven-development",
+      ...core,
       "api-and-interface-design",
+      "aidw/api-design-rules",
       "browser-testing-with-devtools",
     ]);
+    expect(ids({ touches: ["supabase/migrations/**"] })).toContain("supabase/supabase-postgres-best-practices");
+    expect(ids({ touches: ["Dockerfile", "docker-compose.yml"] })).toEqual([...core, "docker/docker-project-foundations", "docker/docker-build-strategies", "docker/docker-compose-patterns"]);
+    expect(ids({ touches: ["lib/x/**"], title: "Structured logging for the export job" })).toContain("observability-and-instrumentation");
+    expect(ids({ touches: [".github/workflows/ci.yml"] }, "review")).toEqual(["code-review-and-quality", "sentry/gha-security-review"]);
+    expect(selectSkills({ ...base, touches: ["lib/x/**"] } as never, "implement", { retry: true, reviewFix: true }).map((s) => s.id)).toEqual(
+      expect.arrayContaining(["obra/systematic-debugging", "obra/receiving-code-review"]),
+    );
     expect(ids({ touches: ["supabase/migrations/**"], title: "RLS policies for staff" })).toContain("security-and-hardening");
     expect(ids({ touches: ["app/(auth)/login/**"] })).toContain("security-and-hardening");
     expect(ids({ touches: ["lib/x/**"], risk: "high" }, "review")).toEqual(["code-review-and-quality", "security-and-hardening"]);
     expect(ids({ touches: ["lib/x/**"] }, "review")).toEqual(["code-review-and-quality"]);
     expect(ids({ touches: ["lib/x/**"], skills: ["performance-optimization"] }, "implement", true)).toEqual(
-      expect.arrayContaining(["debugging-and-error-recovery", "performance-optimization"]),
+      expect.arrayContaining(["obra/systematic-debugging", "performance-optimization"]),
     );
   });
 });
