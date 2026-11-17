@@ -48,8 +48,9 @@ mock with a link to the file.
   cost has not been measured.
 - aidw writes outside the project for the first time (the record of dealt directions). When that place cannot be
   written, directions are dealt at random.
-- The library decides the taste of every product, so it starts with four directions, is proven on one demo
-  product judged by the owner on before-and-after screenshots, and grows to twelve only after that.
+- The library decides the taste of every product, so every direction in it is accepted by the owner first. It
+  holds three (amended 2026-11-18): every product is dealt all three, and a new direction is added only when the
+  owner asks. The mechanism is proven on one demo product judged on before-and-after screenshots.
 - `anthropic/frontend-design` moves from the frontend Roles to the Agents that build mocks; a frontend Agent is
   told to build to the mock, not to choose a direction.
 - The modes `existing`, `claude_design` and `hybrid` are unchanged.

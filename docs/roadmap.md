@@ -330,9 +330,11 @@ the owner has judged the one before it on before-and-after screenshots of the sa
 
 - [x] Vendor Impeccable's rule catalog and craft floor (`library/vendor/impeccable/`); `scripts/vendor.mjs` copies
   single files and a notice.
-- [ ] Direction Library: four Design Directions, each shown to the owner as a preview on one product and kept,
-  dropped or changed. A record of dealt directions outside the project (`~/.aidw/`); dealt at random when it cannot
-  be written.
+- [x] Direction Library: three Design Directions, each accepted by the owner on a preview of `todo-board`
+  (`roles/ui-ux-designer/references/directions/`): Night Shift, Playground, Riso. Three is the whole library, so
+  every product is dealt all three and the choice comes from the owner, not from dealing. Dropped on review:
+  Workbench, Tide, Color Field (recorded in the library's README so they are not written again).
+- [ ] The record of dealt directions (`~/.aidw/`) waits until the library holds more than three.
 - [ ] Authored Skill for the `ui-ux-designer`: commit to one dealt direction, build the Design Mock, check it against
   the craft floor on the rendered page. Sources: Hallmark, Impeccable, Anthropic `frontend-design`.
 - [ ] `ui-ux-designer` as a worker Agent of the deep Tier for mocks: three in parallel, one direction each. The
@@ -382,7 +384,7 @@ the owner has judged the one before it on before-and-after screenshots of the sa
   it is clear where it leads, and whether the result shows progress.
 - [ ] Run `todo-board` again. Two separate measures: the owner judges the look on before-and-after screenshots; use
   is measured by the count of blocking and fix findings the same reviewer reports on the old and the new build.
-  Then grow the library to twelve directions.
+  The library stays at three directions; a new one is added only when the owner asks for it.
 
 ### Step 2: components and charts (React only)
 
