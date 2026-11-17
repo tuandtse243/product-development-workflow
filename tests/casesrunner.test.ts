@@ -72,7 +72,7 @@ describe("the Role case runner", () => {
   it("does not grade a reply that is no deliverable: it retries once, then reports an ERROR", () => {
     let calls = 0;
     const refusing: Exec = (_p, system) => (system ? (calls++, "I can't help with that.") : "[]");
-    const rs = runCases(plugin, "backend", undefined, refusing);
+    const rs = runCases(plugin, "backend", "validates-authorizes-and-does-not-leak", refusing);
     expect(rs).toHaveLength(1);
     expect(rs[0]).toMatchObject({ pass: false });
     expect(rs[0]!.error).toMatch(/^no deliverable \(the model replied: I can't help with that\.\)/);
@@ -80,7 +80,7 @@ describe("the Role case runner", () => {
 
     let n = 0;
     const flaky: Exec = (p, system) => (system ? (n++ === 0 ? "filtered" : "ANSWER " + "x".repeat(400)) : fake(true)(p, system));
-    expect(runCases(plugin, "backend", undefined, flaky)[0]).toMatchObject({ pass: true });
+    expect(runCases(plugin, "backend", "validates-authorizes-and-does-not-leak", flaky)[0]).toMatchObject({ pass: true });
   });
 
   it("runs a case N times and calls it FLAKY when it passes only some of them", () => {

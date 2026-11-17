@@ -243,20 +243,26 @@ are in `library/vendored-skill-notes.md`; a brief that loads one of these Skills
 
 ### Wave 3: framework packs and the upstream Roles
 
-- [ ] A framework pack lists the Skills that load with it (ADR-0001); no change to `src/skills.ts` per framework.
-- [ ] Vendored per pack: FastAPI official; Sentry Django perf and access reviews; Svelte official; Vue best practices
-  and antfu `nuxt`; shadcn official; Astral uv, ruff and ty.
-- [ ] Authored in the packs: React and Next.js rules (ideas: Vercel, no licence file); NestJS rules.
-- [ ] Authored, `product-manager`: discovery interview frame (jobs to be done); behavior map (ordered by the user's
-  journey, thinnest runnable Slice first); assumptions and pre-mortem before the Approval Gate. Ideas: deanpeters,
-  phuryn, spec-kit. The ambiguity scan and requirement quality with EARS go to `business-analyst` (wave 4); until that
-  Role is active, `product-manager` carries them.
-- [ ] Authored, `software-architect`: architecture spine that records invariants only (idea: BMAD).
-- [ ] Authored, `technical-planner`: Interfaces (consumes and produces) per task and a Review Focus list
-  (ideas: obra `writing-plans`, BMAD slicing). Pocock `to-tickets` stays the base.
-- [ ] `ui-ux-designer`: vendored anthropics `frontend-design` and emilkowalski motion; authored UI review rubric
-  (ideas: impeccable, Vercel web interface guidelines, Addy accessibility checklist). Design tokens keep their format
-  and gain a rationale per token and token references (idea: Google DESIGN.md).
+- [x] A framework pack lists the Skills that load with it (`skills:` for the Roles that build, `review_skills:` for the
+  review); a test checks that each one exists. No framework is named in `src/skills.ts`.
+- [x] Vendored per pack: FastAPI's own Skill (FastAPI); Svelte's core best practices (SvelteKit); Vue best practices
+  (Nuxt, with a note that Nuxt's conventions win); Sentry `django-perf-review` (review of Django code). Astral `uv` and
+  `ruff` load when a task touches `pyproject.toml` or `uv.lock`.
+- [x] Authored, shared: `aidw/react-rules` (Next.js pack; ideas: Vercel, no licence file) and `aidw/nestjs-rules`.
+- [x] Authored, `product-manager`: `discovery-frame` (jobs to be done), `behavior-map` (the journey, thinnest runnable
+  Slice first), `assumptions-premortem` (before the Approval Gate). The ambiguity scan and requirement quality with EARS
+  go to `business-analyst` (wave 4); until that Role is active, `product-manager` carries them.
+- [x] Authored, `software-architect`: `architecture-spine`, the invariants every implementer must keep.
+- [x] Authored, `technical-planner`: `task-interfaces` (Produces, Consumes and Review focus per task). Pocock
+  `to-tickets` stays the base.
+- [x] `ui-ux-designer`: authored `ui-review-rubric`. Vendored for the frontend Roles: anthropics `frontend-design` (a
+  task that touches UI) and emilkowalski `animate` (a UI task about motion). Design tokens gain an optional `why`.
+- [x] The Next.js, Nuxt and SvelteKit packs follow the Node pack's linter choice; Nuxt and SvelteKit say that
+  `vue-tsc` and `svelte-check` decide the TypeScript major.
+- [ ] Not done: antfu `nuxt` (it documents a Nuxt 5 prerelease, the pack is on Nuxt 3: re-vendor at a matching commit
+  or move the pack first); Sentry `django-access-review` (its references derive from OWASP material under CC BY-SA,
+  which needs the separate labelled directory); shadcn (no pack and no signal to load it yet); Astral `ty` (beta);
+  token references (a token whose value points at another token).
 
 ### Wave 4: activate every Planned Role, one at a time
 

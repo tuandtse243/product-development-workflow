@@ -66,3 +66,41 @@ host's `~/.npmrc`, SSH agent or other credentials for a build secret: write the 
 Two of its rules need correcting: `${{ }}` inside `with:` is **not** always safe, it is injectable when the action
 evaluates the input (the `script:` of `actions/github-script`); and under `issue_comment` the field
 `github.event.pull_request.head.ref` is empty, so examples that rely on it do not apply.
+
+## sentry/django-perf-review
+
+A new project has no production data. Take data volume and hot paths from the scale the spec states, not from
+"verified row counts"; report a problem that the stated scale makes real.
+
+## fastapi/fastapi
+
+Never run `fastapi deploy` and do not suggest FastAPI Cloud. Type-check with Pyright, not ty. The skill assumes a
+very recent FastAPI: check the installed version before using `app.frontend()`, `fastapi.sse`,
+`Depends(max_concurrency=)` or `telemetry=`. Its preference for SQLModel does not override the project's ORM.
+
+## svelte/svelte-core-bestpractices
+
+`+++`, `// @errors` and `<!--- file: -->` in its examples are documentation markup, not code. Turn on
+`experimental.async` only when the brief asks for it.
+
+## vue/vue-best-practices
+
+It is written for a single-page app. In a Nuxt project Nuxt's conventions win: `useState` or `@pinia/nuxt` instead of
+a module-level singleton (which leaks between requests on the server), `defineNuxtPlugin` instead of `app.use`,
+`<NuxtPage>`, and Nuxt's own `useFetch` (never define another). Write `<script setup lang="ts">`. Add no library the
+brief does not name. Profiling steps that need Vue DevTools are skipped.
+
+## astral/uv
+
+Skip its type-checking section (`uv check` runs ty): the gate is `uv run pyright`.
+
+## anthropic/frontend-design
+
+There is no client to confirm with: state the subject and audience you assumed in your report. The approved design
+tokens and the brief override the skill; it adds character inside them, never a second palette or font.
+
+## emil/animate
+
+Ignore its "Initial Response" section (it tells the agent to wait for a question) and every pointer to
+`../<other>/SKILL.md`. `var(--transform-origin)` and `data-starting-style` belong to one component library: use the
+project's own equivalents. Add no motion library for an effect CSS can do.

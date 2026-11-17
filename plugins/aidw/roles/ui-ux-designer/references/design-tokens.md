@@ -18,6 +18,7 @@ tokens:
     value: "#E5533D"         # colors: hex, rgb(), hsl(), oklch(); compared in canonical form (#e5533d == rgb(229, 83, 61))
     dark: "#FF7A66"          # optional dark-theme value (also checked in code and screenshots)
     use: Focus mode label, the Start button and the progress ring
+    why: the one warm color, so the running timer is found at a glance   # optional; shown to implementers and reviewers
   - name: surface
     kind: color
     value: "#FAF5EC"
@@ -34,6 +35,10 @@ tokens:
 ```
 
 ## Writing good `use` rules
+
+Add `why` to a token whose value carries a decision (the accent, a type scale step, a spacing unit): an implementer who
+knows the reason picks the right token for a case the `use` rule did not foresee, and a reviewer can judge a deviation.
+Leave it out where the reason is obvious.
 
 The `use` rule is what a reviewer compares with a screenshot, so it names visible things: "primary buttons and
 the selected slot", not "brand color". Cover every color a user will notice: background, text, primary action,

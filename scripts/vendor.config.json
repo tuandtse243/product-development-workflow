@@ -82,9 +82,65 @@
     "repo": "getsentry/skills",
     "ref": "main",
     "license": "LICENSE",
-    "role": "Security review of GitHub Actions workflows for the devops and security Roles (ADR-0005)",
+    "role": "Security review of GitHub Actions workflows; performance review of Django code (ADR-0005)",
     "skills": {
-      "gha-security-review": "skills/gha-security-review"
+      "gha-security-review": "skills/gha-security-review",
+      "django-perf-review": "skills/django-perf-review"
+    }
+  },
+  "fastapi": {
+    "repo": "fastapi/fastapi",
+    "ref": "master",
+    "license": "LICENSE",
+    "role": "FastAPI's own guidance, loaded with the FastAPI framework pack (ADR-0005)",
+    "skills": {
+      "fastapi": "fastapi/.agents/skills/fastapi"
+    }
+  },
+  "svelte": {
+    "repo": "sveltejs/ai-tools",
+    "ref": "main",
+    "license": "LICENSE",
+    "role": "Svelte's own guidance, loaded with the SvelteKit framework pack (ADR-0005)",
+    "skills": {
+      "svelte-core-bestpractices": "tools/skills/svelte-core-bestpractices"
+    }
+  },
+  "vue": {
+    "repo": "vuejs-ai/skills",
+    "ref": "main",
+    "license": "LICENSE",
+    "role": "Vue guidance, loaded with the Nuxt framework pack (ADR-0005)",
+    "skills": {
+      "vue-best-practices": "skills/vue-best-practices"
+    }
+  },
+  "astral": {
+    "repo": "astral-sh/agent-plugins",
+    "ref": "main",
+    "license": "LICENSE-APACHE",
+    "role": "uv and ruff guidance from their makers, loaded with the Python framework packs (ADR-0005)",
+    "skills": {
+      "uv": "plugins/astral/skills/uv",
+      "ruff": "plugins/astral/skills/ruff"
+    }
+  },
+  "anthropic": {
+    "repo": "anthropics/skills",
+    "ref": "main",
+    "license": "skills/frontend-design/LICENSE.txt",
+    "role": "Distinctive interface design for the frontend Roles (ADR-0005)",
+    "skills": {
+      "frontend-design": "skills/frontend-design"
+    }
+  },
+  "emil": {
+    "repo": "emilkowalski/skills",
+    "ref": "main",
+    "license": "LICENSE",
+    "role": "Interface motion for the frontend Roles (ADR-0005)",
+    "skills": {
+      "animate": "skills/animate"
     }
   }
 }

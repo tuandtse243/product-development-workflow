@@ -35,6 +35,8 @@ const BROWSER_VERIFY = /\b(playwright|cypress|e2e)\b/i;
 const DOCKERFILE_TOUCH = /(^|\/)(Dockerfile[\w.-]*|\.dockerignore|docker)(\/|$|\*)/i;
 const COMPOSE_TOUCH = /(^|\/)(docker-)?compose[\w.-]*\.ya?ml/i;
 const WORKFLOW_TOUCH = /(^|\/)\.github\/(workflows|actions)(\/|$)/;
+const PYTHON_PROJECT_TOUCH = /(^|\/)(pyproject\.toml|uv\.lock)$/;
+const MOTION_HINT = /\b(animat\w*|transitions?|motion|easing|gestures?|drag|swipe)\b/i;
 const OBSERVABILITY_HINT = /\b(logging|logs?|metrics?|tracing|traces?|telemetry|observability|monitoring|alerts?|health ?checks?)\b/i;
 
 const list = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : []);
@@ -69,6 +71,13 @@ export const SKILLS_WITH_NOTES: ReadonlySet<string> = new Set([
   "docker/docker-build-strategies",
   "docker/docker-compose-patterns",
   "sentry/gha-security-review",
+  "sentry/django-perf-review",
+  "fastapi/fastapi",
+  "svelte/svelte-core-bestpractices",
+  "vue/vue-best-practices",
+  "astral/uv",
+  "anthropic/frontend-design",
+  "emil/animate",
 ]);
 
 export function selectSkills(t: Task, kind: BriefKind, opts: { retry?: boolean; reviewFix?: boolean } = {}): SkillPick[] {
@@ -95,6 +104,8 @@ export function selectSkills(t: Task, kind: BriefKind, opts: { retry?: boolean; 
   const api = touches.some((g) => API_TOUCH.test(g)) || role === "backend-engineer";
   const data = touches.some((g) => DATA_TOUCH.test(g)) || role === "database-engineer";
   if (ui) add("frontend-ui-engineering", "touches UI files");
+  if (ui) add("anthropic/frontend-design", "touches UI files: an interface with a point of view, inside the approved design tokens");
+  if (ui && MOTION_HINT.test([t.title ?? "", ...list(t.scenarios)].join(" ").replace(/[/_.-]/g, " "))) add("emil/animate", "the task is about motion");
   if (api) add("api-and-interface-design", "touches API or server code");
   if (api) add("aidw/api-design-rules", "touches API or server code: the concrete rules (errors, lists, repeated writes)");
   else if (data) add("api-and-interface-design", "touches the data layer (schema is an interface)");
@@ -108,6 +119,10 @@ export function selectSkills(t: Task, kind: BriefKind, opts: { retry?: boolean; 
   }
   if (touches.some((g) => COMPOSE_TOUCH.test(g))) add("docker/docker-compose-patterns", "touches a compose file");
   if (OBSERVABILITY_HINT.test([t.title ?? "", ...list(t.scenarios)].join(" ").replace(/[/_.-]/g, " "))) add("observability-and-instrumentation", "the task is about logs, metrics or traces");
+  if (touches.some((g) => PYTHON_PROJECT_TOUCH.test(g))) {
+    add("astral/uv", "the task sets up or changes the Python project file");
+    add("astral/ruff", "the task sets up or changes the Python project file");
+  }
   // One debugging skill: the systematic one. Addy's debugging-and-error-recovery stays available through `skills:`.
   if (opts.retry) add("obra/systematic-debugging", "previous attempt failed: find the root cause before changing code again");
   if (t.origin === "quality") add("obra/systematic-debugging", "fixing a failing quality layer: find the root cause first");

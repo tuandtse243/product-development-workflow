@@ -23,7 +23,7 @@ import { changedSince, git, headCommit, isGitRepo, junkMessage, stagedJunk } fro
 import { matchesAny } from "./glob.js";
 import { detectProject } from "./detect.js";
 import { defaultTaskRole, implementerOf } from "./roles.js";
-import { packsFor } from "./stackpacks.js";
+import { packsFor, packsOf } from "./stackpacks.js";
 import { OpError, transition } from "./ops.js";
 import { readText, rel, walkFiles, type Paths } from "./project.js";
 import { ensureWorktree, removeSnapshot, snapshotBase, integrate, mergeWorktree, parallelConfig, pendingIntegration, planWave, removeWorktree, taskDir, type IntegrateResult } from "./parallel.js";
@@ -800,7 +800,16 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
   const fixReview = reviewIsLatest && lastReview?.verdict === "fix" ? lastReview : undefined;
   const retry = kind === "implement" && (!!failedCheckpoint || !!fixReview);
 
-  const skills = selectSkills(t, kind, { retry, reviewFix: kind === "implement" && !!fixReview }).map((s) => ({ ...s, path: skillPath(vendorDir, s.id) }));
+  // A framework pack names the Skills that load with it (ADR-0005): no framework is named in the selection code.
+  const stackNow = detectProject(p.project).stack;
+  const pluginHome = resolve(vendorDir, "..", "..");
+  const fromPacks =
+    kind === "implement"
+      ? packsFor(pluginHome, stackNow, implementerOf(pluginHome, typeof t.role === "string" ? t.role : undefined) ?? defaultTaskRole()).flatMap((k) => k.skills.map((id) => ({ id, reason: `the project is built with ${k.framework} (framework pack)` })))
+      : packsOf(pluginHome, stackNow).flatMap((k) => k.reviewSkills.map((id) => ({ id, reason: `review of ${k.framework} code (framework pack)` })));
+  const picked = selectSkills(t, kind, { retry, reviewFix: kind === "implement" && !!fixReview });
+  const skills = [...picked, ...fromPacks.filter((s) => !picked.some((x) => x.id === s.id))]
+    .map((s) => ({ ...s, path: skillPath(vendorDir, s.id) }));
   const reqs = requirementsAfterChange(p, id);
   const scenarioIds = list(t.scenarios);
   const reqIds = [...new Set([...list(t.specs), ...scenarioIds.map((s) => s.split("/").slice(0, -1).join("/"))])];

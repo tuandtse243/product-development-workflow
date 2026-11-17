@@ -11,6 +11,7 @@ includes: [library/author-artifacts.md]
 skills:
   - scaffold-tasks: when the plan creates a new project or its first tasks set up the toolchain, the test harness, CI or a Vercel deploy
   - migration-tasks: when a task adds or changes a database migration
+  - task-interfaces: when two or more tasks share a function, a route, a type or a table - what each produces and consumes, and the reviewer's focus
 ---
 
 ## Responsibility

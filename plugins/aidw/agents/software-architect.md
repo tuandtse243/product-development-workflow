@@ -79,3 +79,4 @@ consistent and honest about risks.
 Read a skill with `aidw plugin-path roles/software-architect/skills/<name>.md`.
 
 - `triage`: when the brief you were given is a triage brief (a task ran out of attempts and you are asked why)
+- `architecture-spine`: when you write or change the architecture overview - the short list of invariants every implementer must keep

@@ -45,3 +45,9 @@ Non-blocking:
 - Use `fix` only for blocking issues: a visible mismatch with the approved design or tokens, a layout broken at a
   listed viewport, an unusable state, a stray color system. Taste is non-blocking; say it under `Non-blocking:`
   so it reaches the handoff.
+
+## Skills (load only when the work needs one)
+
+Read a skill with `aidw plugin-path roles/ui-ux-designer/skills/<name>.md`.
+
+- `ui-review-rubric`: for every UI review, before you judge - what to look for, in order of how much it hurts the user

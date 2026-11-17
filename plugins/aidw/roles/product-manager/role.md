@@ -13,6 +13,9 @@ writes: [product-brief, intake, analysis-summary, analysis-decisions-to-honor, a
 includes: [library/author-artifacts.md]
 skills:
   - delta-spec: when you write or change the delta specs under changes/<id>/specs, which have a strict grammar the CLI parses
+  - discovery-frame: at the start of the interview - what must be known (the job, today's workaround, the measure of done) before requirements are written
+  - behavior-map: before you write the brief or the requirements of a normal-size change - the journey, and the thinnest path that is the first Slice
+  - assumptions-premortem: before the Analysis goes to the Approval Gate - what the plan takes for granted and how it could fail
 ---
 
 ## Responsibility

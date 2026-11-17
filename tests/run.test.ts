@@ -234,6 +234,7 @@ describe("briefs", () => {
       "addy/test-driven-development",
       "obra/verification-before-completion",
       "addy/frontend-ui-engineering",
+      "anthropic/frontend-design",
       "addy/api-and-interface-design",
       "aidw/api-design-rules",
     ]);
@@ -317,7 +318,9 @@ describe("skill selection", () => {
   it("loads the core plus what touches, risk and verify call for", () => {
     const core = ["incremental-implementation", "test-driven-development", "obra/verification-before-completion"];
     expect(ids({ touches: ["lib/booking/**"] })).toEqual(core);
-    expect(ids({ touches: ["components/calendar/**"] })).toEqual([...core, "frontend-ui-engineering"]);
+    expect(ids({ touches: ["components/calendar/**"] })).toEqual([...core, "frontend-ui-engineering", "anthropic/frontend-design"]);
+    expect(ids({ touches: ["components/calendar/**"], title: "Animate the day transition" })).toContain("emil/animate");
+    expect(ids({ touches: ["pyproject.toml", "app/**"] })).toEqual(expect.arrayContaining(["astral/uv", "astral/ruff"]));
     expect(ids({ touches: ["app/api/bookings/**"], verify: ["pnpm playwright test"] })).toEqual([
       ...core,
       "api-and-interface-design",

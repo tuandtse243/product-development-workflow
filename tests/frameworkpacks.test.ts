@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { skillPath } from "../src/skills.js";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
@@ -18,6 +19,13 @@ describe("framework packs", () => {
       ["nuxt", "Nuxt", ["frontend", "backend", "fullstack"]],
       ["sveltekit", "SvelteKit", ["frontend", "backend", "fullstack"]],
     ]);
+  });
+
+  it("name only Skills that exist", () => {
+    const vendor = join(plugin, "library", "vendor");
+    const named = frameworkPacks(plugin).flatMap((p) => [...p.skills, ...p.reviewSkills].map((id) => [p.id, id] as const));
+    expect(named.length).toBeGreaterThan(0);
+    for (const [pack, id] of named) expect(existsSync(skillPath(vendor, id)), `${pack}: ${id}`).toBe(true);
   });
 
   it("go to the Roles that build with the framework, and to no one else", () => {

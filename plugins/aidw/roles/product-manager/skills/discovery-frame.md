@@ -1,0 +1,56 @@
+---
+name: discovery-frame
+description: What to find out in the discovery interview, framed as the job the user is trying to get done, before any solution is discussed.
+---
+
+# Discovery frame
+
+The grilling skill says how to ask (rounds, a recommendation per question). This says what must be known before
+requirements are written. A request usually arrives as a solution ("add a dashboard"); the interview's first job
+is to recover the problem behind it.
+
+## The job, before the feature
+
+For each kind of user the request names, get these answered, in the user's own words:
+
+1. **Situation**: when does this come up? What has just happened, where are they, what do they have in hand?
+2. **Motivation**: what are they trying to get done, and what is it for? Ask "so that what?" until the answer is
+   an outcome, not a screen.
+3. **Today**: how do they do it now (a spreadsheet, another tool, by hand, not at all)? What is slow, risky or
+   embarrassing about that? The current workaround is the real competitor.
+4. **Done**: how will they know it worked? What would they see, and how soon?
+
+Write each as one line: *When* <situation>, *I want to* <motivation>, *so I can* <outcome>. If two user kinds
+give different lines, they are different jobs and may be different Slices.
+
+## What the request does not say
+
+Ask about each; a blank is recorded as an explicit assumption, never filled in silently.
+
+- **Who else is affected**: who sets it up, who approves, who gets the result, who is told when it fails.
+- **Frequency and volume**: once a year or fifty times a day; ten records or a million. This decides how much
+  design the flow deserves.
+- **What must never happen**: the mistake that would cost money, data or trust.
+- **What already exists**: data, accounts, an API, a design, a rule set by law or contract.
+- **The smallest version that would still be used**: what could be left out and the user would still switch from
+  today's way.
+- **Out of scope**: say it back to the user as a list, and get a yes.
+
+## Signs the interview is not done
+
+- A requirement only makes sense if you already know the solution ("the user clicks Export").
+- You cannot say what the user did before this existed.
+- Success is described as shipping it, not as something the user can now do.
+- Two answers conflict and nobody has chosen.
+
+## Record
+
+In `analysis.md` under the discovery Q&A: the job lines, one per user kind; today's workaround; the measure of
+done; assumptions, each marked as assumed. The requirements quote these, so a reader can trace a scenario back to
+a job.
+
+## Sources
+
+Ideas, not wording: jobs to be done (Christensen; Ulwick's outcome statements), the JTBD and problem-framing
+skills of deanpeters/Product-Manager-Skills and phuryn/pm-skills, and the discovery habits in Teresa Torres's
+*Continuous Discovery Habits*. Matt Pocock's `grilling` stays the interview method.

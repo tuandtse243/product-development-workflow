@@ -14,6 +14,7 @@ writes: [architecture, decisions-architecture, constitution, project-config, ana
 includes: [library/author-artifacts.md]
 skills:
   - triage: when the brief you were given is a triage brief (a task ran out of attempts and you are asked why)
+  - architecture-spine: when you write or change the architecture overview - the short list of invariants every implementer must keep
 ---
 
 ## Responsibility
