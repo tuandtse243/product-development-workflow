@@ -301,9 +301,17 @@ workflows), not the behavior of the Agents with the new Skills.
   Skills (a rewrite that added behavior, the output order of the Postgres schema, a guessed workaround, a
   self-supplied refusal example) and one case moved to the business analyst with the delta specs. Each then passed
   3 of 3 runs; the full run after the first two fixes was 32/35.
-- [ ] Run a trial on the greenfield fixture and one on the brownfield fixture, and compare with trial-3: cost per
-  task, attempts per task, review `fix` rate, and whether the Guards fire on real work or only in tests.
-- [ ] Watch the token cost of a brief: the core set grew by one Skill, UI tasks by one, data tasks by two.
+- [x] Trial 4 (docs/trial-4.md): a greenfield app (13 tasks) and a brownfield change (11 tasks) ran end to end.
+  Cost fell against trial-3 (an implementer's first turn is 10K to 12K tokens against 37K), attempts per task were
+  1.38 and 1.27, and 1 review in 12 returned `fix` in each. Two Guards fired on real work: the tamper guard caught a
+  skipped test (right) and a renamed test file (wrong, fixed: a moved test is not a deletion); the others never had
+  to fire. Two more fixes came out of it: the ui review rubric (an approved token does not excuse a failing
+  contrast ratio) and a doctor check for deps.dev. `scripts/guard-drill.mjs` runs every Guard on a real repository
+  without a model.
+- [ ] Still open from trial 4: the brownfield rows 72 to 74 (conventions followed, baseline spec, `--no-verify` denied
+  by the gate); a replanned task is reset by hand in `tasks.yaml`, which loses its attempt count (`task reopen` only
+  accepts a done task).
+- [x] Watch the token cost of a brief: the core set grew by one Skill, UI tasks by one, data tasks by two.
 
 Not chosen: timescale `postgres-database-migration` as a Vendored Skill (suspected errors, replaced by
 `schema-evolution`), Addy `interview-me` and `planning-and-task-breakdown`, `deprecation-and-migration`, Trail of Bits
