@@ -23,6 +23,8 @@ export interface Token {
   dark?: string;
   /** where and how the token must be used: what the reviewer checks on the screenshots */
   use: string;
+  /** why this value was chosen, when the design says so: it lets a reviewer judge a deviation instead of only spotting it */
+  why?: string;
 }
 
 export const tokensFile = (p: Paths) => join(p.design, "tokens.yaml");
@@ -57,6 +59,7 @@ export function parseTokens(text: string, file: string, d: Diags): Token[] {
     if (use.length < 8) return d.error(file, `${where} (${name}): \`use\` must say where the token is used (the reviewer checks it)`);
     const token: Token = { name, kind: kind as TokenKind, value, use };
     if (t.dark !== undefined && t.dark !== null && String(t.dark).trim()) token.dark = String(t.dark).trim();
+    if (typeof t.why === "string" && t.why.trim()) token.why = t.why.trim();
     if (kind === "color") {
       for (const v of [token.value, token.dark].filter((x): x is string => !!x)) {
         if (!normalizeColor(v)) d.error(file, `${where} (${name}): "${v}" is not a color literal (hex, rgb(), hsl() or oklch())`);
@@ -224,6 +227,6 @@ export function tokensTable(tokens: Token[]): string[] {
   return [
     "| Token | Kind | Value | Dark | Use |",
     "|---|---|---|---|---|",
-    ...tokens.map((t) => `| \`${t.name}\` | ${t.kind} | \`${esc(t.value)}\` | ${t.dark ? `\`${esc(t.dark)}\`` : ""} | ${esc(t.use)} |`),
+    ...tokens.map((t) => `| \`${t.name}\` | ${t.kind} | \`${esc(t.value)}\` | ${t.dark ? `\`${esc(t.dark)}\`` : ""} | ${esc(t.use)}${t.why ? ` (why: ${esc(t.why)})` : ""} |`),
   ];
 }

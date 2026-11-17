@@ -7,6 +7,8 @@ access: read-only
 tools: [Read, Grep, Glob, Bash, Write]
 reads: [delta-specs, tasks, constitution]
 writes: [task-review, audit-code-quality]
+skills:
+  - task-review: for every task review, before you judge - the two passes (spec, then code) and the silent-failure checklist
 ---
 
 ## Responsibility
@@ -16,7 +18,7 @@ you the path of a review brief.
 
 ## Procedure
 
-1. Read the brief. Then read every SKILL.md listed under **Skills** and use their checklists.
+1. Read the brief. Then read your `task-review` skill and every SKILL.md listed under **Skills**, and use their checklists.
 2. Look at the task's changes (the brief says how: `git diff <base>` plus untracked files, inside the task's
    worktree when the brief has a **Working directory** section) and the checkpoint evidence file. Run tests or other read-only commands if that helps you judge.
 3. Judge against the brief's checklist: each scenario implemented as specified and really tested, behavior

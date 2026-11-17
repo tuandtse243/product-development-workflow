@@ -1,6 +1,7 @@
 ---
 framework: Nuxt
 roles: [frontend, backend, fullstack]
+skills: [vue/vue-best-practices]
 ---
 # Framework pack: Nuxt
 
@@ -63,3 +64,6 @@ ADR-0001). An existing Nuxt project keeps its own structure and `.aidw/constitut
 `pnpm dev` (local), `pnpm build` (the `code` layer builds with it), `pnpm preview` (serve a build), `pnpm exec nuxi typecheck`
 (or `vue-tsc --noEmit`), `pnpm lint`. `nuxi prepare` regenerates the `.nuxt/` types after a config change; `.nuxt/` and `.output/`
 are generated and never committed.
+The type check here is `vue-tsc`, and it decides the TypeScript major: confirm the installed `vue-tsc` supports the
+TypeScript version before the scaffold pins it. If it does not support TypeScript 7 yet, stay on 6 and use the ESLint
+path of `node.md` (`@nuxt/eslint`); oxlint reads only the script part of a `.vue` file.

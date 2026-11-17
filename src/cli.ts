@@ -1,11 +1,18 @@
-import { appendFileSync, existsSync, readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import { stringify as toYaml } from "yaml";
+import { answersText, PAGE_NAME, pageDataFile, pageHtmlFile, pagesDir, pageSummary, parseAnswers, parsePage, picksData, renderPage, triageData, type PageSection } from "./page.js";
+import { coverageReport, diffCoverage, trunkBase } from "./diffcover.js";
+import { loadTasks } from "./run.js";
+import { skillPath } from "./skills.js";
 import { analyzeChange, idsAfterChange, mainSpecIds } from "./analyze.js";
 import { approvalStatus, computeApprovalHash } from "./approval.js";
 import { runBackstop } from "./backstop.js";
 import { ChangeError, isState, listChangeIds, loadChange, resolveChangeId, stateOf, STATES } from "./change.js";
 import { runGate } from "./gate.js";
-import { pluginRoot } from "./plugin.js";
+import { pluginRoot, resolvePluginFile } from "./plugin.js";
+import { installRunner } from "./installcheck.js";
 import { BrowserError, browserEnv, browserStatus, startBrowser, stopBrowser, usesOwnBrowser } from "./browser.js";
 import { checkArtifacts } from "./artifacts.js";
 import { boundaryOf } from "./boundary.js";
@@ -152,8 +159,9 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
                                          the project's own test browser for the e2e, a11y, ui-ux and performance layers:
                                          Chrome on a free port it picks itself, one profile per project; layers get it
                                          as E2E_CDP_URL and E2E_CDP_PORT (no fixed 9222)
-  doctor [<id>]                          check the machine for the run: binaries of the quality commands, package store, registry,
-                                         Chrome CDP, Vercel login and link; exit 1 on a blocking problem
+  doctor [<id>] [--fresh]                check the machine for the run: binaries of the quality commands, package store, registry,
+                                         a real test install (retried; --fresh ignores a recent pass), Chrome CDP, Vercel login and
+                                         link; exit 1 on a blocking problem
   detect                                 what the existing code uses (stack, package manager, suggested layers)
   baseline <capability> [--change <id>]  brownfield: skeleton spec of a capability's current behavior
   change new <id> [--title T] [--input-type ${INPUT_TYPES.join("|")}] [--workflow W]
@@ -164,6 +172,10 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
   audit brief <lens> | report | picks <F-01,..>   the audit workflow: a brief for the reviewer of one lens, the report
                                          assembled from their answers, the picked findings as the request of a new change
   decisions [<id>]                       the Workflow's Decision Points of a change and their answers
+  page render <name> [--stdin]           a Decision Page from .aidw/run/pages/<name>.yaml (questions | picks | gate): prints its link
+  page answers <name> [--text T]         check the text the user copied from the page (or on stdin) before recording it
+  page audit [--lang vi]                 the audit findings as a pick list; its answer feeds \`aidw audit picks\`
+  page triage <task> [--lang vi]         the decision an escalated task asks of the user, from its triage diagnosis
   approve <id> [--auto]                  approve the Analysis package (hashes it); --auto: aidw approves a small change of
                                          a workflow with an automatic approval (bugfix), or reclassifies one that is too big
   approval check <id>                    exit 1 when the approved package drifted
@@ -173,6 +185,7 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
   analyze [<id>]                         pre-gate consistency checks (analysis.md, task coverage)
   ids [<id>]                             requirement and scenario ids (after applying the change)
   vendor-path <upstream>/<skill>         absolute path of a vendored SKILL.md (e.g. pocock/grilling)
+  diff-coverage <lcov> [--min 80] [--base <ref>]  coverage of the lines added since the change's first task started
   plugin-path <path>                     absolute path of a plugin file (e.g. roles/software-architect/references/stack-pool.md)
   eval [<role>] [--case <name>] [--model <m>] [--runs <n>] [--answers]
                                          run a Role's cases with claude -p (no tools) and grade each answer against its
@@ -231,7 +244,7 @@ interface Args {
   flags: Record<string, string | true>;
 }
 
-const VALUE_FLAGS = new Set(["session", "last", "root", "title", "input-type", "workflow", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude", "model", "case", "runs"]);
+const VALUE_FLAGS = new Set(["session", "last", "root", "title", "input-type", "workflow", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude", "model", "case", "runs", "text", "lang"]);
 
 export function parseArgs(argv: string[]): Args {
   const pos: string[] = [];
@@ -473,7 +486,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         if (timeout !== undefined && !(Number(timeout) > 0)) throw new UsageError("--timeout must be a number of seconds");
         const r = checkpoint(p, id, need(rest[0], "task id"), timeout ? { timeoutMs: Number(timeout) * 1000 } : {});
         const lines = [
-          `${r.ok ? "PASS" : "FAIL"} ${r.task} -> ${r.status}  (evidence ${r.evidence})`,
+          `${r.ok ? "PASS" : r.status === "blocked" ? "BLOCKED (environment)" : "FAIL"} ${r.task} -> ${r.status === "blocked" ? "running, no attempt used" : r.status}  (evidence ${r.evidence})`,
           ...Object.entries(r.scenarios).map(([s, locs]) => `  ${locs.length ? "ok     " : "MISSING"} ${s}${locs.length ? `  ${locs[0]}` : ""}`),
           ...r.verify.map((v) => `  ${v.exit === 0 ? "ok     " : "FAILED "} ${v.command}  (${Math.round(v.ms / 1000)}s${v.timedOut ? ", timed out" : ""})`),
           ...(r.outside_touches.length ? [`  outside touches: ${r.outside_touches.join(", ")}`] : []),
@@ -491,6 +504,8 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
             reviewBrief = buildBrief(p, id, r.task, "review", join(pluginRoot(env), "library", "vendor")).path;
             after = `review brief ${reviewBrief}\nSPAWN ${AGENTS.taskReview} with: ${REVIEWER_PROMPT(reviewBrief)}\nThen: aidw verdict ${r.task}\n`;
           }
+        } else if (r.status === "blocked") {
+          after = `NEXT: the machine refused a check, not the code. Run \`aidw checkpoint ${r.task} --change ${id}\` once more outside the sandbox (dangerouslyDisableSandbox: true); if it is blocked again, escalate with this line. Do not start a new attempt or spawn the implementer again.\n`;
         } else {
           after = nextLine(p, id);
         }
@@ -622,12 +637,13 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
             if (startedBrowser && outcome === "archived") stopBrowser(p); // "denied" cannot happen here: the runner started it
           },
           preflight: () => {
-            const bad = doctor(p, id, env).filter((c) => c.status === "fail");
+            const bad = doctor(p, id, env, undefined, { run: installRunner() }).filter((c) => c.status === "fail");
             return bad.length ? `fix this first, then run the same command again: ${bad.map((c) => `${c.name}: ${c.detail}`).join("; ")}` : null;
           },
           extraArgs: passthrough,
           env,
-          log: json ? () => {} : (line) => io.out(`[aidw run] ${line}\n`),
+          // Detached: stdout already is runner.log, and the runner appends each line with a timestamp itself.
+          log: json || env.AIDW_RUN_DETACHED === "1" ? () => {} : (line) => io.out(`[aidw run] ${line}\n`),
         });
         emit({ change: id, ...r }, `${r.outcome === "archived" ? "DONE" : "STOPPED"} (${r.outcome}) after ${r.runs} session(s), ${r.waits} wait(s): ${r.message}\n`);
         return r.outcome === "archived" ? 0 : r.outcome === "escalated" || r.outcome === "needs_user" ? 2 : 1;
@@ -745,10 +761,25 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
       case "vendor-path": {
         const ref = need(rest[0], "<upstream>/<skill>");
         if (!/^[a-z0-9-]+\/[a-z0-9-]+$/.test(ref)) throw new UsageError(`invalid vendored skill "${ref}"`);
-        const file = join(pluginRoot(env), "library", "vendor", ...ref.split("/"), "SKILL.md");
-        if (!existsSync(file)) throw new OpError(`vendored skill "${ref}" not found at ${file}`);
+        const file = skillPath(join(pluginRoot(env), "library", "vendor"), ref);
+        if (!existsSync(file)) throw new OpError(`skill "${ref}" not found at ${file}`);
         emit({ path: file }, `${file}\n`);
         return 0;
+      }
+
+      case "diff-coverage": {
+        const p = project();
+        const report = need(rest[0], "LCOV report file (e.g. coverage/lcov.info)");
+        const min = args.flags.min === undefined ? 80 : Number(args.flags.min);
+        if (!Number.isFinite(min) || min < 0 || min > 100) throw new UsageError("--min must be a number from 0 to 100");
+        const file = resolve(p.project, report);
+        if (!existsSync(file)) throw new OpError(`no coverage report at ${report}: run the tests with an lcov reporter first`);
+        const open = listChangeIds(p).flatMap((id) => loadTasks(p, id).tasks.map((t) => (typeof t.base === "string" ? t.base : null)));
+        const base = typeof args.flags.base === "string" ? args.flags.base : (open.find((b) => b) ?? trunkBase(p.project));
+        if (!base) throw new OpError("no base commit to compare with: pass --base <ref>");
+        const c = diffCoverage(p.project, base, readFileSync(file, "utf8"));
+        emit(c, `${coverageReport(c, min)}\n`);
+        return c.percent >= min ? 0 : 1;
       }
 
       case "plugin-path": {
@@ -756,8 +787,12 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         if (!/^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/.test(ref) || ref.split("/").includes("..")) {
           throw new UsageError(`invalid plugin path "${ref}"`);
         }
-        const file = join(pluginRoot(env), ...ref.split("/"));
-        if (!existsSync(file)) throw new OpError(`"${ref}" not found in the plugin (${file})`);
+        const found = resolvePluginFile(pluginRoot(env), ref);
+        if (!("file" in found)) {
+          const hint = found.suggestions.length ? ` Did you mean: ${found.suggestions.map((s) => `\`aidw plugin-path ${s}\``).join(", ")}?` : "";
+          throw new OpError(`"${ref}" not found in the plugin (${found.tried}).${hint}`);
+        }
+        const file = found.file;
         emit({ path: file }, `${file}\n`);
         return 0;
       }
@@ -904,7 +939,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
             id = null; // no change yet: machine checks only
           }
         }
-        const checks = doctor(p, id, env);
+        const checks = doctor(p, id, env, undefined, { run: installRunner(), fresh: args.flags.fresh === true });
         emit({ ok: !checks.some((c) => c.status === "fail"), change: id, checks }, doctorText(checks));
         return checks.some((c) => c.status === "fail") ? 1 : 0;
       }
@@ -1034,6 +1069,103 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           return 0;
         }
         throw new UsageError("usage: aidw audit brief <lens> | report | picks <F-01,F-02>");
+      }
+
+      case "page": {
+        // Decision Pages (ADR-0007): a view of one round of questions, a pick list or a gate. Nothing is recorded here.
+        const p = project();
+        const sub = need(rest[0], "render | answers | audit | triage");
+        const lang = str(args.flags.lang);
+        const gateExtras = (id: string): PageSection[] => {
+          const c = loadChange(p, id);
+          const all = readDecisions(c);
+          const points = workflowOfChange(p, c, pluginRoot(env)).decisions.map((x) => {
+            const r = all[x.id];
+            return r ? `**${x.id}**: ${[r.answer].flat().join(", ")} (${r.reason || "no reason recorded"})` : `**${x.id}**: open (${x.options.join(" | ")})`;
+          });
+          const tasks = parseTasks(readText(join(c.dir, "tasks.yaml")) ?? "").tasks;
+          return [
+            ...(points.length ? [{ id: "decision-points", title: "Decision Points", body: "", points, html: "" }] : []),
+            ...(tasks.length ? [{ id: "plan", title: "Plan", body: planSummary(tasks), points: [], html: "" }] : []),
+          ];
+        };
+        const load = (name: string) => {
+          if (!PAGE_NAME.test(name)) throw new UsageError(`invalid page name "${name}": lowercase letters, digits and "-"`);
+          const source = readText(pageDataFile(p, name));
+          if (source === null) throw new OpError(`no page data at ${rel(p, pageDataFile(p, name))}: write it first (aidw plugin-path library/decision-pages.md says how)`);
+          const first = parsePage(name, source);
+          const r = first.page.layout === "gate" && first.page.change ? parsePage(name, source, gateExtras(resolveChangeId(p, first.page.change))) : first;
+          if (r.problems.length) throw new OpError(`the data of page "${name}" (${rel(p, pageDataFile(p, name))}) has ${r.problems.length} problem(s):\n${r.problems.map((x) => `  - ${x}`).join("\n")}\nFix the file and render again.`);
+          return r.page;
+        };
+        const save = (name: string, data: unknown) => {
+          mkdirSync(pagesDir(p), { recursive: true });
+          writeFileSync(pageDataFile(p, name), typeof data === "string" ? data : toYaml(data));
+        };
+        const show = (name: string): number => {
+          const page = load(name);
+          const file = pageHtmlFile(p, name);
+          writeFileSync(file, renderPage(page));
+          const url = pathToFileURL(file).href;
+          emit(
+            { ok: true, page: name, version: page.version, layout: page.layout, file, url },
+            `Decision Page: ${url}\n${pageSummary(page)}\nSHOW the user that link and one or two lines on what the page asks, nothing more: they choose on the page, press the copy button and paste the text here.\nNEXT: when they paste it, run \`aidw page answers ${name} --text "<the pasted text>"\` before recording anything.\n`,
+          );
+          return 0;
+        };
+        if (sub === "render") {
+          const name = need(rest[1], "page name");
+          if (args.flags.stdin === true) {
+            if (!PAGE_NAME.test(name)) throw new UsageError(`invalid page name "${name}": lowercase letters, digits and "-"`);
+            save(name, io.stdin?.() ?? "");
+          }
+          return show(name);
+        }
+        if (sub === "answers") {
+          const name = need(rest[1], "page name");
+          const page = load(name);
+          const pasted = str(args.flags.text) ?? io.stdin?.() ?? "";
+          const a = parseAnswers(page, pasted);
+          emit(
+            { page: name, ...a },
+            a.ok
+              ? `OK ${name}: the answer matches the page. Record it word for word:\n${answersText(page, a)}`
+              : `REFUSED ${name}: ${a.problems.length} problem(s)\n${a.problems.map((x) => `  - ${x}`).join("\n")}\nAsk the user about exactly these; do not guess an answer for them.\n`,
+          );
+          return a.ok ? 0 : 1;
+        }
+        if (sub === "audit") {
+          const id = resolveChangeId(p, str(args.flags.change));
+          const r = compileReport(p, id, false);
+          if (r.diags.errors.length) throw new OpError("the audit report is not complete: run `aidw audit report` first", r.diags);
+          if (!r.findings.length) throw new OpError("the audit has no findings: there is nothing to pick");
+          const name = `audit-${id}`.toLowerCase().replace(/[^a-z0-9-]/g, "-").slice(0, 64);
+          save(
+            name,
+            picksData({
+              title: lang === "vi" ? `Audit ${id}: chọn phát hiện cần sửa` : `Audit ${id}: pick the findings to fix`,
+              intro: lang === "vi" ? `Báo cáo đầy đủ: ${rel(p, r.path)}. Các phát hiện được chọn sẽ thành một yêu cầu sửa.` : `Full report: ${rel(p, r.path)}. The findings you pick become one fix request.`,
+              ...(lang ? { lang } : {}),
+              kind: "audit",
+              items: r.findings.map((f) => {
+                const [head, ...more] = f.text.trim().split("\n");
+                return { key: f.id, title: (head ?? "").slice(0, 200), group: f.severity, tag: f.lens, detail: more.join("\n").trim().slice(0, 1200), recommend: f.severity === "critical" || f.severity === "high" };
+              }),
+            }),
+          );
+          return show(name);
+        }
+        if (sub === "triage") {
+          const taskId = need(rest[1], "task id");
+          const file = str(args.flags["notes-file"]) ?? triageFile(p, taskId);
+          const diagnosis = readText(file);
+          if (diagnosis === null) throw new OpError(`no triage diagnosis at ${rel(p, file)}: this task was not triaged, so put the decision to the user in the chat`);
+          const cause = /^CAUSE:\s*(\S+)/m.exec(diagnosis)?.[1] ?? "unknown";
+          const name = `triage-${taskId}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");
+          save(name, triageData({ task: taskId, cause, diagnosis, ...(lang ? { lang } : {}) }));
+          return show(name);
+        }
+        throw new UsageError("usage: aidw page render <name> [--stdin] | answers <name> [--text T] | audit | triage <task>");
       }
 
       case "decisions": {

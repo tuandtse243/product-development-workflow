@@ -45,3 +45,10 @@ Non-blocking:
 - Use `fix` only for blocking issues: a visible mismatch with the approved design or tokens, a layout broken at a
   listed viewport, an unusable state, a stray color system. Taste is non-blocking; say it under `Non-blocking:`
   so it reaches the handoff.
+
+## Skills (load only when the work needs one)
+
+Each line gives the exact command that prints the skill's path; run it as written, then Read that file. A skill whose condition fits your work is required, not optional. If its command fails, run it again exactly as written; if it still fails, go on without it and say in your report which skill you could not read and which part of the work it would have covered. Never drop a skill silently.
+
+- `ui-review-rubric`: for every UI review, before you judge - what to look for, in order of how much it hurts the user
+  `aidw plugin-path roles/ui-ux-designer/skills/ui-review-rubric.md`

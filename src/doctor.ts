@@ -9,8 +9,10 @@ import { dirname, join } from "node:path";
 import { loadChange } from "./change.js";
 import { readBrowser } from "./browser.js";
 import { claudeHome } from "./cost.js";
+import { packageLookupReachable } from "./depsafety.js";
 import { isDefaultBranch } from "./ops.js";
 import { git, isGitRepo } from "./git.js";
+import { installProblem, installStatus, type ShellRun } from "./installcheck.js";
 import { readText, type Paths } from "./project.js";
 import { parseQuality, qualityFile, type QualityConfig } from "./quality.js";
 
@@ -100,7 +102,13 @@ function vercelJsonFramework(root: string): boolean {
   }
 }
 
-export function doctor(p: Paths, id: string | null, env: NodeJS.ProcessEnv = process.env, probe: Probe = shellProbe): Check[] {
+/** `install` makes the check install a real package (a few seconds to minutes); tests and plain library use leave it out. */
+export interface InstallOptions {
+  run: ShellRun;
+  fresh?: boolean;
+}
+
+export function doctor(p: Paths, id: string | null, env: NodeJS.ProcessEnv = process.env, probe: Probe = shellProbe, install?: InstallOptions): Check[] {
   const out: Check[] = [];
   const add = (name: string, status: CheckStatus, detail: string) => out.push({ name, status, detail });
 
@@ -138,6 +146,19 @@ export function doctor(p: Paths, id: string | null, env: NodeJS.ProcessEnv = pro
     add("token overhead", "warn", `${heavy.length} other plugins are enabled (${heavy.slice(0, 4).join(", ")}${heavy.length > 4 ? ", ..." : ""}): their tools and hook text ride along in every turn of every subagent (trial-3A: 37K tokens in an implementer's first turn against 9K for a reviewer). Use \`aidw run\` (it drops MCP servers) or disable them for the run`);
   }
 
+  // The package Guard looks each new dependency up on deps.dev. When it cannot be reached the Guard proves nothing and
+  // says so only in the checkpoint (trial-4: all 18 packages of the first task were "unproven" behind a sandbox 403).
+  if (env.AIDW_SKIP_INSTALL_CHECK !== "1") {
+    const r = packageLookupReachable();
+    add(
+      "package lookup",
+      r.ok ? "ok" : "warn",
+      r.ok
+        ? "api.deps.dev reachable: new dependencies are checked for existence, age and advisories"
+        : `api.deps.dev is not reachable from here (${r.error || "no answer"}): the package Guard cannot check new dependencies, so they pass as "unproven" and only the reviewer is told. Allow api.deps.dev in the sandbox (/sandbox), or set AIDW_SKIP_INSTALL_CHECK=1 to turn the check off on purpose`,
+    );
+  }
+
   if (!quality) return out;
 
   // package manager and the binaries the layers run
@@ -173,6 +194,11 @@ export function doctor(p: Paths, id: string | null, env: NodeJS.ProcessEnv = pro
   if (pm && !hasModules) {
     const reg = probe("curl", ["-sSI", "-m", "8", "https://registry.npmjs.org/"], p.project, 12_000);
     add("npm registry", reg.ok ? "ok" : "warn", reg.ok ? "reachable" : "not reachable from here: installs will fail until the network is allowed");
+  }
+  if (pm && !hasModules && install) {
+    // A reachable registry proves little: a package scanner that wraps the install can still time out (notes-app run).
+    const r = installStatus(p, pm, install.run, { fresh: install.fresh });
+    add("package install", r.status === "ok" ? "ok" : r.status === "flaky" ? "warn" : "fail", r.status === "fail" ? installProblem(r, id) : r.detail);
   }
 
   if (drivesBrowser(quality)) {

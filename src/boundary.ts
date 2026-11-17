@@ -1,11 +1,9 @@
 import { join } from "node:path";
 import { loadChange } from "./change.js";
+import { touchesDatabase } from "./dbpaths.js";
 import { readText, walkFiles, type Paths } from "./project.js";
 import { parseTasks } from "./tasks.js";
 import { loadWorkflow, type Boundary } from "./workflow.js";
-
-/** A task that adds or changes a database migration touches a migrations folder or a SQL file. */
-const MIGRATION = /(^|\/)migrations?(\/|$)|\.sql$/i;
 
 /** How the plan of a Change exceeds the boundary of an automatically approved Workflow; empty when it stays inside. */
 export function boundaryExceeded(p: Paths, id: string, b: Boundary): string[] {
@@ -14,8 +12,8 @@ export function boundaryExceeded(p: Paths, id: string, b: Boundary): string[] {
   const out: string[] = [];
   if (tasks.length > b.max_tasks) out.push(`the plan has ${tasks.length} tasks (at most ${b.max_tasks})`);
   if (!b.migrations) {
-    const m = tasks.filter((t) => (Array.isArray(t.touches) ? t.touches : []).some((g) => MIGRATION.test(String(g))));
-    if (m.length) out.push(`${m.map((t) => t.id).join(", ")} change a database migration`);
+    const m = tasks.filter((t) => touchesDatabase((Array.isArray(t.touches) ? t.touches : []).map(String)));
+    if (m.length) out.push(`${m.map((t) => t.id).join(", ")} change the database schema or a migration`);
   }
   if (!b.spec_changes) {
     const specs = walkFiles(join(change.dir, "specs")).filter((f) => f.endsWith("spec.md"));

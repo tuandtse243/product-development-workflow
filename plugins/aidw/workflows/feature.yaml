@@ -8,7 +8,8 @@
 #   gate        approval: only the user passes it (/aidw:approve); production-deploy: a production deploy asks first
 #   transitions the Change state machine (see below)
 #   agents      the Agents the CLI tells the orchestrator to spawn (the build stage of product.yaml is what the CLI reads)
-# Roles that are Planned (qa, release) are named as the true owners; the main session carries their work today.
+# Every Role named here is active. A Role behind a Decision Point (research, ux-research, database-architect, api-designer)
+# runs on a Change only when that decision says so.
 id: feature
 description: Change to an existing codebase, from assessment to delivered software, with one approval gate after the plan.
 applies_to: brownfield
@@ -46,6 +47,27 @@ decisions:
     options: [full-design, reuse-existing, no-ui]
     stage: design
     required: false
+  # The four Roles below are optional on a Change: the deciding Role says whether this Change needs them. Not answered = none.
+  - id: research-needed
+    decide: product-manager
+    options: [market, feasibility, both, none]
+    stage: research
+    required: false
+  - id: ux-research-needed
+    decide: product-manager
+    options: [journeys, none]
+    stage: user-research
+    required: false
+  - id: data-model-needed
+    decide: software-architect
+    options: [design, none]
+    stage: contracts
+    required: false
+  - id: api-contract-needed
+    decide: software-architect
+    options: [openapi, actions, none]
+    stage: contracts
+    required: false
 
 stages:
   - id: intake
@@ -62,16 +84,30 @@ stages:
     writes: [architecture, domain-model, constitution, analysis-existing-system]
 
   - id: discovery
-    title: Discovery interview (grilling and clarify)
+    title: Discovery interview, one conversation in stages (the job, the rules and edges, the users)
     states: [analyzing]
-    roles: [product-manager]
+    roles: [product-manager, business-analyst, ux-research]
     reads: [intake]
     writes: [analysis-discovery-qa]
 
-  - id: requirements
-    title: Domain model, requirements and delta specs
+  - id: research
+    title: Research, when the Product Manager decides the Change needs it
     states: [analyzing]
-    roles: [product-manager]
+    roles: [product-manager, research]
+    reads: [intake, analysis-discovery-qa]
+    writes: [decision-research-needed, research-note]
+
+  - id: user-research
+    title: User kinds, journeys and usability requirements, when the Product Manager decides the Change needs them
+    states: [analyzing]
+    roles: [product-manager, ux-research]
+    reads: [intake, analysis-discovery-qa]
+    writes: [decision-ux-research-needed, user-journeys]
+
+  - id: requirements
+    title: Domain model and requirements (Product Manager), then delta specs (Business Analyst)
+    states: [analyzing]
+    roles: [product-manager, business-analyst]
     reads: [intake, analysis-discovery-qa]
     writes: [domain-model, decisions-domain, requirements, delta-specs, specs, analysis-scope, analysis-domain, analysis-specs]
 
@@ -89,19 +125,26 @@ stages:
     reads: [requirements, delta-specs, domain-model, design-direction, design-tokens, project-config]
     writes: [architecture, decisions-architecture, constitution, project-config, analysis-stack, analysis-architecture]
 
+  - id: contracts
+    title: Data model and API contract, each when the Software Architect decides the Change needs it
+    states: [analyzing]
+    roles: [software-architect, database-architect, api-designer]
+    reads: [requirements, delta-specs, domain-model, architecture, constitution]
+    writes: [decision-data-model-needed, decision-api-contract-needed, data-model-dbml, data-model-notes, api-contract-openapi, api-contract-notes]
+
   - id: plan
     title: Task graph
     states: [analyzing]
     roles: [technical-planner]
-    reads: [delta-specs, architecture, constitution, design-tokens]
+    reads: [delta-specs, architecture, constitution, design-tokens, data-model-notes, api-contract-notes]
     writes: [tasks, analysis-plan]
 
   - id: quality-profile
-    title: Quality layers, deploy strategy and permissions
+    title: Test plan, quality layers, deploy strategy and permissions
     states: [analyzing]
     roles: [qa, release]
-    reads: [tasks, architecture]
-    writes: [quality, analysis-quality-profile, analysis-deploy-strategy, analysis-permissions]
+    reads: [delta-specs, tasks, architecture]
+    writes: [test-plan, quality, analysis-quality-profile, analysis-deploy-strategy, analysis-permissions]
 
   - id: approval
     title: Analyze, present and approve
@@ -121,14 +164,14 @@ stages:
       implement: fullstack
       review: code-reviewer
       triage: software-architect
-      layer-review: { ui: ui-ux-designer, security: security }
+      layer-review: { ui: ui-ux-designer, security: security, performance: performance }
 
   - id: verify
     title: Quality layers
     states: [verifying]
-    roles: [security, ui-ux-designer]
+    roles: [security, ui-ux-designer, performance]
     reads: [delta-specs, architecture, constitution, design-tokens]
-    writes: [layer-review-security, layer-review-ui-ux]
+    writes: [layer-review-security, layer-review-ui-ux, layer-review-performance]
 
   - id: converge
     title: Every scenario has a passing test
@@ -143,6 +186,8 @@ stages:
     gate: production-deploy
 
   - id: deliver
-    title: Delivery package and archive
+    title: Release plan, documentation, delivery package and archive
     states: [delivered, archived]
-    roles: []
+    roles: [release, documentation]
+    reads: [delta-specs, requirements, tasks, quality, architecture]
+    writes: [release-plan]

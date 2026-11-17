@@ -129,8 +129,11 @@ export function firstMatch<R extends Rule>(rules: R[], text: string): R | undefi
 /** `aidw approve` is a human decision: the agent may run it only through a permission prompt. */
 export const APPROVE_COMMAND = /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+approve\b/;
 
-/** `aidw run`: the headless auto-resume runner (S9); it spawns `claude -p`, so it never runs inside a session. */
-export const RUNNER_COMMAND = /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+run\b/;
+/**
+ * `aidw run`: the headless auto-resume runner (S9); it spawns `claude -p`, so it never runs inside a session.
+ * `aidw run --status` and `--stop` only read or stop the runner, so they are not matched.
+ */
+export const RUNNER_COMMAND = /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+run\b(?![^;&|]*\s--(?:status|stop)\b)/;
 
 /** Commands that invoke the aidw CLI itself (its writes stay inside .aidw/), by name or quoted path. */
 export const AIDW_COMMAND = /^\s*["']?(?:[^\s;&|"']*\/)?aidw["']?\s/;

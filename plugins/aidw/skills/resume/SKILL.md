@@ -20,7 +20,10 @@ All progress lives in `.aidw/` and git, so resuming needs no memory of the previ
    settle FAIL lines before continuing.
 2. By state:
    - `paused`: `aidw transition <id> resume` (returns to the state it paused from).
-   - `escalated`: show the user why (the escalation reason and the task's evidence) and ask what to do:
+   - `escalated`: show the user why (the escalation reason and the task's evidence) and ask what to do. When the task
+     has a triage diagnosis whose cause is `plan`, `spec` or `architecture`, ask with a Decision Page: `aidw page triage <T>
+     --change <id> --lang <en|vi>` prints its link; give the user the link and two lines, and when they paste the answer
+     check it with `aidw page answers triage-<t>` (the task id in lowercase) before acting on it:
      - the cause is resolved (they fixed it, or gave the missing decision): `aidw transition <id> executing`,
        then for each task that is `escalated`, `aidw task retry <T>` (fresh attempt budget). Only on the
        user's explicit go-ahead: retrying is their decision.

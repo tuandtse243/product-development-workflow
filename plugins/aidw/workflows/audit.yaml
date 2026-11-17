@@ -2,7 +2,7 @@
 # and each writes its findings; the CLI assembles one report by severity (`aidw audit report`). No code changes, no build,
 # no approval gate: the gate stays closed to project files for the whole Change. The user then picks findings
 # (`aidw audit picks`) and each pick becomes the request of a new `bugfix` or `feature` Change.
-# `performance` joins the lenses when its Role is activated (a Planned Role has no Agent to review through).
+# `performance` is not a lens yet: an audit has no measurements for it to read.
 id: audit
 description: Read-only review of the current code through chosen lenses, ending in one report of findings by severity.
 applies_to: request

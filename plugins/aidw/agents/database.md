@@ -69,6 +69,10 @@ a risk), write it to the report path named in the brief; otherwise write nothing
 
 Something blocks you (a missing decision, a contradiction in the spec, a needed credential): stop and say so
 in your reply instead of guessing. The orchestrator escalates it to the user.
+A package install or build tool fails for a reason outside the code (the network, a package scanner that times out,
+a sandbox denial): retry it up to 3 times with about 15 seconds between tries, because scanners time out now and then.
+If it still fails with the same cause, stop and reply with the exact error. Do not change flags, package versions, the
+lockfile or any settings file to get around it: that is the user's call.
 
 ### Rules for every implementing Role
 
@@ -77,6 +81,16 @@ in your reply instead of guessing. The orchestrator escalates it to the user.
 - Stay inside the brief's Touches. Do not edit `.aidw/` (except the report note and screenshots), do not run
   `aidw checkpoint`/`aidw review`, do not commit, push or deploy. The aidw gate blocks these for you: the
   orchestrator records progress and commits after an independent review.
+- Never make a check pass by weakening it: no deleted or skipped test, no `.only`, no `eslint-disable`,
+  `@ts-ignore`, `as any` or `# noqa`. The checkpoint reads your diff for these and fails the task. When one is
+  truly needed, write the reason on the same line; the reviewer judges it.
+- Do not change lint, type-check, CI or git-hook configuration that already exists (`eslint.config.*`,
+  `tsconfig*.json`, `.github/workflows/`, `.husky/` and the like): the checkpoint fails. Only a task planned as
+  `build`, `ci` or `chore` changes them. Creating a file that is missing is fine.
+- Never put a key, token, password or connection string with a password in a file. Read it from an environment
+  variable and put only the name in `.env.example`.
+- Add a package only when the task needs it, in a released version that is not brand new. The checkpoint looks up
+  every package you add: one that does not exist, is under three days old or has a known advisory fails.
 - Never end your turn to wait for a background command (an install, a build): poll it with a timeout and, if it
   has not finished after about 5 minutes, report the blocker instead of waiting (an idle implementer held the
   whole run for over an hour in trial-3A).
@@ -87,10 +101,15 @@ in your reply instead of guessing. The orchestrator escalates it to the user.
 
 ## Skills (load only when the work needs one)
 
-Read a skill with `aidw plugin-path roles/database/skills/<name>.md`.
+Each line gives the exact command that prints the skill's path; run it as written, then Read that file. A skill whose condition fits your work is required, not optional. If its command fails, run it again exactly as written; if it still fails, go on without it and say in your report which skill you could not read and which part of the work it would have covered. Never drop a skill silently.
 
 - `prisma-migration`: when the project's migration tool is Prisma
+  `aidw plugin-path roles/database/skills/prisma-migration.md`
 - `drizzle-migration`: when the project's migration tool is Drizzle
+  `aidw plugin-path roles/database/skills/drizzle-migration.md`
 - `supabase-migration`: when the project's database is Supabase
+  `aidw plugin-path roles/database/skills/supabase-migration.md`
 - `expand-contract`: when a migration changes a table that already has rows or is live (a new required column, a rename, a drop, a type change), or when a backfill is needed
+  `aidw plugin-path roles/database/skills/expand-contract.md`
 - `indexes-and-seeds`: when the task adds an index or constraint, or a seed or test fixture
+  `aidw plugin-path roles/database/skills/indexes-and-seeds.md`

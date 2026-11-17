@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { agentRole } from "../src/gate.js";
 import { AGENTS, checkRoster, generateAgents, loadRole, loadRoster, loadTiers, renderAgent, writeAgents } from "../src/roles.js";
+import { resolvePluginFile } from "../src/plugin.js";
 
 const plugin = join(__dirname, "..", "plugins", "aidw");
 const temps: string[] = [];
@@ -25,13 +26,13 @@ describe("the roster", () => {
     expect(messages(root).join("\n")).not.toMatch(/\.claude/);
   });
 
-  it("declares 21 roles in four departments, 12 of them active, every one with a profile", () => {
+  it("declares 21 roles in four departments, all of them active, every one with a profile", () => {
     const roster = loadRoster(plugin);
     const entries = Object.values(roster.roles);
     expect(entries).toHaveLength(21);
     expect(Object.keys(roster.departments)).toHaveLength(4);
     expect(Object.entries(roster.roles).filter(([, e]) => e.status === "active").map(([id]) => id).sort()).toEqual(
-      ["backend", "code-reviewer", "database", "devops", "frontend", "fullstack", "integration", "product-manager", "security", "software-architect", "technical-planner", "ui-ux-designer"],
+      ["api-designer", "backend", "business-analyst", "code-reviewer", "database", "database-architect", "devops", "documentation", "frontend", "fullstack", "integration", "performance", "product-manager", "qa", "release", "research", "security", "software-architect", "technical-planner", "ui-ux-designer", "ux-research"],
     );
   });
 
@@ -52,7 +53,8 @@ describe("the roster", () => {
   it("rejects a planned role carried by a role that is not active", () => {
     const root = copy();
     const file = join(root, "roster.yaml");
-    writeFileSync(file, readFileSync(file, "utf8").replace("carried_by: product-manager }", "carried_by: qa }"));
+    // no Role is planned today: make two planned, one carried by the other
+    writeFileSync(file, readFileSync(file, "utf8").replace("qa: { department: quality-delivery, status: active }", "qa: { department: quality-delivery, status: planned, carried_by: cli }").replace("research: { department: product-analysis, status: active }", "research: { department: product-analysis, status: planned, carried_by: qa }"));
     expect(messages(root).join("\n")).toMatch(/carried_by "qa" must be an active role/);
   });
 
@@ -100,7 +102,7 @@ describe("role profiles", () => {
 
 describe("generated agents", () => {
   it("one agent file per active role that has a profile", () => {
-    expect(Object.keys(generateAgents(plugin)).sort()).toEqual(["backend.md", "code-reviewer.md", "database.md", "devops.md", "frontend.md", "fullstack.md", "integration.md", "product-manager.md", "security.md", "software-architect.md", "technical-planner.md", "ui-ux-designer.md"]);
+    expect(Object.keys(generateAgents(plugin)).sort()).toEqual(["api-designer.md", "backend.md", "business-analyst.md", "code-reviewer.md", "database.md", "database-architect.md", "devops.md", "documentation.md", "frontend.md", "fullstack.md", "integration.md", "performance.md", "product-manager.md", "qa.md", "release.md", "research.md", "security.md", "software-architect.md", "technical-planner.md", "ui-ux-designer.md", "ux-research.md"].sort());
   });
 
   it("the three implementing roles share one procedure instead of copying it", () => {
@@ -117,8 +119,25 @@ describe("generated agents", () => {
   it("a role's skills are listed in its agent with how to read them", () => {
     const agent = renderAgent(loadRole(plugin, "technical-planner")!, loadTiers(plugin));
     expect(agent).toMatch(/## Skills \(load only when the work needs one\)/);
-    expect(agent).toContain("aidw plugin-path roles/technical-planner/skills/<name>.md");
+    // each skill carries its full command: trial-4's planner built `.../scaffold-tasks` from a pattern and lost the .md
+    expect(agent).toContain("- `scaffold-tasks`: when the plan creates a new project");
+    expect(agent).toContain("  `aidw plugin-path roles/technical-planner/skills/scaffold-tasks.md`");
     expect(agent).toMatch(/- `migration-tasks`: when a task adds or changes a database migration/);
+    expect(agent).not.toContain("<name>");
+    expect(agent).toMatch(/Never drop a skill silently/);
+  });
+
+  it("every skill command printed in every agent finds its file", () => {
+    const agents = generateAgents(plugin);
+    let count = 0;
+    for (const [name, text] of Object.entries(agents)) {
+      for (const m of text.matchAll(/`aidw plugin-path ([^`<]+)`/g)) {
+        const found = resolvePluginFile(plugin, m[1]!);
+        expect("file" in found, `${name}: ${m[1]}`).toBe(true);
+        count++;
+      }
+    }
+    expect(count).toBeGreaterThan(20);
   });
 
   it("flags a skill without a file and an include that does not exist", () => {
@@ -149,7 +168,7 @@ describe("generated agents", () => {
     const out = messages(root).join("\n");
     expect(out).toMatch(/agents\/security\.md: out of date with its role folder/);
     expect(out).toMatch(/agents\/extra\.md: not generated from a role/);
-    expect(writeAgents(root)).toEqual(["backend.md", "code-reviewer.md", "database.md", "devops.md", "frontend.md", "fullstack.md", "integration.md", "product-manager.md", "security.md", "software-architect.md", "technical-planner.md", "ui-ux-designer.md"]);
+    expect(writeAgents(root)).toEqual(["api-designer.md", "backend.md", "business-analyst.md", "code-reviewer.md", "database.md", "database-architect.md", "devops.md", "documentation.md", "frontend.md", "fullstack.md", "integration.md", "performance.md", "product-manager.md", "qa.md", "release.md", "research.md", "security.md", "software-architect.md", "technical-planner.md", "ui-ux-designer.md", "ux-research.md"].sort());
     expect(messages(root)).toEqual([]);
   });
 
@@ -171,5 +190,31 @@ describe("the gate reads access from the role profile", () => {
 
   it("an unknown agent named like a reviewer stays read-only", () => {
     expect(agentRole("aidw:legacy-reviewer")).toBe("reviewer");
+  });
+});
+
+describe("aidw plugin-path", () => {
+  it("finds a skill asked for without its .md, or by its folder", () => {
+    expect(resolvePluginFile(plugin, "roles/technical-planner/skills/scaffold-tasks")).toEqual({ file: join(plugin, "roles/technical-planner/skills/scaffold-tasks.md") });
+    expect(resolvePluginFile(plugin, "roles/technical-planner/skills/scaffold-tasks.md")).toEqual({ file: join(plugin, "roles/technical-planner/skills/scaffold-tasks.md") });
+    expect(resolvePluginFile(plugin, "skills/run")).toEqual({ file: join(plugin, "skills/run/SKILL.md") });
+  });
+
+  it("names the closest files when a path matches nothing", () => {
+    const r = resolvePluginFile(plugin, "roles/technical-planner/skills/scafold-task");
+    expect(r).toMatchObject({ suggestions: ["roles/technical-planner/skills/scaffold-tasks.md"] });
+    const far = resolvePluginFile(plugin, "roles/technical-planner/nothing/here.md");
+    expect("file" in far).toBe(false);
+  });
+
+  it("says what to run instead, from the command line", async () => {
+    const { run } = await import("../src/cli.js");
+    let out = "";
+    let err = "";
+    const io = { out: (s: string) => (out += s), err: (s: string) => (err += s) };
+    expect(run(["plugin-path", "roles/technical-planner/skills/task-interfaces"], { AIDW_PLUGIN_ROOT: plugin }, plugin, io)).toBe(0);
+    expect(out.trim()).toBe(join(plugin, "roles/technical-planner/skills/task-interfaces.md"));
+    expect(run(["plugin-path", "roles/technical-planner/skills/task-interface-x"], { AIDW_PLUGIN_ROOT: plugin }, plugin, io)).not.toBe(0);
+    expect(err).toMatch(/Did you mean: `aidw plugin-path roles\/technical-planner\/skills\/task-interfaces\.md`/);
   });
 });

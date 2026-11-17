@@ -170,6 +170,145 @@ aidw becomes a software factory with a Roster of Roles, Workflows as data and de
     project with both `package.json` and Python files gets both test suites in the same layers. New packs: `stacks/python.md`
     (the stack pack) and the framework packs `django.md` and `fastapi.md`. Flask is detected but has no pack. Not yet run on a
     real Python project; the tests use synthetic ones.
+  - [x] Findings of the first `product` run (a notes app from an empty folder, 2026-11-15): (1) `aidw doctor` said "all checks
+    pass", then the scaffold's first `npm install` failed in 10 seconds: a package scanner (safe-chain) wraps `npm` as a shell
+    function and timed out on its malware list, and a reachable registry proved nothing. Now `aidw doctor` runs a real install of
+    a tiny package through the user's interactive shell (`src/installcheck.ts`; retried 3 times, a pass on a later try is a
+    warning), `aidw transition <id> executing` refuses while it fails, and `aidw doctor <id> --fresh` re-checks in seconds
+    instead of spawning an implementer to find out. (2) The Stop hook repeated the same "changed files" report on every turn of a
+    stopped run (about a dozen times); it now reports a given state and file set once. (3) The scaffold task made the tables,
+    so the `database` Role never ran: the migration check knew neither Drizzle's folder nor the schema file, and only warned.
+    `src/dbpaths.ts` defines the database's paths once; `aidw analyze` now refuses a plan in which another Role changes them,
+    or in which a `database` task also touches UI or API files, and the bugfix boundary uses the same definition. The planner's
+    role carries the division as a table (scaffold, schema, data access, screens).
+
+## Role upgrades (decided 2026-11-17, grilling session)
+
+Goal: every Role works at lead or senior level. Decisions: [ADR-0005](adr/0005-skill-sources-vendored-and-authored.md)
+(Vendored and Authored Skills) and [ADR-0006](adr/0006-guards-apply-to-every-project.md) (Guards on every project).
+Each Authored Skill ships with at least one Role eval; each wave ends with a trial on the greenfield and brownfield
+fixtures, compared with trial-3. Before writing any tool version or flag into a stack pack, check it against the tool's
+own documentation (the research used secondary sources for TypeScript 7, pnpm 11 and tool versions). Read a Skill in
+full before vendoring it.
+
+### Wave 1: Guards, tooling and broken links
+
+- [x] Vendor the five Addy `references/` files the vendored Skills link to (19 dangling links before).
+- [x] Guard: test tampering and suppressions, a diff check at the task checkpoint (deleted or skipped tests, `.only`,
+  `eslint-disable`, `@ts-ignore`, `as any`, `# noqa`); a violation fails the checkpoint, a suppression with a reason
+  on its line goes to the reviewer. A task that removes a requirement sets `removes_tests: true`.
+- [x] Guard: a rewritten snapshot and a changed test-runner or coverage config (where thresholds live) are listed
+  for the reviewer; they do not fail the checkpoint, because a real change of behavior rewrites them too.
+- [x] Guard: a task cannot change existing lint, tsconfig, CI or hook configuration unless its approved type is
+  `build`, `ci` or `chore`; creating a missing file is allowed (so the scaffold task needs no exemption). A changed
+  test-runner or coverage config goes to the reviewer. The gate denies `--no-verify` and `HUSKY=0`.
+- [x] Guard: secrets scan of the lines a task added, at the checkpoint, and of the staged diff before aidw commits
+  (built-in key formats, no scanner to install; `gitleaks:allow` marks a documented example).
+- [x] Guard: install safety at the checkpoint for every package a task adds (npm, requirements.txt, uv.lock): it
+  exists, is at least three days old (`AIDW_MIN_RELEASE_AGE_DAYS`) and has no known advisory, looked up on deps.dev.
+  Without network the result is unproven and the reviewer is told.
+- [x] Install safety before the install runs: pnpm `minimumReleaseAge` and `allowBuilds`, uv `exclude-newer`, in the stack packs.
+- [x] Node pack: strict tsconfig flags; type-aware lint (oxlint on TypeScript 7, typescript-eslint strict on 6 and lower).
+- [x] Node pack: focused and skipped tests are lint errors, `forbidOnly`; complexity limits. The Playwright lint plugin is
+  left out on TypeScript 7: it needs the typescript-eslint parser, which does not support it.
+- [x] Node pack: react and jsx-a11y rules through oxlint; knip and dependency-cruiser in the `code` layer.
+- [x] Python pack: extended Ruff rules and pyright strict; deptry and import-linter.
+- [x] Squawk and Prisma/Django/Alembic drift checks when a task changes a migration (Drizzle: regenerate and compare).
+- [x] zizmor, actionlint and hadolint when a task changes a workflow or a Dockerfile.
+- [x] Coverage on the diff: `aidw diff-coverage` reads an LCOV report, 80% of the lines the Change added.
+- [x] oasdiff and schemathesis documented as layer commands for a project with an OpenAPI file.
+- [ ] Framework packs still describe ESLint; bring Next.js, NestJS, Nuxt and SvelteKit in line with the Node pack (wave 3).
+- [ ] Run the wave's trial on the greenfield and brownfield fixtures and compare with trial-3.
+
+### Wave 2: reviewer, security, database, devops and the shared Skills
+
+Every vendored Skill was read in full first. What differs under aidw, and the statements in them found to be wrong,
+are in `library/vendored-skill-notes.md`; a brief that loads one of these Skills points to the notes.
+
+- [x] Vendored, loaded by signal: obra `verification-before-completion` (core set), `systematic-debugging` (a retry or
+  a quality fix; it replaces Addy's debugging skill in the selection), `receiving-code-review` (after a `fix` verdict);
+  Addy `observability-and-instrumentation` (a task about logs, metrics or traces).
+- [x] Authored, `code-reviewer`: `task-review`, spec compliance then code quality, with a silent-failure checklist.
+- [x] Authored, `security`: `security-review`, trace each entry point and report only what can be exploited.
+- [x] Vendored, `database`: supabase Postgres best practices (any task that touches the data layer). Migrations are
+  covered by the authored `schema-evolution` Skill (wave 4, `database-architect`), which the `database` Role also loads.
+- [x] Vendored, `devops`: docker `docker-project-foundations`, `docker-build-strategies`, `docker-compose-patterns`;
+  Sentry `gha-security-review` (the review of a task that changes a workflow).
+- [x] Authored, `integration`: `resilient-integration`, webhooks, idempotency, retries and timeouts.
+- [x] Authored, shared: `aidw/api-design-rules` in `library/skills/` (error shape, lists, repeated writes, compatibility).
+- [ ] Not done: Addy `source-driven-development` (its core step needs web access the Agents do not have); obra
+  `writing-good-tests` (no such Skill upstream: the material is a file inside its TDD Skill, which overlaps Addy's);
+  Playwright best practices (documentation, not a Skill); the CC BY-SA lookup directory (Sentry security references,
+  ASVS chapters). Decide each with the wave's trial.
+
+### Wave 3: framework packs and the upstream Roles
+
+- [x] A framework pack lists the Skills that load with it (`skills:` for the Roles that build, `review_skills:` for the
+  review); a test checks that each one exists. No framework is named in `src/skills.ts`.
+- [x] Vendored per pack: FastAPI's own Skill (FastAPI); Svelte's core best practices (SvelteKit); Vue best practices
+  (Nuxt, with a note that Nuxt's conventions win); Sentry `django-perf-review` (review of Django code). Astral `uv` and
+  `ruff` load when a task touches `pyproject.toml` or `uv.lock`.
+- [x] Authored, shared: `aidw/react-rules` (Next.js pack; ideas: Vercel, no licence file) and `aidw/nestjs-rules`.
+- [x] Authored, `product-manager`: `discovery-frame` (jobs to be done), `behavior-map` (the journey, thinnest runnable
+  Slice first), `assumptions-premortem` (before the Approval Gate). The ambiguity scan and requirement quality with EARS
+  go to `business-analyst` (wave 4); until that Role is active, `product-manager` carries them.
+- [x] Authored, `software-architect`: `architecture-spine`, the invariants every implementer must keep.
+- [x] Authored, `technical-planner`: `task-interfaces` (Produces, Consumes and Review focus per task). Pocock
+  `to-tickets` stays the base.
+- [x] `ui-ux-designer`: authored `ui-review-rubric`. Vendored for the frontend Roles: anthropics `frontend-design` (a
+  task that touches UI) and emilkowalski `animate` (a UI task about motion). Design tokens gain an optional `why`.
+- [x] The Next.js, Nuxt and SvelteKit packs follow the Node pack's linter choice; Nuxt and SvelteKit say that
+  `vue-tsc` and `svelte-check` decide the TypeScript major.
+- [ ] Not done: antfu `nuxt` (it documents a Nuxt 5 prerelease, the pack is on Nuxt 3: re-vendor at a matching commit
+  or move the pack first); Sentry `django-access-review` (its references derive from OWASP material under CC BY-SA,
+  which needs the separate labelled directory); shadcn (no pack and no signal to load it yet); Astral `ty` (beta);
+  token references (a token whose value points at another token).
+
+### Wave 4: every Planned Role activated
+
+All nine were activated in one pass (the user chose to test everything together afterwards), so the Roster has 21
+active Roles and none planned. Each got its Procedure, Done-when, Stop-and-report, its Authored Skills and an eval.
+
+- [x] One discovery interview in the main session, in stages (`product-manager`, `business-analyst`, `ux-research`);
+  each stage loads that Role's Skill, answers are recorded to disk, and no stage asks again what an earlier one settled.
+- [x] A Decision Point for each optional upstream Role: `research-needed`, `ux-research-needed` (decided by the Product
+  Manager), `data-model-needed`, `api-contract-needed` (decided by the Software Architect). Not answered means none.
+- [x] `qa`: `test-case-derivation`, `test-layer-choice`; writes `test-plan.md`, the layers of `quality.yaml` and the
+  Quality profile. The main session keeps the environment preflight.
+- [x] `business-analyst`: `rule-and-edge-elicitation`, `requirement-quality-check` (EARS), and `delta-spec` moved from
+  the Product Manager. It owns the delta specs; the Product Manager keeps the domain model and the requirements.
+- [x] `api-designer`: `rest-contract`, `breaking-change`; writes `openapi.yaml` (OpenAPI 3.1) or a typed action table,
+  and `api-contract.md`.
+- [x] `database-architect`: `schema-design-postgres`, `schema-design-mongodb` (MongoDB's own references vendored);
+  writes `data-model.dbml` and `data-model.md`. `aidw/schema-evolution` is shared with the `database` Role and loads
+  on any task that touches the data layer; its lock table was read from the PostgreSQL 18 documentation.
+- [x] `performance`: `reading-budget-reports`, `query-cost-in-a-diff`; a quality layer may say `review: performance`.
+- [x] `ux-research`: `journey-mapping`, `usability-requirements`; writes `journeys.md`.
+- [x] `research`: `evidence-scan`, `feasibility-spike`; writes `.aidw/research/<id>.md`. The only Role with web access.
+- [x] `release`: `release-notes`, `deployment-checklist`; writes `release.md` at delivery. It never deploys.
+- [x] `documentation`: `readme-structure`, `api-docs-from-contract`; updates `README.md` and `.env.example` at delivery.
+- [x] Implementer briefs point at the data model, the API contract, the test plan and the journeys when they exist.
+- [ ] Not done: `qa` closing coverage gaps after the build (the converge step still finds them and adds tasks);
+  `performance` as an audit lens; the analyze step checking the new Artifacts (a decision that says `design` with no
+  `data-model.md` is not refused yet); `docs/factory-architecture.md` still describes some Roles as planned.
+
+### Before any of this is trusted
+
+Nothing above has run through a real Change. The unit tests cover the code (guards, skill selection, the roster,
+workflows), not the behavior of the Agents with the new Skills.
+
+- [x] Run the Role cases (the CLI's eval command): 21 Roles, 35 cases. Five failures in all: four fixed in the
+  Skills (a rewrite that added behavior, the output order of the Postgres schema, a guessed workaround, a
+  self-supplied refusal example) and one case moved to the business analyst with the delta specs. Each then passed
+  3 of 3 runs; the full run after the first two fixes was 32/35.
+- [ ] Run a trial on the greenfield fixture and one on the brownfield fixture, and compare with trial-3: cost per
+  task, attempts per task, review `fix` rate, and whether the Guards fire on real work or only in tests.
+- [ ] Watch the token cost of a brief: the core set grew by one Skill, UI tasks by one, data tasks by two.
+
+Not chosen: timescale `postgres-database-migration` as a Vendored Skill (suspected errors, replaced by
+`schema-evolution`), Addy `interview-me` and `planning-and-task-breakdown`, `deprecation-and-migration`, Trail of Bits
+`differential-review` and `property-based-testing`, a lint hook after every edit, design-token lint, mutation testing,
+Semgrep. Revisit mutation testing if a trial shows empty tests passing the coverage threshold.
 
 ## Backlog
 

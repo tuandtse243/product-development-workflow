@@ -10,4 +10,7 @@
   `drizzle/<number>_<name>.down.sql`) and apply it in the test through the same connection the test already uses.
 - To test: a fresh local database (SQLite file or Docker Postgres), apply the migrations in order, load the seed, run your
   up/check, apply the down file, check the old shape.
+- Before you report: run `pnpm exec drizzle-kit generate` once more. If it writes a new file, the schema had a change your
+  migration did not carry: fold it in. (`drizzle-kit check` verifies the migration history only.) On Postgres also run
+  `squawk drizzle/<new file>.sql` when squawk is installed and fix what it reports.
 - Do not edit a migration that has been applied anywhere; add a new one.

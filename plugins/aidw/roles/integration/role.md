@@ -12,6 +12,7 @@ includes: [library/implement-a-task.md]
 skills:
   - contract-tests: when the client and the server meet over an HTTP or RPC contract, to prove they agree
   - external-api: when the task calls a third-party service (payment, email, maps, an identity provider)
+  - resilient-integration: when the task receives a webhook, or makes a write across a boundary that may be retried or may time out
 ---
 
 ## Responsibility

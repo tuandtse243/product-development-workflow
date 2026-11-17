@@ -9,6 +9,8 @@ access: read-only
 tools: [Read, Grep, Glob, Bash, Write]
 reads: [requirements, delta-specs, design-direction, design-tokens]
 writes: [design-direction, design-tokens, decision-design-needed, analysis-design, layer-review-ui-ux, audit-ui]
+skills:
+  - ui-review-rubric: for every UI review, before you judge - what to look for, in order of how much it hurts the user
 ---
 
 ## Responsibility

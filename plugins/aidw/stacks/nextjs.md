@@ -1,6 +1,7 @@
 ---
 framework: Next.js
 roles: [frontend, backend, fullstack]
+skills: [aidw/react-rules]
 ---
 # Framework pack: Next.js (App Router)
 
@@ -69,5 +70,6 @@ and `.aidw/constitution.md` first and treat this file as a reference.
 
 ## Commands
 
-`pnpm dev` (local), `pnpm build` (the `code` layer builds with it), `pnpm start` (serve a build), `pnpm lint` (eslint with
-`eslint-config-next`), `pnpm exec tsc --noEmit`. `next build` fails on type and lint errors: fix them, never disable them.
+`pnpm dev` (local), `pnpm build` (the `code` layer builds with it), `pnpm start` (serve a build), `pnpm lint` (the linter of
+`node.md`: oxlint with the `nextjs` and `react` plugins on TypeScript 7; ESLint with `eslint-config-next` on a project that
+already has it), `pnpm exec tsc --noEmit`. A type or lint error is fixed, never disabled.

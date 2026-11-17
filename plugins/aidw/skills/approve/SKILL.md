@@ -15,15 +15,19 @@ The user has asked to approve. This is the single human gate of the workflow (Q2
 1. Run `aidw status`. Pick the change in `awaiting_approval` or `awaiting_scope_approval` (or `$ARGUMENTS` if
    given). If none is waiting, say so and stop.
 
-   **`awaiting_scope_approval`** (Approval Gate 1 of a new product): show the user `.aidw/changes/<id>/brief.md` in a few
-   lines (vision, scope, MVP, what is out), then run `aidw approve <id>` (the gate turns it into a permission prompt; do not
+   **`awaiting_scope_approval`** (Approval Gate 1 of a new product): the user has seen the scope gate page; name
+   `.aidw/changes/<id>/brief.md` in one line (render the page now with `aidw page render scope-gate` only if
+   `.aidw/run/pages/scope-gate.yaml` exists and they have not seen it), then run `aidw approve <id>` (the gate turns it into a permission prompt; do not
    retry if declined). It records the scope approval and the change goes back to `analyzing`: tell the user to say "continue"
    and carry on with `/aidw:start` step 3 (domain model, requirements and specs). Do not do steps 2 to 5 below: they are for
    the final approval.
 2. Run `aidw validate <id>` and `aidw analyze <id>`. If either fails, show the errors and stop: the package
    goes back to analysis (`aidw transition <id> analyzing`).
-3. Show the user a short recap so they know exactly what they approve: the `## Summary`, `## Stack`
-   (with its source), `## Design` mode, `## Deploy strategy`, `## Permissions`, and the number of tasks.
+3. The user knows what they approve from the gate page of `/aidw:start` step 9. If they pasted its answer in this
+   session and every section was agreed, say so in one line. Otherwise give its link again (`aidw page render gate`,
+   when `.aidw/run/pages/gate.yaml` exists) plus a recap of at most five lines: goal, stack and its source, deploy
+   strategy, permissions, number of tasks. A section the user marked for a change is not approved: stop and go back to
+   analysis.
 4. Run `aidw approve <id>`. The aidw gate turns this into a permission prompt: the user confirms it there.
    If the user declines the prompt, do not retry.
 5. Report the approval hash. Explain that from now on:

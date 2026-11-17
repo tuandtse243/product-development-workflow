@@ -15,5 +15,6 @@ description: A CI workflow that runs the same commands as the quality layers, wi
   environment dump, and never pass them to a step from a fork's pull request (use `pull_request`, not `pull_request_target`,
   for code from forks). A secret that tests need becomes a dummy value in the workflow's `env:`; the real one stays out of CI.
 - **No deploy.** A deploy job is a tier 2 or 3 decision; do not add one unless the task names it and says which environment.
-- **Check.** Lint the file (`actionlint` when installed, otherwise parse it as YAML) and run each command the workflow runs
-  locally once.
+- **Check.** `actionlint` (exit 1 = problems) and then `zizmor --offline .` (it fails by the highest finding: script
+  injection through `${{ }}` in a `run:` step, over-wide `permissions`, an action not pinned). When neither is installed, parse
+  the file as YAML and say in your report that the workflow was not linted. Run each command the workflow runs locally once.

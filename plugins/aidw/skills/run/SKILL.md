@@ -52,6 +52,16 @@ that aidw creates; everything else runs sequentially on the main checkout.
 3. **Preflight (once per change, before the first task).** Run `aidw doctor <id>`. Greenfield tasks install
    packages and the last step deploys; both fail inside the sandbox in known ways (trial-3A lost over an hour):
    - FAIL: stop and tell the user what to fix (the line says how), then run it again.
+   - `package install` FAIL: packages cannot be installed from here (a scanner, a proxy, the sandbox). No implementer can fix
+     that. Give the user the line as it is, and do not spawn anything until `aidw doctor <id> --fresh` passes.
+     Offer the shortest way out first: `aidw run <id> --detach` in the user's own terminal. The runner probes from the
+     user's terminal, and its headless sessions run in auto mode, where a command the sandbox blocks can be run again
+     outside it without waiting for a person (seen on real runs: in-session installs failed for hours with scanner
+     timeouts, 502 and 407 from the sandbox proxy; the same scaffold installed in ten minutes under `aidw run`).
+     The probe installs one tiny package, so it can pass while a large install (`next`) still times out:
+     if an implementer's install fails after a passing probe, treat it as the same blocker and offer `aidw run`.
+     Do not try other package managers, flags or settings changes to get around a scanner or proxy: those are the
+     user's policy, not a bug to route around.
    - `pnpm store` WARN (not writable): ask the user to run the first `pnpm install` in their own terminal after
      T01's `package.json` exists, or to allow the path; do not let T01 sit waiting.
    - `chrome cdp` FAIL: no Chromium-family browser can start inside this session's sandbox (macOS denies it
@@ -70,7 +80,9 @@ that aidw creates; everything else runs sequentially on the main checkout.
 Trial-3A: 186 orchestrator turns re-read a context that grew from 51K to 300K tokens; that was 57% of the cost.
 
 - Every aidw command prints a `NEXT:` or `SPAWN` line: follow it. Do not call `aidw next` or `aidw status` in between.
-- After spawning subagents, end the turn with no text. Do not narrate waiting or restate what a result said.
+- After spawning subagents, end the turn with one short line (`Waiting for T03.`), never with no text: an empty
+  turn makes Claude Code ask for a visible reply, which costs a whole extra turn (seen on a real run). Do not
+  narrate waiting or restate what a result said.
 - Run independent aidw commands in one Bash call (`aidw checkpoint T02; aidw checkpoint T03`), and spawn every
   ready subagent in one message. Do not Read files a brief already summarizes.
 - A fix task of a layer that has its own reviewer is auto-reviewed: do not spawn a reviewer for it.
@@ -93,9 +105,19 @@ aidw next --change <id> --json
    prompt (`Task brief: <path>. Read it and implement the task.`). Wait for it.
 3. If the implementer reports a blocker it cannot resolve (missing decision, contradictory spec, credential),
    go to *Escalate* with its words.
+   A package install or build tool that fails for a reason outside the code (the network, a package scanner that
+   times out, a sandbox denial) is such a blocker too: escalate at once with the exact error. Never spawn an
+   implementer to find out whether the environment was fixed (two minutes and its tokens each time): run
+   `aidw doctor <id> --fresh` (ten seconds). `aidw transition <id> executing` also refuses to resume while its
+   `package install` check fails, and prints what the user must change.
 4. `aidw checkpoint <T> --change <id>`. Read its last lines:
    - FAIL: the task is marked failed with the reason. It prints `NEXT: implement <T> (retry)`; loop (the retry
      brief carries the failure and the debugging skill).
+   - BLOCKED (environment): a check failed because the machine refused it (the sandbox denied a file lock, a proxy
+     answered 407 or 502, a package scanner timed out), not because of the code. The task stays running and no
+     attempt is used. Run the same `aidw checkpoint` once more outside the sandbox (`dangerouslyDisableSandbox: true`;
+     auto mode allows it, an interactive session asks the user). If it is blocked again, go to *Escalate* with the
+     printed line. Never start a new attempt or spawn the implementer again for it.
    - PASS with `auto-passed`: a converge task that only added tests; it is reviewed and committed already.
      Follow the printed `NEXT:`.
    - PASS with `SPAWN aidw:code-reviewer`: go to the review step below.
@@ -158,6 +180,11 @@ A task is triaged once: if the extra attempt fails too, it escalates without ano
    one, else the last checkpoint failure or review notes from `.aidw/changes/<id>/evidence/<T>.json`), and the options:
    - fix the cause yourself or give the missing decision, then `/aidw:resume`;
    - change scope: `aidw transition <id> analyzing`, revise the Analysis, approve again.
+
+   When the task was triaged with the cause `plan`, `spec` or `architecture`, the decision is the user's and has
+   alternatives: run `aidw page triage <T> --change <id> --lang <en|vi>` and give them its link with two lines (what
+   stopped, what the page asks) instead of listing the options in the chat. Under `AIDW_RUNNER=1` nobody is there to
+   open a page: skip it; `/aidw:resume` shows it when the user is back.
 3. Stop.
 
 ## 3. Verify (quality layers)
@@ -169,9 +196,9 @@ A task is triaged once: if the extra attempt fails too, it escalates without ano
    - `PASS`: go to section 4.
    - A layer failed and a **fix task** `Qnn` was added: the change is back in `executing`. Return to the loop
      (section 1): the fix task runs through implement, checkpoint and review like any other, then come back here.
-   - `REVIEW`: a **review layer** (`review: ui` or `review: security`) passed its commands and waits for an
+   - `REVIEW`: a **review layer** (`review: ui`, `review: security` or `review: performance`) passed its commands and waits for an
      independent reviewer. The output names the agent, the brief and the prompt:
-     1. Spawn that agent (`subagent_type: "aidw:ui-ux-designer"` or `"aidw:security"`) with exactly the
+     1. Spawn that agent (`subagent_type: "aidw:ui-ux-designer"`, `"aidw:security"` or `"aidw:performance"`, as the command names it) with exactly the
         printed prompt: `Layer review brief: <path>. Review the layer and reply with the verdict.`
      2. The reviewer writes its verdict to `.aidw/run/layer-review-<layer>.md` and replies with one line. Run
         `aidw layer-review <layer> --change <id>` (no verdict argument): it reads that file and records

@@ -296,6 +296,11 @@ describe("gate in worktrees", () => {
     expect(d(hook(root, join(root, `.aidw/run/worktrees/${ID}`)))).toBe("deny");
     const bash = (command: string): HookInput => ({ hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command }, cwd: root });
     expect(decide(bash("aidw run 2026-11-10-wave"), {})).toMatchObject({ decision: "deny" });
+    expect(decide(bash("aidw run 2026-11-10-wave --detach"), {})).toMatchObject({ decision: "deny" });
+    // reading or stopping the runner starts nothing (a user asked for `aidw run --status` in a session and was refused)
+    expect(decide(bash("aidw run --status"), {})).toBeNull();
+    expect(decide(bash("aidw run --stop"), {})).toBeNull();
+    expect(decide(bash("aidw run --status; aidw run x"), {})).toMatchObject({ decision: "deny" });
     expect(decide(bash("aidw integrate"), {})).toBeNull();
     cli(root, "transition", ID, "paused", "--reason", "x");
     expect(d(hook(wt, join(wt, "lib/a/x.js")))).toBe("deny");

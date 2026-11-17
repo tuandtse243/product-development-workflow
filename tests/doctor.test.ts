@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
 import { binaryOf, doctor, doctorText, type Probe } from "../src/doctor.js";
+import { usePackageLookup } from "../src/depsafety.js";
 import { pathsFor } from "../src/project.js";
 import { tempProject, write } from "./fixtures.js";
 
@@ -50,6 +51,21 @@ describe("aidw doctor", () => {
     expect(checks.map((c) => c.name)).toEqual(expect.arrayContaining(["pnpm", "chrome cdp", "vercel login", "vercel project", "vercel"]));
   });
 
+  it("warns when deps.dev is out of reach, because the package Guard then proves nothing", () => {
+    const root = project();
+    const by = (env: NodeJS.ProcessEnv) => doctor(pathsFor(root), ID, env, probe({})).find((c) => c.name === "package lookup");
+    try {
+      expect(by({})).toMatchObject({ status: "ok" });
+      usePackageLookup(() => ({ status: "error", error: "curl: (56) CONNECT tunnel failed, response 403" }));
+      const down = by({});
+      expect(down).toMatchObject({ status: "warn" });
+      expect(down?.detail).toMatch(/403[\s\S]*unproven[\s\S]*AIDW_SKIP_INSTALL_CHECK/);
+      expect(by({ AIDW_SKIP_INSTALL_CHECK: "1" })).toBeUndefined();
+    } finally {
+      usePackageLookup(() => ({ status: "found", publishedAt: "2020-01-01T00:00:00Z", advisories: [] }));
+    }
+  });
+
   it("fails when a linked Vercel project has no deployment yet (the first one is Production)", () => {
     const root = project();
     write(root, ".vercel/project.json", "{}");
@@ -92,7 +108,7 @@ describe("aidw doctor", () => {
     const root = project();
     write(root, `.aidw/changes/${ID}/quality.yaml`, 'layers:\n  - name: code\n    run: ["node -e 1"]\n  - name: e2e\n    run: ["node -e 1"]\ndeploy:\n  target: none\n');
     let out = "";
-    const code = run(["doctor", ID, "--json", "--root", root], { E2E_CDP_URL: "http://127.0.0.1:1" }, root, { out: (s) => (out += s), err: () => {} });
+    const code = run(["doctor", ID, "--json", "--root", root], { E2E_CDP_URL: "http://127.0.0.1:1", AIDW_SKIP_INSTALL_CHECK: "1" }, root, { out: (s) => (out += s), err: () => {} });
     const r = JSON.parse(out) as { ok: boolean; checks: { name: string; status: string }[] };
     expect(r.checks.some((c) => c.name === "node")).toBe(true);
     expect(r.checks.find((c) => c.name === "chrome cdp")?.status).toBe("fail");

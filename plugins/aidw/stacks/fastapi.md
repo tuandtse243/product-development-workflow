@@ -1,6 +1,7 @@
 ---
 framework: FastAPI
 roles: [backend, fullstack]
+skills: [fastapi/fastapi]
 ---
 # Framework pack: FastAPI
 

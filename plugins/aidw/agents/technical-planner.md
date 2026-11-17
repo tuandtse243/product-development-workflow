@@ -35,6 +35,8 @@ tasks:
     depends_on: []             # blocking edges: only a real data dependency (trial-3C: a near-chain ran with no wave)
     touches: ["app/(site)/booking/**", "lib/booking/**", "tests/booking*"]   # file globs this task may change, tests included
     risk: normal               # normal | high (high never runs in parallel)
+    # type build | ci | chore: the only tasks that may change existing lint, type-check, CI or git-hook configuration
+    removes_tests: true        # only when a REMOVED requirement makes its tests go; otherwise a deleted test fails the checkpoint
     verify:
       - <command that proves it works, e.g. pnpm vitest run lib/booking>
     status: pending
@@ -48,6 +50,20 @@ or changes an API contract that another Slice also uses; it has a migration (a m
 both sides are large enough that running them in parallel pays for the extra agents. A split Slice is a small
 graph: backend task, frontend task (parallel), then an `integration` task that runs the
 scenario end to end. Say in `analysis.md` why a Slice was split.
+
+### Who owns the database
+
+A project with a database gets its first tables in a task of their own. Divide the files like this (`aidw analyze` refuses a plan that does not):
+
+| Task | Role | Owns | Never |
+|---|---|---|---|
+| Scaffold | `fullstack` | `package.json`, tool config, test harness, the database **client and config** (`src/db/client.ts`, `drizzle.config.ts`, `prisma/` datasource) | the schema, a migration, a table |
+| Schema | `database`, `risk: high`, `depends_on` the scaffold | the schema file (`src/db/schema.ts`, `prisma/schema.prisma`), the migration folder (`drizzle/`, `prisma/migrations/`, `migrations/`), seeds, indexes, and their tests (`tests/db/**`) | UI or API files |
+| Data access | `backend` or `fullstack`, `depends_on` the schema | the store functions and validation that read and write the tables | the schema or a migration |
+| Screens | `frontend` or `fullstack`, `depends_on` what they call | components, pages, styles, their tests | the schema |
+
+A later change that adds or alters a column is a schema task again, even if it is one line. A bugfix that needs one is not small:
+it leaves the automatic approval and waits for the user.
 
 ### Rules of a good plan
 
@@ -80,7 +96,10 @@ scenario end to end. Say in `analysis.md` why a Slice was split.
   component), the slices cannot overlap and no wave runs (trial-3C: T04 and T05 both edited
   `components/notes-app.tsx` outside their `touches`). Build that file in the first slice with a clear extension
   point (a list of sections, a router table), and list it in the `touches` of every slice that adds to it, so the
-  plan shows the real conflict.
+  plan shows the real conflict. The same holds for **registries every screen extends**: the message catalogue
+  (`lib/i18n/*`), the `shots` spec's route list, the nav menu. A task that adds a screen lists them in its `touches`
+  (trial-4: T04 added the rooms page but could not add its strings to `lib/i18n/vi.ts` or its route to
+  `tests/e2e/shots.spec.ts`, so both were left for later and reported as gaps).
 - **A Given the app cannot set up gets a seed task first.** When a scenario's Given needs state that no screen or
   API can create (for example "some todos are done" and nothing marks one done), plan one early task, owned by the
   Role that owns the data, that adds a test-only way to set it: a reset-and-seed route or hook that exists only when
@@ -123,7 +142,11 @@ consistent and honest about risks.
 
 ## Skills (load only when the work needs one)
 
-Read a skill with `aidw plugin-path roles/technical-planner/skills/<name>.md`.
+Each line gives the exact command that prints the skill's path; run it as written, then Read that file. A skill whose condition fits your work is required, not optional. If its command fails, run it again exactly as written; if it still fails, go on without it and say in your report which skill you could not read and which part of the work it would have covered. Never drop a skill silently.
 
 - `scaffold-tasks`: when the plan creates a new project or its first tasks set up the toolchain, the test harness, CI or a Vercel deploy
+  `aidw plugin-path roles/technical-planner/skills/scaffold-tasks.md`
 - `migration-tasks`: when a task adds or changes a database migration
+  `aidw plugin-path roles/technical-planner/skills/migration-tasks.md`
+- `task-interfaces`: when two or more tasks share a function, a route, a type or a table - what each produces and consumes, and the reviewer's focus
+  `aidw plugin-path roles/technical-planner/skills/task-interfaces.md`

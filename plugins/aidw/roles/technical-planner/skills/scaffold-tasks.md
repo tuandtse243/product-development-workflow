@@ -3,6 +3,10 @@
 The first tasks of a greenfield plan usually scaffold the project with the approved stack and set up the test
 harness, the JUnit reporters of `quality.yaml`, and `.env.example` for every environment variable (names only).
 
+- **The scaffold creates no tables.** It sets up the database client and its config only (`src/db/client.ts`,
+  `drizzle.config.ts`). The first schema and its migration are their own task, owned by `database`, `risk: high`,
+  right after the scaffold: see "Who owns the database" in your role. `aidw analyze` refuses a scaffold whose
+  `touches` include a schema file or a migration folder.
 - **Code style and commits.** For a greenfield project the scaffold task also sets up the formatter, linter, hooks
   and commit lint of the project's **stack pack** (`aidw plugin-path stacks/node.md` for JS/TS; the
   language-neutral rules are in `aidw plugin-path library/code-style.md`); put those files in its `touches` and

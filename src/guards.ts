@@ -4,18 +4,27 @@
  */
 import { auditReady } from "./audit.js";
 import { loadChange } from "./change.js";
+import { installGuard } from "./installcheck.js";
 import { machineOf, workflowIdOf } from "./machine.js";
 import { checkBrief, scopeGuard } from "./scope.js";
 import { convergePassed } from "./converge.js";
 import type { Paths } from "./project.js";
 import { pendingIntegration } from "./parallel.js";
-import { lastDeploy, qualityPassed } from "./quality.js";
+import { lastDeploy, parseQuality, qualityFile, qualityPassed } from "./quality.js";
+import { readText } from "./project.js";
 import { loadTasks } from "./run.js";
 
 export function transitionGuard(p: Paths, id: string, target: string): string | null {
   const change = loadChange(p, id);
   // An audit is delivered when its report is assembled; it has no build, deploy or delivery package.
   if (workflowIdOf(p, change) === "audit") return target === "delivered" ? auditReady(p, id) : null;
+  if (target === "executing") {
+    // Packages must be installable before the build starts: an implementer cannot fix a scanner, a proxy or a sandbox.
+    const text = readText(qualityFile(change));
+    const q = text === null ? null : parseQuality(text, "quality.yaml").config;
+    const why = q ? installGuard(p, id, q.layers.flatMap((l) => [...l.setup, ...l.run])) : null;
+    if (why) return why;
+  }
   if (target === "awaiting_scope_approval") {
     const d = checkBrief(change);
     if (d.errors.length) return `"awaiting_scope_approval" needs the product brief: ${d.errors[0]!.message}`;

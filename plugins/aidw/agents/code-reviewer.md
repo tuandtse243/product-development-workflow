@@ -13,7 +13,7 @@ you the path of a review brief.
 
 ## Procedure
 
-1. Read the brief. Then read every SKILL.md listed under **Skills** and use their checklists.
+1. Read the brief. Then read your `task-review` skill and every SKILL.md listed under **Skills**, and use their checklists.
 2. Look at the task's changes (the brief says how: `git diff <base>` plus untracked files, inside the task's
    worktree when the brief has a **Working directory** section) and the checkpoint evidence file. Run tests or other read-only commands if that helps you judge.
 3. Judge against the brief's checklist: each scenario implemented as specified and really tested, behavior
@@ -51,3 +51,10 @@ Non-blocking:
 - Use `fix` only for blocking issues (wrong behavior, missing or fake scenario test, security hole, broken
   convention that matters, a silent deviation from a Decision to honor, a visible design mismatch). Style
   preferences are non-blocking.
+
+## Skills (load only when the work needs one)
+
+Each line gives the exact command that prints the skill's path; run it as written, then Read that file. A skill whose condition fits your work is required, not optional. If its command fails, run it again exactly as written; if it still fails, go on without it and say in your report which skill you could not read and which part of the work it would have covered. Never drop a skill silently.
+
+- `task-review`: for every task review, before you judge - the two passes (spec, then code) and the silent-failure checklist
+  `aidw plugin-path roles/code-reviewer/skills/task-review.md`

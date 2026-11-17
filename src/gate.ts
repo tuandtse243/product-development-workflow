@@ -149,6 +149,9 @@ export function closedReason(st: GateState): string {
   if (/=(?:escalated|paused)\b/.test(st.summary)) {
     return `the run is stopped (${st.summary}): project files stay frozen until the user decides how to continue (/aidw:status). Only .aidw/ may be written.`;
   }
+  if (st.summary === "no changes") {
+    return "no aidw change is open (the last one is archived, or none was started): an agent writes project files only through an approved change. Start one (/aidw:start, or the bugfix workflow for a defect); the user may still edit files themselves. Only .aidw/ may be written.";
+  }
   return `Analysis is not approved yet (${st.summary}). Only .aidw/ may be written before approval.`;
 }
 
@@ -253,6 +256,9 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
     }
     if (role && /\bgit\s+(?:commit|merge|rebase|reset|tag|cherry-pick|revert)\b/.test(cmd)) {
       return deny(`the ${role} does not commit; the orchestrator commits each task after review`);
+    }
+    if (/\bgit\s+(?:commit|merge|push)\b[^|;&]*\s--no-verify(?:\s|$)|\bgit\s+commit\b[^|;&]*\s-[a-mo-zA-Z]*n[a-zA-Z]*(?:\s|$)|\bHUSKY=0\b/.test(cmd)) {
+      return deny("skipping the git hooks (--no-verify, HUSKY=0) is not allowed: fix what the hook reports");
     }
     if (AIDW_COMMAND.test(cmd) && !SHELL_CHAINING.test(cmd)) return null;
     const writes = firstMatch(WRITE_COMMANDS, maskQuotedAngles(cmd));

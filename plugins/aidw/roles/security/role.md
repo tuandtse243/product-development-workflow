@@ -7,6 +7,8 @@ access: read-only
 tools: [Read, Grep, Glob, Bash, Write]
 reads: [delta-specs, architecture, constitution]
 writes: [layer-review-security, audit-security]
+skills:
+  - security-review: for every security review, before you judge - map the entry points, trace each one, and report only what can be exploited
 ---
 
 ## Responsibility
@@ -18,7 +20,7 @@ the path of a layer review brief.
 
 ## Procedure
 
-1. Read the brief. Then read every SKILL.md listed under **Skills** and use their checklists.
+1. Read the brief. Then read your `security-review` skill and every SKILL.md listed under **Skills**, and use their checklists.
 2. Read the diff the brief names (`git diff <base>`, plus untracked files). Follow every entry point end to
    end: route handlers, server actions, middleware, database policies, environment usage. `Grep` for the usual
    markers (`dangerouslySetInnerHTML`, `process.env`, `service_role`, raw SQL, `exec`, `eval`, `NEXT_PUBLIC_`).

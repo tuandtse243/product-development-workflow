@@ -12,7 +12,9 @@ layers:                         # run in this order by `aidw verify`; any kebab-
   - name: code
     run: ["pnpm lint", "pnpm format:check", "pnpm exec tsc --noEmit", "pnpm build"]
   - name: unit
-    run: ["pnpm exec vitest run --project unit --reporter=default --reporter=junit --outputFile.junit=test-results/unit.xml"]
+    run:
+      - "pnpm exec vitest run --project unit --coverage --reporter=default --reporter=junit --outputFile.junit=test-results/unit.xml"
+      - "aidw diff-coverage coverage/lcov.info"   # 80% of the lines the Change added (section below)
     reports: [test-results/unit.xml]       # JUnit XML: converge reads real pass/fail/skip per scenario
   - name: integration
     setup: ["pnpm exec supabase start"]          # optional; runs before `run` every time
@@ -42,9 +44,9 @@ parallel:                       # waves of tasks with disjoint touches, each in 
   setup: []                     # commands run in each new worktree, e.g. ["pnpm install --offline --frozen-lockfile"]
 ```
 
-- **Review layers** carry `review: ui` or `review: security`. Their `run` commands (optional) produce the
+- **Review layers** carry `review: ui`, `review: security` or `review: performance`. Their `run` commands (optional) produce the
   artifacts; when they pass, `aidw verify` stops with a brief and the orchestrator spawns the matching
-  read-only agent (`aidw:ui-ux-designer`, `aidw:security`), then records the verdict with
+  read-only agent (`aidw:ui-ux-designer`, `aidw:security`, `aidw:performance`), then records the verdict with
   `aidw layer-review <layer> pass|fix`. A `fix` verdict becomes a fix task with the reviewer's notes, within
   `max_fix_rounds`. `artifacts` are project-relative globs of files the reviewer must open.
 - **Layers** must not need a human: no interactive prompts, no watch mode, exit non-zero on failure.
@@ -107,6 +109,38 @@ creating or deleting Supabase projects, other hosts).
 
 Use the package manager the project uses; pin nothing here that the constitution decides otherwise.
 The `format:check` script comes from the stack pack `stacks/node.md` (greenfield); a brownfield project uses its own.
+
+## Coverage on the diff
+
+A greenfield `unit` layer ends with `aidw diff-coverage coverage/lcov.info` (default minimum 80, `--min <n>` to change
+it). It counts only the lines the Change added that the report knows as executable, so old untested code does not fail
+the Change and new untested code cannot hide behind old coverage. Below the minimum the layer fails and names the
+uncovered lines; the fix is a test, not a lower number. The report must be LCOV: Vitest
+`coverage.reporter: ["text", "lcov"]`, pytest `--cov-report=lcov:coverage/lcov.info`. Keep config files, generated code
+and migrations out of the report with the runner's own `exclude`. Brownfield: add it only when the project already
+produces a coverage report.
+
+## Linters that run when a kind of file changes
+
+For a greenfield project these go in the `code` layer when the project has such files; a task that touches one also
+lists the command in its `verify`. Each is a single binary or a `uvx`/`pnpm dlx` call, never a service. Brownfield keeps
+what it has.
+
+| Files | Command | Fails on |
+|---|---|---|
+| SQL migrations for Postgres | `squawk <migration files>` (config `.squawk.toml`: `pg_version`, `excluded_rules`) | a change that locks or rewrites a table, or breaks running code |
+| Prisma schema | `prisma migrate diff --from-migrations prisma/migrations --to-schema prisma/schema.prisma --exit-code` (exit 2 = the schema has a change with no migration; it needs the shadow database of `prisma.config.ts`) | schema and migrations out of step |
+| Django models | `python manage.py makemigrations --check` | a model change with no migration |
+| Alembic | `alembic check` (needs a database connection) | a model change with no migration |
+| `.github/workflows/**` | `actionlint`, then `zizmor --offline .` | a broken workflow; an injection, an over-wide permission or an unpinned action |
+| `Dockerfile` | `hadolint --failure-threshold warning Dockerfile` (config `.hadolint.yaml`) | an unpinned base image, a missing `USER`, cache and shell mistakes |
+| OpenAPI file | `oasdiff breaking --fail-on ERR <base file> <new file>` | a breaking change the Change did not declare (`breaking: true`) |
+
+Drizzle has no such check: `drizzle-kit check` verifies the migration history, not that the schema has a migration, so
+the task runs `drizzle-kit generate` and fails its own verify if that writes a new file. For the squawk command, confirm
+on the project that a violation exits non-zero before relying on it in a layer. Schemathesis
+(`uvx schemathesis run openapi.yaml --url http://localhost:<port>`) sends real requests that change data: run it only
+against a local server with a throwaway database, as its own layer.
 
 ## Database migrations
 
@@ -214,7 +248,7 @@ for (const route of routes) for (const [vp, size] of Object.entries(viewports)) 
 }
 ```
 
-Add seeded states where they matter (an empty list, a long name, an error) by a `beforeEach` that fills storage
+**The shots must include a populated state, not only the empty one** (seen on a real run: every shot was the empty list, so the reviewer could only judge cards, edit mode and errors from the code). For each main screen add at least: the screen with data (several items, one with a very long name), the open edit or form state, and a validation error. Aim for about 12 images, not 36: all three viewports for the screen with data, one viewport for the other states. Add seeded states where they matter (an empty list, a long name, an error) by a `beforeEach` that fills storage
 or the API, or by the seed hook the plan's seed task adds (one server, state set per test, off unless `E2E_SEED` is set; never one server per state on extra fixed ports); a screenshot of a blank page proves little. The reviewer may also run this command itself.
 
 ### a11y
@@ -272,6 +306,7 @@ Lighthouse attaches to the CDP Chrome (`--port=$E2E_CDP_PORT`, set by aidw), so 
       - "pnpm build"
       - "pnpm exec start-server-and-test 'pnpm start -- -p 3100' http://localhost:3100 'pnpm exec lighthouse http://localhost:3100 --port=$E2E_CDP_PORT --quiet --output=json --output-path=test-results/lighthouse.json --only-categories=performance,accessibility,best-practices && node scripts/lh-budget.mjs test-results/lighthouse.json'"
     artifacts: ["test-results/lighthouse.json"]
+    review: performance      # aidw:performance reads the report and the diff (queries, bundle) and ranks what costs most
 ```
 
 ```js

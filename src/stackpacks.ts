@@ -12,6 +12,10 @@ export interface FrameworkPack {
   framework: string;
   roles: string[];
   file: string;
+  /** Skills that load with the pack for the Roles that read it (`skills: [fastapi/fastapi]`), ADR-0005 */
+  skills: string[];
+  /** Skills that load with the review of a task on this framework */
+  reviewSkills: string[];
 }
 
 export function frameworkPacks(root: string): FrameworkPack[] {
@@ -27,10 +31,19 @@ export function frameworkPacks(root: string): FrameworkPack[] {
     } catch {
       continue;
     }
-    const h = head as { framework?: unknown; roles?: unknown } | null;
-    if (typeof h?.framework === "string" && Array.isArray(h.roles)) out.push({ id: name.slice(0, -3), framework: h.framework, roles: h.roles.map(String), file: join(dir, name) });
+    const h = head as { framework?: unknown; roles?: unknown; skills?: unknown; review_skills?: unknown } | null;
+    const strs = (v: unknown) => (Array.isArray(v) ? v.map(String) : []);
+    if (typeof h?.framework === "string" && Array.isArray(h.roles)) {
+      out.push({ id: name.slice(0, -3), framework: h.framework, roles: h.roles.map(String), file: join(dir, name), skills: strs(h.skills), reviewSkills: strs(h.review_skills) });
+    }
   }
   return out;
+}
+
+/** The packs of the project's framework, whoever reads them: a reviewer takes their review Skills. */
+export function packsOf(root: string, stack: Record<string, string>): FrameworkPack[] {
+  const found = stack.framework ?? "";
+  return frameworkPacks(root).filter((p) => found.toLowerCase().startsWith(p.framework.toLowerCase()));
 }
 
 /** The framework packs a Role reads for a project whose detected stack is `stack` (`framework: "Next.js 15.2"`). */

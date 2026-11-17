@@ -1,6 +1,7 @@
 ---
 framework: SvelteKit
 roles: [frontend, backend, fullstack]
+skills: [svelte/svelte-core-bestpractices]
 ---
 # Framework pack: SvelteKit
 
@@ -67,3 +68,6 @@ ADR-0001). An existing SvelteKit project keeps its own structure and `.aidw/cons
 `pnpm dev` (local), `pnpm build` (the `code` layer builds with it), `pnpm preview` (serve a build), `pnpm check`
 (`svelte-check`, the type check), `pnpm lint`. `svelte-kit sync` regenerates the `.svelte-kit/` types; `.svelte-kit/` and the
 build output are generated and never committed.
+The type check here is `svelte-check`, and it decides the TypeScript major: confirm the installed `svelte-check` supports
+the TypeScript version before the scaffold pins it. If it does not support TypeScript 7 yet, stay on 6 and use the
+ESLint path of `node.md` (`eslint-plugin-svelte`); oxlint reads only the script part of a `.svelte` file.

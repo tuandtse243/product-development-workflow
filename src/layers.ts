@@ -17,6 +17,7 @@ import { readText, rel, walkFiles, type Paths } from "./project.js";
 import type { Layer, ReviewKind } from "./quality.js";
 import { loadTasks, type VerifyRun } from "./run.js";
 import { touchesUi } from "./skills.js";
+import { skillPath } from "./skills.js";
 import type { Task } from "./tasks.js";
 
 const SKILLS: Record<ReviewKind, { id: string; reason: string }[]> = {
@@ -28,6 +29,7 @@ const SKILLS: Record<ReviewKind, { id: string; reason: string }[]> = {
     { id: "addy/security-and-hardening", reason: "OWASP checklist, authz, secrets, dependencies" },
     { id: "addy/code-review-and-quality", reason: "how to read a diff for defects" },
   ],
+  performance: [{ id: "addy/performance-optimization", reason: "what to measure and the usual causes, by metric" }],
 };
 
 const MAX_ARTIFACTS = 60;
@@ -98,7 +100,7 @@ export function buildLayerBrief(p: Paths, id: string, layer: Layer, runs: Verify
   const base = changeBase(tasks);
   const uiTasks = tasks.filter((t) => touchesUi(t) && String(t.status) === "done");
   const h = (title: string, body: string[]) => (body.length ? [`## ${title}`, "", ...body, ""] : []);
-  const skills = SKILLS[kind].map((s) => `- \`${vendorDir ? join(vendorDir, ...s.id.split("/"), "SKILL.md") : `aidw vendor-path ${s.id}`}\`: ${s.reason}`);
+  const skills = SKILLS[kind].map((s) => `- \`${vendorDir ? skillPath(vendorDir, s.id) : `aidw vendor-path ${s.id}`}\`: ${s.reason}`);
   const outputs = runs.flatMap((r) => [`\`${r.command}\` (exit ${r.exit ?? "?"}, ${Math.round(r.ms / 1000)}s):`, "", "```", r.tail.split("\n").slice(-40).join("\n"), "```", ""]);
 
   const pointers = [
@@ -137,7 +139,15 @@ export function buildLayerBrief(p: Paths, id: string, layer: Layer, runs: Verify
   ];
 
   const checklist =
-    kind === "ui"
+    kind === "performance"
+      ? [
+          "1. **The measurements.** Read the command output below and every report file it names. Quote only numbers you read there, say for each whether it is lab or field data, and name the budget it is compared with. A budget passed by less than a tenth is worth a remark.",
+          "2. **Queries and data.** In the diff: a query or request per item, a list with no limit, a filter or sort with no index, work done in the application that the database should do. Judge them against the scale the specs state, not the size of the test data.",
+          "3. **What ships to the browser.** The size of what the first screen loads, a heavy dependency loaded everywhere, the same data fetched more than once, independent requests awaited one after another.",
+          "4. **Rank.** At most five findings, the most costly first, each tied to a metric or a count and to the fix.",
+          "Blocking means a budget of the Analysis is exceeded, or the diff adds a cost that will exceed it at the stated scale. Everything else is non-blocking.",
+        ]
+      : kind === "ui"
       ? [
           "1. **Design compliance.** Each token is used where its **Use** says; colors, type scale, spacing and radius come from the tokens; the layout and tone match the design direction. A visible mismatch is blocking.",
           "2. **Responsive.** At mobile width (320-390px): no horizontal overflow, nothing clipped or overlapping, touch targets at least 44px, text readable without zoom. Tablet and desktop use the width the way the design says (no stretched phone layout unless intended).",

@@ -22,7 +22,10 @@ Designer Roles are active you also carry their work: the data model outline and 
 ## Interview (main session)
 
 Ask the user only what the requirements and the stack pool cannot answer: a stack the client requires, hosting, auth
-or payment providers, integrations, limits. Put each question with your recommended answer, and record the answers
+or payment providers, integrations, limits. Put the questions on one Decision Page (`aidw plugin-path library/decision-pages.md`), each with your recommended
+answer and the `criteria` its options really differ on (monthly cost, work to operate, lock-in, what the client
+already runs). Give a figure only when you know it (a provider's published price); otherwise say low, medium or high
+and why. Record the checked answers
 under `## Stack` in `analysis.md` (`Source: client|ai|fallback` and why). The drafting Agent reads that record; it
 cannot ask the user.
 
@@ -76,6 +79,9 @@ consistent and honest about risks.
 
 ## Skills (load only when the work needs one)
 
-Read a skill with `aidw plugin-path roles/software-architect/skills/<name>.md`.
+Each line gives the exact command that prints the skill's path; run it as written, then Read that file. A skill whose condition fits your work is required, not optional. If its command fails, run it again exactly as written; if it still fails, go on without it and say in your report which skill you could not read and which part of the work it would have covered. Never drop a skill silently.
 
 - `triage`: when the brief you were given is a triage brief (a task ran out of attempts and you are asked why)
+  `aidw plugin-path roles/software-architect/skills/triage.md`
+- `architecture-spine`: when you write or change the architecture overview - the short list of invariants every implementer must keep
+  `aidw plugin-path roles/software-architect/skills/architecture-spine.md`

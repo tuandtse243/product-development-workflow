@@ -23,12 +23,16 @@ import { changedSince, git, headCommit, isGitRepo, junkMessage, stagedJunk } fro
 import { matchesAny } from "./glob.js";
 import { detectProject } from "./detect.js";
 import { defaultTaskRole, implementerOf } from "./roles.js";
-import { packsFor } from "./stackpacks.js";
+import { packsFor, packsOf } from "./stackpacks.js";
 import { OpError, transition } from "./ops.js";
 import { readText, rel, walkFiles, type Paths } from "./project.js";
 import { ensureWorktree, removeSnapshot, snapshotBase, integrate, mergeWorktree, parallelConfig, pendingIntegration, planWave, removeWorktree, taskDir, type IntegrateResult } from "./parallel.js";
 import { parseQuality, qualityFile, resetQualitySummary } from "./quality.js";
-import { selectSkills, touchesUi, isSecuritySensitive, type BriefKind } from "./skills.js";
+import { selectSkills, skillPath, SKILLS_WITH_NOTES, touchesUi, isSecuritySensitive, type BriefKind } from "./skills.js";
+import { configEvidence, type ConfigEvidence } from "./configlock.js";
+import { packageEvidence, packageProblems, type PackageEvidence } from "./depsafety.js";
+import { secretsInChanges, secretsMessage, secretsProblem, stagedSecrets, type SecretFinding } from "./secrets.js";
+import { tamperEvidence, tamperProblems, type TamperEvidence } from "./tamper.js";
 import { DEFAULT_MAX_ATTEMPTS, parseTasks, planSha, validateTasksText, type Task } from "./tasks.js";
 
 const now = () => new Date().toISOString();
@@ -304,6 +308,14 @@ export interface CheckpointRecord {
   verify: VerifyRun[];
   changed_files: string[] | null;
   outside_touches: string[];
+  /** tests removed, skipped or focused, and checks switched off, in what the task changed */
+  tamper?: TamperEvidence;
+  /** configuration of the checks (lint, types, CI, hooks, test runner) this task changed */
+  config?: ConfigEvidence;
+  /** credentials in the lines this task added (the value is never recorded) */
+  secrets?: SecretFinding[];
+  /** packages this task added: existence, release age and known advisories */
+  packages?: PackageEvidence;
   /** UI tasks with approved design tokens only */
   design?: DesignEvidence;
   /** `type: fix` tasks only: does the new test fail on the old code? */
@@ -336,8 +348,16 @@ export interface DesignEvidence {
 }
 
 /** Design checks for a UI task when the approved design has tokens; null otherwise. */
+const SERVER_ROLES: ReadonlySet<string> = new Set(["backend", "database", "devops", "backend-engineer", "database-engineer"]);
+/**
+ * A task whose screens the design check judges: it touches UI paths and its Role is not a server-side one, which builds
+ * no screen whatever its paths look like (seen on a real run: a backend task owning a Next.js route handler under
+ * app/rooms/ had to screenshot raw JSON to pass).
+ */
+const buildsScreens = (t: Task): boolean => touchesUi(t) && !(typeof t.role === "string" && SERVER_ROLES.has(t.role));
+
 function designEvidence(p: Paths, id: string, t: Task, changed: string[] | null, since: string | undefined): DesignEvidence | null {
-  if (!touchesUi(t)) return null;
+  if (!buildsScreens(t)) return null;
   const { tokens, exists, diags } = loadTokens(p);
   if (!exists || diags.errors.length > 0 || tokens.length === 0) return null;
   const dir = taskDir(p, t);
@@ -411,9 +431,18 @@ export const retryingShellRunner: CommandRunner = (command, cwd, timeoutMs, env)
   return second.exit === 0 ? { ...second, flaky: true } : first;
 };
 
+/**
+ * Output of a check the machine refused, not the code: the sandbox denying a file lock, a proxy answering 407 or 502,
+ * a package scanner timing out. Seen on a real run: `pnpm install --frozen-lockfile` in a scaffold's verify hit the
+ * sandbox's denial of pnpm's store lock twice, and each counted as a failed attempt (2 of 3 used on a correct task).
+ */
+export const ENVIRONMENT_FAILURE =
+  /Operation not permitted|ERR_PNPM_STORE_DIR_OPEN_OPERATION_LOCK|Proxy Authentication Required|proxy CONNECT failed|502 Bad Gateway|Timeout exceeded while scanning|Failed to check for malicious packages|getaddrinfo (EAI_AGAIN|ENOTFOUND)/i;
+
 export interface CheckpointResult extends CheckpointRecord {
   task: string;
-  status: "review" | "failed";
+  /** `blocked`: a check failed for a reason outside the code; the task stays running and no attempt is used */
+  status: "review" | "failed" | "blocked";
   /** why the checkpoint failed, one line each (empty when it passed) */
   problems: string[];
   evidence: string;
@@ -509,7 +538,13 @@ export function checkpoint(
   const designOk = !design || (design.missing_tokens.length === 0 && design.screenshots.length > 0);
   const regression = t.type === "fix" && verifyOk ? proveRegression(p, id, t, dir, base, changed, runner, timeoutMs) : undefined;
   const regressionOk = !regression || regression.status !== "not-red";
-  const ok = verifyOk && missing.length === 0 && designOk && regressionOk;
+  const tamper = tamperEvidence(dir, base, changed, { isTest: (f) => TEST_FILE.test(f), removesTests: t.removes_tests === true });
+  const tamperOk = !tamper || tamper.blocked.length === 0;
+  const config = configEvidence(dir, base, changed, t.type);
+  const secrets = secretsInChanges(dir, base, changed) ?? [];
+  const packages = packageEvidence(dir, base, changed);
+  const guardsOk = tamperOk && !config?.locked.length && secrets.length === 0 && !packages?.blocked.length;
+  const ok = verifyOk && missing.length === 0 && designOk && regressionOk && guardsOk;
 
   const record: CheckpointRecord = {
     attempt: attemptsOf(t),
@@ -521,6 +556,10 @@ export function checkpoint(
     verify,
     changed_files: changed,
     outside_touches: outside,
+    ...(tamper && (tamper.blocked.length || tamper.justified.length || tamper.snapshots?.length) ? { tamper } : {}),
+    ...(config && (config.locked.length || config.watched.length) ? { config } : {}),
+    ...(secrets.length ? { secrets } : {}),
+    ...(packages ? { packages } : {}),
     ...(design ? { design } : {}),
     ...(regression ? { regression } : {}),
   };
@@ -533,8 +572,19 @@ export function checkpoint(
   const failed = verify.find((v) => v.exit !== 0);
   if (failed) problems.push(`verify failed: \`${failed.command}\`${failed.timedOut ? " (timed out)" : ` (exit ${failed.exit})`}`);
   if (regression?.status === "not-red") problems.push(`no regression proof: ${regression.reason}`);
+  problems.push(...tamperProblems(tamper));
+  if (config?.locked.length) problems.push(`check configuration changed by a task that is not a tooling task: ${config.locked.join(", ")}`);
+  if (secrets.length) problems.push(secretsProblem(secrets));
+  problems.push(...packageProblems(packages));
   if (design?.missing_tokens.length) problems.push(`design tokens not in the code: ${design.missing_tokens.join(", ")}`);
   if (design && design.screenshots.length === 0) problems.push(`no fresh screenshot in ${rel(p, shotsDir(p, id, taskId))}`);
+  const refused = failed && !failed.timedOut ? ENVIRONMENT_FAILURE.exec(failed.tail)?.[0] : undefined;
+  if (refused) {
+    const why = `environment: \`${failed!.command}\` was refused by the machine (${refused}), not by the code`;
+    setField(tf, i, "notes", `checkpoint blocked: ${why}`);
+    saveTasks(tf);
+    return { ...record, task: taskId, status: "blocked", problems: [why, ...problems.filter((x) => !x.startsWith("verify failed"))], evidence: rel(p, join(tf.change.dir, evidenceRel(taskId))) };
+  }
   setField(tf, i, "status", ok ? "review" : "failed");
   setField(tf, i, "evidence", evidenceRel(taskId));
   setField(tf, i, "notes", ok ? null : `checkpoint: ${problems.join("; ")}`);
@@ -609,8 +659,9 @@ export function recordReview(
   if (!isGitRepo(p.project)) return { task: taskId, verdict, status: "done", commit: null, warning: "not a git repository: task not committed" };
   const add = git(p.project, ["add", "-A"]);
   const junk = add.ok ? stagedJunk(p.project) : [];
-  if (junk.length) git(p.project, ["reset", "-q"]);
-  const commit = junk.length ? { ok: false, out: "", err: junkMessage(junk) } : add.ok ? git(p.project, ["commit", "-q", "-m", msg]) : add;
+  const leaked = add.ok && !junk.length ? stagedSecrets(p.project) : [];
+  if (junk.length || leaked.length) git(p.project, ["reset", "-q"]);
+  const commit = junk.length ? { ok: false, out: "", err: junkMessage(junk) } : leaked.length ? { ok: false, out: "", err: secretsMessage(leaked) } : add.ok ? git(p.project, ["commit", "-q", "-m", msg]) : add;
   if (inWorktree && commit.ok) removeWorktree(p, String(t.worktree), String(t.branch ?? ""));
   if (!commit.ok) {
     // keep the task reviewable so the commit can be retried
@@ -773,7 +824,16 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
   const fixReview = reviewIsLatest && lastReview?.verdict === "fix" ? lastReview : undefined;
   const retry = kind === "implement" && (!!failedCheckpoint || !!fixReview);
 
-  const skills = selectSkills(t, kind, { retry }).map((s) => ({ ...s, path: join(vendorDir, ...s.id.split("/"), "SKILL.md") }));
+  // A framework pack names the Skills that load with it (ADR-0005): no framework is named in the selection code.
+  const stackNow = detectProject(p.project).stack;
+  const pluginHome = resolve(vendorDir, "..", "..");
+  const fromPacks =
+    kind === "implement"
+      ? packsFor(pluginHome, stackNow, implementerOf(pluginHome, typeof t.role === "string" ? t.role : undefined) ?? defaultTaskRole()).flatMap((k) => k.skills.map((id) => ({ id, reason: `the project is built with ${k.framework} (framework pack)` })))
+      : packsOf(pluginHome, stackNow).flatMap((k) => k.reviewSkills.map((id) => ({ id, reason: `review of ${k.framework} code (framework pack)` })));
+  const picked = selectSkills(t, kind, { retry, reviewFix: kind === "implement" && !!fixReview });
+  const skills = [...picked, ...fromPacks.filter((s) => !picked.some((x) => x.id === s.id))]
+    .map((s) => ({ ...s, path: skillPath(vendorDir, s.id) }));
   const reqs = requirementsAfterChange(p, id);
   const scenarioIds = list(t.scenarios);
   const reqIds = [...new Set([...list(t.specs), ...scenarioIds.map((s) => s.split("/").slice(0, -1).join("/"))])];
@@ -805,6 +865,12 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
     pointer(p, join(p.domain, "model.md"), "glossary, entities, business rules"),
     pointer(p, join(p.architecture, "overview.md"), "architecture, folder structure, integrations"),
     pointer(p, join(p.requirements, `${id}.md`), "user stories and implementation/testing decisions"),
+    // What the upstream Roles designed for this Change, when they ran: binding in names and shapes.
+    pointer(p, join(tf.change.dir, "data-model.md"), "the approved data model: tables, constraints, indexes and the evolution plan (keep every name)"),
+    pointer(p, join(tf.change.dir, "api-contract.md"), "the approved API contract: operations, shapes, errors (keep every name and status code)"),
+    pointer(p, join(tf.change.dir, "openapi.yaml"), "the contract as OpenAPI 3.1, with an example per scenario"),
+    pointer(p, join(tf.change.dir, "test-plan.md"), "the test cases of each scenario and the layer that proves each"),
+    ...(touchesUi(t) ? [pointer(p, join(tf.change.dir, "journeys.md"), "user kinds, journeys and the usability requirements (U1, U2...) the UI must meet")] : []),
     ...(touchesUi(t) ? [pointer(p, p.design, "design direction and assets (UI task)")] : []),
   ].filter((x): x is string => x !== null);
   const adrs = adrPointers(p);
@@ -820,7 +886,7 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
   const touches = list(t.touches);
   const verify = list(t.verify);
   const decisions = decisionsToHonor(readText(join(tf.change.dir, "analysis.md")) ?? "");
-  const tokenInfo = touchesUi(t) ? loadTokens(p) : null;
+  const tokenInfo = buildsScreens(t) ? loadTokens(p) : null;
   const tokens = tokenInfo && tokenInfo.diags.errors.length === 0 ? tokenInfo.tokens : [];
   const shots = shotsDir(p, id, taskId);
   const reportFile = join(p.run, `report-${taskId}.md`);
@@ -844,7 +910,12 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
     ...h("Touches (files this task may change)", touches.map((g) => `- \`${g}\``)),
     ...h("Verify", verify.map((v) => `- \`${v}\``)),
     ...h("Read first (context pointers; read only what you need)", [...pointers, ...adrs, ...packLines]),
-    ...h("Skills (read each SKILL.md and apply it)", skills.map((s) => `- \`${s.path}\`: ${s.reason}`)),
+    ...h("Skills (read each SKILL.md and apply it)", [
+      ...skills.map((s) => `- \`${s.path}\`: ${s.reason}`),
+      ...(skills.some((s) => SKILLS_WITH_NOTES.has(s.id))
+        ? [`- Some of these were written for another setup. Read \`${join(vendorDir, "..", "vendored-skill-notes.md")}\` first: it says what differs here and which of their statements are wrong.`]
+        : []),
+    ]),
   ];
 
   let body: string[];
@@ -855,6 +926,14 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
       const failed = failedCheckpoint.verify.find((v) => v.exit !== 0);
       if (failed) previous.push(`- \`${failed.command}\` failed${failed.timedOut ? " (timed out)" : ` with exit ${failed.exit}`}:`, "", "```", failed.tail, "```");
       if (failedCheckpoint.regression?.status === "not-red") previous.push(`- Regression proof failed: ${failedCheckpoint.regression.reason}. Write a test that fails on the old code (it is run against the base commit), then fix.`);
+      for (const problem of tamperProblems(failedCheckpoint.tamper ?? null)) {
+        previous.push(`- ${problem[0]?.toUpperCase()}${problem.slice(1)}. Put the test back and make it pass, or fix the code instead of switching the check off. A check may stay off only with the reason written on the same line; if the spec really removed the behavior a test covered, stop and report it.`);
+      }
+      if (failedCheckpoint.config?.locked.length) {
+        previous.push(`- You changed the configuration of the checks: ${failedCheckpoint.config.locked.map((f) => `\`${f}\``).join(", ")}. Put each file back as it was at the base commit (\`git checkout ${base ?? "<base>"} -- <file>\`) and fix the code instead. If the task cannot be done without that change, stop and report it: only a task planned as \`build\`, \`ci\` or \`chore\` changes these files.`);
+      }
+      if (failedCheckpoint.secrets?.length) previous.push(`- ${secretsProblem(failedCheckpoint.secrets)}. Read it from an environment variable, put only the name in \`.env.example\`, and say in your report that the key must be revoked if it was real.`);
+      for (const problem of packageProblems(failedCheckpoint.packages ?? null)) previous.push(`- ${problem}. Use an older released version without advisories, or another package; if none exists, stop and report it.`);
       if (failedCheckpoint.design?.missing_tokens.length) previous.push(`- Design tokens not found in the code: ${failedCheckpoint.design.missing_tokens.map((x) => `\`${x}\``).join(", ")}`);
       if (failedCheckpoint.design && failedCheckpoint.design.screenshots.length === 0) previous.push(`- No fresh screenshot in \`${shots}\``);
     }
@@ -872,6 +951,9 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
       "- Do not edit anything under `.aidw/`, do not run `aidw checkpoint`/`aidw review`, and do not commit, push or deploy: the orchestrator records progress and commits after an independent review.",
       "- Test first. For every scenario, write a test whose name contains the scenario id verbatim, e.g. `test(\"booking/cancel-appointment/cancel-upcoming: cancels and frees the slot\")`, asserting the THEN outcome. `aidw checkpoint` looks for these ids in test files.",
       "- Run every **Verify** command yourself and make it pass before reporting.",
+      "- Do not change lint, type-check, CI or git-hook configuration that already exists, and never put a key, token or password in a file: both fail the checkpoint.",
+      "- Add a package only when the task needs it, in a released version that is not brand new. The checkpoint looks every added package up: one that does not exist, is days old or has a known advisory fails.",
+      "- Never make a check pass by weakening it: do not delete or skip a test, leave `.only`, or add `eslint-disable`, `@ts-ignore`, `as any`, `# noqa` and the like. The checkpoint reads your diff for these and fails. If one is truly needed, write the reason on the same line; the reviewer judges it.",
       "- Stop every process you start (dev servers, watchers) before you report; the checkpoint reruns everything on a clean machine state.",
       ...(decisions.length
         ? ["- **Decisions to honor** are approved and binding. If one is wrong or blocks the task, stop and report it as a blocker; never deviate silently (not even a key name or a tool)."]
@@ -922,6 +1004,17 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
         : []),
       ...(existsSync(reportFile) ? [`- Implementer notes: \`${rel(p, reportFile)}\` (read it first; it explains files outside Touches and anything the implementer flagged).`] : []),
       ...(outside.length ? [`- Files changed outside Touches: ${outside.map((f) => `\`${f}\``).join(", ")}. Decide whether each is justified.`] : []),
+      ...(lastCheckpoint?.tamper?.justified.length
+        ? [`- Checks the task switched off, each with a stated reason: ${lastCheckpoint.tamper.justified.map((f) => `\`${f.file}:${f.line}\``).join(", ")}. Read each reason: if fixing the code was possible, the verdict is \`fix\`.`]
+        : []),
+      ...(lastCheckpoint?.tamper?.snapshots?.length
+        ? [`- Stored snapshots this task rewrote or removed: ${lastCheckpoint.tamper.snapshots.map((f) => `\`${f}\``).join(", ")}. Read the diff of each: a snapshot updated to match wrong output is a \`fix\`.`]
+        : []),
+      ...(lastCheckpoint?.config?.watched.length
+        ? [`- Configuration of the checks changed by this task: ${lastCheckpoint.config.watched.map((f) => `\`${f}\``).join(", ")}. Read the diff of each: a lowered threshold, a removed rule or a narrower include is a \`fix\`.`]
+        : []),
+      ...(lastCheckpoint?.packages?.checked.length ? [`- Packages added (each exists, is old enough and has no known advisory): ${lastCheckpoint.packages.checked.map((x) => `\`${x}\``).join(", ")}. Judge whether each is needed.`] : []),
+      ...(lastCheckpoint?.packages?.unproven.length ? [`- Packages aidw could NOT check: ${lastCheckpoint.packages.unproven.join("; ")}. Check that each is a real, established package.`] : []),
       ...(design?.screenshots.length ? [`- Screenshots (open each with Read): ${design.screenshots.map((f) => `\`${join(p.project, f)}\``).join(", ")}`] : []),
       ...(design?.hardcoded_colors.length ? [`- Color literals that are not tokens, in changed files: ${design.hardcoded_colors.map((f) => `\`${f}\``).join(", ")}. Each needs a reason or becomes a token.`] : []),
       "",

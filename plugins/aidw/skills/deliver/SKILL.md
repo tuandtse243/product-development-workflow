@@ -27,6 +27,13 @@ evidence: `README.md` (contents, deploy status), `quality-report.md` (every laye
 what was **not** covered), `tasks.md` (tasks, attempts, reviews, commits), `decisions.md`, and a
 `handoff.md` skeleton (only if missing). Do not edit the generated files: they are regenerated each run.
 
+## 1b. Release plan (drafting Agent)
+
+Spawn **`aidw:release`** with this prompt and nothing else:
+`Change <id> is delivered. Write .aidw/changes/<id>/release.md (release notes, deployment checklist, rollback, decision summary) as your Procedure says and reply with the path, the breaking changes and the irreversible steps.`
+Use its file as the source for `## Deploy`, `## Merge danger` and `## Known issues` below; do not rewrite it. A
+production deployment stays the user's decision and action.
+
 ## 2. Write handoff.md
 
 Replace every `TODO(aidw)`; keep the headings. Sources: `analysis.md`, `.aidw/requirements/`,
@@ -66,7 +73,10 @@ width; add mobile for the most important one):
 
 ## 4. Check and archive
 
-1. `aidw deliver --change <id>` again (regenerates README with the screenshots), then
+1. **Project documentation (drafting Agent).** Spawn **`aidw:documentation`** with this prompt and nothing else:
+   `Change <id> is delivered. Bring the project's README.md and .env.example up to date as your Procedure says (and the API documentation when the project has an API others call), and reply with the files, the commands you could not run and the differences you found.`
+   It may write only `README.md` and `.env.example` at this point. Put the differences it reports under `## Known issues`.
+   Then `aidw deliver --change <id>` again (regenerates the package README with the screenshots), and
    `aidw deliver --check --change <id>`. Fix every item it reports. It also checks the **project's** README:
    every `npm run` / `pnpm <script>` it names must exist in package.json. Update the project README so its
    setup and test commands are the ones that work now (the handoff's Run locally section). If the project has

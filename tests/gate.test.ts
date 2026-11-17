@@ -198,6 +198,20 @@ describe("backstop", () => {
     expect(again.systemMessage).toMatch(/src\/d\.txt/);
   });
 
+  it("does not repeat the same report on every turn: a stopped run can last hours", () => {
+    const dirty = () => ["src/d.txt"];
+    expect(JSON.parse(runBackstop(JSON.stringify({ cwd: root }), env, dirty)).decision).toBe("block"); // turn 1
+    expect(runBackstop(JSON.stringify({ cwd: root }), env, dirty)).toBe(""); // turn 2: the same files, the same state
+    expect(runBackstop(JSON.stringify({ cwd: root }), env, dirty)).toBe(""); // turn 3
+    // a new file is news
+    const more = JSON.parse(runBackstop(JSON.stringify({ cwd: root }), env, () => ["src/d.txt", "src/e.txt"]));
+    expect(more.decision).toBe("block");
+    expect(more.reason).toMatch(/src\/e\.txt/);
+    // and so is the same set after it changed in between
+    expect(runBackstop(JSON.stringify({ cwd: root }), env, () => ["src/d.txt", "src/e.txt"])).toBe("");
+    expect(JSON.parse(runBackstop(JSON.stringify({ cwd: root }), env, dirty)).decision).toBe("block");
+  });
+
   it("stays silent when the gate is open, nothing changed, or there is no project", () => {
     expect(runBackstop(JSON.stringify({ cwd: root }), env, () => [".aidw/changes/app/analysis.md"])).toBe("");
     const plain = tempProject();
@@ -206,6 +220,16 @@ describe("backstop", () => {
     readyForApproval();
     cli("approve", ID);
     expect(runBackstop(JSON.stringify({ cwd: root }), env, () => ["src/x"])).toBe("");
+  });
+
+  it("stays silent once no change is left: edits after the archive are the user's own", () => {
+    const after = tempProject();
+    run(["init", "--root", after], {}, after, { out: () => {}, err: () => {} });
+    expect(runBackstop(JSON.stringify({ cwd: after }), env, () => [".env.example"])).toBe("");
+    // an agent's write is still refused, with a reason that fits
+    const d = decide(hook("Write", { file_path: join(after, "src/a.ts") }, after), env);
+    expect(d?.decision).toBe("deny");
+    expect(d?.reason).toMatch(/no aidw change is open/);
   });
 });
 

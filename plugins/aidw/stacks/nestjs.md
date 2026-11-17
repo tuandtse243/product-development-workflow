@@ -1,6 +1,7 @@
 ---
 framework: NestJS
 roles: [backend, fullstack]
+skills: [aidw/nestjs-rules]
 ---
 # Framework pack: NestJS
 

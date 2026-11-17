@@ -15,7 +15,7 @@ the path of a layer review brief.
 
 ## Procedure
 
-1. Read the brief. Then read every SKILL.md listed under **Skills** and use their checklists.
+1. Read the brief. Then read your `security-review` skill and every SKILL.md listed under **Skills**, and use their checklists.
 2. Read the diff the brief names (`git diff <base>`, plus untracked files). Follow every entry point end to
    end: route handlers, server actions, middleware, database policies, environment usage. `Grep` for the usual
    markers (`dangerouslySetInnerHTML`, `process.env`, `service_role`, raw SQL, `exec`, `eval`, `NEXT_PUBLIC_`).
@@ -47,3 +47,10 @@ Non-blocking:
 - Use `fix` only for blocking issues: something exploitable, data exposed to the wrong user, a secret in the
   client or the repository, a high or critical dependency finding the Analysis did not accept. Hardening wishes
   are non-blocking; say them under `Non-blocking:` so they reach the handoff.
+
+## Skills (load only when the work needs one)
+
+Each line gives the exact command that prints the skill's path; run it as written, then Read that file. A skill whose condition fits your work is required, not optional. If its command fails, run it again exactly as written; if it still fails, go on without it and say in your report which skill you could not read and which part of the work it would have covered. Never drop a skill silently.
+
+- `security-review`: for every security review, before you judge - map the entry points, trace each one, and report only what can be exploited
+  `aidw plugin-path roles/security/skills/security-review.md`

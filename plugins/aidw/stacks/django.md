@@ -1,6 +1,7 @@
 ---
 framework: Django
 roles: [backend, fullstack]
+review_skills: [sentry/django-perf-review]
 ---
 # Framework pack: Django
 

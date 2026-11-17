@@ -248,6 +248,28 @@ describe("migration rule", () => {
     expect(cli(project({ tasks: task("    risk: high\n") }), "analyze", ID, "--json").out).not.toMatch(/database migrations/);
   });
 
+  it("only a database task may change the schema or migrations (the notes-app scaffold made the tables itself)", () => {
+    const task = (id: string, role: string, touches: string, extra = "") =>
+      `  - id: ${id}\n    title: ${id} work\n    role: ${role}\n    type: feat\n    scenarios: [${SCENARIO}]\n    touches: [${touches}]\n${extra}    verify: ['node -e "process.exit(0)"']\n    status: pending\n`;
+    const out = (tasks: string) => cli(project({ tasks: `tasks:\n${tasks}` }), "analyze", ID, "--json").out;
+
+    // the scaffold touches Drizzle's folder and the schema file: neither was recognized as a migration before
+    const folded = out(task("T01", "fullstack", '"package.json", "drizzle.config.ts", "drizzle/**", "src/db/schema.ts"', "    risk: high\n"));
+    expect(folded).toMatch(/task T01 changes the database schema or migrations \(touches \\"drizzle\/\*\*\\", \\"src\/db\/schema\.ts\\"\) but its role is \\"fullstack\\"/);
+    expect(folded).toMatch(/always its own task, owned by \\"database\\"/);
+
+    // divided as the planner is told: scaffold, then the database task, then the code that uses the tables
+    const divided =
+      task("T01", "fullstack", '"package.json", "drizzle.config.ts", "src/db/client.ts"') +
+      task("T02", "database", '"src/db/schema.ts", "drizzle/**", "tests/db/**"', "    risk: high\n    depends_on: [T01]\n") +
+      task("T03", "fullstack", '"src/db/notes.ts", "src/lib/**", "tests/unit/**"', "    depends_on: [T02]\n");
+    expect(out(divided)).not.toMatch(/changes the database schema|but also touches UI or API/);
+
+    // a database task keeps to the database
+    const mixed = out(task("T02", "database", '"drizzle/**", "src/app/page.tsx"', "    risk: high\n"));
+    expect(mixed).toMatch(/task T02 is owned by \\"database\\" but also touches UI or API files/);
+  });
+
   it("is in the profile and both reviewers", () => {
     const plugin = join(__dirname, "..", "plugins", "aidw");
     const read = (f: string) => readFileSync(join(plugin, f), "utf8");
