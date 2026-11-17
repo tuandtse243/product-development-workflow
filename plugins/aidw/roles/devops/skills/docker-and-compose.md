@@ -17,4 +17,6 @@ description: Dockerfile, compose and .dockerignore for an app and the services i
 - **Compose for local development.** Name each service, give the database a named volume and a `healthcheck`, and make the app
   `depends_on` it with `condition: service_healthy`. Values come from `${VAR}` or an `env_file` that is git-ignored; the
   repository holds `.env.example` with names and harmless placeholders.
-- **Check.** `docker compose config` must succeed; `docker build .` when Docker is available.
+- **Check.** `hadolint --failure-threshold warning Dockerfile` when hadolint is installed (or
+  `docker run --rm -i hadolint/hadolint < Dockerfile`); `docker compose config` must succeed; `docker build .` when Docker
+  is available.

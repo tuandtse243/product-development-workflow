@@ -207,15 +207,18 @@ full before vendoring it.
 - [x] Guard: install safety at the checkpoint for every package a task adds (npm, requirements.txt, uv.lock): it
   exists, is at least three days old (`AIDW_MIN_RELEASE_AGE_DAYS`) and has no known advisory, looked up on deps.dev.
   Without network the result is unproven and the reviewer is told.
-- [ ] Install safety before the install runs: the package manager's own release-age setting, in the stack packs.
-- [ ] Node pack: strict tsconfig flags; type-aware lint (typescript-eslint strict on TS 6 and lower, oxlint on TS 7).
-- [ ] Node pack: test lint packs (vitest, Playwright recommended as errors, `forbidOnly`); complexity limits.
-- [ ] Node pack: react-hooks and jsx-a11y strict; knip at the change layer; dependency-cruiser cycles and layers.
-- [ ] Python pack: extended Ruff rules and pyright strict; deptry and import-linter.
-- [ ] Squawk and Prisma/Drizzle drift checks when a task changes a migration.
-- [ ] zizmor, actionlint and hadolint when a task changes a workflow or a Dockerfile.
-- [ ] Coverage on the diff: 80% of new lines, config and generated files excluded; below it is a `fix`.
-- [ ] oasdiff and schemathesis at the change layer when the project has an OpenAPI spec.
+- [x] Install safety before the install runs: pnpm `minimumReleaseAge` and `allowBuilds`, uv `exclude-newer`, in the stack packs.
+- [x] Node pack: strict tsconfig flags; type-aware lint (oxlint on TypeScript 7, typescript-eslint strict on 6 and lower).
+- [x] Node pack: focused and skipped tests are lint errors, `forbidOnly`; complexity limits. The Playwright lint plugin is
+  left out on TypeScript 7: it needs the typescript-eslint parser, which does not support it.
+- [x] Node pack: react and jsx-a11y rules through oxlint; knip and dependency-cruiser in the `code` layer.
+- [x] Python pack: extended Ruff rules and pyright strict; deptry and import-linter.
+- [x] Squawk and Prisma/Django/Alembic drift checks when a task changes a migration (Drizzle: regenerate and compare).
+- [x] zizmor, actionlint and hadolint when a task changes a workflow or a Dockerfile.
+- [x] Coverage on the diff: `aidw diff-coverage` reads an LCOV report, 80% of the lines the Change added.
+- [x] oasdiff and schemathesis documented as layer commands for a project with an OpenAPI file.
+- [ ] Framework packs still describe ESLint; bring Next.js, NestJS, Nuxt and SvelteKit in line with the Node pack (wave 3).
+- [ ] Run the wave's trial on the greenfield and brownfield fixtures and compare with trial-3.
 
 ### Wave 2: reviewer, security, database, devops and the shared Skills
 
