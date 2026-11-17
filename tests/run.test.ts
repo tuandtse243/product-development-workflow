@@ -411,3 +411,37 @@ describe("gate for subagents", () => {
     expect(decide(h('aidw transition x paused --reason "a" > src/a.ts'), {})?.decision).toBe("deny");
   });
 });
+
+describe("a check the machine refused", () => {
+  // The output pnpm printed on a real run when the sandbox denied its store lock.
+  const DENIED = `node -e "console.error(process.argv[1]); process.exit(1)" ERR_PNPM_STORE_DIR_OPEN_OPERATION_LOCK`;
+
+  it("blocks the checkpoint without failing the task or using an attempt", () => {
+    const root = executingProject({ t2Verify: DENIED });
+    cli(root, "task", "start", "T01");
+    write(root, "tests/booking.test.ts", SCENARIO_TEST);
+    expect(cli(root, "checkpoint", "T01").code).toBe(0);
+    cli(root, "review", "T01", "pass");
+
+    expect(cli(root, "task", "start", "T02", "--json").json().attempt).toBe(1);
+    for (let i = 0; i < 2; i++) {
+      const r = cli(root, "checkpoint", "T02");
+      expect(r.code).toBe(1);
+      expect(r.out).toMatch(/BLOCKED \(environment\) T02 -> running, no attempt used/);
+      expect(r.out).toMatch(/refused by the machine \(ERR_PNPM_STORE_DIR_OPEN_OPERATION_LOCK\)/);
+      expect(r.out).toMatch(/outside the sandbox/);
+      expect(task(root, "T02")).toMatchObject({ status: "running", attempts: 1 }); // T02 allows 2: it would be escalated otherwise
+    }
+  });
+
+  it("still fails a task whose own check fails", () => {
+    const root = executingProject({ t2Verify: FAIL });
+    cli(root, "task", "start", "T01");
+    write(root, "tests/booking.test.ts", SCENARIO_TEST);
+    cli(root, "checkpoint", "T01");
+    cli(root, "review", "T01", "pass");
+    cli(root, "task", "start", "T02");
+    expect(cli(root, "checkpoint", "T02").out).toMatch(/^FAIL T02 -> failed/);
+    expect(task(root, "T02").status).toBe("failed");
+  });
+});

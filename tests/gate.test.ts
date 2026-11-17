@@ -221,6 +221,16 @@ describe("backstop", () => {
     cli("approve", ID);
     expect(runBackstop(JSON.stringify({ cwd: root }), env, () => ["src/x"])).toBe("");
   });
+
+  it("stays silent once no change is left: edits after the archive are the user's own", () => {
+    const after = tempProject();
+    run(["init", "--root", after], {}, after, { out: () => {}, err: () => {} });
+    expect(runBackstop(JSON.stringify({ cwd: after }), env, () => [".env.example"])).toBe("");
+    // an agent's write is still refused, with a reason that fits
+    const d = decide(hook("Write", { file_path: join(after, "src/a.ts") }, after), env);
+    expect(d?.decision).toBe("deny");
+    expect(d?.reason).toMatch(/no aidw change is open/);
+  });
 });
 
 describe("AIDW_HOOK_LOG", () => {

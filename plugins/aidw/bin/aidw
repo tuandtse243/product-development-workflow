@@ -8801,7 +8801,7 @@ function firstMatch(rules, text) {
   return rules.find((r) => r.re.test(text));
 }
 var APPROVE_COMMAND = /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+approve\b/;
-var RUNNER_COMMAND = /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+run\b/;
+var RUNNER_COMMAND = /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+run\b(?![^;&|]*\s--(?:status|stop)\b)/;
 var AIDW_COMMAND = /^\s*["']?(?:[^\s;&|"']*\/)?aidw["']?\s/;
 var SHELL_CHAINING = /[;&|`<>]|\$\(/;
 var AIDW_STATE_COMMAND = /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+(?:task|checkpoint|review|layer-review|verify|integrate|converge|deploy|first-deploy|deliver|transition|approve|archive|merge|init|change|brief|pr)\b/;
@@ -8874,6 +8874,9 @@ function closedReason(st) {
   }
   if (/=(?:escalated|paused)\b/.test(st.summary)) {
     return `the run is stopped (${st.summary}): project files stay frozen until the user decides how to continue (/aidw:status). Only .aidw/ may be written.`;
+  }
+  if (st.summary === "no changes") {
+    return "no aidw change is open (the last one is archived, or none was started): an agent writes project files only through an approved change. Start one (/aidw:start, or the bugfix workflow for a defect); the user may still edit files themselves. Only .aidw/ may be written.";
   }
   return `Analysis is not approved yet (${st.summary}). Only .aidw/ may be written before approval.`;
 }
@@ -9059,6 +9062,7 @@ function runBackstop(stdin, env, dirtyProvider = gitDirtyPaths) {
   const p = pathsFor(project);
   const st = gateState(p);
   if (st.open) return "";
+  if (st.summary === "no changes") return "";
   const dirty = dirtyProvider(project);
   if (!dirty) return "";
   const unexpected = unexpectedChanges(dirty, readBaseline(p));
@@ -10492,7 +10496,7 @@ function installProblem(r, id) {
     "This is the machine, not the code: no implementer can fix it, so do not start the build (or spawn another implementer) until it passes.",
     "Usual causes: a package security scanner (for example safe-chain) that times out downloading its list, a registry or proxy that is not reachable, a sandbox that denies the command.",
     `Fix it once, then check in about ten seconds with \`aidw doctor${id ? ` ${id}` : ""} --fresh\`: allow the install command outside the sandbox (/sandbox: \`excludedCommands\` or \`allowUnsandboxedCommands\`; when a command rewriter such as rtk prefixes it, allow the prefixed form too, \`rtk ${r.pm} install *\`), or warm the scanner's cache by running \`${r.pm} install\` once in your own terminal.`,
-    `Shortest way out: run the build in your own terminal with \`aidw run${id ? ` ${id}` : ""} --detach\`; its sessions run outside this sandbox and its proxy.`,
+    `Shortest way out: run the build in your own terminal with \`aidw run${id ? ` ${id}` : ""} --detach\`; it runs in auto mode, where a command this sandbox blocks is run again outside it without waiting for you.`,
     "To skip this check, set AIDW_SKIP_INSTALL_CHECK=1."
   ].join(" ");
 }
@@ -13072,8 +13076,10 @@ function findScenarioTests(project, ids) {
   }
   return found;
 }
+var SERVER_ROLES = /* @__PURE__ */ new Set(["backend", "database", "devops", "backend-engineer", "database-engineer"]);
+var buildsScreens = (t) => touchesUi(t) && !(typeof t.role === "string" && SERVER_ROLES.has(t.role));
 function designEvidence(p, id, t, changed, since) {
-  if (!touchesUi(t)) return null;
+  if (!buildsScreens(t)) return null;
   const { tokens, exists, diags } = loadTokens(p);
   if (!exists || diags.errors.length > 0 || tokens.length === 0) return null;
   const dir = taskDir(p, t);
@@ -13120,6 +13126,7 @@ var retryingShellRunner = (command, cwd, timeoutMs, env) => {
   const second = shellRunner(command, cwd, timeoutMs, env);
   return second.exit === 0 ? { ...second, flaky: true } : first;
 };
+var ENVIRONMENT_FAILURE = /Operation not permitted|ERR_PNPM_STORE_DIR_OPEN_OPERATION_LOCK|Proxy Authentication Required|proxy CONNECT failed|502 Bad Gateway|Timeout exceeded while scanning|Failed to check for malicious packages|getaddrinfo (EAI_AGAIN|ENOTFOUND)/i;
 var UNIT_TEST_COMMAND = /\b(vitest|jest|mocha|pytest|test)\b|go test|cargo test/;
 var BROWSER_COMMAND = /playwright|cypress|\be2e\b/i;
 var NOT_LOADABLE = /Cannot find module|ERR_MODULE_NOT_FOUND|Failed to resolve import|Failed to load url|ModuleNotFoundError|ImportError|does not provide an export named/i;
@@ -13232,6 +13239,13 @@ function checkpoint(p, id, taskId, opts = {}) {
   problems.push(...packageProblems(packages));
   if (design?.missing_tokens.length) problems.push(`design tokens not in the code: ${design.missing_tokens.join(", ")}`);
   if (design && design.screenshots.length === 0) problems.push(`no fresh screenshot in ${rel(p, shotsDir(p, id, taskId))}`);
+  const refused = failed && !failed.timedOut ? ENVIRONMENT_FAILURE.exec(failed.tail)?.[0] : void 0;
+  if (refused) {
+    const why = `environment: \`${failed.command}\` was refused by the machine (${refused}), not by the code`;
+    setField(tf, i, "notes", `checkpoint blocked: ${why}`);
+    saveTasks(tf);
+    return { ...record, task: taskId, status: "blocked", problems: [why, ...problems.filter((x) => !x.startsWith("verify failed"))], evidence: rel(p, (0, import_node_path32.join)(tf.change.dir, evidenceRel(taskId))) };
+  }
   setField(tf, i, "status", ok ? "review" : "failed");
   setField(tf, i, "evidence", evidenceRel(taskId));
   setField(tf, i, "notes", ok ? null : `checkpoint: ${problems.join("; ")}`);
@@ -13451,7 +13465,7 @@ ${req.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`;
   const touches = list4(t.touches);
   const verify2 = list4(t.verify);
   const decisions = decisionsToHonor(readText((0, import_node_path32.join)(tf.change.dir, "analysis.md")) ?? "");
-  const tokenInfo = touchesUi(t) ? loadTokens(p) : null;
+  const tokenInfo = buildsScreens(t) ? loadTokens(p) : null;
   const tokens = tokenInfo && tokenInfo.diags.errors.length === 0 ? tokenInfo.tokens : [];
   const shots = shotsDir(p, id, taskId);
   const reportFile2 = (0, import_node_path32.join)(p.run, `report-${taskId}.md`);
@@ -15150,7 +15164,7 @@ Then: aidw triage ${taskId}
         if (timeout !== void 0 && !(Number(timeout) > 0)) throw new UsageError("--timeout must be a number of seconds");
         const r = checkpoint(p, id, need(rest[0], "task id"), timeout ? { timeoutMs: Number(timeout) * 1e3 } : {});
         const lines = [
-          `${r.ok ? "PASS" : "FAIL"} ${r.task} -> ${r.status}  (evidence ${r.evidence})`,
+          `${r.ok ? "PASS" : r.status === "blocked" ? "BLOCKED (environment)" : "FAIL"} ${r.task} -> ${r.status === "blocked" ? "running, no attempt used" : r.status}  (evidence ${r.evidence})`,
           ...Object.entries(r.scenarios).map(([s, locs]) => `  ${locs.length ? "ok     " : "MISSING"} ${s}${locs.length ? `  ${locs[0]}` : ""}`),
           ...r.verify.map((v) => `  ${v.exit === 0 ? "ok     " : "FAILED "} ${v.command}  (${Math.round(v.ms / 1e3)}s${v.timedOut ? ", timed out" : ""})`),
           ...r.outside_touches.length ? [`  outside touches: ${r.outside_touches.join(", ")}`] : [],
@@ -15172,6 +15186,9 @@ SPAWN ${AGENTS.taskReview} with: ${REVIEWER_PROMPT(reviewBrief)}
 Then: aidw verdict ${r.task}
 `;
           }
+        } else if (r.status === "blocked") {
+          after = `NEXT: the machine refused a check, not the code. Run \`aidw checkpoint ${r.task} --change ${id}\` once more outside the sandbox (dangerouslyDisableSandbox: true); if it is blocked again, escalate with this line. Do not start a new attempt or spawn the implementer again.
+`;
         } else {
           after = nextLine(p, id);
         }

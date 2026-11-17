@@ -149,6 +149,9 @@ export function closedReason(st: GateState): string {
   if (/=(?:escalated|paused)\b/.test(st.summary)) {
     return `the run is stopped (${st.summary}): project files stay frozen until the user decides how to continue (/aidw:status). Only .aidw/ may be written.`;
   }
+  if (st.summary === "no changes") {
+    return "no aidw change is open (the last one is archived, or none was started): an agent writes project files only through an approved change. Start one (/aidw:start, or the bugfix workflow for a defect); the user may still edit files themselves. Only .aidw/ may be written.";
+  }
   return `Analysis is not approved yet (${st.summary}). Only .aidw/ may be written before approval.`;
 }
 

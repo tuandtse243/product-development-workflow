@@ -84,6 +84,9 @@ export function runBackstop(stdin: string, env: NodeJS.ProcessEnv, dirtyProvider
   const p = pathsFor(project);
   const st = gateState(p);
   if (st.open) return ""; // in-scope checks against task `touches` arrive with the orchestrator (S3)
+  // No change at all (the last one archived): edits are the user's own work on the delivered app (seen on a real run:
+  // the user filled in .env.example and the backstop blamed the session). The gate still denies an agent's writes.
+  if (st.summary === "no changes") return "";
 
   const dirty = dirtyProvider(project);
   if (!dirty) return "";

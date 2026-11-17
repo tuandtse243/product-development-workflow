@@ -348,8 +348,16 @@ export interface DesignEvidence {
 }
 
 /** Design checks for a UI task when the approved design has tokens; null otherwise. */
+const SERVER_ROLES: ReadonlySet<string> = new Set(["backend", "database", "devops", "backend-engineer", "database-engineer"]);
+/**
+ * A task whose screens the design check judges: it touches UI paths and its Role is not a server-side one, which builds
+ * no screen whatever its paths look like (seen on a real run: a backend task owning a Next.js route handler under
+ * app/rooms/ had to screenshot raw JSON to pass).
+ */
+const buildsScreens = (t: Task): boolean => touchesUi(t) && !(typeof t.role === "string" && SERVER_ROLES.has(t.role));
+
 function designEvidence(p: Paths, id: string, t: Task, changed: string[] | null, since: string | undefined): DesignEvidence | null {
-  if (!touchesUi(t)) return null;
+  if (!buildsScreens(t)) return null;
   const { tokens, exists, diags } = loadTokens(p);
   if (!exists || diags.errors.length > 0 || tokens.length === 0) return null;
   const dir = taskDir(p, t);
@@ -423,9 +431,18 @@ export const retryingShellRunner: CommandRunner = (command, cwd, timeoutMs, env)
   return second.exit === 0 ? { ...second, flaky: true } : first;
 };
 
+/**
+ * Output of a check the machine refused, not the code: the sandbox denying a file lock, a proxy answering 407 or 502,
+ * a package scanner timing out. Seen on a real run: `pnpm install --frozen-lockfile` in a scaffold's verify hit the
+ * sandbox's denial of pnpm's store lock twice, and each counted as a failed attempt (2 of 3 used on a correct task).
+ */
+export const ENVIRONMENT_FAILURE =
+  /Operation not permitted|ERR_PNPM_STORE_DIR_OPEN_OPERATION_LOCK|Proxy Authentication Required|proxy CONNECT failed|502 Bad Gateway|Timeout exceeded while scanning|Failed to check for malicious packages|getaddrinfo (EAI_AGAIN|ENOTFOUND)/i;
+
 export interface CheckpointResult extends CheckpointRecord {
   task: string;
-  status: "review" | "failed";
+  /** `blocked`: a check failed for a reason outside the code; the task stays running and no attempt is used */
+  status: "review" | "failed" | "blocked";
   /** why the checkpoint failed, one line each (empty when it passed) */
   problems: string[];
   evidence: string;
@@ -561,6 +578,13 @@ export function checkpoint(
   problems.push(...packageProblems(packages));
   if (design?.missing_tokens.length) problems.push(`design tokens not in the code: ${design.missing_tokens.join(", ")}`);
   if (design && design.screenshots.length === 0) problems.push(`no fresh screenshot in ${rel(p, shotsDir(p, id, taskId))}`);
+  const refused = failed && !failed.timedOut ? ENVIRONMENT_FAILURE.exec(failed.tail)?.[0] : undefined;
+  if (refused) {
+    const why = `environment: \`${failed!.command}\` was refused by the machine (${refused}), not by the code`;
+    setField(tf, i, "notes", `checkpoint blocked: ${why}`);
+    saveTasks(tf);
+    return { ...record, task: taskId, status: "blocked", problems: [why, ...problems.filter((x) => !x.startsWith("verify failed"))], evidence: rel(p, join(tf.change.dir, evidenceRel(taskId))) };
+  }
   setField(tf, i, "status", ok ? "review" : "failed");
   setField(tf, i, "evidence", evidenceRel(taskId));
   setField(tf, i, "notes", ok ? null : `checkpoint: ${problems.join("; ")}`);
@@ -862,7 +886,7 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
   const touches = list(t.touches);
   const verify = list(t.verify);
   const decisions = decisionsToHonor(readText(join(tf.change.dir, "analysis.md")) ?? "");
-  const tokenInfo = touchesUi(t) ? loadTokens(p) : null;
+  const tokenInfo = buildsScreens(t) ? loadTokens(p) : null;
   const tokens = tokenInfo && tokenInfo.diags.errors.length === 0 ? tokenInfo.tokens : [];
   const shots = shotsDir(p, id, taskId);
   const reportFile = join(p.run, `report-${taskId}.md`);

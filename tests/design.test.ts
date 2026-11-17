@@ -37,21 +37,21 @@ function cli(root: string, ...argv: string[]) {
   return { code, out, err, json: () => JSON.parse(out) };
 }
 
-function packageFor(root: string, opts: { tokens?: boolean; analysis?: string } = {}) {
+function packageFor(root: string, opts: { tokens?: boolean; analysis?: string; role?: string } = {}) {
   cli(root, "init");
   write(root, ".aidw/specs/booking/spec.md", MAIN_SPEC);
   cli(root, "change", "new", ID);
   const c = `.aidw/changes/${ID}`;
   write(root, `${c}/analysis.md`, opts.analysis ?? ANALYSIS_MD);
   if (opts.tokens !== false) write(root, ".aidw/design/tokens.yaml", TOKENS_YAML);
-  write(root, `${c}/tasks.yaml`, TASKS);
+  write(root, `${c}/tasks.yaml`, opts.role ? TASKS.replace("role: frontend-engineer", `role: ${opts.role}`) : TASKS);
   write(root, `${c}/quality.yaml`, QUALITY_YAML);
   write(root, `${c}/specs/booking/spec.md`, `## ADDED Requirements\n\n${REQ("Reschedule appointment")}`);
 }
 
-function executing(): string {
+function executing(role?: string): string {
   const root = tempProject();
-  packageFor(root);
+  packageFor(root, role ? { role } : {});
   for (const s of ["intake", "analyzing", "awaiting_approval"]) expect(cli(root, "transition", ID, s).code).toBe(0);
   expect(cli(root, "approve", ID).code).toBe(0);
   const g = (...a: string[]) => execFileSync("git", a, { cwd: root, stdio: "ignore" });
@@ -159,6 +159,18 @@ describe("checkpoint and briefs for UI tasks", () => {
     expect(brief).toMatch(/stop and report it as a blocker; never deviate silently/);
     expect(brief).toMatch(/\| `accent` \| color \| `#E5533D` \| `#FF7A66` \| primary buttons and the selected slot \|/);
     expect(brief).toContain(join(root, ".aidw/run/shots", ID, "T01"));
+  });
+
+  it("asks no screenshot of a server-side task, whatever its paths look like", () => {
+    // seen on a real run: a backend task owning a Next.js route handler under app/ had to photograph raw JSON
+    const api = executing("backend");
+    write(api, "tests/booking.test.ts", SCENARIO_TEST);
+    cli(api, "task", "start", "T01");
+    const brief = readFileSync(cli(api, "brief", "T01").out.trim(), "utf8");
+    expect(brief).not.toMatch(/Screenshots/);
+    const r = cli(api, "checkpoint", "T01", "--json");
+    expect(r.code).toBe(0);
+    expect(r.json().design).toBeUndefined();
   });
 
   it("fails without the tokens in the code or without a fresh screenshot", () => {

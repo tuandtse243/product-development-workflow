@@ -54,10 +54,11 @@ that aidw creates; everything else runs sequentially on the main checkout.
    - FAIL: stop and tell the user what to fix (the line says how), then run it again.
    - `package install` FAIL: packages cannot be installed from here (a scanner, a proxy, the sandbox). No implementer can fix
      that. Give the user the line as it is, and do not spawn anything until `aidw doctor <id> --fresh` passes.
-     Offer the shortest way out first: `aidw run <id> --detach` in the user's own terminal. Its headless sessions run
-     outside this session's sandbox, so installs skip the sandbox proxy (seen on a real run: in-session installs failed
-     for hours with scanner timeouts, 502 and 407 from that proxy; the same scaffold installed in ten minutes under
-     `aidw run`). The probe installs one tiny package, so it can pass while a large install (`next`) still times out:
+     Offer the shortest way out first: `aidw run <id> --detach` in the user's own terminal. The runner probes from the
+     user's terminal, and its headless sessions run in auto mode, where a command the sandbox blocks can be run again
+     outside it without waiting for a person (seen on real runs: in-session installs failed for hours with scanner
+     timeouts, 502 and 407 from the sandbox proxy; the same scaffold installed in ten minutes under `aidw run`).
+     The probe installs one tiny package, so it can pass while a large install (`next`) still times out:
      if an implementer's install fails after a passing probe, treat it as the same blocker and offer `aidw run`.
      Do not try other package managers, flags or settings changes to get around a scanner or proxy: those are the
      user's policy, not a bug to route around.
@@ -79,7 +80,9 @@ that aidw creates; everything else runs sequentially on the main checkout.
 Trial-3A: 186 orchestrator turns re-read a context that grew from 51K to 300K tokens; that was 57% of the cost.
 
 - Every aidw command prints a `NEXT:` or `SPAWN` line: follow it. Do not call `aidw next` or `aidw status` in between.
-- After spawning subagents, end the turn with no text. Do not narrate waiting or restate what a result said.
+- After spawning subagents, end the turn with one short line (`Waiting for T03.`), never with no text: an empty
+  turn makes Claude Code ask for a visible reply, which costs a whole extra turn (seen on a real run). Do not
+  narrate waiting or restate what a result said.
 - Run independent aidw commands in one Bash call (`aidw checkpoint T02; aidw checkpoint T03`), and spawn every
   ready subagent in one message. Do not Read files a brief already summarizes.
 - A fix task of a layer that has its own reviewer is auto-reviewed: do not spawn a reviewer for it.
@@ -110,6 +113,11 @@ aidw next --change <id> --json
 4. `aidw checkpoint <T> --change <id>`. Read its last lines:
    - FAIL: the task is marked failed with the reason. It prints `NEXT: implement <T> (retry)`; loop (the retry
      brief carries the failure and the debugging skill).
+   - BLOCKED (environment): a check failed because the machine refused it (the sandbox denied a file lock, a proxy
+     answered 407 or 502, a package scanner timed out), not because of the code. The task stays running and no
+     attempt is used. Run the same `aidw checkpoint` once more outside the sandbox (`dangerouslyDisableSandbox: true`;
+     auto mode allows it, an interactive session asks the user). If it is blocked again, go to *Escalate* with the
+     printed line. Never start a new attempt or spawn the implementer again for it.
    - PASS with `auto-passed`: a converge task that only added tests; it is reviewed and committed already.
      Follow the printed `NEXT:`.
    - PASS with `SPAWN aidw:code-reviewer`: go to the review step below.

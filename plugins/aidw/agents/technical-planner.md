@@ -96,7 +96,10 @@ it leaves the automatic approval and waits for the user.
   component), the slices cannot overlap and no wave runs (trial-3C: T04 and T05 both edited
   `components/notes-app.tsx` outside their `touches`). Build that file in the first slice with a clear extension
   point (a list of sections, a router table), and list it in the `touches` of every slice that adds to it, so the
-  plan shows the real conflict.
+  plan shows the real conflict. The same holds for **registries every screen extends**: the message catalogue
+  (`lib/i18n/*`), the `shots` spec's route list, the nav menu. A task that adds a screen lists them in its `touches`
+  (trial-4: T04 added the rooms page but could not add its strings to `lib/i18n/vi.ts` or its route to
+  `tests/e2e/shots.spec.ts`, so both were left for later and reported as gaps).
 - **A Given the app cannot set up gets a seed task first.** When a scenario's Given needs state that no screen or
   API can create (for example "some todos are done" and nothing marks one done), plan one early task, owned by the
   Role that owns the data, that adds a test-only way to set it: a reset-and-seed route or hook that exists only when

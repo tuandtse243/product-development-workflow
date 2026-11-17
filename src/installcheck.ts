@@ -143,7 +143,7 @@ export function installProblem(r: InstallProbe, id?: string | null): string {
     "This is the machine, not the code: no implementer can fix it, so do not start the build (or spawn another implementer) until it passes.",
     "Usual causes: a package security scanner (for example safe-chain) that times out downloading its list, a registry or proxy that is not reachable, a sandbox that denies the command.",
     `Fix it once, then check in about ten seconds with \`aidw doctor${id ? ` ${id}` : ""} --fresh\`: allow the install command outside the sandbox (/sandbox: \`excludedCommands\` or \`allowUnsandboxedCommands\`; when a command rewriter such as rtk prefixes it, allow the prefixed form too, \`rtk ${r.pm} install *\`), or warm the scanner's cache by running \`${r.pm} install\` once in your own terminal.`,
-    `Shortest way out: run the build in your own terminal with \`aidw run${id ? ` ${id}` : ""} --detach\`; its sessions run outside this sandbox and its proxy.`,
+    `Shortest way out: run the build in your own terminal with \`aidw run${id ? ` ${id}` : ""} --detach\`; it runs in auto mode, where a command this sandbox blocks is run again outside it without waiting for you.`,
     "To skip this check, set AIDW_SKIP_INSTALL_CHECK=1.",
   ].join(" ");
 }
