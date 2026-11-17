@@ -105,6 +105,22 @@ Ignore its "Initial Response" section (it tells the agent to wait for a question
 `../<other>/SKILL.md`. `var(--transform-origin)` and `data-starting-style` belong to one component library: use the
 project's own equivalents. Add no motion library for an effect CSS can do.
 
+## impeccable (craft-floor.md, antipatterns.json, clarify.md, harden.md)
+
+Lookup material, not a skill: there is no hook and no `impeccable` command for you to run, so check each line
+yourself on the rendered screen. Where it says "the brief" or "the committed visual world", read the approved
+Design Direction: only an exception written there lifts a rule. The `<codex>` block applies to every model. In
+`antipatterns.json` the `quality` rules are failures of use and the `slop` rules are signs of a generic interface.
+`clarify.md` (interface wording) and `harden.md` (edge cases) each end by handing off to an `impeccable` command:
+skip that line. Where they conflict with aidw's usability rules, the usability rules win.
+
+## vercel (command.md)
+
+A checklist for the code, not a skill: ignore its "Output Format" (your report shape is in your brief) and do not
+fetch anything. Its Animation, Typography, Images, Performance and Hydration sections are covered elsewhere; the
+approved Design Direction decides motion. Its examples are React and Tailwind: apply the rule, not the class name.
+Where it conflicts with aidw's usability rules (for example the size of a touch target), the usability rules win.
+
 ## mongodb/mongodb-schema-design
 
 Pattern lookup only, for design before any database exists. Ignore its ask-the-user workflow, its MCP and Atlas

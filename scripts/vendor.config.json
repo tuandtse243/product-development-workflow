@@ -151,5 +151,29 @@
     "skills": {
       "mongodb-schema-design": "plugins/mongodb/skills/mongodb-schema-design"
     }
+  },
+  "impeccable": {
+    "repo": "pbakaus/impeccable",
+    "ref": "main",
+    "license": "LICENSE",
+    "notice": "NOTICE.md",
+    "role": "The signs of a generic generated interface (rule catalog, craft floor) and interface wording and edge cases (clarify, harden): lookup material for the ui-ux-designer and frontend Roles (ADR-0005)",
+    "skills": {},
+    "files": {
+      "craft-floor.md": "skill/reference/craft-floor.md",
+      "antipatterns.json": "crates/live/assets/antipatterns.json",
+      "clarify.md": "skill/reference/clarify.md",
+      "harden.md": "skill/reference/harden.md"
+    }
+  },
+  "vercel": {
+    "repo": "vercel-labs/web-interface-guidelines",
+    "ref": "main",
+    "license": "LICENSE",
+    "role": "Interface rules that can be checked in the code (focus, forms, navigation and state, touch, content): lookup material for the frontend Roles and the UI review (ADR-0005)",
+    "skills": {},
+    "files": {
+      "command.md": "command.md"
+    }
   }
 }
