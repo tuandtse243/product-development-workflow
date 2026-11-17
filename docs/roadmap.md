@@ -193,9 +193,11 @@ full before vendoring it.
 
 ### Wave 1: Guards, tooling and broken links
 
-- [ ] Vendor the five Addy `references/` files the vendored Skills link to (19 dangling links today).
-- [ ] Guard: test tampering and suppressions, a diff check at the task checkpoint (deleted or skipped tests, `.only`,
-  `eslint-disable`, `@ts-ignore`, `as any`, `# noqa`, lowered thresholds, `--update-snapshots`); a violation is a `fix`.
+- [x] Vendor the five Addy `references/` files the vendored Skills link to (19 dangling links before).
+- [x] Guard: test tampering and suppressions, a diff check at the task checkpoint (deleted or skipped tests, `.only`,
+  `eslint-disable`, `@ts-ignore`, `as any`, `# noqa`); a violation fails the checkpoint, a suppression with a reason
+  on its line goes to the reviewer. A task that removes a requirement sets `removes_tests: true`.
+- [ ] Guard: lowered thresholds and rewritten snapshots (`--update-snapshots`), not covered by the diff check yet.
 - [ ] Guard: implementing Roles cannot edit lint, tsconfig, CI or hook configuration, or commit with `--no-verify`
   (the scaffold task is exempt).
 - [ ] Guard: secrets scan of the staged diff before a commit.

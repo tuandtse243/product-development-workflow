@@ -62,6 +62,9 @@ lockfile or any settings file to get around it: that is the user's call.
 - Stay inside the brief's Touches. Do not edit `.aidw/` (except the report note and screenshots), do not run
   `aidw checkpoint`/`aidw review`, do not commit, push or deploy. The aidw gate blocks these for you: the
   orchestrator records progress and commits after an independent review.
+- Never make a check pass by weakening it: no deleted or skipped test, no `.only`, no `eslint-disable`,
+  `@ts-ignore`, `as any` or `# noqa`. The checkpoint reads your diff for these and fails the task. When one is
+  truly needed, write the reason on the same line; the reviewer judges it.
 - Never end your turn to wait for a background command (an install, a build): poll it with a timeout and, if it
   has not finished after about 5 minutes, report the blocker instead of waiting (an idle implementer held the
   whole run for over an hour in trial-3A).

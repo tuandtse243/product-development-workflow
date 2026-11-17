@@ -29,6 +29,7 @@ import { readText, rel, walkFiles, type Paths } from "./project.js";
 import { ensureWorktree, removeSnapshot, snapshotBase, integrate, mergeWorktree, parallelConfig, pendingIntegration, planWave, removeWorktree, taskDir, type IntegrateResult } from "./parallel.js";
 import { parseQuality, qualityFile, resetQualitySummary } from "./quality.js";
 import { selectSkills, touchesUi, isSecuritySensitive, type BriefKind } from "./skills.js";
+import { tamperEvidence, tamperProblems, type TamperEvidence } from "./tamper.js";
 import { DEFAULT_MAX_ATTEMPTS, parseTasks, planSha, validateTasksText, type Task } from "./tasks.js";
 
 const now = () => new Date().toISOString();
@@ -304,6 +305,8 @@ export interface CheckpointRecord {
   verify: VerifyRun[];
   changed_files: string[] | null;
   outside_touches: string[];
+  /** tests removed, skipped or focused, and checks switched off, in what the task changed */
+  tamper?: TamperEvidence;
   /** UI tasks with approved design tokens only */
   design?: DesignEvidence;
   /** `type: fix` tasks only: does the new test fail on the old code? */
@@ -509,7 +512,9 @@ export function checkpoint(
   const designOk = !design || (design.missing_tokens.length === 0 && design.screenshots.length > 0);
   const regression = t.type === "fix" && verifyOk ? proveRegression(p, id, t, dir, base, changed, runner, timeoutMs) : undefined;
   const regressionOk = !regression || regression.status !== "not-red";
-  const ok = verifyOk && missing.length === 0 && designOk && regressionOk;
+  const tamper = tamperEvidence(dir, base, changed, { isTest: (f) => TEST_FILE.test(f), removesTests: t.removes_tests === true });
+  const tamperOk = !tamper || tamper.blocked.length === 0;
+  const ok = verifyOk && missing.length === 0 && designOk && regressionOk && tamperOk;
 
   const record: CheckpointRecord = {
     attempt: attemptsOf(t),
@@ -521,6 +526,7 @@ export function checkpoint(
     verify,
     changed_files: changed,
     outside_touches: outside,
+    ...(tamper && (tamper.blocked.length || tamper.justified.length) ? { tamper } : {}),
     ...(design ? { design } : {}),
     ...(regression ? { regression } : {}),
   };
@@ -533,6 +539,7 @@ export function checkpoint(
   const failed = verify.find((v) => v.exit !== 0);
   if (failed) problems.push(`verify failed: \`${failed.command}\`${failed.timedOut ? " (timed out)" : ` (exit ${failed.exit})`}`);
   if (regression?.status === "not-red") problems.push(`no regression proof: ${regression.reason}`);
+  problems.push(...tamperProblems(tamper));
   if (design?.missing_tokens.length) problems.push(`design tokens not in the code: ${design.missing_tokens.join(", ")}`);
   if (design && design.screenshots.length === 0) problems.push(`no fresh screenshot in ${rel(p, shotsDir(p, id, taskId))}`);
   setField(tf, i, "status", ok ? "review" : "failed");
@@ -855,6 +862,9 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
       const failed = failedCheckpoint.verify.find((v) => v.exit !== 0);
       if (failed) previous.push(`- \`${failed.command}\` failed${failed.timedOut ? " (timed out)" : ` with exit ${failed.exit}`}:`, "", "```", failed.tail, "```");
       if (failedCheckpoint.regression?.status === "not-red") previous.push(`- Regression proof failed: ${failedCheckpoint.regression.reason}. Write a test that fails on the old code (it is run against the base commit), then fix.`);
+      for (const problem of tamperProblems(failedCheckpoint.tamper ?? null)) {
+        previous.push(`- ${problem[0]?.toUpperCase()}${problem.slice(1)}. Put the test back and make it pass, or fix the code instead of switching the check off. A check may stay off only with the reason written on the same line; if the spec really removed the behavior a test covered, stop and report it.`);
+      }
       if (failedCheckpoint.design?.missing_tokens.length) previous.push(`- Design tokens not found in the code: ${failedCheckpoint.design.missing_tokens.map((x) => `\`${x}\``).join(", ")}`);
       if (failedCheckpoint.design && failedCheckpoint.design.screenshots.length === 0) previous.push(`- No fresh screenshot in \`${shots}\``);
     }
@@ -872,6 +882,7 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
       "- Do not edit anything under `.aidw/`, do not run `aidw checkpoint`/`aidw review`, and do not commit, push or deploy: the orchestrator records progress and commits after an independent review.",
       "- Test first. For every scenario, write a test whose name contains the scenario id verbatim, e.g. `test(\"booking/cancel-appointment/cancel-upcoming: cancels and frees the slot\")`, asserting the THEN outcome. `aidw checkpoint` looks for these ids in test files.",
       "- Run every **Verify** command yourself and make it pass before reporting.",
+      "- Never make a check pass by weakening it: do not delete or skip a test, leave `.only`, or add `eslint-disable`, `@ts-ignore`, `as any`, `# noqa` and the like. The checkpoint reads your diff for these and fails. If one is truly needed, write the reason on the same line; the reviewer judges it.",
       "- Stop every process you start (dev servers, watchers) before you report; the checkpoint reruns everything on a clean machine state.",
       ...(decisions.length
         ? ["- **Decisions to honor** are approved and binding. If one is wrong or blocks the task, stop and report it as a blocker; never deviate silently (not even a key name or a tool)."]
@@ -922,6 +933,9 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
         : []),
       ...(existsSync(reportFile) ? [`- Implementer notes: \`${rel(p, reportFile)}\` (read it first; it explains files outside Touches and anything the implementer flagged).`] : []),
       ...(outside.length ? [`- Files changed outside Touches: ${outside.map((f) => `\`${f}\``).join(", ")}. Decide whether each is justified.`] : []),
+      ...(lastCheckpoint?.tamper?.justified.length
+        ? [`- Checks the task switched off, each with a stated reason: ${lastCheckpoint.tamper.justified.map((f) => `\`${f.file}:${f.line}\``).join(", ")}. Read each reason: if fixing the code was possible, the verdict is \`fix\`.`]
+        : []),
       ...(design?.screenshots.length ? [`- Screenshots (open each with Read): ${design.screenshots.map((f) => `\`${join(p.project, f)}\``).join(", ")}`] : []),
       ...(design?.hardcoded_colors.length ? [`- Color literals that are not tokens, in changed files: ${design.hardcoded_colors.map((f) => `\`${f}\``).join(", ")}. Each needs a reason or becomes a token.`] : []),
       "",
