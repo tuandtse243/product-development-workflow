@@ -68,6 +68,11 @@ _Avoid_: Checkpoint (that word means the per-task evidence check)
 A place a Workflow declares where a named Role chooses one answer from a fixed set.
 _Avoid_: Branch, detour
 
+**Decision Page**:
+A throwaway view that lays the options of one round of questions or one Approval Gate side by side so the
+user can choose; the choices it yields are recorded in Artifacts, and the page itself is not one.
+_Avoid_: Artifact, report, form
+
 **Triage**:
 The independent diagnosis of why a task ran out of attempts: implementation, plan, spec, architecture or environment.
 _Avoid_: Debugging, post-mortem

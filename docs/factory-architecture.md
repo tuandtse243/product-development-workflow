@@ -188,6 +188,12 @@ The CLI computes every transition from the Workflow definition ([ADR-0003](adr/0
 The LLM Orchestrator classifies the request, talks with the user and reports. It never picks a step that the
 Workflow does not contain.
 
+When the user has to choose, the Orchestrator does not print the options into the chat. It writes them as data and
+the CLI renders a **Decision Page** ([ADR-0007](adr/0007-decision-pages-are-views.md)): interview rounds, the design
+direction, an escalated task's decision, the audit pick list and both Approval Gates. The user's choices come back as
+pasted text that the CLI checks before anything is recorded; the page is a view under `.aidw/run/pages/` and never
+an Artifact. How a Role writes one: `plugins/aidw/library/decision-pages.md`.
+
 Six kinds of decision, and who makes each:
 
 | Decision | Made by | Control |

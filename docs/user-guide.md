@@ -68,6 +68,20 @@ Các lệnh CLI hữu ích khi bạn tự gõ `aidw` (xem mục 2 để đưa n�
 | `aidw task reopen <T> [--revert]` | task đã xong nhưng sai: về pending; `--revert` hoàn tác commit của nó (chỉ code, `.aidw/` giữ nguyên) |
 | `aidw pr [<id>] [--create]` | sau bàn giao: in nội dung PR; `--create` push nhánh và mở PR bằng `gh` (luôn hỏi bạn trước) |
 
+**Trang quyết định (Decision Page).** Khi cần bạn chọn, aidw không in một khối chữ dài vào terminal nữa. Nó in một link
+`file://…/.aidw/run/pages/<tên>.html` kèm một hai dòng tóm tắt. Giữ Cmd và bấm link (hoặc gõ `! open <đường dẫn>`) để mở
+trang trong trình duyệt:
+
+- **Vòng câu hỏi** (phỏng vấn, stack, hướng thiết kế, task bị dừng): mỗi câu là một hàng thẻ phương án đặt cạnh nhau, có
+  dòng được, mất và các tiêu chí so sánh thẳng hàng. Phương án aidw đề xuất được chọn sẵn kèm lý do.
+- **Cổng duyệt**: mỗi mục (phạm vi, stack, thiết kế, chất lượng, quyền, rủi ro) bạn đánh dấu "Đồng ý" hoặc "Cần sửa" kèm ghi chú.
+- **Audit**: tick các phát hiện muốn sửa, xếp theo mức nghiêm trọng.
+
+Chọn xong, bấm **Sao chép câu trả lời** rồi dán khối chữ vào chat. aidw kiểm tra khối chữ đó (thiếu câu, sai mã, trang đã
+cũ) rồi mới ghi vào `analysis.md`. Trang chỉ là bản xem: nó nằm trong `.aidw/run/` và không được commit; việc duyệt chính
+thức vẫn là `/aidw:approve`. Nếu trình duyệt chặn nút sao chép với file cục bộ, bôi đen khối chữ ở thanh dưới cùng và sao
+chép tay. Bạn vẫn có thể trả lời thẳng trong chat nếu muốn. Lý do thiết kế: [ADR-0007](adr/0007-decision-pages-are-views.md).
+
 **Change nhỏ.** `start` đề xuất `Size: small` cho bugfix hoặc chỉnh một hành vi; bạn xác nhận ở cổng duyệt. Nhỏ nghĩa là tối đa
 3 task, chỉ lớp `code` + `unit` (+ `e2e` nếu có UI), không deploy nếu bạn không yêu cầu, và bugfix phải có test tái hiện lỗi
 chạy fail trước khi sửa.
