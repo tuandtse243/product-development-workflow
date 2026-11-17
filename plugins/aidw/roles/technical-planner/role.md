@@ -43,6 +43,7 @@ tasks:
     depends_on: []             # blocking edges: only a real data dependency (trial-3C: a near-chain ran with no wave)
     touches: ["app/(site)/booking/**", "lib/booking/**", "tests/booking*"]   # file globs this task may change, tests included
     risk: normal               # normal | high (high never runs in parallel)
+    # type build | ci | chore: the only tasks that may change existing lint, type-check, CI or git-hook configuration
     removes_tests: true        # only when a REMOVED requirement makes its tests go; otherwise a deleted test fails the checkpoint
     verify:
       - <command that proves it works, e.g. pnpm vitest run lib/booking>

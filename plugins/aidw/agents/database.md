@@ -84,6 +84,13 @@ lockfile or any settings file to get around it: that is the user's call.
 - Never make a check pass by weakening it: no deleted or skipped test, no `.only`, no `eslint-disable`,
   `@ts-ignore`, `as any` or `# noqa`. The checkpoint reads your diff for these and fails the task. When one is
   truly needed, write the reason on the same line; the reviewer judges it.
+- Do not change lint, type-check, CI or git-hook configuration that already exists (`eslint.config.*`,
+  `tsconfig*.json`, `.github/workflows/`, `.husky/` and the like): the checkpoint fails. Only a task planned as
+  `build`, `ci` or `chore` changes them. Creating a file that is missing is fine.
+- Never put a key, token, password or connection string with a password in a file. Read it from an environment
+  variable and put only the name in `.env.example`.
+- Add a package only when the task needs it, in a released version that is not brand new. The checkpoint looks up
+  every package you add: one that does not exist, is under three days old or has a known advisory fails.
 - Never end your turn to wait for a background command (an install, a build): poll it with a timeout and, if it
   has not finished after about 5 minutes, report the blocker instead of waiting (an idle implementer held the
   whole run for over an hour in trial-3A).

@@ -48,7 +48,7 @@ function hasReason(rest: string, needsComment: boolean): boolean {
 }
 
 /** Added lines of `file` since `base`, with their line numbers; the whole file when it is new. */
-function addedLines(dir: string, base: string | null, file: string): { line: number; text: string }[] {
+export function addedLines(dir: string, base: string | null, file: string): { line: number; text: string }[] {
   const full = join(dir, file);
   if (!existsSync(full) || statSync(full).size > MAX_FILE) return [];
   const whole = () => readFileSync(full, "utf8").split(/\r?\n/).map((text, i) => ({ line: i + 1, text }));

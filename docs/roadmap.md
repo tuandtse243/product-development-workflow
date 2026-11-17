@@ -198,10 +198,15 @@ full before vendoring it.
   `eslint-disable`, `@ts-ignore`, `as any`, `# noqa`); a violation fails the checkpoint, a suppression with a reason
   on its line goes to the reviewer. A task that removes a requirement sets `removes_tests: true`.
 - [ ] Guard: lowered thresholds and rewritten snapshots (`--update-snapshots`), not covered by the diff check yet.
-- [ ] Guard: implementing Roles cannot edit lint, tsconfig, CI or hook configuration, or commit with `--no-verify`
-  (the scaffold task is exempt).
-- [ ] Guard: secrets scan of the staged diff before a commit.
-- [ ] Guard: install safety (minimum release age, new package exists, vulnerability scan when the lockfile changes).
+- [x] Guard: a task cannot change existing lint, tsconfig, CI or hook configuration unless its approved type is
+  `build`, `ci` or `chore`; creating a missing file is allowed (so the scaffold task needs no exemption). A changed
+  test-runner or coverage config goes to the reviewer. The gate denies `--no-verify` and `HUSKY=0`.
+- [x] Guard: secrets scan of the lines a task added, at the checkpoint, and of the staged diff before aidw commits
+  (built-in key formats, no scanner to install; `gitleaks:allow` marks a documented example).
+- [x] Guard: install safety at the checkpoint for every package a task adds (npm, requirements.txt, uv.lock): it
+  exists, is at least three days old (`AIDW_MIN_RELEASE_AGE_DAYS`) and has no known advisory, looked up on deps.dev.
+  Without network the result is unproven and the reviewer is told.
+- [ ] Install safety before the install runs: the package manager's own release-age setting, in the stack packs.
 - [ ] Node pack: strict tsconfig flags; type-aware lint (typescript-eslint strict on TS 6 and lower, oxlint on TS 7).
 - [ ] Node pack: test lint packs (vitest, Playwright recommended as errors, `forbidOnly`); complexity limits.
 - [ ] Node pack: react-hooks and jsx-a11y strict; knip at the change layer; dependency-cruiser cycles and layers.

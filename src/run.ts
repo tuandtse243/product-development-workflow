@@ -29,6 +29,9 @@ import { readText, rel, walkFiles, type Paths } from "./project.js";
 import { ensureWorktree, removeSnapshot, snapshotBase, integrate, mergeWorktree, parallelConfig, pendingIntegration, planWave, removeWorktree, taskDir, type IntegrateResult } from "./parallel.js";
 import { parseQuality, qualityFile, resetQualitySummary } from "./quality.js";
 import { selectSkills, touchesUi, isSecuritySensitive, type BriefKind } from "./skills.js";
+import { configEvidence, type ConfigEvidence } from "./configlock.js";
+import { packageEvidence, packageProblems, type PackageEvidence } from "./depsafety.js";
+import { secretsInChanges, secretsMessage, secretsProblem, stagedSecrets, type SecretFinding } from "./secrets.js";
 import { tamperEvidence, tamperProblems, type TamperEvidence } from "./tamper.js";
 import { DEFAULT_MAX_ATTEMPTS, parseTasks, planSha, validateTasksText, type Task } from "./tasks.js";
 
@@ -307,6 +310,12 @@ export interface CheckpointRecord {
   outside_touches: string[];
   /** tests removed, skipped or focused, and checks switched off, in what the task changed */
   tamper?: TamperEvidence;
+  /** configuration of the checks (lint, types, CI, hooks, test runner) this task changed */
+  config?: ConfigEvidence;
+  /** credentials in the lines this task added (the value is never recorded) */
+  secrets?: SecretFinding[];
+  /** packages this task added: existence, release age and known advisories */
+  packages?: PackageEvidence;
   /** UI tasks with approved design tokens only */
   design?: DesignEvidence;
   /** `type: fix` tasks only: does the new test fail on the old code? */
@@ -514,7 +523,11 @@ export function checkpoint(
   const regressionOk = !regression || regression.status !== "not-red";
   const tamper = tamperEvidence(dir, base, changed, { isTest: (f) => TEST_FILE.test(f), removesTests: t.removes_tests === true });
   const tamperOk = !tamper || tamper.blocked.length === 0;
-  const ok = verifyOk && missing.length === 0 && designOk && regressionOk && tamperOk;
+  const config = configEvidence(dir, base, changed, t.type);
+  const secrets = secretsInChanges(dir, base, changed) ?? [];
+  const packages = packageEvidence(dir, base, changed);
+  const guardsOk = tamperOk && !config?.locked.length && secrets.length === 0 && !packages?.blocked.length;
+  const ok = verifyOk && missing.length === 0 && designOk && regressionOk && guardsOk;
 
   const record: CheckpointRecord = {
     attempt: attemptsOf(t),
@@ -527,6 +540,9 @@ export function checkpoint(
     changed_files: changed,
     outside_touches: outside,
     ...(tamper && (tamper.blocked.length || tamper.justified.length) ? { tamper } : {}),
+    ...(config && (config.locked.length || config.watched.length) ? { config } : {}),
+    ...(secrets.length ? { secrets } : {}),
+    ...(packages ? { packages } : {}),
     ...(design ? { design } : {}),
     ...(regression ? { regression } : {}),
   };
@@ -540,6 +556,9 @@ export function checkpoint(
   if (failed) problems.push(`verify failed: \`${failed.command}\`${failed.timedOut ? " (timed out)" : ` (exit ${failed.exit})`}`);
   if (regression?.status === "not-red") problems.push(`no regression proof: ${regression.reason}`);
   problems.push(...tamperProblems(tamper));
+  if (config?.locked.length) problems.push(`check configuration changed by a task that is not a tooling task: ${config.locked.join(", ")}`);
+  if (secrets.length) problems.push(secretsProblem(secrets));
+  problems.push(...packageProblems(packages));
   if (design?.missing_tokens.length) problems.push(`design tokens not in the code: ${design.missing_tokens.join(", ")}`);
   if (design && design.screenshots.length === 0) problems.push(`no fresh screenshot in ${rel(p, shotsDir(p, id, taskId))}`);
   setField(tf, i, "status", ok ? "review" : "failed");
@@ -616,8 +635,9 @@ export function recordReview(
   if (!isGitRepo(p.project)) return { task: taskId, verdict, status: "done", commit: null, warning: "not a git repository: task not committed" };
   const add = git(p.project, ["add", "-A"]);
   const junk = add.ok ? stagedJunk(p.project) : [];
-  if (junk.length) git(p.project, ["reset", "-q"]);
-  const commit = junk.length ? { ok: false, out: "", err: junkMessage(junk) } : add.ok ? git(p.project, ["commit", "-q", "-m", msg]) : add;
+  const leaked = add.ok && !junk.length ? stagedSecrets(p.project) : [];
+  if (junk.length || leaked.length) git(p.project, ["reset", "-q"]);
+  const commit = junk.length ? { ok: false, out: "", err: junkMessage(junk) } : leaked.length ? { ok: false, out: "", err: secretsMessage(leaked) } : add.ok ? git(p.project, ["commit", "-q", "-m", msg]) : add;
   if (inWorktree && commit.ok) removeWorktree(p, String(t.worktree), String(t.branch ?? ""));
   if (!commit.ok) {
     // keep the task reviewable so the commit can be retried
@@ -865,6 +885,11 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
       for (const problem of tamperProblems(failedCheckpoint.tamper ?? null)) {
         previous.push(`- ${problem[0]?.toUpperCase()}${problem.slice(1)}. Put the test back and make it pass, or fix the code instead of switching the check off. A check may stay off only with the reason written on the same line; if the spec really removed the behavior a test covered, stop and report it.`);
       }
+      if (failedCheckpoint.config?.locked.length) {
+        previous.push(`- You changed the configuration of the checks: ${failedCheckpoint.config.locked.map((f) => `\`${f}\``).join(", ")}. Put each file back as it was at the base commit (\`git checkout ${base ?? "<base>"} -- <file>\`) and fix the code instead. If the task cannot be done without that change, stop and report it: only a task planned as \`build\`, \`ci\` or \`chore\` changes these files.`);
+      }
+      if (failedCheckpoint.secrets?.length) previous.push(`- ${secretsProblem(failedCheckpoint.secrets)}. Read it from an environment variable, put only the name in \`.env.example\`, and say in your report that the key must be revoked if it was real.`);
+      for (const problem of packageProblems(failedCheckpoint.packages ?? null)) previous.push(`- ${problem}. Use an older released version without advisories, or another package; if none exists, stop and report it.`);
       if (failedCheckpoint.design?.missing_tokens.length) previous.push(`- Design tokens not found in the code: ${failedCheckpoint.design.missing_tokens.map((x) => `\`${x}\``).join(", ")}`);
       if (failedCheckpoint.design && failedCheckpoint.design.screenshots.length === 0) previous.push(`- No fresh screenshot in \`${shots}\``);
     }
@@ -882,6 +907,8 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
       "- Do not edit anything under `.aidw/`, do not run `aidw checkpoint`/`aidw review`, and do not commit, push or deploy: the orchestrator records progress and commits after an independent review.",
       "- Test first. For every scenario, write a test whose name contains the scenario id verbatim, e.g. `test(\"booking/cancel-appointment/cancel-upcoming: cancels and frees the slot\")`, asserting the THEN outcome. `aidw checkpoint` looks for these ids in test files.",
       "- Run every **Verify** command yourself and make it pass before reporting.",
+      "- Do not change lint, type-check, CI or git-hook configuration that already exists, and never put a key, token or password in a file: both fail the checkpoint.",
+      "- Add a package only when the task needs it, in a released version that is not brand new. The checkpoint looks every added package up: one that does not exist, is days old or has a known advisory fails.",
       "- Never make a check pass by weakening it: do not delete or skip a test, leave `.only`, or add `eslint-disable`, `@ts-ignore`, `as any`, `# noqa` and the like. The checkpoint reads your diff for these and fails. If one is truly needed, write the reason on the same line; the reviewer judges it.",
       "- Stop every process you start (dev servers, watchers) before you report; the checkpoint reruns everything on a clean machine state.",
       ...(decisions.length
@@ -936,6 +963,11 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
       ...(lastCheckpoint?.tamper?.justified.length
         ? [`- Checks the task switched off, each with a stated reason: ${lastCheckpoint.tamper.justified.map((f) => `\`${f.file}:${f.line}\``).join(", ")}. Read each reason: if fixing the code was possible, the verdict is \`fix\`.`]
         : []),
+      ...(lastCheckpoint?.config?.watched.length
+        ? [`- Configuration of the checks changed by this task: ${lastCheckpoint.config.watched.map((f) => `\`${f}\``).join(", ")}. Read the diff of each: a lowered threshold, a removed rule or a narrower include is a \`fix\`.`]
+        : []),
+      ...(lastCheckpoint?.packages?.checked.length ? [`- Packages added (each exists, is old enough and has no known advisory): ${lastCheckpoint.packages.checked.map((x) => `\`${x}\``).join(", ")}. Judge whether each is needed.`] : []),
+      ...(lastCheckpoint?.packages?.unproven.length ? [`- Packages aidw could NOT check: ${lastCheckpoint.packages.unproven.join("; ")}. Check that each is a real, established package.`] : []),
       ...(design?.screenshots.length ? [`- Screenshots (open each with Read): ${design.screenshots.map((f) => `\`${join(p.project, f)}\``).join(", ")}`] : []),
       ...(design?.hardcoded_colors.length ? [`- Color literals that are not tokens, in changed files: ${design.hardcoded_colors.map((f) => `\`${f}\``).join(", ")}. Each needs a reason or becomes a token.`] : []),
       "",

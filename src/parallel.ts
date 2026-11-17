@@ -18,6 +18,7 @@ import { join } from "node:path";
 import YAML from "yaml";
 import { loadChange, type Change } from "./change.js";
 import { git, headCommit, isGitRepo, junkMessage, stagedJunk } from "./git.js";
+import { secretsMessage, stagedSecrets } from "./secrets.js";
 import { OpError, transition } from "./ops.js";
 import { readText, rel, type Paths } from "./project.js";
 import { DEFAULT_PARALLEL, parseQuality, qualityFile, type ParallelConfig, type QualityConfig } from "./quality.js";
@@ -155,6 +156,11 @@ export function mergeWorktree(p: Paths, t: Task, message: string): MergeOutcome 
   if (junk.length) {
     git(wt, ["reset", "-q"]);
     throw new OpError(`${t.id}: ${junkMessage(junk)}`);
+  }
+  const leaked = stagedSecrets(wt);
+  if (leaked.length) {
+    git(wt, ["reset", "-q"]);
+    throw new OpError(`${t.id}: ${secretsMessage(leaked)}`);
   }
   if (!git(wt, ["diff", "--cached", "--quiet"]).ok) {
     // Same message as the merge commit: the branch commit and the merge commit describe one task.
