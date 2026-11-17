@@ -319,6 +319,106 @@ Not chosen: timescale `postgres-database-migration` as a Vendored Skill (suspect
 `differential-review` and `property-based-testing`, a lint hook after every edit, design-token lint, mutation testing,
 Semgrep. Revisit mutation testing if a trial shows empty tests passing the coverage threshold.
 
+## Design quality (decided 2026-11-18, grilling session)
+
+The interfaces of the demo products were generic. The decisions are in ADR-0008 (the Design Mock) and ADR-0009 (the
+Slop Check); the terms are in `CONTEXT.md` under Design. The three steps run in order, and a step starts only when
+the owner has judged the one before it on before-and-after screenshots of the same products: `todo-board`
+(`evals/demo/`, the baseline), an admin screen with a data table and charts, a landing page with a sign-up.
+
+### Step 1: the design direction
+
+- [x] Vendor Impeccable's rule catalog and craft floor (`library/vendor/impeccable/`); `scripts/vendor.mjs` copies
+  single files and a notice.
+- [ ] Direction Library: four Design Directions, each shown to the owner as a preview on one product and kept,
+  dropped or changed. A record of dealt directions outside the project (`~/.aidw/`); dealt at random when it cannot
+  be written.
+- [ ] Authored Skill for the `ui-ux-designer`: commit to one dealt direction, build the Design Mock, check it against
+  the craft floor on the rendered page. Sources: Hallmark, Impeccable, Anthropic `frontend-design`.
+- [ ] `ui-ux-designer` as a worker Agent of the deep Tier for mocks: three in parallel, one direction each. The
+  Decision Page shows a thumbnail and a link per mock. The chosen mock is extended to at most three screens.
+- [ ] The Design Mock as an Artifact, frozen with the tokens (read from its CSS), its images and their credits.
+  UI briefs point to it; the reviewer compares screenshots with it for structure and treatment.
+- [ ] Fonts: open licences only, fetched when the mock is built and stored beside it.
+- [ ] Slop Check (ADR-0009): aidw's own detection for the rules it can measure, at the checkpoint and in the `ui-ux`
+  layer; exceptions from `direction.md`. The failures of use become a Guard on every project. Change the
+  reviewer's "taste is non-blocking" rule accordingly.
+- [ ] Move `anthropic/frontend-design` to the Agents that build mocks; an Authored Skill tells a frontend Agent to
+  build to the mock. `emil/animate` stays.
+- [ ] References. Decision Point `references-needed` (decided by the `ui-ux-designer`): the `research` Role finds
+  live sites of the same kind of product through a CLI script (Land-book, SaaS Landing Page, Lapa Ninja,
+  Landingfolio, SaaSUI, SaaS Interface, component.gallery; only where `robots.txt` allows, a few pages a search),
+  opens them and takes its own screenshots. Traits shared by at least three adjust the dealt directions. A
+  reference the user names (a link, an image, a Figma file; this is how Dribbble and Pinterest come in) is
+  followed closely, with its name, mark, words, images and licensed fonts replaced.
+- [ ] Images: chosen by the `ui-ux-designer` while building the mock, through a CLI script, from sources that need
+  no key (Wikimedia Commons, Openverse, The Met; Open Peeps; Lucide; DiceBear's CC0 styles) and Pexels when a key
+  exists. CC0, public domain and CC BY only, downloaded into the project with a credits file. What was found is
+  kept in a catalog outside the project, by product domain (finance, health, ...), and reused before searching
+  again. No realistic face stands in for a customer or a testimonial.
+- [x] Vendor the lookup material for usability: Vercel's Web Interface Guidelines (`command.md`) and Impeccable's
+  `clarify.md` and `harden.md`.
+- [ ] Usability Rules: an Authored Skill of about a hundred rules in aidw's own words, each with its source and a
+  fixed severity (blocking, fix, remark). A short core plus one reference per topic (forms, actions, navigation,
+  feedback, states, tables, search, first run, dialogs and toasts, touch, wording, accessibility, landing pages),
+  loaded only for what a screen has. Sources: WCAG 2.2, GOV.UK Design System, NN/g, Baymard, web.dev, Vercel,
+  szilu/ux-designer-skill and Community-Access (as sources, not copied). Rules for flows no source covers (sign-up,
+  sign-in, reset, wizards, settings, a refused permission, undo or confirm, bulk actions, autosave) are marked as
+  aidw's own and never block unless data is lost. Folklore is listed as not a rule (three clicks, 7±2 menu items,
+  the call to action above the fold, three plans with the middle one highlighted).
+- [ ] Where sources disagree, the house choice: validate on leaving a field and on submit, never during a first
+  attempt; mark required and optional fields both; a toast stays at least 5 seconds, can always be dismissed, and
+  stays until dismissed when it carries an action; touch targets are 44 px, never under 24 px. The contested part
+  of a rule is never blocking.
+- [ ] Severity: blocking when the job cannot be done, data is lost, a WCAG A or AA criterion fails, or a Dark
+  Pattern is present; fix for a missing empty, error or loading state and for a rule with evidence behind it;
+  remark for single-source rules and conventions. On every project, on the screens the Change touches.
+- [ ] The rules reach four Roles: `ux-research` (usability requirements), `ui-ux-designer` (the mock, the review),
+  the frontend Roles (the build). Measure what each adds to a brief.
+- [ ] Dark Patterns are not built: the `product-manager` names one when it appears in the requirements and proposes
+  the honest form; the review blocks one that got through. Sample content marked as a sample is allowed.
+- [ ] Review by flow in the `ui-ux` layer: the reviewer walks up to three journeys written by `ux-research` in the
+  running app, by keyboard and at phone width, asking at each step whether the right action is visible, whether
+  it is clear where it leads, and whether the result shows progress.
+- [ ] Run `todo-board` again. Two separate measures: the owner judges the look on before-and-after screenshots; use
+  is measured by the count of blocking and fix findings the same reviewer reports on the old and the new build.
+  Then grow the library to twelve directions.
+
+### Step 2: components and charts (React only)
+
+- [ ] Decision Point `component-library` (decided by the `software-architect`); the shadcn family is the default in
+  the React stack pack for structure (forms, tables, dialogs), and React Bits is the one effects registry for
+  motion (text animations, animated components, backgrounds), installed through the same `shadcn` CLI
+  (`@react-bits`). React Bits is installed into the project, never shipped in the plugin (Commons Clause). Its
+  components are copied source: recolor them from the project's tokens, and give each a reduced-motion fallback.
+- [ ] Motion is wanted, not rationed: the factory sets no cap on effect components, on landing pages or on app
+  screens (animated backgrounds included). The `ui-ux-designer` writes in `direction.md` which effects go where,
+  and that text is the exception that lifts the Slop Check's motion rules. Three limits stay whatever the
+  direction says: a reduced-motion fallback, text over a moving background passes the contrast Guard, and the
+  `performance` layer's budgets hold.
+- [ ] Charts: Bklit by default (it reads the project's tokens), Recharts through shadcn `chart` when Bklit lacks a
+  chart type or documented accessibility is required, EvilCharts only when the Design Direction asks for a showy
+  look. Series colors are tokens. An Authored Skill for charts (which form, direct labels, empty and loading states).
+- [ ] Run the admin screen product; the owner judges.
+
+### Step 3: Brand
+
+- [ ] Decision Point `brand-needed` (decided by the `product-manager` after asking the user):
+  `name-and-logo`, `logo-only` or `none`.
+- [ ] Name: an Authored Skill for the `product-manager`, right after the scope is approved. Six to eight candidates
+  on a Decision Page, each screened (domain, package name, a web search for products of the same name) and marked
+  "not checked" when the network refuses. Screening, not trademark clearance.
+- [ ] Mark: SVG written by `ui-ux-designer` Agents after the Design Direction is chosen (geometric marks, monograms,
+  wordmarks), shown large, at favicon size, on light and dark.
+- [ ] The Brand as an Artifact (name, mark, favicon), frozen at the Approval Gate; the scaffold task puts it in the app.
+- [ ] Run the landing page product; the owner judges.
+
+Not chosen: Hallmark, Impeccable or Taste Skill vendored whole; Impeccable's detector; Astryx as the default
+component family; Tremor (frozen); Unsplash (its API terms ask for non-automated use); automated access to
+Dribbble, Pinterest or Behance (blocked, and forbidden by their terms). Deferred: Nuxt and SvelteKit component
+families, a keyed vector model for marks (Recraft), paid reference sources (Mobbin, Refero), a curated image
+catalog shipped with the plugin (only if the owner judges the found images poor).
+
 ## Backlog
 
 - Per-server MCP tier map (for example Vercel deploy as tier 3).

@@ -104,3 +104,43 @@ The knowledge about one technology that any Role loads when the project uses tha
 **Project Overlay**:
 Rules and reference material a project adds to a Role without replacing the Role's own definition.
 _Avoid_: Override, customization
+
+### Design
+
+**Design Direction**:
+The look chosen for one product: its character, type, color, density and layout, and the exceptions it allows itself.
+_Avoid_: Theme, style, brand
+
+**Brand**:
+The name and the mark of one product. It is separate from the Design Direction, which is how the product looks.
+_Avoid_: Identity, logo (when the name is meant too), Design Direction
+
+**Design Mock**:
+A static screen that shows one Design Direction at real size. Candidates are compared by the user; the approved
+one is an Artifact, and the screens built later follow its structure and treatment.
+_Avoid_: Prototype, wireframe, mockup, Decision Page
+
+**Direction Library**:
+The Design Directions the factory keeps, each accepted by the factory's owner, from which the candidates for a
+product are dealt.
+_Avoid_: Theme pack, presets, templates
+
+**Screen Kind**:
+What a screen is for: an app screen (operated) or a landing page (read). A Design Direction sets rules per kind.
+_Avoid_: Page type
+
+**Usability Rule**:
+A rule about whether a person can do the job on a screen, with its source and a fixed severity: blocking, fix or
+remark. It applies to every project, on the screens a Change touches.
+_Avoid_: UX law, heuristic, best practice, guideline
+
+**Dark Pattern**:
+A design that deceives or traps the people who use the product (false urgency, false social proof, hidden costs,
+a cancellation harder than the sign-up). The factory does not build one.
+_Avoid_: Growth tactic, nudge
+
+**Slop Check**:
+A deterministic check for the signs of a generic generated interface, applied to a Change whose design the factory
+authors; only an exception written in the approved Design Direction lifts one of its rules. It is not a Guard:
+failures of use (contrast, overflow, clipped text, a blank state) are checked by a Guard on every project.
+_Avoid_: Guard, lint, taste review
