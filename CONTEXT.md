@@ -55,6 +55,11 @@ _Avoid_: Document, output
 **Gate**:
 A condition that must hold, with evidence, before a Change moves to the next stage.
 
+**Guard**:
+A deterministic check the factory itself enforces on every project, whatever tooling the project has; when it
+fails, the work is refused or sent back.
+_Avoid_: Gate (a Gate is the condition; a Guard is a check that enforces one), lint rule, hook
+
 **Approval Gate**:
 A Gate that only the user can pass.
 _Avoid_: Checkpoint (that word means the per-task evidence check)
@@ -79,6 +84,14 @@ The class of model a Role needs (deep, standard or fast), named without naming a
 
 **Skill**:
 A procedure a Role follows for one kind of work, loaded only when that work comes up.
+
+**Vendored Skill**:
+A Skill copied word for word from an outside source and never edited by the factory.
+_Avoid_: Third-party skill, imported skill
+
+**Authored Skill**:
+A Skill the factory writes itself, naming the sources whose ideas it draws on.
+_Avoid_: Custom skill, own skill
 
 **Stack Pack**:
 The knowledge about one technology that any Role loads when the project uses that technology.

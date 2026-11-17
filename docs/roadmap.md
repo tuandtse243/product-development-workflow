@@ -182,6 +182,104 @@ aidw becomes a software factory with a Roster of Roles, Workflows as data and de
     or in which a `database` task also touches UI or API files, and the bugfix boundary uses the same definition. The planner's
     role carries the division as a table (scaffold, schema, data access, screens).
 
+## Role upgrades (decided 2026-11-17, grilling session)
+
+Goal: every Role works at lead or senior level. Decisions: [ADR-0005](adr/0005-skill-sources-vendored-and-authored.md)
+(Vendored and Authored Skills) and [ADR-0006](adr/0006-guards-apply-to-every-project.md) (Guards on every project).
+Each Authored Skill ships with at least one Role eval; each wave ends with a trial on the greenfield and brownfield
+fixtures, compared with trial-3. Before writing any tool version or flag into a stack pack, check it against the tool's
+own documentation (the research used secondary sources for TypeScript 7, pnpm 11 and tool versions). Read a Skill in
+full before vendoring it.
+
+### Wave 1: Guards, tooling and broken links
+
+- [ ] Vendor the five Addy `references/` files the vendored Skills link to (19 dangling links today).
+- [ ] Guard: test tampering and suppressions, a diff check at the task checkpoint (deleted or skipped tests, `.only`,
+  `eslint-disable`, `@ts-ignore`, `as any`, `# noqa`, lowered thresholds, `--update-snapshots`); a violation is a `fix`.
+- [ ] Guard: implementing Roles cannot edit lint, tsconfig, CI or hook configuration, or commit with `--no-verify`
+  (the scaffold task is exempt).
+- [ ] Guard: secrets scan of the staged diff before a commit.
+- [ ] Guard: install safety (minimum release age, new package exists, vulnerability scan when the lockfile changes).
+- [ ] Node pack: strict tsconfig flags; type-aware lint (typescript-eslint strict on TS 6 and lower, oxlint on TS 7).
+- [ ] Node pack: test lint packs (vitest, Playwright recommended as errors, `forbidOnly`); complexity limits.
+- [ ] Node pack: react-hooks and jsx-a11y strict; knip at the change layer; dependency-cruiser cycles and layers.
+- [ ] Python pack: extended Ruff rules and pyright strict; deptry and import-linter.
+- [ ] Squawk and Prisma/Drizzle drift checks when a task changes a migration.
+- [ ] zizmor, actionlint and hadolint when a task changes a workflow or a Dockerfile.
+- [ ] Coverage on the diff: 80% of new lines, config and generated files excluded; below it is a `fix`.
+- [ ] oasdiff and schemathesis at the change layer when the project has an OpenAPI spec.
+
+### Wave 2: reviewer, security, database, devops and the shared Skills
+
+- [ ] Vendored for every implementing Role: obra `verification-before-completion` (core set), `systematic-debugging`
+  (Triage and retries), `receiving-code-review`; Addy `source-driven-development`, `observability-and-instrumentation`.
+- [ ] Authored, `code-reviewer`: task review as spec compliance then quality, with a silent-failure checklist.
+- [ ] Vendored: obra `writing-good-tests`; Playwright best practices (Microsoft docs).
+- [ ] Authored, `security`: review procedure and false-positive filter (ideas: Sentry, Anthropic); aidw keeps
+  dependencies and secrets in scope. Lookup references in the CC BY-SA directory: Sentry references, ASVS 5.0
+  Authorization and Authentication chapters.
+- [ ] Vendored, `database`: supabase Postgres best practices. Migrations are covered by the authored
+  `schema-evolution` Skill (wave 4, `database-architect`), which the `database` Role also loads.
+- [ ] Vendored, `devops`: the three docker/skills; Sentry `gha-security-review` (also `security`).
+- [ ] Authored, `integration`: contracts, webhooks, idempotency, retries and timeouts.
+- [ ] Authored, shared: API design rules (error shape, pagination, versioning, idempotency, naming).
+
+### Wave 3: framework packs and the upstream Roles
+
+- [ ] A framework pack lists the Skills that load with it (ADR-0001); no change to `src/skills.ts` per framework.
+- [ ] Vendored per pack: FastAPI official; Sentry Django perf and access reviews; Svelte official; Vue best practices
+  and antfu `nuxt`; shadcn official; Astral uv, ruff and ty.
+- [ ] Authored in the packs: React and Next.js rules (ideas: Vercel, no licence file); NestJS rules.
+- [ ] Authored, `product-manager`: discovery interview frame (jobs to be done); behavior map (ordered by the user's
+  journey, thinnest runnable Slice first); assumptions and pre-mortem before the Approval Gate. Ideas: deanpeters,
+  phuryn, spec-kit. The ambiguity scan and requirement quality with EARS go to `business-analyst` (wave 4); until that
+  Role is active, `product-manager` carries them.
+- [ ] Authored, `software-architect`: architecture spine that records invariants only (idea: BMAD).
+- [ ] Authored, `technical-planner`: Interfaces (consumes and produces) per task and a Review Focus list
+  (ideas: obra `writing-plans`, BMAD slicing). Pocock `to-tickets` stays the base.
+- [ ] `ui-ux-designer`: vendored anthropics `frontend-design` and emilkowalski motion; authored UI review rubric
+  (ideas: impeccable, Vercel web interface guidelines, Addy accessibility checklist). Design tokens keep their format
+  and gain a rationale per token and token references (idea: Google DESIGN.md).
+
+### Wave 4: activate every Planned Role, one at a time
+
+Order: `qa`, `business-analyst`, `api-designer`, `database-architect`, `performance`, `ux-research`, `research`,
+`release`, `documentation`. Each needs its Procedure, Done-when, Stop-and-report, the Skills and the eval its `role.md`
+lists, then the `carried_by` line removed. After the ninth, the Roster has no Planned Role.
+
+Across the wave:
+
+- [ ] One discovery interview in the main session, in stages (`product-manager`, `business-analyst`, `ux-research`);
+  each stage loads that Role's Skill, answers are recorded to disk, and no stage asks again what an earlier one settled.
+- [ ] A Decision Point for each optional upstream Role (`research`, `ux-research`, `database-architect`,
+  `api-designer`): it runs on a Change only when chosen there. An active Role does not run on every Change.
+
+The Roles:
+
+- [ ] `qa`: authored Skills for deriving test cases from scenarios and for choosing the layer per scenario.
+- [ ] `business-analyst`: authored `rule-and-edge-elicitation` (example mapping) and `requirement-quality-check`
+  (ambiguity scan, EARS). Ideas: Cucumber example mapping, spec-kit, cc-sdd.
+- [ ] `api-designer`: authored `rest-contract` and `breaking-change`. Artifact: `openapi.yaml` (OpenAPI 3.1) when the
+  Change has HTTP routes, a typed action table otherwise, both with `api-contract.md`. Ideas: Google AIP, Zalando,
+  Azure guidelines, RFC 9457 and 9745, oasdiff.
+- [ ] `database-architect`: authored `schema-design` for Postgres, `schema-design` for MongoDB (with MongoDB's own
+  reference files vendored, Apache-2.0) and `schema-evolution` (expand and contract; check every lock level against the
+  Postgres documentation before writing it). Artifact: `data-model.dbml` as the source, with `data-model.md` (access
+  paths, decisions, entity diagram). Ideas: supabase, timescale, pgroll, MongoDB.
+- [ ] `performance`: authored Skills for reading budget reports ranked by impact (never invent a measurement, say lab
+  or field) and for finding N+1 queries and unbounded lists in a diff.
+- [ ] `ux-research`: authored `journey-mapping` and `usability-requirements`. Ideas: NN/g, GOV.UK Service Manual,
+  WCAG 2.2.
+- [ ] `research`: authored `evidence-scan` (every claim cited, confidence stated) and `feasibility-spike` (a
+  time-boxed throwaway that answers one question). Ideas: deanpeters, cited-research and deep-research skills.
+- [ ] `release`: authored Skills for release notes from Conventional Commits and for the deployment checklist and rollback.
+- [ ] `documentation`: authored Skills for README structure per project kind and API docs from the contract.
+
+Not chosen: timescale `postgres-database-migration` as a Vendored Skill (suspected errors, replaced by
+`schema-evolution`), Addy `interview-me` and `planning-and-task-breakdown`, `deprecation-and-migration`, Trail of Bits
+`differential-review` and `property-based-testing`, a lint hook after every edit, design-token lint, mutation testing,
+Semgrep. Revisit mutation testing if a trial shows empty tests passing the coverage threshold.
+
 ## Backlog
 
 - Per-server MCP tier map (for example Vercel deploy as tier 3).
