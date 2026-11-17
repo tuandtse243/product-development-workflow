@@ -1,5 +1,7 @@
 import { appendFileSync, existsSync, readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { coverageReport, diffCoverage, trunkBase } from "./diffcover.js";
+import { loadTasks } from "./run.js";
 import { analyzeChange, idsAfterChange, mainSpecIds } from "./analyze.js";
 import { approvalStatus, computeApprovalHash } from "./approval.js";
 import { runBackstop } from "./backstop.js";
@@ -175,6 +177,7 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
   analyze [<id>]                         pre-gate consistency checks (analysis.md, task coverage)
   ids [<id>]                             requirement and scenario ids (after applying the change)
   vendor-path <upstream>/<skill>         absolute path of a vendored SKILL.md (e.g. pocock/grilling)
+  diff-coverage <lcov> [--min 80] [--base <ref>]  coverage of the lines added since the change's first task started
   plugin-path <path>                     absolute path of a plugin file (e.g. roles/software-architect/references/stack-pool.md)
   eval [<role>] [--case <name>] [--model <m>] [--runs <n>] [--answers]
                                          run a Role's cases with claude -p (no tools) and grade each answer against its
@@ -752,6 +755,21 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         if (!existsSync(file)) throw new OpError(`vendored skill "${ref}" not found at ${file}`);
         emit({ path: file }, `${file}\n`);
         return 0;
+      }
+
+      case "diff-coverage": {
+        const p = project();
+        const report = need(rest[0], "LCOV report file (e.g. coverage/lcov.info)");
+        const min = args.flags.min === undefined ? 80 : Number(args.flags.min);
+        if (!Number.isFinite(min) || min < 0 || min > 100) throw new UsageError("--min must be a number from 0 to 100");
+        const file = resolve(p.project, report);
+        if (!existsSync(file)) throw new OpError(`no coverage report at ${report}: run the tests with an lcov reporter first`);
+        const open = listChangeIds(p).flatMap((id) => loadTasks(p, id).tasks.map((t) => (typeof t.base === "string" ? t.base : null)));
+        const base = typeof args.flags.base === "string" ? args.flags.base : (open.find((b) => b) ?? trunkBase(p.project));
+        if (!base) throw new OpError("no base commit to compare with: pass --base <ref>");
+        const c = diffCoverage(p.project, base, readFileSync(file, "utf8"));
+        emit(c, `${coverageReport(c, min)}\n`);
+        return c.percent >= min ? 0 : 1;
       }
 
       case "plugin-path": {
