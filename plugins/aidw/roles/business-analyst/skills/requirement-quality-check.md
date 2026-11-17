@@ -48,6 +48,17 @@ how the sentence inside it reads.
 Do not resolve an ambiguity by picking the reading you prefer. If the interview record does not decide it, it is
 an open question for the user: list it in your reply and leave a clearly marked assumption in the Analysis.
 
+A rewrite makes a requirement precise; it never makes it bigger. Every SHALL and every THEN must trace to a line of
+the interview record or the request. The scan above will tempt you to fill gaps; each of these is a question, not
+a requirement, when the record is silent:
+
+- the other side of a recorded limit: the record says "up to 200 MB", not what happens to a 300 MB file;
+- an actor or a precondition: "a signed-in user" when the record only says "the user";
+- a screen, a list, a status or a message the record never mentions, added to give a THEN something to observe;
+- a count or a timing: "exactly one email", "within 5 minutes".
+
+When an unwanted case (IF) has no recorded response, do not write that requirement; ask for the response.
+
 ## Sources
 
 Ideas, not wording: EARS, the Easy Approach to Requirements Syntax (Alistair Mavin, Rolls-Royce); the EARS

@@ -52,11 +52,14 @@ it safe. For each table: how rows are archived or deleted, and what the law or t
 
 ## 5. Output
 
-- `changes/<id>/data-model.dbml`: the source of truth. Tables, columns with type and `[pk, not null, unique,
-  default, note]`, `Ref` lines with the delete rule, `indexes { }` blocks, and a `Note` per table with its rules.
-- `changes/<id>/data-model.md`: the access-path table, the decisions a reader would question (with the reason and
-  what was rejected), the constraints that carry business rules, and one Mermaid `erDiagram` at entity level
-  (names and relationships only).
+Write in the order you designed: the access paths come before any table, in your reply and in the files.
+
+- `changes/<id>/data-model.md`, opening with the access-path table (numbered P1, P2, ...), then the decisions a
+  reader would question (with the reason and what was rejected), the constraints that carry business rules, and
+  one Mermaid `erDiagram` at entity level (names and relationships only).
+- `changes/<id>/data-model.dbml`, written after it: the source of truth for the tables. Columns with type and
+  `[pk, not null, unique, default, note]`, `Ref` lines with the delete rule, `indexes { }` blocks whose notes name
+  the access path each index serves (P1, P2, ...), and a `Note` per table with its rules.
 - For a schema that already has data, follow `aidw vendor-path aidw/schema-evolution` and add its plan.
 
 ## Sources
