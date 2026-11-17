@@ -14,8 +14,10 @@ again what is already answered.
 1. **Say the behavior back** in one sentence and get a yes.
 2. **Ask for the rule.** "What decides whether this is allowed? What decides the result?" Write each rule as one
    plain sentence. A behavior with more than five rules is two behaviors.
-3. **Ask for an example of each rule**, with real values: one where it applies, one where it just does not.
-   "A patient cancels 25 hours before: allowed. 23 hours before: refused, and they see why."
+3. **Ask the user for an example of each rule**, with real values: one where it applies, one where it is refused.
+   "A patient cancels 25 hours before: allowed. 23 hours before: refused, and they see why." Ask outright for the
+   refused case ("tell me about one that was turned down"); the user's real example often shows a rule nobody
+   named. You may offer your own as a recommendation, but it does not replace theirs.
 4. **Hunt the edges** with the questions below; each answer is a new example or a new rule.
 5. **Park what nobody knows** as an open question with who could answer it. Never fill it in.
 

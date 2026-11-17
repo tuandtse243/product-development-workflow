@@ -297,7 +297,10 @@ active Roles and none planned. Each got its Procedure, Done-when, Stop-and-repor
 Nothing above has run through a real Change. The unit tests cover the code (guards, skill selection, the roster,
 workflows), not the behavior of the Agents with the new Skills.
 
-- [ ] Run the Role cases (the CLI's eval command): 21 Roles, about 40 cases.
+- [x] Run the Role cases (the CLI's eval command): 21 Roles, 35 cases. Five failures in all: four fixed in the
+  Skills (a rewrite that added behavior, the output order of the Postgres schema, a guessed workaround, a
+  self-supplied refusal example) and one case moved to the business analyst with the delta specs. Each then passed
+  3 of 3 runs; the full run after the first two fixes was 32/35.
 - [ ] Run a trial on the greenfield fixture and one on the brownfield fixture, and compare with trial-3: cost per
   task, attempts per task, review `fix` rate, and whether the Guards fire on real work or only in tests.
 - [ ] Watch the token cost of a brief: the core set grew by one Skill, UI tasks by one, data tasks by two.
