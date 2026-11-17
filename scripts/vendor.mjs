@@ -49,6 +49,30 @@ for (const [skill, path] of Object.entries(up.skills)) {
 }
 cpSync(join(srcRoot, up.license), join(dest, "LICENSE"));
 
+// Files the skills link to outside their own folder (`../../references/x.md`). They are copied to the same
+// relative place, a sibling of <upstream>/, so the links work without editing a vendored file.
+const shared = Object.entries(up.shared ?? {});
+for (const [dir, files] of shared) {
+  const sharedDest = join(dest, "..", dir);
+  const owner = join(sharedDest, "UPSTREAM.md");
+  if (existsSync(owner) && !readFileSync(owner, "utf8").includes(`\`${up.repo}\``)) {
+    throw new Error(`${sharedDest} already belongs to another upstream`);
+  }
+  rmSync(sharedDest, { recursive: true, force: true });
+  mkdirSync(sharedDest, { recursive: true });
+  for (const file of files) {
+    if (!existsSync(join(srcRoot, dir, file))) {
+      missing.push(`${dir}/${file}`);
+      continue;
+    }
+    cpSync(join(srcRoot, dir, file), join(sharedDest, file));
+  }
+  writeFileSync(
+    owner,
+    `# Upstream: ${up.repo}\n\nCopied verbatim from \`${dir}/\` of \`${up.repo}\`; the vendored skills in \`../${name}/\` link here.\nCommit and licence: see \`../${name}/UPSTREAM.md\` and \`../${name}/LICENSE\`. aidw never edits these files.\n`,
+  );
+}
+
 writeFileSync(
   join(dest, "UPSTREAM.md"),
   `# Upstream: ${up.repo}
@@ -67,7 +91,7 @@ adapter instructions of the aidw skills that load them. Re-sync with
 ${Object.entries(up.skills)
   .map(([s, p]) => `- \`${s}\` <- \`${p}\`${missing.some((m) => m.startsWith(`${s} `)) ? " **(missing upstream)**" : ""}`)
   .join("\n")}
-`,
+${shared.length ? `\n## Shared files\n\n${shared.flatMap(([dir, files]) => files.map((f) => `- \`../${dir}/${f}\` <- \`${dir}/${f}\``)).join("\n")}\n` : ""}`,
 );
 rmSync(work, { recursive: true, force: true });
 

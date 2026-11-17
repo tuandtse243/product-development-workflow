@@ -34,6 +34,15 @@
       "ci-cd-and-automation": "skills/ci-cd-and-automation",
       "shipping-and-launch": "skills/shipping-and-launch",
       "documentation-and-adrs": "skills/documentation-and-adrs"
+    },
+    "shared": {
+      "references": [
+        "accessibility-checklist.md",
+        "definition-of-done.md",
+        "performance-checklist.md",
+        "security-checklist.md",
+        "testing-patterns.md"
+      ]
     }
   }
 }

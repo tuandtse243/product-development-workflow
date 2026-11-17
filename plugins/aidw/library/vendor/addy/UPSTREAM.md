@@ -1,7 +1,7 @@
 # Upstream: addyosmani/agent-skills
 
-- Commit: `301b02b12bff98e4688e6984af6556802322bbde` (ref `main`)
-- Synced: 2026-11-07
+- Commit: `301b02b12bff98e4688e6984af6556802322bbde` (ref `301b02b12bff98e4688e6984af6556802322bbde`)
+- Synced: 2026-11-17
 - License: see `LICENSE` (copied verbatim from upstream)
 - Role in aidw: Engineering execution and quality (blueprint 7.2)
 
@@ -24,3 +24,11 @@ adapter instructions of the aidw skills that load them. Re-sync with
 - `ci-cd-and-automation` <- `skills/ci-cd-and-automation`
 - `shipping-and-launch` <- `skills/shipping-and-launch`
 - `documentation-and-adrs` <- `skills/documentation-and-adrs`
+
+## Shared files
+
+- `../references/accessibility-checklist.md` <- `references/accessibility-checklist.md`
+- `../references/definition-of-done.md` <- `references/definition-of-done.md`
+- `../references/performance-checklist.md` <- `references/performance-checklist.md`
+- `../references/security-checklist.md` <- `references/security-checklist.md`
+- `../references/testing-patterns.md` <- `references/testing-patterns.md`
