@@ -81,8 +81,11 @@ consistent and honest about risks.
 
 ## Skills (load only when the work needs one)
 
-Read a skill with `aidw plugin-path roles/product-manager/skills/<name>.md`.
+Each line gives the exact command that prints the skill's path; run it as written, then Read that file. A skill whose condition fits your work is required, not optional. If its command fails, run it again exactly as written; if it still fails, go on without it and say in your report which skill you could not read and which part of the work it would have covered. Never drop a skill silently.
 
 - `discovery-frame`: at the start of the interview - what must be known (the job, today's workaround, the measure of done) before requirements are written
+  `aidw plugin-path roles/product-manager/skills/discovery-frame.md`
 - `behavior-map`: before you write the brief or the requirements of a normal-size change - the journey, and the thinnest path that is the first Slice
+  `aidw plugin-path roles/product-manager/skills/behavior-map.md`
 - `assumptions-premortem`: before the Analysis goes to the Approval Gate - what the plan takes for granted and how it could fail
+  `aidw plugin-path roles/product-manager/skills/assumptions-premortem.md`

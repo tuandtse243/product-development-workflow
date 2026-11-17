@@ -62,7 +62,9 @@ consistent and honest about risks.
 
 ## Skills (load only when the work needs one)
 
-Read a skill with `aidw plugin-path roles/database-architect/skills/<name>.md`.
+Each line gives the exact command that prints the skill's path; run it as written, then Read that file. A skill whose condition fits your work is required, not optional. If its command fails, run it again exactly as written; if it still fails, go on without it and say in your report which skill you could not read and which part of the work it would have covered. Never drop a skill silently.
 
 - `schema-design-postgres`: when the project's database is PostgreSQL (Supabase and Neon included)
+  `aidw plugin-path roles/database-architect/skills/schema-design-postgres.md`
 - `schema-design-mongodb`: when the project's database is MongoDB
+  `aidw plugin-path roles/database-architect/skills/schema-design-mongodb.md`

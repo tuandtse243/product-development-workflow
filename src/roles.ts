@@ -152,6 +152,9 @@ export function loadTiers(root: string, platform = "claude-code"): Record<string
   return isRecord(data) && isRecord(data[platform]) ? (data[platform] as Record<string, string>) : {};
 }
 
+/** The command a Role's agent runs to find one of its skills: written out in full, so it is never assembled wrongly. */
+export const skillCommand = (roleId: string, skill: string): string => `aidw plugin-path roles/${roleId}/skills/${skill}.md`;
+
 /** The Claude Code agent file of one Role. */
 export function renderAgent(role: RoleProfile, tiers: Record<string, string>): string {
   const model = tiers[role.tier];
@@ -166,7 +169,12 @@ export function renderAgent(role: RoleProfile, tiers: Record<string, string>): s
   const shared = role.shared.filter(Boolean).map((t) => `\n\n${t}`).join("");
   const rules = role.rules ? `\n\n## Rules\n\n${role.rules}` : "";
   const skills = role.skills.length
-    ? `\n\n## Skills (load only when the work needs one)\n\nRead a skill with \`aidw plugin-path roles/${role.id}/skills/<name>.md\`.\n\n${role.skills.map((s) => `- \`${s.name}\`: ${s.when}`).join("\n")}`
+    ? `\n\n## Skills (load only when the work needs one)\n\n` +
+      "Each line gives the exact command that prints the skill's path; run it as written, then Read that file. " +
+      "A skill whose condition fits your work is required, not optional. If its command fails, run it again exactly as written; " +
+      "if it still fails, go on without it and say in your report which skill you could not read and which part of the work it would have covered. " +
+      "Never drop a skill silently.\n\n" +
+      role.skills.map((s) => `- \`${s.name}\`: ${s.when}\n  \`${skillCommand(role.id, s.name)}\``).join("\n")
     : "";
   return `---\n${head.join("\n")}\n---\n\n${role.body}${shared}${rules}${skills}\n`;
 }

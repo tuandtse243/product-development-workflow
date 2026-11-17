@@ -8,7 +8,7 @@ import { approvalStatus, computeApprovalHash } from "./approval.js";
 import { runBackstop } from "./backstop.js";
 import { ChangeError, isState, listChangeIds, loadChange, resolveChangeId, stateOf, STATES } from "./change.js";
 import { runGate } from "./gate.js";
-import { pluginRoot } from "./plugin.js";
+import { pluginRoot, resolvePluginFile } from "./plugin.js";
 import { installRunner } from "./installcheck.js";
 import { BrowserError, browserEnv, browserStatus, startBrowser, stopBrowser, usesOwnBrowser } from "./browser.js";
 import { checkArtifacts } from "./artifacts.js";
@@ -780,8 +780,12 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         if (!/^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/.test(ref) || ref.split("/").includes("..")) {
           throw new UsageError(`invalid plugin path "${ref}"`);
         }
-        const file = join(pluginRoot(env), ...ref.split("/"));
-        if (!existsSync(file)) throw new OpError(`"${ref}" not found in the plugin (${file})`);
+        const found = resolvePluginFile(pluginRoot(env), ref);
+        if (!("file" in found)) {
+          const hint = found.suggestions.length ? ` Did you mean: ${found.suggestions.map((s) => `\`aidw plugin-path ${s}\``).join(", ")}?` : "";
+          throw new OpError(`"${ref}" not found in the plugin (${found.tried}).${hint}`);
+        }
+        const file = found.file;
         emit({ path: file }, `${file}\n`);
         return 0;
       }

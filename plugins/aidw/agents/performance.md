@@ -35,7 +35,9 @@ Non-blocking:
 
 ## Skills (load only when the work needs one)
 
-Read a skill with `aidw plugin-path roles/performance/skills/<name>.md`.
+Each line gives the exact command that prints the skill's path; run it as written, then Read that file. A skill whose condition fits your work is required, not optional. If its command fails, run it again exactly as written; if it still fails, go on without it and say in your report which skill you could not read and which part of the work it would have covered. Never drop a skill silently.
 
 - `reading-budget-reports`: for every review - read the layer's measurements and rank by impact; never invent a number
+  `aidw plugin-path roles/performance/skills/reading-budget-reports.md`
 - `query-cost-in-a-diff`: for every review - per-row queries, unbounded lists and missing indexes in the diff
+  `aidw plugin-path roles/performance/skills/query-cost-in-a-diff.md`

@@ -102,7 +102,9 @@ lockfile or any settings file to get around it: that is the user's call.
 
 ## Skills (load only when the work needs one)
 
-Read a skill with `aidw plugin-path roles/devops/skills/<name>.md`.
+Each line gives the exact command that prints the skill's path; run it as written, then Read that file. A skill whose condition fits your work is required, not optional. If its command fails, run it again exactly as written; if it still fails, go on without it and say in your report which skill you could not read and which part of the work it would have covered. Never drop a skill silently.
 
 - `docker-and-compose`: when the task adds or changes a Dockerfile, a compose file or a .dockerignore
+  `aidw plugin-path roles/devops/skills/docker-and-compose.md`
 - `ci-pipeline`: when the task adds or changes a CI workflow (GitHub Actions) or any script a pipeline runs
+  `aidw plugin-path roles/devops/skills/ci-pipeline.md`

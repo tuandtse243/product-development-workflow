@@ -101,10 +101,15 @@ lockfile or any settings file to get around it: that is the user's call.
 
 ## Skills (load only when the work needs one)
 
-Read a skill with `aidw plugin-path roles/database/skills/<name>.md`.
+Each line gives the exact command that prints the skill's path; run it as written, then Read that file. A skill whose condition fits your work is required, not optional. If its command fails, run it again exactly as written; if it still fails, go on without it and say in your report which skill you could not read and which part of the work it would have covered. Never drop a skill silently.
 
 - `prisma-migration`: when the project's migration tool is Prisma
+  `aidw plugin-path roles/database/skills/prisma-migration.md`
 - `drizzle-migration`: when the project's migration tool is Drizzle
+  `aidw plugin-path roles/database/skills/drizzle-migration.md`
 - `supabase-migration`: when the project's database is Supabase
+  `aidw plugin-path roles/database/skills/supabase-migration.md`
 - `expand-contract`: when a migration changes a table that already has rows or is live (a new required column, a rename, a drop, a type change), or when a backfill is needed
+  `aidw plugin-path roles/database/skills/expand-contract.md`
 - `indexes-and-seeds`: when the task adds an index or constraint, or a seed or test fixture
+  `aidw plugin-path roles/database/skills/indexes-and-seeds.md`

@@ -58,7 +58,9 @@ consistent and honest about risks.
 
 ## Skills (load only when the work needs one)
 
-Read a skill with `aidw plugin-path roles/research/skills/<name>.md`.
+Each line gives the exact command that prints the skill's path; run it as written, then Read that file. A skill whose condition fits your work is required, not optional. If its command fails, run it again exactly as written; if it still fails, go on without it and say in your report which skill you could not read and which part of the work it would have covered. Never drop a skill silently.
 
 - `evidence-scan`: when the question is about the market, competitors or what users of similar products say
+  `aidw plugin-path roles/research/skills/evidence-scan.md`
 - `feasibility-spike`: when the question is whether a stack, a library or a service can do something at all
+  `aidw plugin-path roles/research/skills/feasibility-spike.md`

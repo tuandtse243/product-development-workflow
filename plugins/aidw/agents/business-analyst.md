@@ -70,8 +70,11 @@ consistent and honest about risks.
 
 ## Skills (load only when the work needs one)
 
-Read a skill with `aidw plugin-path roles/business-analyst/skills/<name>.md`.
+Each line gives the exact command that prints the skill's path; run it as written, then Read that file. A skill whose condition fits your work is required, not optional. If its command fails, run it again exactly as written; if it still fails, go on without it and say in your report which skill you could not read and which part of the work it would have covered. Never drop a skill silently.
 
 - `rule-and-edge-elicitation`: in the interview, after the Product Manager's stage - the rules behind each behavior and the edge and failure paths, by example
+  `aidw plugin-path roles/business-analyst/skills/rule-and-edge-elicitation.md`
 - `requirement-quality-check`: after drafting and before aidw validate - one reading per requirement (EARS), every THEN observable
+  `aidw plugin-path roles/business-analyst/skills/requirement-quality-check.md`
 - `delta-spec`: when you write or change the delta specs under changes/<id>/specs, which have a strict grammar the CLI parses
+  `aidw plugin-path roles/business-analyst/skills/delta-spec.md`

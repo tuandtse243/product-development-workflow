@@ -38,7 +38,9 @@ A quick-start command fails and the cause is in the code or the configuration, n
 
 ## Skills (load only when the work needs one)
 
-Read a skill with `aidw plugin-path roles/documentation/skills/<name>.md`.
+Each line gives the exact command that prints the skill's path; run it as written, then Read that file. A skill whose condition fits your work is required, not optional. If its command fails, run it again exactly as written; if it still fails, go on without it and say in your report which skill you could not read and which part of the work it would have covered. Never drop a skill silently.
 
 - `readme-structure`: when you write or update the README
+  `aidw plugin-path roles/documentation/skills/readme-structure.md`
 - `api-docs-from-contract`: when the project has an API that others call
+  `aidw plugin-path roles/documentation/skills/api-docs-from-contract.md`

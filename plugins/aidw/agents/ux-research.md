@@ -65,7 +65,9 @@ consistent and honest about risks.
 
 ## Skills (load only when the work needs one)
 
-Read a skill with `aidw plugin-path roles/ux-research/skills/<name>.md`.
+Each line gives the exact command that prints the skill's path; run it as written, then Read that file. A skill whose condition fits your work is required, not optional. If its command fails, run it again exactly as written; if it still fails, go on without it and say in your report which skill you could not read and which part of the work it would have covered. Never drop a skill silently.
 
 - `journey-mapping`: when you describe the user kinds and write a journey for each
+  `aidw plugin-path roles/ux-research/skills/journey-mapping.md`
 - `usability-requirements`: when you turn the journeys into requirements a reviewer can check
+  `aidw plugin-path roles/ux-research/skills/usability-requirements.md`

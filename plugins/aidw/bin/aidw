@@ -7958,6 +7958,37 @@ function bundledRoot() {
   }
   return bundled;
 }
+function resolvePluginFile(root, ref) {
+  const parts = ref.split("/");
+  const base2 = (0, import_node_path6.join)(root, ...parts);
+  for (const candidate of [base2, `${base2}.md`, (0, import_node_path6.join)(base2, "SKILL.md")]) {
+    if ((0, import_node_fs5.existsSync)(candidate) && (0, import_node_fs5.statSync)(candidate).isFile()) return { file: candidate };
+  }
+  let depth = parts.length - 1;
+  while (depth > 0 && !(0, import_node_fs5.existsSync)((0, import_node_path6.join)(root, ...parts.slice(0, depth)))) depth--;
+  const dir = (0, import_node_path6.join)(root, ...parts.slice(0, depth));
+  const wanted = (parts[depth] ?? "").replace(/\.md$/, "").toLowerCase();
+  const names = (0, import_node_fs5.existsSync)(dir) && (0, import_node_fs5.statSync)(dir).isDirectory() ? (0, import_node_fs5.readdirSync)(dir).filter((n) => !n.startsWith(".")) : [];
+  const score = (n) => {
+    const s = n.replace(/\.md$/, "").toLowerCase();
+    return s === wanted ? 0 : s.includes(wanted) || wanted.includes(s) ? 1 : distance(s, wanted);
+  };
+  const suggestions = names.map((n) => ({ n, d: score(n) })).filter((x) => x.d <= Math.max(3, Math.floor(wanted.length / 3))).sort((a, b) => a.d - b.d || a.n.localeCompare(b.n)).slice(0, 3).map((x) => [...parts.slice(0, depth), x.n].join("/"));
+  return { tried: base2, suggestions };
+}
+function distance(a, b) {
+  const row = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    let prev = row[0];
+    row[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const keep = row[j];
+      row[j] = Math.min(row[j] + 1, row[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1));
+      prev = keep;
+    }
+  }
+  return row[b.length];
+}
 
 // src/machine.ts
 var isRecord = (v) => !!v && typeof v === "object" && !Array.isArray(v);
@@ -8515,6 +8546,7 @@ function loadTiers(root, platform = "claude-code") {
   const data = (0, import_node_fs7.existsSync)(file) ? import_yaml4.default.parse(read(file)) : null;
   return isRecord2(data) && isRecord2(data[platform]) ? data[platform] : {};
 }
+var skillCommand = (roleId, skill) => `aidw plugin-path roles/${roleId}/skills/${skill}.md`;
 function renderAgent(role, tiers) {
   const model = tiers[role.tier];
   const head = [
@@ -8537,9 +8569,10 @@ ${role.rules}` : "";
 
 ## Skills (load only when the work needs one)
 
-Read a skill with \`aidw plugin-path roles/${role.id}/skills/<name>.md\`.
+Each line gives the exact command that prints the skill's path; run it as written, then Read that file. A skill whose condition fits your work is required, not optional. If its command fails, run it again exactly as written; if it still fails, go on without it and say in your report which skill you could not read and which part of the work it would have covered. Never drop a skill silently.
 
-${role.skills.map((s) => `- \`${s.name}\`: ${s.when}`).join("\n")}` : "";
+` + role.skills.map((s) => `- \`${s.name}\`: ${s.when}
+  \`${skillCommand(role.id, s.name)}\``).join("\n") : "";
   return `---
 ${head.join("\n")}
 ---
@@ -15488,8 +15521,12 @@ ${r.ok && r.ran ? "Previews work from now on: run aidw deploy.\n" : ""}`);
         if (!/^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/.test(ref) || ref.split("/").includes("..")) {
           throw new UsageError(`invalid plugin path "${ref}"`);
         }
-        const file = (0, import_node_path40.join)(pluginRoot(env), ...ref.split("/"));
-        if (!(0, import_node_fs36.existsSync)(file)) throw new OpError(`"${ref}" not found in the plugin (${file})`);
+        const found = resolvePluginFile(pluginRoot(env), ref);
+        if (!("file" in found)) {
+          const hint = found.suggestions.length ? ` Did you mean: ${found.suggestions.map((s) => `\`aidw plugin-path ${s}\``).join(", ")}?` : "";
+          throw new OpError(`"${ref}" not found in the plugin (${found.tried}).${hint}`);
+        }
+        const file = found.file;
         emit({ path: file }, `${file}
 `);
         return 0;

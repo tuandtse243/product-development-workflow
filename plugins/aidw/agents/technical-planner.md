@@ -142,8 +142,11 @@ consistent and honest about risks.
 
 ## Skills (load only when the work needs one)
 
-Read a skill with `aidw plugin-path roles/technical-planner/skills/<name>.md`.
+Each line gives the exact command that prints the skill's path; run it as written, then Read that file. A skill whose condition fits your work is required, not optional. If its command fails, run it again exactly as written; if it still fails, go on without it and say in your report which skill you could not read and which part of the work it would have covered. Never drop a skill silently.
 
 - `scaffold-tasks`: when the plan creates a new project or its first tasks set up the toolchain, the test harness, CI or a Vercel deploy
+  `aidw plugin-path roles/technical-planner/skills/scaffold-tasks.md`
 - `migration-tasks`: when a task adds or changes a database migration
+  `aidw plugin-path roles/technical-planner/skills/migration-tasks.md`
 - `task-interfaces`: when two or more tasks share a function, a route, a type or a table - what each produces and consumes, and the reviewer's focus
+  `aidw plugin-path roles/technical-planner/skills/task-interfaces.md`

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { agentRole } from "../src/gate.js";
 import { AGENTS, checkRoster, generateAgents, loadRole, loadRoster, loadTiers, renderAgent, writeAgents } from "../src/roles.js";
+import { resolvePluginFile } from "../src/plugin.js";
 
 const plugin = join(__dirname, "..", "plugins", "aidw");
 const temps: string[] = [];
@@ -118,8 +119,25 @@ describe("generated agents", () => {
   it("a role's skills are listed in its agent with how to read them", () => {
     const agent = renderAgent(loadRole(plugin, "technical-planner")!, loadTiers(plugin));
     expect(agent).toMatch(/## Skills \(load only when the work needs one\)/);
-    expect(agent).toContain("aidw plugin-path roles/technical-planner/skills/<name>.md");
+    // each skill carries its full command: trial-4's planner built `.../scaffold-tasks` from a pattern and lost the .md
+    expect(agent).toContain("- `scaffold-tasks`: when the plan creates a new project");
+    expect(agent).toContain("  `aidw plugin-path roles/technical-planner/skills/scaffold-tasks.md`");
     expect(agent).toMatch(/- `migration-tasks`: when a task adds or changes a database migration/);
+    expect(agent).not.toContain("<name>");
+    expect(agent).toMatch(/Never drop a skill silently/);
+  });
+
+  it("every skill command printed in every agent finds its file", () => {
+    const agents = generateAgents(plugin);
+    let count = 0;
+    for (const [name, text] of Object.entries(agents)) {
+      for (const m of text.matchAll(/`aidw plugin-path ([^`<]+)`/g)) {
+        const found = resolvePluginFile(plugin, m[1]!);
+        expect("file" in found, `${name}: ${m[1]}`).toBe(true);
+        count++;
+      }
+    }
+    expect(count).toBeGreaterThan(20);
   });
 
   it("flags a skill without a file and an include that does not exist", () => {
@@ -172,5 +190,31 @@ describe("the gate reads access from the role profile", () => {
 
   it("an unknown agent named like a reviewer stays read-only", () => {
     expect(agentRole("aidw:legacy-reviewer")).toBe("reviewer");
+  });
+});
+
+describe("aidw plugin-path", () => {
+  it("finds a skill asked for without its .md, or by its folder", () => {
+    expect(resolvePluginFile(plugin, "roles/technical-planner/skills/scaffold-tasks")).toEqual({ file: join(plugin, "roles/technical-planner/skills/scaffold-tasks.md") });
+    expect(resolvePluginFile(plugin, "roles/technical-planner/skills/scaffold-tasks.md")).toEqual({ file: join(plugin, "roles/technical-planner/skills/scaffold-tasks.md") });
+    expect(resolvePluginFile(plugin, "skills/run")).toEqual({ file: join(plugin, "skills/run/SKILL.md") });
+  });
+
+  it("names the closest files when a path matches nothing", () => {
+    const r = resolvePluginFile(plugin, "roles/technical-planner/skills/scafold-task");
+    expect(r).toMatchObject({ suggestions: ["roles/technical-planner/skills/scaffold-tasks.md"] });
+    const far = resolvePluginFile(plugin, "roles/technical-planner/nothing/here.md");
+    expect("file" in far).toBe(false);
+  });
+
+  it("says what to run instead, from the command line", async () => {
+    const { run } = await import("../src/cli.js");
+    let out = "";
+    let err = "";
+    const io = { out: (s: string) => (out += s), err: (s: string) => (err += s) };
+    expect(run(["plugin-path", "roles/technical-planner/skills/task-interfaces"], { AIDW_PLUGIN_ROOT: plugin }, plugin, io)).toBe(0);
+    expect(out.trim()).toBe(join(plugin, "roles/technical-planner/skills/task-interfaces.md"));
+    expect(run(["plugin-path", "roles/technical-planner/skills/task-interface-x"], { AIDW_PLUGIN_ROOT: plugin }, plugin, io)).not.toBe(0);
+    expect(err).toMatch(/Did you mean: `aidw plugin-path roles\/technical-planner\/skills\/task-interfaces\.md`/);
   });
 });

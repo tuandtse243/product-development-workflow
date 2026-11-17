@@ -63,7 +63,9 @@ consistent and honest about risks.
 
 ## Skills (load only when the work needs one)
 
-Read a skill with `aidw plugin-path roles/api-designer/skills/<name>.md`.
+Each line gives the exact command that prints the skill's path; run it as written, then Read that file. A skill whose condition fits your work is required, not optional. If its command fails, run it again exactly as written; if it still fails, go on without it and say in your report which skill you could not read and which part of the work it would have covered. Never drop a skill silently.
 
 - `rest-contract`: when the Change adds operations - the procedure and the output format
+  `aidw plugin-path roles/api-designer/skills/rest-contract.md`
 - `breaking-change`: when the Change touches an operation that already exists
+  `aidw plugin-path roles/api-designer/skills/breaking-change.md`
