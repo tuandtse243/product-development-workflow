@@ -1,8 +1,9 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync, rmSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
+import { tamperEvidence } from "../src/tamper.js";
 import { validateTasksText } from "../src/tasks.js";
 import { ANALYSIS_MD, QUALITY_YAML, tempProject, write } from "./fixtures.js";
 
@@ -70,6 +71,31 @@ describe("the checkpoint refuses checks that were weakened", () => {
     git(root, "mv", "tests/old.test.js", "tests/renamed.test.js");
     const r = cli(root, "checkpoint", "T01");
     expect(r.code, r.out).toBe(0);
+  });
+
+  it("does not call a moved test file deleted when git has not tracked the new file yet", () => {
+    const root = running();
+    rmSync(join(root, "tests/old.test.js"));
+    write(root, "tests/moved/old.test.js", OLD_TEST); // untracked: git cannot pair it as a rename
+    const r = cli(root, "checkpoint", "T01");
+    expect(r.code, r.out).toBe(0);
+  });
+
+  it("tells a moved test file from a deleted one by its test titles", () => {
+    const root = tempProject();
+    const isTest = (f: string) => /\.(?:test|spec)\./.test(f);
+    git(root, "init", "-q");
+    write(root, "e2e/home.spec.ts", 'test("home shows the empty state", async () => {});\ntest("home lists todos", async () => {});\n');
+    git(root, "add", "-A");
+    git(root, "commit", "-q", "-m", "base");
+    const base = git(root, "rev-parse", "HEAD").trim();
+    rmSync(join(root, "e2e/home.spec.ts"));
+    mkdirSync(join(root, "e2e/pages"), { recursive: true });
+    write(root, "e2e/pages/home.spec.ts", 'import { test } from "@playwright/test";\ntest("home shows the empty state", async () => {});\ntest("home lists todos", async () => {});\ntest("home is new", async () => {});\n');
+    expect(tamperEvidence(root, base, ["e2e/home.spec.ts", "e2e/pages/home.spec.ts"], { isTest })?.blocked).toEqual([]);
+    // one of the two tests is gone: that is a deletion
+    write(root, "e2e/pages/home.spec.ts", 'test("home shows the empty state", async () => {});\n');
+    expect(tamperEvidence(root, base, ["e2e/home.spec.ts", "e2e/pages/home.spec.ts"], { isTest })?.blocked).toEqual([{ kind: "deleted-test", file: "e2e/home.spec.ts" }]);
   });
 
   it("fails on a skipped and on a focused test", () => {

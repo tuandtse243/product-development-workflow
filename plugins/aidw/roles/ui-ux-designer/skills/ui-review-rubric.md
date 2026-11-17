@@ -47,6 +47,20 @@ Say what the direction asked for and what the screen does instead.
 Alignment to a grid, text that wraps badly or truncates a name, numbers that jump because they are not tabular,
 icons of mixed weight, dates and money in the wrong locale, a layout that shifts when data arrives.
 
+## Blocking or not: do not park a defect under "non-blocking"
+
+Non-blocking is for taste and polish (sections 4 and 5). A defect the user would notice, or one you can already say
+how to fix, is a `fix`, whichever of these excuses comes to mind:
+
+- **"The token is approved."** Approval does not make a contrast ratio pass. A control boundary under 3:1 or text
+  under 4.5:1 is a `fix` on a main flow, and the verdict names the token and a value that would pass.
+- **"It is only one theme."** An element that looks broken in the dark theme (a native checkbox or date input that
+  renders as a bright white square, an unreadable placeholder) is section 2, a `fix`: set `color-scheme` per
+  theme or style the control.
+- **"It is a small thing."** Say how many screens it is on. One misplaced icon is polish; every checkbox in the app is not.
+
+If you list a remark as non-blocking, it must be something you would accept shipping.
+
 ## Writing the verdict
 
 A blocking line names the screen (and screenshot), what the user cannot do or what differs from the design, and

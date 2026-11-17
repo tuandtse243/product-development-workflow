@@ -69,16 +69,40 @@ export function addedLines(dir: string, base: string | null, file: string): { li
   return out;
 }
 
-/** Test files that existed at `base` and are gone now (a rename is not a deletion). */
-function deletedTests(dir: string, base: string | null, isTest: (f: string) => boolean): string[] {
+/** Titles of the tests in a file: the quoted first argument of test(), it() and describe(). */
+const testTitles = (text: string): string[] => [...text.matchAll(/\b(?:test|it|describe)(?:\.\w+)*\s*\(\s*(["'`])((?:\\.|(?!\1).)+)\1/g)].map((m) => m[2] as string);
+
+/**
+ * Test files that existed at `base` and are gone now. A move is not a deletion: git pairs a rename only when the new
+ * file is tracked, and a task's new file usually is not yet (trial 4B), so a file also counts as moved when another
+ * changed file has the same content, or holds every one of its test titles.
+ */
+function deletedTests(dir: string, base: string | null, changed: string[], isTest: (f: string) => boolean): string[] {
   if (!base) return [];
   const r = git(dir, ["diff", "--name-status", "-M", base]);
   if (!r.ok) return [];
-  return r.out
+  const gone = r.out
     .split("\n")
     .map((l) => l.split("\t"))
     .filter(([status, file]) => status === "D" && file && isTest(file) && !existsSync(join(dir, file)))
     .map(([, file]) => file as string);
+  if (!gone.length) return [];
+  const text = (f: string): string | null => {
+    try {
+      return statSync(join(dir, f)).size > MAX_FILE ? null : readFileSync(join(dir, f), "utf8");
+    } catch {
+      return null;
+    }
+  };
+  const elsewhere = changed.filter((f) => isTest(f) && existsSync(join(dir, f))).map((f) => (text(f) ?? "").trim()); // git output is trimmed, so compare trimmed
+  const together = elsewhere.join("\n");
+  return gone.filter((file) => {
+    const old = git(dir, ["show", `${base}:${file}`]);
+    if (!old.ok) return true;
+    if (elsewhere.some((t) => t === old.out.trim())) return false;
+    const titles = testTitles(old.out);
+    return !(titles.length > 0 && titles.every((t) => together.includes(t)));
+  });
 }
 
 export function tamperEvidence(
@@ -90,7 +114,7 @@ export function tamperEvidence(
   if (changed === null) return null; // not a git repository: nothing to compare with
   const blocked: TamperFinding[] = [];
   const justified: TamperFinding[] = [];
-  if (!opts.removesTests) for (const file of deletedTests(dir, base, opts.isTest)) blocked.push({ kind: "deleted-test", file });
+  if (!opts.removesTests) for (const file of deletedTests(dir, base, changed, opts.isTest)) blocked.push({ kind: "deleted-test", file });
   for (const file of changed) {
     if (!CODE_FILE.test(file)) continue;
     const test = opts.isTest(file);

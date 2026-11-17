@@ -7419,17 +7419,35 @@ function addedLines(dir, base2, file) {
   }
   return out;
 }
-function deletedTests(dir, base2, isTest) {
+var testTitles = (text) => [...text.matchAll(/\b(?:test|it|describe)(?:\.\w+)*\s*\(\s*(["'`])((?:\\.|(?!\1).)+)\1/g)].map((m) => m[2]);
+function deletedTests(dir, base2, changed, isTest) {
   if (!base2) return [];
   const r = git(dir, ["diff", "--name-status", "-M", base2]);
   if (!r.ok) return [];
-  return r.out.split("\n").map((l) => l.split("	")).filter(([status, file]) => status === "D" && file && isTest(file) && !(0, import_node_fs.existsSync)((0, import_node_path.join)(dir, file))).map(([, file]) => file);
+  const gone = r.out.split("\n").map((l) => l.split("	")).filter(([status, file]) => status === "D" && file && isTest(file) && !(0, import_node_fs.existsSync)((0, import_node_path.join)(dir, file))).map(([, file]) => file);
+  if (!gone.length) return [];
+  const text = (f) => {
+    try {
+      return (0, import_node_fs.statSync)((0, import_node_path.join)(dir, f)).size > MAX_FILE ? null : (0, import_node_fs.readFileSync)((0, import_node_path.join)(dir, f), "utf8");
+    } catch {
+      return null;
+    }
+  };
+  const elsewhere = changed.filter((f) => isTest(f) && (0, import_node_fs.existsSync)((0, import_node_path.join)(dir, f))).map((f) => (text(f) ?? "").trim());
+  const together = elsewhere.join("\n");
+  return gone.filter((file) => {
+    const old = git(dir, ["show", `${base2}:${file}`]);
+    if (!old.ok) return true;
+    if (elsewhere.some((t) => t === old.out.trim())) return false;
+    const titles = testTitles(old.out);
+    return !(titles.length > 0 && titles.every((t) => together.includes(t)));
+  });
 }
 function tamperEvidence(dir, base2, changed, opts) {
   if (changed === null) return null;
   const blocked = [];
   const justified = [];
-  if (!opts.removesTests) for (const file of deletedTests(dir, base2, opts.isTest)) blocked.push({ kind: "deleted-test", file });
+  if (!opts.removesTests) for (const file of deletedTests(dir, base2, changed, opts.isTest)) blocked.push({ kind: "deleted-test", file });
   for (const file of changed) {
     if (!CODE_FILE.test(file)) continue;
     const test = opts.isTest(file);
