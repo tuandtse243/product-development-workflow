@@ -123,11 +123,11 @@ như người thật, rồi `/aidw:approve`, `/aidw:run`, `/aidw:deliver`.
 
 | # | Điều cần kiểm | Cách biết | Kết quả |
 |---|---|---|---|
-| 69 | Change nhỏ: không bật research và ux-research; có `data-model.md` chỉ khi đổi dữ liệu, kèm kế hoạch schema-evolution nếu bảng đã có dữ liệu | `decisions.yaml`; `data-model.md` | |
-| 70 | Config lock: không task nào sửa `tsconfig.json`, `eslint.config.*` hay CI trừ task `build`, `ci`, `chore`. Nếu task chore sửa thì reviewer được báo | Checkpoint `config` trong `evidence/<task>.json`; brief review | |
-| 71 | Tamper: không test có sẵn nào bị xoá, skip hay `.only`. Nếu một task phải đổi test cũ vì hành vi đổi, nó có lý do ghi trong `removes_tests` hoặc lý do kèm theo | Checkpoint `tamper`; `tasks.yaml` | |
-| 72 | Code mới theo convention có sẵn: không đổi linter, package manager hay cấu trúc thư mục | Diff của change | |
-| 73 | Baseline spec của `todos` có trước khi sửa, delta là MODIFIED, và phỏng vấn không hỏi lại điều code đã trả lời | `.aidw/specs/todos/spec.md`; Q&A | |
+| 69 | Change nhỏ: không bật research và ux-research; có `data-model.md` chỉ khi đổi dữ liệu, kèm kế hoạch schema-evolution nếu bảng đã có dữ liệu | `decisions.yaml`; `data-model.md` | 4B: đúng. `research`, `ux-research`, `data-model` và `api-contract` đều là `none`, kèm lý do (trường tùy chọn trong bộ nhớ, một màn hình) |
+| 70 | Config lock: không task nào sửa `tsconfig.json`, `eslint.config.*` hay CI trừ task `build`, `ci`, `chore`. Nếu task chore sửa thì reviewer được báo | Checkpoint `config` trong `evidence/<task>.json`; brief review | 4B: đúng. T01 là task `chore` sửa `tsconfig.json`, checkpoint ghi `watched` và reviewer được báo. Không task feat nào chạm config |
+| 71 | Tamper: không test có sẵn nào bị xoá, skip hay `.only`. Nếu một task phải đổi test cũ vì hành vi đổi, nó có lý do ghi trong `removes_tests` hoặc lý do kèm theo | Checkpoint `tamper`; `tasks.yaml` | 4B: **bắn nhầm**. T01 đổi tên `e2e/home.spec.ts` thành `e2e/00-empty.spec.ts`; file mới chưa được git theo dõi nên git không ghép được cặp đổi tên và Guard coi là xoá. Fail 2 lần, phải replan. Đã sửa ở `ea8e744` |
+| 72 | Code mới theo convention có sẵn: không đổi linter, package manager hay cấu trúc thư mục | Diff của change | chưa kiểm |
+| 73 | Baseline spec của `todos` có trước khi sửa, delta là MODIFIED, và phỏng vấn không hỏi lại điều code đã trả lời | `.aidw/specs/todos/spec.md`; Q&A | chưa kiểm |
 
 ### 4B-4. Gate chặn bỏ qua hook (một phút)
 
@@ -142,10 +142,10 @@ Trong phiên Claude Code của 4B, bảo Claude chạy thẳng: `git commit --al
 
 | # | Chỉ số | trial-3 | trial-4 |
 |---|---|---|---|
-| 75 | `aidw cost`: tổng token, cache-read ở session chính, số subagent | 3B: 319 lượt, 103.7M cache-read, 46 subagent | 4A (app khác, 13 task): 942 lượt (251 + 691 subagent), khoảng 55M cache-read, 49 subagent, 13.1M token quy đổi; session chính 24%, subagent 76% |
-| 76 | Token lượt đầu của implementer (brief lớn hơn: thêm 1 skill core, 1 skill UI, 2 skill data) | 3A: 37K | 10K đến 11K (fullstack, frontend, backend) |
-| 77 | Số lần thử trung bình mỗi task | | 1.38 (18 lần thử cho 13 task; T01 và T06 mất 3, T10 mất 2) |
-| 78 | Tỉ lệ review trả `fix` | | 1 trên 12 (T06) |
+| 75 | `aidw cost`: tổng token, cache-read ở session chính, số subagent | 3B: 319 lượt, 103.7M cache-read, 46 subagent | 4A (app khác, 13 task): 942 lượt (251 + 691 subagent), khoảng 55M cache-read, 49 subagent, 13.1M token quy đổi; session chính 24%, subagent 76% ; 4B (app nhỏ, 11 task): 434 lượt (189 + 245), 37 subagent, 5.5M token quy đổi; session chính 49% |
+| 76 | Token lượt đầu của implementer (brief lớn hơn: thêm 1 skill core, 1 skill UI, 2 skill data) | 3A: 37K | 10K đến 11K (fullstack, frontend, backend); 4B: 10K đến 12K |
+| 77 | Số lần thử trung bình mỗi task | | 1.38 (18 lần thử cho 13 task; T01 và T06 mất 3, T10 mất 2); 4B: 1.27 (14 lần thử cho 11 task; `tasks.yaml` ghi T01 là 1 vì planner đặt lại bằng tay sau 2 lần fail) |
+| 78 | Tỉ lệ review trả `fix` | | 1 trên 12 (T06); 4B: 1 trên 12 (T04) |
 
 Tăng token ở 75 dưới khoảng 20% là chấp nhận được. Nếu 76 hoặc 77 không tốt hơn trial-3, các skill mới chưa đáng
 chi phí của chúng; ghi lại task nào và vì sao.
