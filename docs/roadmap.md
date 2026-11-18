@@ -331,12 +331,16 @@ the owner has judged the one before it on before-and-after screenshots of the sa
 - [x] Vendor Impeccable's rule catalog and craft floor (`library/vendor/impeccable/`); `scripts/vendor.mjs` copies
   single files and a notice.
 - [x] Direction Library: three Design Directions, each accepted by the owner on a preview of `todo-board`
-  (`roles/ui-ux-designer/references/directions/`): Night Shift, Playground, Riso. Three is the whole library, so
-  every product is dealt all three and the choice comes from the owner, not from dealing. Dropped on review:
-  Workbench, Tide, Color Field (recorded in the library's README so they are not written again).
-- [ ] The record of dealt directions (`~/.aidw/`) waits until the library holds more than three.
-- [ ] Authored Skill for the `ui-ux-designer`: commit to one dealt direction, build the Design Mock, check it against
-  the craft floor on the rendered page. Sources: Hallmark, Impeccable, Anthropic `frontend-design`.
+  (`roles/ui-ux-designer/references/directions/`): Night Shift, Playground, Riso. Not kept as examples:
+  Workbench, Tide, Color Field, Transit (not banned from being composed).
+- [x] The library is not dealt from (ADR-0008, amended 2026-11-18): three directions dealt to every product
+  repeat. The accepted directions become examples of format and bar; the directions are composed per product.
+- [ ] Composing directions: the `ui-ux-designer` asks the `research` Role for worlds outside software that fit
+  the product's subject and users, and composes three directions in one context, each borrowing one whole world,
+  no two sharing a world. A world may come back for another product or in another round; no record of worlds
+  used is kept and no world is banned.
+- [ ] Authored Skill for the `ui-ux-designer`: commit to one composed direction, build the Design Mock, check it
+  against the craft floor on the rendered page. Sources: Hallmark, Impeccable, Anthropic `frontend-design`.
 - [ ] `ui-ux-designer` as a worker Agent of the deep Tier for mocks: three in parallel, one direction each. The
   Decision Page shows a thumbnail and a link per mock. The chosen mock is extended to at most three screens.
 - [ ] The Design Mock as an Artifact, frozen with the tokens (read from its CSS), its images and their credits.
@@ -350,7 +354,8 @@ the owner has judged the one before it on before-and-after screenshots of the sa
 - [ ] References. Decision Point `references-needed` (decided by the `ui-ux-designer`): the `research` Role finds
   live sites of the same kind of product through a CLI script (Land-book, SaaS Landing Page, Lapa Ninja,
   Landingfolio, SaaSUI, SaaS Interface, component.gallery; only where `robots.txt` allows, a few pages a search),
-  opens them and takes its own screenshots. Traits shared by at least three adjust the dealt directions. A
+  opens them and takes its own screenshots. Traits shared by at least three set the conventions of the kind of
+  product (density, the screens it must have); the worlds, not these sites, set the look. A
   reference the user names (a link, an image, a Figma file; this is how Dribbble and Pinterest come in) is
   followed closely, with its name, mark, words, images and licensed fonts replaced.
 - [ ] Images: chosen by the `ui-ux-designer` while building the mock, through a CLI script, from sources that need
@@ -384,7 +389,7 @@ the owner has judged the one before it on before-and-after screenshots of the sa
   it is clear where it leads, and whether the result shows progress.
 - [ ] Run `todo-board` again. Two separate measures: the owner judges the look on before-and-after screenshots; use
   is measured by the count of blocking and fix findings the same reviewer reports on the old and the new build.
-  The library stays at three directions; a new one is added only when the owner asks for it.
+  The three directions are composed for it, not taken from the library.
 
 ### Step 2: components and charts (React only)
 

@@ -121,8 +121,8 @@ one is an Artifact, and the screens built later follow its structure and treatme
 _Avoid_: Prototype, wireframe, mockup, Decision Page
 
 **Direction Library**:
-The Design Directions the factory keeps, each accepted by the factory's owner, from which the candidates for a
-product are dealt.
+The Design Directions the factory's owner accepted as examples. They set
+the format and the bar for the three directions composed for each product; they are not the candidates.
 _Avoid_: Theme pack, presets, templates
 
 **Screen Kind**:

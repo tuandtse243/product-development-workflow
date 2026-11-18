@@ -1,16 +1,17 @@
 # The Direction Library
 
-The Design Directions aidw deals from when it designs a product (ADR-0008). Each file is one direction: a whole
-look with its reasons, written so that three Agents given three different directions build three mocks that do not
-look alike.
+Examples of a Design Direction, accepted by the factory's owner (ADR-0008, amended 2026-11-18). They are not
+candidates: the three directions for a product are composed for it. The examples show the format a composed
+direction follows and the bar it must reach: a whole look with its reasons, written so that three Agents given
+three different directions build three mocks that do not look alike.
 
-A direction enters the library as `status: proposed` and is used only after the factory's owner has seen it on a
-preview and set `status: accepted`. The owner may also send it back for changes or drop it.
+An example enters the library as `status: proposed` and counts only after the owner has seen it on a preview and
+set `status: accepted`. The owner may also send it back for changes or drop it.
 
 ## What a direction holds
 
 - **Front matter**: `id`, `name`, `status`, `theme` (light-first or dark-first; both themes are always designed),
-  `density`, `fits` and `avoid_for` (kinds of product, used when dealing).
+  `density`, `fits` and `avoid_for` (kinds of product the direction fits or should not be used for).
 - **Character**: one paragraph a designer can hold in mind while choosing anything the file does not cover.
 - **Palette**: tokens with light and dark values and their `use`, named as in `tokens.yaml`
   (`design-tokens.md`). The mock's CSS carries them; tokens are read from it after approval.
@@ -25,14 +26,18 @@ preview and set `status: accepted`. The owner may also send it back for changes 
   purpose, each with its reason. Nothing else is lifted. Failures of use are never lifted.
 - **Adapting to a subject**: what may change for a product (an accent hue, a face of the same kind) and what may not.
 
-## Dealing
+## Composing three directions
 
-The library holds three directions, so every product is dealt all three and the user chooses. `avoid_for` is
-shown to the user beside a direction that names the product's kind; it does not remove it. A record of dealt
-directions (`~/.aidw/`) comes only when the library holds more than three. References found by the `research` Role adjust a
-dealt direction to the kind of product; they do not replace it.
+1. The `ui-ux-designer` asks the `research` Role for worlds outside software that fit the product's subject and
+   users (print, signage, packaging, editorial, instruments, maps, ...), with pictures and sources. Live sites of
+   the same kind of product are asked for only to learn its conventions (density, the screens it must have);
+   they do not set the look.
+2. In one context it composes three directions in the format above. Each borrows one whole world; no two share a
+   world, and they differ in theme or density and in the kind of display face. None copies an example. A world may come back for another product or in another
+   round; only the three of one round must differ.
+3. Each is as complete as an example. A direction that is only a palette is not a direction.
 
-## Directions
+## Examples
 
 | id | name | status | theme | for |
 |---|---|---|---|---|
@@ -40,8 +45,6 @@ dealt direction to the kind of product; they do not replace it.
 | playground | Playground | accepted | light-first | consumer, community, creators, learning for all ages |
 | riso | Riso | accepted | light-first | events, publishing, creative tools, education, culture |
 
-Dropped by the owner on 2026-11-18, so as not to be written again: a dense utilitarian light direction (concrete
-grey, signal yellow, wide grotesque), a calm airy light direction (mist, spruce, upright book serif), and a
-saturated color-field direction (ultramarine ground, flat white panels, lime action, wide rounded display). A fourth, Transit (transit signage, line colors, a route of stations), was
-withdrawn when the library was fixed at three. The
-directions kept each borrow a whole world (a night-shift tool, a sticker sheet, a print run).
+The examples kept each borrow a whole world (a night-shift tool, a sticker sheet, a print run). Directions the
+owner did not keep as examples (Workbench, Tide, Color Field, Transit) are not banned: any world may be composed
+for a product it fits.
