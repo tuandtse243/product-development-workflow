@@ -3979,10 +3979,10 @@ var require_resolve_block_map = __commonJS({
       let offset = bm.offset;
       let commentEnd = null;
       for (const collItem of bm.items) {
-        const { start, key, sep: sep6, value } = collItem;
+        const { start, key, sep: sep7, value } = collItem;
         const keyProps = resolveProps.resolveProps(start, {
           indicator: "explicit-key-ind",
-          next: key ?? sep6?.[0],
+          next: key ?? sep7?.[0],
           offset,
           onError,
           parentIndent: bm.indent,
@@ -3996,7 +3996,7 @@ var require_resolve_block_map = __commonJS({
             else if ("indent" in key && key.indent !== bm.indent)
               onError(offset, "BAD_INDENT", startColMsg);
           }
-          if (!keyProps.anchor && !keyProps.tag && !sep6) {
+          if (!keyProps.anchor && !keyProps.tag && !sep7) {
             commentEnd = keyProps.end;
             if (keyProps.comment) {
               if (map.comment)
@@ -4020,7 +4020,7 @@ var require_resolve_block_map = __commonJS({
         ctx.atKey = false;
         if (utilMapIncludes.mapIncludes(ctx, map.items, keyNode))
           onError(keyStart, "DUPLICATE_KEY", "Map keys must be unique");
-        const valueProps = resolveProps.resolveProps(sep6 ?? [], {
+        const valueProps = resolveProps.resolveProps(sep7 ?? [], {
           indicator: "map-value-ind",
           next: value,
           offset: keyNode.range[2],
@@ -4036,7 +4036,7 @@ var require_resolve_block_map = __commonJS({
             if (ctx.options.strict && keyProps.start < valueProps.found.offset - 1024)
               onError(keyNode.range, "KEY_OVER_1024_CHARS", "The : indicator must be at most 1024 chars after the start of an implicit block mapping key");
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep6, null, valueProps, onError);
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep7, null, valueProps, onError);
           if (ctx.schema.compat)
             utilFlowIndentCheck.flowIndentCheck(bm.indent, value, onError);
           offset = valueNode.range[2];
@@ -4127,7 +4127,7 @@ var require_resolve_end = __commonJS({
       let comment = "";
       if (end) {
         let hasSpace = false;
-        let sep6 = "";
+        let sep7 = "";
         for (const token of end) {
           const { source, type } = token;
           switch (type) {
@@ -4141,13 +4141,13 @@ var require_resolve_end = __commonJS({
               if (!comment)
                 comment = cb;
               else
-                comment += sep6 + cb;
-              sep6 = "";
+                comment += sep7 + cb;
+              sep7 = "";
               break;
             }
             case "newline":
               if (comment)
-                sep6 += source;
+                sep7 += source;
               hasSpace = true;
               break;
             default:
@@ -4190,18 +4190,18 @@ var require_resolve_flow_collection = __commonJS({
       let offset = fc.offset + fc.start.source.length;
       for (let i = 0; i < fc.items.length; ++i) {
         const collItem = fc.items[i];
-        const { start, key, sep: sep6, value } = collItem;
+        const { start, key, sep: sep7, value } = collItem;
         const props = resolveProps.resolveProps(start, {
           flow: fcName,
           indicator: "explicit-key-ind",
-          next: key ?? sep6?.[0],
+          next: key ?? sep7?.[0],
           offset,
           onError,
           parentIndent: fc.indent,
           startOnNewline: false
         });
         if (!props.found) {
-          if (!props.anchor && !props.tag && !sep6 && !value) {
+          if (!props.anchor && !props.tag && !sep7 && !value) {
             if (i === 0 && props.comma)
               onError(props.comma, "UNEXPECTED_TOKEN", `Unexpected , in ${fcName}`);
             else if (i < fc.items.length - 1)
@@ -4255,8 +4255,8 @@ var require_resolve_flow_collection = __commonJS({
             }
           }
         }
-        if (!isMap && !sep6 && !props.found) {
-          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep6, null, props, onError);
+        if (!isMap && !sep7 && !props.found) {
+          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep7, null, props, onError);
           coll.items.push(valueNode);
           offset = valueNode.range[2];
           if (isBlock(value))
@@ -4268,7 +4268,7 @@ var require_resolve_flow_collection = __commonJS({
           if (isBlock(key))
             onError(keyNode.range, "BLOCK_IN_FLOW", blockMsg);
           ctx.atKey = false;
-          const valueProps = resolveProps.resolveProps(sep6 ?? [], {
+          const valueProps = resolveProps.resolveProps(sep7 ?? [], {
             flow: fcName,
             indicator: "map-value-ind",
             next: value,
@@ -4279,8 +4279,8 @@ var require_resolve_flow_collection = __commonJS({
           });
           if (valueProps.found) {
             if (!isMap && !props.found && ctx.options.strict) {
-              if (sep6)
-                for (const st of sep6) {
+              if (sep7)
+                for (const st of sep7) {
                   if (st === valueProps.found)
                     break;
                   if (st.type === "newline") {
@@ -4297,7 +4297,7 @@ var require_resolve_flow_collection = __commonJS({
             else
               onError(valueProps.start, "MISSING_CHAR", `Missing , or : between ${fcName} items`);
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep6, null, valueProps, onError) : null;
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep7, null, valueProps, onError) : null;
           if (valueNode) {
             if (isBlock(value))
               onError(valueNode.range, "BLOCK_IN_FLOW", blockMsg);
@@ -4477,7 +4477,7 @@ var require_resolve_block_scalar = __commonJS({
           chompStart = i + 1;
       }
       let value = "";
-      let sep6 = "";
+      let sep7 = "";
       let prevMoreIndented = false;
       for (let i = 0; i < contentStart; ++i)
         value += lines[i][0].slice(trimIndent) + "\n";
@@ -4494,24 +4494,24 @@ var require_resolve_block_scalar = __commonJS({
           indent = "";
         }
         if (type === Scalar.Scalar.BLOCK_LITERAL) {
-          value += sep6 + indent.slice(trimIndent) + content;
-          sep6 = "\n";
+          value += sep7 + indent.slice(trimIndent) + content;
+          sep7 = "\n";
         } else if (indent.length > trimIndent || content[0] === "	") {
-          if (sep6 === " ")
-            sep6 = "\n";
-          else if (!prevMoreIndented && sep6 === "\n")
-            sep6 = "\n\n";
-          value += sep6 + indent.slice(trimIndent) + content;
-          sep6 = "\n";
+          if (sep7 === " ")
+            sep7 = "\n";
+          else if (!prevMoreIndented && sep7 === "\n")
+            sep7 = "\n\n";
+          value += sep7 + indent.slice(trimIndent) + content;
+          sep7 = "\n";
           prevMoreIndented = true;
         } else if (content === "") {
-          if (sep6 === "\n")
+          if (sep7 === "\n")
             value += "\n";
           else
-            sep6 = "\n";
+            sep7 = "\n";
         } else {
-          value += sep6 + content;
-          sep6 = " ";
+          value += sep7 + content;
+          sep7 = " ";
           prevMoreIndented = false;
         }
       }
@@ -4693,25 +4693,25 @@ var require_resolve_flow_scalar = __commonJS({
       if (!match)
         return source;
       let res = match[1];
-      let sep6 = " ";
+      let sep7 = " ";
       let pos = first.lastIndex;
       line.lastIndex = pos;
       while (match = line.exec(source)) {
         if (match[1] === "") {
-          if (sep6 === "\n")
-            res += sep6;
+          if (sep7 === "\n")
+            res += sep7;
           else
-            sep6 = "\n";
+            sep7 = "\n";
         } else {
-          res += sep6 + match[1];
-          sep6 = " ";
+          res += sep7 + match[1];
+          sep7 = " ";
         }
         pos = line.lastIndex;
       }
       const last = /[ \t]*(.*)/sy;
       last.lastIndex = pos;
       match = last.exec(source);
-      return res + sep6 + (match?.[1] ?? "");
+      return res + sep7 + (match?.[1] ?? "");
     }
     function doubleQuotedValue(source, onError) {
       let res = "";
@@ -5513,14 +5513,14 @@ var require_cst_stringify = __commonJS({
         }
       }
     }
-    function stringifyItem({ start, key, sep: sep6, value }) {
+    function stringifyItem({ start, key, sep: sep7, value }) {
       let res = "";
       for (const st of start)
         res += st.source;
       if (key)
         res += stringifyToken(key);
-      if (sep6)
-        for (const st of sep6)
+      if (sep7)
+        for (const st of sep7)
           res += st.source;
       if (value)
         res += stringifyToken(value);
@@ -6670,18 +6670,18 @@ var require_parser = __commonJS({
         if (this.type === "map-value-ind") {
           const prev = getPrevProps(this.peek(2));
           const start = getFirstKeyStartProps(prev);
-          let sep6;
+          let sep7;
           if (scalar.end) {
-            sep6 = scalar.end;
-            sep6.push(this.sourceToken);
+            sep7 = scalar.end;
+            sep7.push(this.sourceToken);
             delete scalar.end;
           } else
-            sep6 = [this.sourceToken];
+            sep7 = [this.sourceToken];
           const map = {
             type: "block-map",
             offset: scalar.offset,
             indent: scalar.indent,
-            items: [{ start, key: scalar, sep: sep6 }]
+            items: [{ start, key: scalar, sep: sep7 }]
           };
           this.onKeyLine = true;
           this.stack[this.stack.length - 1] = map;
@@ -6834,15 +6834,15 @@ var require_parser = __commonJS({
                 } else if (isFlowToken(it.key) && !includesToken(it.sep, "newline")) {
                   const start2 = getFirstKeyStartProps(it.start);
                   const key = it.key;
-                  const sep6 = it.sep;
-                  sep6.push(this.sourceToken);
+                  const sep7 = it.sep;
+                  sep7.push(this.sourceToken);
                   delete it.key;
                   delete it.sep;
                   this.stack.push({
                     type: "block-map",
                     offset: this.offset,
                     indent: this.indent,
-                    items: [{ start: start2, key, sep: sep6 }]
+                    items: [{ start: start2, key, sep: sep7 }]
                   });
                 } else if (start.length > 0) {
                   it.sep = it.sep.concat(start, this.sourceToken);
@@ -7036,13 +7036,13 @@ var require_parser = __commonJS({
             const prev = getPrevProps(parent);
             const start = getFirstKeyStartProps(prev);
             fixFlowSeqItems(fc);
-            const sep6 = fc.end.splice(1, fc.end.length);
-            sep6.push(this.sourceToken);
+            const sep7 = fc.end.splice(1, fc.end.length);
+            sep7.push(this.sourceToken);
             const map = {
               type: "block-map",
               offset: fc.offset,
               indent: fc.indent,
-              items: [{ start, key: fc, sep: sep6 }]
+              items: [{ start, key: fc, sep: sep7 }]
             };
             this.onKeyLine = true;
             this.stack[this.stack.length - 1] = map;
@@ -7329,8 +7329,8 @@ __export(cli_exports, {
   run: () => run
 });
 module.exports = __toCommonJS(cli_exports);
-var import_node_fs36 = require("node:fs");
-var import_node_path41 = require("node:path");
+var import_node_fs37 = require("node:fs");
+var import_node_path42 = require("node:path");
 var import_node_url = require("node:url");
 var import_yaml15 = __toESM(require_dist(), 1);
 
@@ -14432,17 +14432,284 @@ function stopBrowser(p, deps = realBrowserDeps) {
   return "stopped";
 }
 
-// src/evals.ts
+// src/mock.ts
+var import_node_child_process8 = require("node:child_process");
 var import_node_fs30 = require("node:fs");
+var import_node_http = require("node:http");
+var import_node_os2 = require("node:os");
 var import_node_path35 = require("node:path");
+var realFontDeps = {
+  get: (url) => {
+    const r = (0, import_node_child_process8.spawnSync)("curl", ["-sSfL", "-m", "30", url], { maxBuffer: 64 * 1024 * 1024, timeout: 4e4 });
+    return r.status === 0 && r.stdout ? Buffer.from(r.stdout) : null;
+  },
+  home: (0, import_node_os2.homedir)()
+};
+var FONT_SUBSETS = ["latin", "latin-ext", "vietnamese"];
+var fontId = (family) => family.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+function fetchFont(family, opts, deps = realFontDeps) {
+  const id = fontId(family);
+  if (!id) throw new OpError('font: give a family name, for example "Big Shoulders Display"');
+  const raw = deps.get(`https://api.fontsource.org/v1/fonts/${id}`);
+  if (!raw) throw new OpError(`font: "${family}" is not on Fontsource (looked for id "${id}"), or the network is unreachable`);
+  let meta;
+  try {
+    meta = JSON.parse(raw.toString("utf8"));
+  } catch {
+    throw new OpError(`font: Fontsource returned something that is not JSON for "${id}"`);
+  }
+  if (!/^OFL/i.test(meta.license ?? "")) {
+    throw new OpError(`font: ${meta.family} is licensed ${meta.license || "under an unknown licence"}, not OFL; a mock may only use OFL fonts`);
+  }
+  const weights = opts.weights?.length ? opts.weights : meta.weights.filter((w) => w === 400 || w === 700);
+  const missing = weights.filter((w) => !meta.weights.includes(w));
+  if (missing.length) throw new OpError(`font: ${meta.family} has no weight ${missing.join(", ")} (it has ${meta.weights.join(", ")})`);
+  const styles = ["normal", ...opts.italic && meta.styles.includes("italic") ? ["italic"] : []];
+  const subsets = FONT_SUBSETS.filter((s) => meta.subsets.includes(s));
+  if (!subsets.length) throw new OpError(`font: ${meta.family} has none of the subsets ${FONT_SUBSETS.join(", ")}`);
+  const dir = (0, import_node_path35.join)(opts.to, meta.id);
+  (0, import_node_fs30.mkdirSync)(dir, { recursive: true });
+  const cache2 = usableCache(deps.home, `${meta.id}@${meta.npmVersion}`);
+  const files = [];
+  const rules = [];
+  let cached = 0;
+  for (const w of weights) {
+    for (const style of styles) {
+      for (const subset of subsets) {
+        const url = meta.variants[String(w)]?.[style]?.[subset]?.url.woff2;
+        if (!url) continue;
+        const name = `${subset}-${w}-${style}.woff2`;
+        const target = (0, import_node_path35.join)(dir, name);
+        const hit = cache2 && (0, import_node_fs30.existsSync)((0, import_node_path35.join)(cache2, name));
+        if (hit) {
+          (0, import_node_fs30.copyFileSync)((0, import_node_path35.join)(cache2, name), target);
+          cached++;
+        } else {
+          const body = deps.get(url);
+          if (!body) throw new OpError(`font: could not download ${url}`);
+          (0, import_node_fs30.writeFileSync)(target, body);
+          if (cache2) {
+            try {
+              (0, import_node_fs30.writeFileSync)((0, import_node_path35.join)(cache2, name), body);
+            } catch {
+            }
+          }
+        }
+        files.push((0, import_node_path35.join)(meta.id, name));
+        const range = meta.unicodeRange?.[subset];
+        rules.push(
+          `@font-face {
+  font-family: "${meta.family}";
+  font-style: ${style};
+  font-weight: ${w};
+  font-display: swap;
+  src: url("./${meta.id}/${name}") format("woff2");${range ? `
+  unicode-range: ${range};` : ""}
+}`
+        );
+      }
+    }
+  }
+  if (!files.length) throw new OpError(`font: Fontsource lists no woff2 file for ${meta.family} at weight ${weights.join(", ")}`);
+  const css = `/* ${meta.family} ${meta.version}, ${meta.license}, from Fontsource (${meta.source ?? "source not stated"}) */
+${rules.join("\n")}
+`;
+  (0, import_node_fs30.writeFileSync)((0, import_node_path35.join)(opts.to, `${meta.id}.css`), css);
+  (0, import_node_fs30.writeFileSync)(
+    (0, import_node_path35.join)(dir, "SOURCE.md"),
+    `# ${meta.family}
+
+- Licence: ${meta.license} (SIL Open Font License). Redistribution with the mock is allowed; the font may not be sold on its own.
+- Version: ${meta.version} (Fontsource package ${meta.npmVersion})
+- Upstream: ${meta.source ?? "not stated"}
+- Metadata: https://api.fontsource.org/v1/fonts/${meta.id}
+- Files: ${files.map((f) => f.slice(meta.id.length + 1)).join(", ")}
+`
+  );
+  return { family: meta.family, id: meta.id, license: meta.license, version: meta.version, weights, styles, subsets, files, css: `${meta.id}.css`, cached };
+}
+function usableCache(home, key) {
+  const dir = (0, import_node_path35.join)(home, ".aidw", "cache", "fonts", key);
+  try {
+    (0, import_node_fs30.mkdirSync)(dir, { recursive: true });
+    return dir;
+  } catch {
+    return null;
+  }
+}
+var MOCK_VIEWPORTS = [
+  { name: "desktop", width: 1440, height: 900, mobile: false },
+  { name: "phone", width: 390, height: 844, mobile: true }
+];
+var MOCK_THEMES = ["light", "dark"];
+function planShots(dir) {
+  if (!(0, import_node_fs30.existsSync)(dir) || !(0, import_node_fs30.statSync)(dir).isDirectory()) throw new OpError(`mock shots: ${dir} is not a folder`);
+  const pages = (0, import_node_fs30.readdirSync)(dir).filter((f) => f.endsWith(".html")).sort();
+  if (!pages.length) throw new OpError(`mock shots: no .html file in ${dir}`);
+  const shots = [];
+  for (const page of pages) {
+    for (const viewport of MOCK_VIEWPORTS) {
+      for (const theme of MOCK_THEMES) {
+        shots.push({ page, viewport, theme, file: (0, import_node_path35.join)("shots", `${page.replace(/\.html$/, "")}-${viewport.name}-${theme}.png`) });
+      }
+    }
+  }
+  return shots;
+}
+function takeShots(req, self, execPath = process.execPath) {
+  const r = (0, import_node_child_process8.spawnSync)(execPath, [self, SHOTS_WORKER, JSON.stringify(req)], { encoding: "utf8", timeout: 18e4 });
+  const line = (r.stdout ?? "").trim().split("\n").pop() ?? "";
+  try {
+    return JSON.parse(line);
+  } catch {
+    throw new OpError(`mock shots: the screenshot process failed${r.stderr ? `: ${r.stderr.trim().split("\n").slice(-3).join(" ")}` : ""}`);
+  }
+}
+var SHOTS_WORKER = "__mock-shots-worker";
+var TYPES = {
+  ".html": "text/html; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+  ".avif": "image/avif",
+  ".gif": "image/gif",
+  ".woff2": "font/woff2",
+  ".woff": "font/woff",
+  ".json": "application/json"
+};
+function serveFolder(dir) {
+  const root = (0, import_node_path35.resolve)(dir);
+  const server = (0, import_node_http.createServer)((req, res) => {
+    const path = decodeURIComponent((req.url ?? "/").split("?")[0]);
+    const file = (0, import_node_path35.resolve)(root, `.${path === "/" ? "/index.html" : path}`);
+    if (file !== root && !file.startsWith(root + import_node_path35.sep)) {
+      res.writeHead(403).end();
+      return;
+    }
+    if (!(0, import_node_fs30.existsSync)(file) || !(0, import_node_fs30.statSync)(file).isFile()) {
+      res.writeHead(404).end();
+      return;
+    }
+    res.writeHead(200, { "content-type": TYPES[(0, import_node_path35.extname)(file).toLowerCase()] ?? "application/octet-stream", "cache-control": "no-store" });
+    res.end((0, import_node_fs30.readFileSync)(file));
+  });
+  return new Promise((ok, fail) => {
+    server.once("error", fail);
+    server.listen(0, "127.0.0.1", () => {
+      const a = server.address();
+      ok({ server, base: `http://127.0.0.1:${typeof a === "object" && a ? a.port : 0}` });
+    });
+  });
+}
+var Cdp = class _Cdp {
+  constructor(ws) {
+    this.ws = ws;
+    ws.addEventListener("message", (ev) => {
+      const m = JSON.parse(String(ev.data));
+      if (m.id && this.waiting.has(m.id)) {
+        const w = this.waiting.get(m.id);
+        this.waiting.delete(m.id);
+        if (m.error) w.fail(new Error(`${m.error.message}`));
+        else w.ok(m.result);
+      } else for (const l of this.listeners) l(m);
+    });
+  }
+  id = 0;
+  waiting = /* @__PURE__ */ new Map();
+  listeners = [];
+  static async connect(url) {
+    if (typeof WebSocket === "undefined") throw new Error("this Node has no built-in WebSocket; mock shots need Node 22 or later");
+    const ws = new WebSocket(url);
+    await new Promise((ok, fail) => {
+      ws.addEventListener("open", () => ok());
+      ws.addEventListener("error", () => fail(new Error(`cannot connect to ${url}`)));
+    });
+    return new _Cdp(ws);
+  }
+  send(method, params = {}, sessionId) {
+    const id = ++this.id;
+    this.ws.send(JSON.stringify({ id, method, params, ...sessionId ? { sessionId } : {} }));
+    return new Promise((ok, fail) => this.waiting.set(id, { ok, fail }));
+  }
+  once(method, sessionId, timeoutMs) {
+    return new Promise((ok) => {
+      const t = setTimeout(done, timeoutMs);
+      const self = this;
+      function done() {
+        clearTimeout(t);
+        self.listeners = self.listeners.filter((l) => l !== listen);
+        ok();
+      }
+      function listen(m) {
+        if (m.method === method && m.sessionId === sessionId) done();
+      }
+      this.listeners.push(listen);
+    });
+  }
+  close() {
+    this.ws.close();
+  }
+};
+async function runShotsWorker(req) {
+  const shots = planShots(req.dir);
+  const result = { written: [], errors: [] };
+  const version = await fetch(`${req.cdp}/json/version`).then((r) => r.json());
+  const cdp = await Cdp.connect(version.webSocketDebuggerUrl);
+  const { server, base: base2 } = await serveFolder(req.dir);
+  (0, import_node_fs30.mkdirSync)((0, import_node_path35.join)(req.dir, "shots"), { recursive: true });
+  try {
+    for (const shot of shots) {
+      let targetId;
+      try {
+        ({ targetId } = await cdp.send("Target.createTarget", { url: "about:blank" }));
+        const { sessionId } = await cdp.send("Target.attachToTarget", { targetId, flatten: true });
+        const { width, height, mobile } = shot.viewport;
+        await cdp.send("Page.enable", {}, sessionId);
+        await cdp.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile }, sessionId);
+        await cdp.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: shot.theme }] }, sessionId);
+        const loaded = cdp.once("Page.loadEventFired", sessionId, 15e3);
+        await cdp.send("Page.navigate", { url: `${base2}/${encodeURIComponent(shot.page)}` }, sessionId);
+        await loaded;
+        await cdp.send("Runtime.evaluate", { expression: "document.fonts.ready.then(() => new Promise(r => setTimeout(r, 300)))", awaitPromise: true }, sessionId);
+        const params = { format: "png" };
+        if (req.full) {
+          const m = await cdp.send("Page.getLayoutMetrics", {}, sessionId);
+          const h = Math.ceil(m.cssContentSize?.height ?? m.contentSize.height);
+          params.captureBeyondViewport = true;
+          params.clip = { x: 0, y: 0, width, height: Math.max(height, Math.min(h, 12e3)), scale: 1 };
+        }
+        const { data } = await cdp.send("Page.captureScreenshot", params, sessionId);
+        (0, import_node_fs30.writeFileSync)((0, import_node_path35.join)(req.dir, shot.file), Buffer.from(data, "base64"));
+        result.written.push(shot.file);
+      } catch (e) {
+        result.errors.push(`${shot.file}: ${e.message}`);
+      } finally {
+        if (targetId) await cdp.send("Target.closeTarget", { targetId }).catch(() => {
+        });
+      }
+    }
+  } finally {
+    cdp.close();
+    server.close();
+  }
+  return result;
+}
+
+// src/evals.ts
+var import_node_fs31 = require("node:fs");
+var import_node_path36 = require("node:path");
 function loadEvalCases(root, id) {
   const d = new Diags();
-  const dir = (0, import_node_path35.join)(roleDir(root, id), "evals");
+  const dir = (0, import_node_path36.join)(roleDir(root, id), "evals");
   const cases = [];
-  if (!(0, import_node_fs30.existsSync)(dir)) return { cases, diags: d };
-  for (const f of (0, import_node_fs30.readdirSync)(dir).filter((n) => n.endsWith(".md")).sort()) {
+  if (!(0, import_node_fs31.existsSync)(dir)) return { cases, diags: d };
+  for (const f of (0, import_node_fs31.readdirSync)(dir).filter((n) => n.endsWith(".md")).sort()) {
     const file = `roles/${id}/evals/${f}`;
-    const text2 = (0, import_node_fs30.readFileSync)((0, import_node_path35.join)(dir, f), "utf8");
+    const text2 = (0, import_node_fs31.readFileSync)((0, import_node_path36.join)(dir, f), "utf8");
     const head = /^---\ncase: ([a-z0-9-]+)\n---\n/.exec(text2);
     if (!head) {
       d.error(file, "a case starts with a front matter `case: <name>` (kebab-case)");
@@ -14467,10 +14734,10 @@ function loadEvalCases(root, id) {
 }
 function checkEvals(root) {
   const d = new Diags();
-  if (!(0, import_node_fs30.existsSync)((0, import_node_path35.join)(root, "roster.yaml"))) return d;
+  if (!(0, import_node_fs31.existsSync)((0, import_node_path36.join)(root, "roster.yaml"))) return d;
   const roster = loadRoster(root);
   for (const [id, e] of Object.entries(roster.roles)) {
-    if (!(0, import_node_fs30.existsSync)((0, import_node_path35.join)(roleDir(root, id), "role.md"))) continue;
+    if (!(0, import_node_fs31.existsSync)((0, import_node_path36.join)(roleDir(root, id), "role.md"))) continue;
     const r = loadEvalCases(root, id);
     d.add(r.diags);
     if (e?.status === "active" && r.cases.length === 0) d.error(`roles/${id}/evals`, "an active Role ships at least one eval case (roles/<id>/evals/<case>.md)");
@@ -14479,29 +14746,29 @@ function checkEvals(root) {
 }
 
 // src/evalrun.ts
-var import_node_fs31 = require("node:fs");
-var import_node_os2 = require("node:os");
-var import_node_child_process8 = require("node:child_process");
-var import_node_path36 = require("node:path");
+var import_node_fs32 = require("node:fs");
+var import_node_os3 = require("node:os");
+var import_node_child_process9 = require("node:child_process");
+var import_node_path37 = require("node:path");
 var claudeExec = (model) => (prompt, system) => {
-  const cwd = (0, import_node_fs31.mkdtempSync)((0, import_node_path36.join)((0, import_node_os2.tmpdir)(), "aidw-eval-"));
+  const cwd = (0, import_node_fs32.mkdtempSync)((0, import_node_path37.join)((0, import_node_os3.tmpdir)(), "aidw-eval-"));
   try {
     const args = ["-p", "--tools", "", "--setting-sources", "project", ...model ? ["--model", model] : [], ...system ? ["--append-system-prompt", system] : []];
-    const r = (0, import_node_child_process8.spawnSync)("claude", args, { cwd, input: prompt, encoding: "utf8", timeout: 10 * 60 * 1e3, maxBuffer: 16 * 1024 * 1024 });
+    const r = (0, import_node_child_process9.spawnSync)("claude", args, { cwd, input: prompt, encoding: "utf8", timeout: 10 * 60 * 1e3, maxBuffer: 16 * 1024 * 1024 });
     if (r.error || r.status !== 0) throw new Error(`claude -p failed: ${r.error?.message ?? ((r.stderr || r.stdout || "").trim().slice(0, 500) || `exit ${r.status}`)}`);
     return r.stdout;
   } finally {
-    (0, import_node_fs31.rmSync)(cwd, { recursive: true, force: true });
+    (0, import_node_fs32.rmSync)(cwd, { recursive: true, force: true });
   }
 };
 function roleSystem(root, id) {
-  const file = [(0, import_node_path36.join)(root, "agents", `${id}.md`), (0, import_node_path36.join)(root, "roles", id, "role.md")].find(import_node_fs31.existsSync);
+  const file = [(0, import_node_path37.join)(root, "agents", `${id}.md`), (0, import_node_path37.join)(root, "roles", id, "role.md")].find(import_node_fs32.existsSync);
   if (!file) throw new Error(`Role "${id}" has no agent file or role.md`);
-  const body = (0, import_node_fs31.readFileSync)(file, "utf8").replace(/^---\n[\s\S]*?\n---\n/, "").trim();
-  const dir = (0, import_node_path36.join)(root, "roles", id, "skills");
-  const skills = (0, import_node_fs31.existsSync)(dir) ? (0, import_node_fs31.readdirSync)(dir).filter((n) => n.endsWith(".md")).sort().map((n) => `### Skill: ${n.slice(0, -3)}
+  const body = (0, import_node_fs32.readFileSync)(file, "utf8").replace(/^---\n[\s\S]*?\n---\n/, "").trim();
+  const dir = (0, import_node_path37.join)(root, "roles", id, "skills");
+  const skills = (0, import_node_fs32.existsSync)(dir) ? (0, import_node_fs32.readdirSync)(dir).filter((n) => n.endsWith(".md")).sort().map((n) => `### Skill: ${n.slice(0, -3)}
 
-${(0, import_node_fs31.readFileSync)((0, import_node_path36.join)(dir, n), "utf8").replace(/^---\n[\s\S]*?\n---\n/, "").trim()}`) : [];
+${(0, import_node_fs32.readFileSync)((0, import_node_path37.join)(dir, n), "utf8").replace(/^---\n[\s\S]*?\n---\n/, "").trim()}`) : [];
   return skills.length ? `${body}
 
 ## Your skills, in full
@@ -14658,9 +14925,9 @@ function runStopFailure(stdin, env) {
 }
 
 // src/cost.ts
-var import_node_fs32 = require("node:fs");
-var import_node_os3 = require("node:os");
-var import_node_path37 = require("node:path");
+var import_node_fs33 = require("node:fs");
+var import_node_os4 = require("node:os");
+var import_node_path38 = require("node:path");
 var emptyUsage = () => ({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
 function addUsage(a, b) {
   return { input: a.input + b.input, output: a.output + b.output, cacheRead: a.cacheRead + b.cacheRead, cacheWrite: a.cacheWrite + b.cacheWrite };
@@ -14674,7 +14941,7 @@ function readTranscript(file) {
   const seenTool = /* @__PURE__ */ new Set();
   let firstAt = null;
   let lastAt = null;
-  for (const raw of (0, import_node_fs32.readFileSync)(file, "utf8").split("\n")) {
+  for (const raw of (0, import_node_fs33.readFileSync)(file, "utf8").split("\n")) {
     if (!raw.trim()) continue;
     let line;
     try {
@@ -14727,30 +14994,30 @@ function readTranscript(file) {
 }
 var projectSlug = (projectDir) => projectDir.replace(/[^A-Za-z0-9]/g, "-");
 function claudeHome(env) {
-  return env.CLAUDE_CONFIG_DIR || (0, import_node_path37.join)(env.HOME || (0, import_node_os3.homedir)(), ".claude");
+  return env.CLAUDE_CONFIG_DIR || (0, import_node_path38.join)(env.HOME || (0, import_node_os4.homedir)(), ".claude");
 }
 function transcriptDir(projectDir, env) {
-  return (0, import_node_path37.join)(claudeHome(env), "projects", projectSlug(projectDir));
+  return (0, import_node_path38.join)(claudeHome(env), "projects", projectSlug(projectDir));
 }
 function readSessions(projectDir, env) {
   const dir = transcriptDir(projectDir, env);
-  if (!(0, import_node_fs32.existsSync)(dir)) return [];
+  if (!(0, import_node_fs33.existsSync)(dir)) return [];
   const out = [];
-  for (const name of (0, import_node_fs32.readdirSync)(dir)) {
+  for (const name of (0, import_node_fs33.readdirSync)(dir)) {
     if (!name.endsWith(".jsonl")) continue;
     const id = name.slice(0, -".jsonl".length);
-    const main = readTranscript((0, import_node_path37.join)(dir, name));
+    const main = readTranscript((0, import_node_path38.join)(dir, name));
     if (main.turns === 0) continue;
-    const subDir = (0, import_node_path37.join)(dir, id, "subagents");
+    const subDir = (0, import_node_path38.join)(dir, id, "subagents");
     let subs = { count: 0, turns: 0, usage: emptyUsage(), roles: {} };
-    if ((0, import_node_fs32.existsSync)(subDir)) {
-      for (const f of (0, import_node_fs32.readdirSync)(subDir)) {
+    if ((0, import_node_fs33.existsSync)(subDir)) {
+      for (const f of (0, import_node_fs33.readdirSync)(subDir)) {
         if (!f.endsWith(".jsonl")) continue;
-        const t = readTranscript((0, import_node_path37.join)(subDir, f));
+        const t = readTranscript((0, import_node_path38.join)(subDir, f));
         if (t.turns === 0) continue;
         let role = "subagent";
         try {
-          role = String(JSON.parse((0, import_node_fs32.readFileSync)((0, import_node_path37.join)(subDir, f.replace(/\.jsonl$/, ".meta.json")), "utf8")).agentType ?? role);
+          role = String(JSON.parse((0, import_node_fs33.readFileSync)((0, import_node_path38.join)(subDir, f.replace(/\.jsonl$/, ".meta.json")), "utf8")).agentType ?? role);
         } catch {
         }
         const r = subs.roles[role] ?? { count: 0, turns: 0, usage: emptyUsage(), firstContext: 0 };
@@ -14844,11 +15111,11 @@ function formatCost(sessions) {
 }
 
 // src/doctor.ts
-var import_node_child_process9 = require("node:child_process");
-var import_node_fs33 = require("node:fs");
-var import_node_path38 = require("node:path");
+var import_node_child_process10 = require("node:child_process");
+var import_node_fs34 = require("node:fs");
+var import_node_path39 = require("node:path");
 var shellProbe = (cmd2, args, cwd, timeoutMs = 15e3) => {
-  const r = (0, import_node_child_process9.spawnSync)(cmd2, args, { cwd, encoding: "utf8", timeout: timeoutMs });
+  const r = (0, import_node_child_process10.spawnSync)(cmd2, args, { cwd, encoding: "utf8", timeout: timeoutMs });
   return { ok: r.status === 0 && !r.error, out: `${r.stdout ?? ""}${r.stderr ?? ""}`.trim() };
 };
 var SHELL_WORDS = /* @__PURE__ */ new Set(["!", "cd", "echo", "test", "[", "true", "false", "export", "set", "exit", "sh", "bash", "git"]);
@@ -14865,13 +15132,13 @@ var commandsOf = (q) => [...q.layers.flatMap((l) => [...l.setup, ...l.run]), ...
 var drivesBrowser2 = (q) => q.layers.some((l) => ["e2e", "a11y", "ui-ux"].includes(l.name) || l.run.some((c) => /playwright|cypress/i.test(c)));
 function writable(path) {
   let dir = path;
-  while (!(0, import_node_fs33.existsSync)(dir)) {
-    const up = (0, import_node_path38.dirname)(dir);
+  while (!(0, import_node_fs34.existsSync)(dir)) {
+    const up = (0, import_node_path39.dirname)(dir);
     if (up === dir) return false;
     dir = up;
   }
   try {
-    (0, import_node_fs33.accessSync)(dir, import_node_fs33.constants.W_OK);
+    (0, import_node_fs34.accessSync)(dir, import_node_fs34.constants.W_OK);
     return true;
   } catch {
     return false;
@@ -14879,7 +15146,7 @@ function writable(path) {
 }
 function otherPlugins(env) {
   try {
-    const s = JSON.parse((0, import_node_fs33.readFileSync)((0, import_node_path38.join)(claudeHome(env), "settings.json"), "utf8"));
+    const s = JSON.parse((0, import_node_fs34.readFileSync)((0, import_node_path39.join)(claudeHome(env), "settings.json"), "utf8"));
     return Object.entries(s.enabledPlugins ?? {}).filter(([name, on]) => on === true && !/^aidw(@|$)/.test(name)).map(([name]) => name.split("@")[0]);
   } catch {
     return [];
@@ -14894,7 +15161,7 @@ var FRAMEWORKS = [
 ];
 function frameworkOf(root) {
   try {
-    const pkg = JSON.parse((0, import_node_fs33.readFileSync)((0, import_node_path38.join)(root, "package.json"), "utf8"));
+    const pkg = JSON.parse((0, import_node_fs34.readFileSync)((0, import_node_path39.join)(root, "package.json"), "utf8"));
     const deps = { ...pkg.dependencies, ...pkg.devDependencies };
     return FRAMEWORKS.find((f) => f.dep in deps) ?? null;
   } catch {
@@ -14903,7 +15170,7 @@ function frameworkOf(root) {
 }
 function vercelJsonFramework(root) {
   try {
-    return typeof JSON.parse((0, import_node_fs33.readFileSync)((0, import_node_path38.join)(root, "vercel.json"), "utf8")).framework === "string";
+    return typeof JSON.parse((0, import_node_fs34.readFileSync)((0, import_node_path39.join)(root, "vercel.json"), "utf8")).framework === "string";
   } catch {
     return false;
   }
@@ -14956,7 +15223,7 @@ function doctor(p, id, env = process.env, probe = shellProbe, install) {
     add(pm, v.ok ? "ok" : "fail", v.ok ? v.out.split("\n")[0] ?? "" : `not runnable: ${v.out.split("\n")[0] ?? "command not found"}`);
   }
   const seen = new Set(pm ? [pm] : []);
-  const hasModules = (0, import_node_fs33.existsSync)((0, import_node_path38.join)(p.project, "node_modules"));
+  const hasModules = (0, import_node_fs34.existsSync)((0, import_node_path39.join)(p.project, "node_modules"));
   for (const c of cmds) {
     const b = binaryOf(c);
     if (!b) continue;
@@ -14965,7 +15232,7 @@ function doctor(p, id, env = process.env, probe = shellProbe, install) {
     seen.add(key);
     if (b.sub) {
       if (!hasModules) add(key, "ok", "installed by the scaffold task (no node_modules yet)");
-      else add(key, (0, import_node_fs33.existsSync)((0, import_node_path38.join)(p.project, "node_modules", ".bin", b.sub)) ? "ok" : "warn", (0, import_node_fs33.existsSync)((0, import_node_path38.join)(p.project, "node_modules", ".bin", b.sub)) ? "in node_modules/.bin" : "not in node_modules/.bin");
+      else add(key, (0, import_node_fs34.existsSync)((0, import_node_path39.join)(p.project, "node_modules", ".bin", b.sub)) ? "ok" : "warn", (0, import_node_fs34.existsSync)((0, import_node_path39.join)(p.project, "node_modules", ".bin", b.sub)) ? "in node_modules/.bin" : "not in node_modules/.bin");
       continue;
     }
     const w = probe("which", [b.bin], p.project);
@@ -14996,7 +15263,7 @@ function doctor(p, id, env = process.env, probe = shellProbe, install) {
   if (quality.deploy.target !== "none" && /\bvercel\b/.test(quality.deploy.command ?? "")) {
     const who = probe("vercel", ["whoami"], p.project, 2e4);
     add("vercel login", who.ok ? "ok" : "fail", who.ok ? who.out.split("\n").pop() ?? "" : `${who.out.split("\n").pop() ?? "not logged in"}: run \`vercel login\` in your own terminal and allow vercel.com and *.vercel.com in the sandbox`);
-    const linked = (0, import_node_fs33.existsSync)((0, import_node_path38.join)(p.project, ".vercel", "project.json"));
+    const linked = (0, import_node_fs34.existsSync)((0, import_node_path39.join)(p.project, ".vercel", "project.json"));
     add("vercel project", linked ? "ok" : "warn", linked ? "linked" : "not linked: the first deploy would be Production (tier 3). Run `vercel link --yes` first");
     const framework = frameworkOf(p.project);
     if (linked && framework && !vercelJsonFramework(p.project)) {
@@ -15021,9 +15288,9 @@ ${bad ? `${bad} problem(s) to fix before the run` : warn ? `no blocking problem,
 }
 
 // src/pr.ts
-var import_node_child_process10 = require("node:child_process");
-var import_node_fs34 = require("node:fs");
-var import_node_path39 = require("node:path");
+var import_node_child_process11 = require("node:child_process");
+var import_node_fs35 = require("node:fs");
+var import_node_path40 = require("node:path");
 var import_yaml14 = __toESM(require_dist(), 1);
 var MIGRATION2 = /(^|\/)(migrations?|prisma\/migrations|supabase\/migrations|db\/migrate)\//i;
 var DEP_FILES = /(^|\/)(package\.json|pnpm-lock\.yaml|package-lock\.json|yarn\.lock|requirements\.txt|pyproject\.toml|go\.mod|Cargo\.toml)$/;
@@ -15039,7 +15306,7 @@ function mergeDanger(p, id, tasks, base2, head) {
   const env = git(p.project, ["diff", `${base2}...${head}`, "--", ".env.example"]);
   const newVars = env.ok ? [...env.out.matchAll(/^\+([A-Z][A-Z0-9_]*)=/gm)].map((m) => m[1]) : [];
   if (newVars.length) out.push(`New environment variables to set before deploy: ${newVars.join(", ")}.`);
-  const handoff = readText((0, import_node_path39.join)(loadAny(p, id).dir, "delivery", "handoff.md"));
+  const handoff = readText((0, import_node_path40.join)(loadAny(p, id).dir, "delivery", "handoff.md"));
   const section = handoff ? sections(handoff).find((s) => /^merge danger$/i.test(s.name)) : void 0;
   if (section?.body && !/^\s*none\b/i.test(section.body)) out.push(...section.body.split("\n").filter((l) => /^\s*[-*]\s/.test(l)).map((l) => l.replace(/^\s*[-*]\s+/, "")));
   return out;
@@ -15048,10 +15315,10 @@ function loadAny(p, id) {
   try {
     return loadChange(p, id);
   } catch (e) {
-    const dir = (0, import_node_path39.join)(p.archive, id);
-    const file = (0, import_node_path39.join)(dir, "change.yaml");
-    if (!(e instanceof ChangeError) || !(0, import_node_fs34.existsSync)(file)) throw e;
-    const doc = import_yaml14.default.parseDocument((0, import_node_fs34.readFileSync)(file, "utf8"));
+    const dir = (0, import_node_path40.join)(p.archive, id);
+    const file = (0, import_node_path40.join)(dir, "change.yaml");
+    if (!(e instanceof ChangeError) || !(0, import_node_fs35.existsSync)(file)) throw e;
+    const doc = import_yaml14.default.parseDocument((0, import_node_fs35.readFileSync)(file, "utf8"));
     return { id, dir, file, doc, data: doc.toJS() ?? {} };
   }
 }
@@ -15060,16 +15327,16 @@ function planPr(p, id, opts = {}) {
   const run2 = change.data.run ?? {};
   const head = run2.branch ?? `aidw/${id}`;
   const base2 = opts.base ?? run2.base_branch ?? "main";
-  const tasks = parseTasks(readText((0, import_node_path39.join)(change.dir, "tasks.yaml")) ?? "").tasks;
+  const tasks = parseTasks(readText((0, import_node_path40.join)(change.dir, "tasks.yaml")) ?? "").tasks;
   const planned = tasks.filter((t) => !t.origin);
   const allFix = planned.length > 0 && planned.every((t) => t.type === "fix");
   const first = planned[0];
   const title = header(allFix ? "fix" : "feat", first ? scopeOf(first) : "config", String(change.data.title ?? id));
-  const analysis = readText((0, import_node_path39.join)(change.dir, "analysis.md"));
+  const analysis = readText((0, import_node_path40.join)(change.dir, "analysis.md"));
   const summary = analysis ? sections(analysis).find((s) => s.name.toLowerCase() === "summary")?.body ?? "" : "";
   const layers = Object.entries(readSummary(change).layers).map(([n, r]) => `- ${n}: ${r.status}${r.review ? ` (review: ${r.review.verdict})` : ""}`);
   const deploy2 = lastDeploy(change);
-  const shots = (0, import_node_path39.join)(change.dir, "delivery", "screenshots");
+  const shots = (0, import_node_path40.join)(change.dir, "delivery", "screenshots");
   const taskRows = tasks.map((t) => `- ${t.id} ${String(t.title ?? "")} (${String(t.status ?? "pending")})`);
   const danger = mergeDanger(p, id, tasks, base2, head);
   const body = [
@@ -15085,7 +15352,7 @@ function planPr(p, id, opts = {}) {
     "",
     ...layers.length ? layers : ["- no quality layers recorded"],
     ...deploy2?.url ? [`- preview: ${deploy2.url}${deploy2.ok ? "" : " (deploy failed)"}`] : [],
-    ...(0, import_node_fs34.existsSync)(shots) ? ["- screenshots: .aidw/changes/" + id + "/delivery/screenshots/"] : [],
+    ...(0, import_node_fs35.existsSync)(shots) ? ["- screenshots: .aidw/changes/" + id + "/delivery/screenshots/"] : [],
     `- full evidence: .aidw/changes/${id}/evidence/ and delivery/quality-report.md`,
     "",
     "## Merge danger",
@@ -15093,7 +15360,7 @@ function planPr(p, id, opts = {}) {
     ...danger.length ? danger.map((d) => `- ${d}`) : ["None found: no migrations, dependency or environment changes, no breaking tasks."],
     ""
   ].join("\n");
-  const bodyFile = (0, import_node_path39.join)(p.run, `pr-${id}.md`);
+  const bodyFile = (0, import_node_path40.join)(p.run, `pr-${id}.md`);
   const commands = [`git push -u origin ${head}`, `gh pr create --base ${base2} --head ${head} --title "${title}" --body-file ${rel(p, bodyFile)}`];
   return { title, body, head, base: base2, bodyFile, commands };
 }
@@ -15103,24 +15370,24 @@ function createPr(p, id, opts = {}) {
   if (st !== "delivered" && st !== "archived") throw new OpError(`change "${id}" is "${String(st)}"; open the PR after delivery`);
   if (!git(p.project, ["remote", "get-url", "origin"]).ok) throw new OpError("no git remote named origin: add one (git remote add origin <url>) and run this again");
   const plan = planPr(p, id, opts);
-  (0, import_node_fs34.mkdirSync)(p.run, { recursive: true });
-  (0, import_node_fs34.writeFileSync)(plan.bodyFile, plan.body);
+  (0, import_node_fs35.mkdirSync)(p.run, { recursive: true });
+  (0, import_node_fs35.writeFileSync)(plan.bodyFile, plan.body);
   const push = git(p.project, ["push", "-u", "origin", plan.head]);
   if (!push.ok) throw new OpError(`git push failed: ${(push.err || push.out).split("\n")[0]}`);
   const r = ghCreate(p, plan, opts.draft === true);
   return { url: r, plan };
 }
 function ghCreate(p, plan, draft) {
-  const r = (0, import_node_child_process10.spawnSync)("gh", ["pr", "create", "--base", plan.base, "--head", plan.head, "--title", plan.title, "--body-file", plan.bodyFile, ...draft ? ["--draft"] : []], { cwd: p.project, encoding: "utf8" });
+  const r = (0, import_node_child_process11.spawnSync)("gh", ["pr", "create", "--base", plan.base, "--head", plan.head, "--title", plan.title, "--body-file", plan.bodyFile, ...draft ? ["--draft"] : []], { cwd: p.project, encoding: "utf8" });
   if (r.error || r.status !== 0) throw new OpError(`gh pr create failed: ${(r.stderr || String(r.error ?? "")).trim().split("\n")[0]} (the branch is pushed; open the PR by hand with the body in ${rel(p, plan.bodyFile)})`);
   return r.stdout.trim().split("\n").pop() ?? "";
 }
 
 // src/runner.ts
-var import_node_child_process11 = require("node:child_process");
+var import_node_child_process12 = require("node:child_process");
 var import_node_crypto7 = require("node:crypto");
-var import_node_fs35 = require("node:fs");
-var import_node_path40 = require("node:path");
+var import_node_fs36 = require("node:fs");
+var import_node_path41 = require("node:path");
 var MINUTE = 6e4;
 var BACKOFF_MINUTES = [5, 10, 20, 40, 60];
 var LIMIT_TEXT = /rate[ _-]?limit|usage limit|quota|overloaded|\b429\b|\b529\b|limit (?:will )?reset/i;
@@ -15160,11 +15427,11 @@ function waitMs(reason, attempt2, now6 = /* @__PURE__ */ new Date()) {
   return { ms: minutes * MINUTE, why: `no reset time given: backoff ${minutes} min` };
 }
 function archived(p, id) {
-  return !listChangeIds(p).includes(id) && (0, import_node_fs35.existsSync)(p.archive) && readdirNames(p.archive).some((n) => n.endsWith(id));
+  return !listChangeIds(p).includes(id) && (0, import_node_fs36.existsSync)(p.archive) && readdirNames(p.archive).some((n) => n.endsWith(id));
 }
 function readdirNames(dir) {
   try {
-    return (0, import_node_fs35.readdirSync)(dir);
+    return (0, import_node_fs36.readdirSync)(dir);
   } catch {
     return [];
   }
@@ -15176,8 +15443,8 @@ function fingerprint(p, id) {
     const c = loadChange(p, id);
     const parts = [String(c.data.state)];
     for (const f of ["tasks.yaml", "evidence/quality/summary.json", "evidence/converge.json", "evidence/deploy.json", "evidence/integration.json"]) {
-      const file = (0, import_node_path40.join)(c.dir, f);
-      parts.push((0, import_node_fs35.existsSync)(file) ? (0, import_node_crypto7.createHash)("sha1").update((0, import_node_fs35.readFileSync)(file, "utf8").replace(ISO_TIME, "")).digest("hex").slice(0, 12) : "-");
+      const file = (0, import_node_path41.join)(c.dir, f);
+      parts.push((0, import_node_fs36.existsSync)(file) ? (0, import_node_crypto7.createHash)("sha1").update((0, import_node_fs36.readFileSync)(file, "utf8").replace(ISO_TIME, "")).digest("hex").slice(0, 12) : "-");
     }
     return parts.join("|");
   } catch {
@@ -15193,11 +15460,11 @@ function runLoop(p, id, opts = {}) {
   });
   const now6 = opts.now ?? (() => /* @__PURE__ */ new Date());
   const env = opts.env ?? process.env;
-  const logFile = (0, import_node_path40.join)(p.run, "runner.log");
-  (0, import_node_fs35.mkdirSync)(p.run, { recursive: true });
+  const logFile = (0, import_node_path41.join)(p.run, "runner.log");
+  (0, import_node_fs36.mkdirSync)(p.run, { recursive: true });
   const record = (line) => {
     log(line);
-    (0, import_node_fs35.appendFileSync)(logFile, `${now6().toISOString()} ${line}
+    (0, import_node_fs36.appendFileSync)(logFile, `${now6().toISOString()} ${line}
 `);
   };
   let runs = 0;
@@ -15206,7 +15473,7 @@ function runLoop(p, id, opts = {}) {
   let idle = 0;
   let last = fingerprint(p, id);
   const result = (outcome, state, message) => {
-    if (env.AIDW_RUN_DETACHED === "1") (0, import_node_fs35.rmSync)(pidFile(p), { force: true });
+    if (env.AIDW_RUN_DETACHED === "1") (0, import_node_fs36.rmSync)(pidFile(p), { force: true });
     record(`stop: ${outcome}: ${message}`);
     try {
       opts.onFinish?.(outcome);
@@ -15239,7 +15506,7 @@ function runLoop(p, id, opts = {}) {
     const prompt = state === "delivered" ? `/aidw:deliver ${id}` : `/aidw:resume ${id}`;
     const args = ["-p", prompt, "--permission-mode", mode, ...opts.keepMcp ? [] : ["--strict-mcp-config"], ...opts.extraArgs ?? []];
     record(`session ${runs + 1}: ${claude} ${args.map((a) => /\s/.test(a) ? JSON.stringify(a) : a).join(" ")}`);
-    const r = (0, import_node_child_process11.spawnSync)(claude, args, {
+    const r = (0, import_node_child_process12.spawnSync)(claude, args, {
       cwd: p.project,
       encoding: "utf8",
       env: { ...process.env, ...opts.env ?? {}, AIDW_RUNNER: "1" },
@@ -15286,7 +15553,7 @@ function loadChangeState(p, id) {
     return "?";
   }
 }
-var pidFile = (p) => (0, import_node_path40.join)(p.run, "runner.pid");
+var pidFile = (p) => (0, import_node_path41.join)(p.run, "runner.pid");
 function alive(pid) {
   try {
     process.kill(pid, 0);
@@ -15297,7 +15564,7 @@ function alive(pid) {
 }
 function runnerPid(p) {
   try {
-    const pid = Number((0, import_node_fs35.readFileSync)(pidFile(p), "utf8").trim());
+    const pid = Number((0, import_node_fs36.readFileSync)(pidFile(p), "utf8").trim());
     return Number.isInteger(pid) && pid > 0 && alive(pid) ? pid : null;
   } catch {
     return null;
@@ -15306,14 +15573,14 @@ function runnerPid(p) {
 function detachRun(p, argv, env) {
   const running = runnerPid(p);
   if (running) throw new Error(`a runner is already running here (pid ${running}); stop it with \`aidw run --stop\``);
-  (0, import_node_fs35.mkdirSync)(p.run, { recursive: true });
-  const log = (0, import_node_path40.join)(p.run, "runner.log");
-  const fd = (0, import_node_fs35.openSync)(log, "a");
+  (0, import_node_fs36.mkdirSync)(p.run, { recursive: true });
+  const log = (0, import_node_path41.join)(p.run, "runner.log");
+  const fd = (0, import_node_fs36.openSync)(log, "a");
   const clean = { ...env, AIDW_RUN_DETACHED: "1" };
   delete clean.CLAUDECODE;
-  const child = (0, import_node_child_process11.spawn)(process.execPath, [process.argv[1], ...argv], { cwd: p.project, detached: true, stdio: ["ignore", fd, fd], env: clean });
+  const child = (0, import_node_child_process12.spawn)(process.execPath, [process.argv[1], ...argv], { cwd: p.project, detached: true, stdio: ["ignore", fd, fd], env: clean });
   child.unref();
-  (0, import_node_fs35.writeFileSync)(pidFile(p), String(child.pid));
+  (0, import_node_fs36.writeFileSync)(pidFile(p), String(child.pid));
   return { pid: child.pid, log };
 }
 function stopRunner(p) {
@@ -15324,17 +15591,17 @@ function stopRunner(p) {
   } catch {
     process.kill(pid, "SIGTERM");
   }
-  (0, import_node_fs35.rmSync)(pidFile(p), { force: true });
+  (0, import_node_fs36.rmSync)(pidFile(p), { force: true });
   return pid;
 }
 
 // src/firstdeploy.ts
-var import_node_child_process12 = require("node:child_process");
+var import_node_child_process13 = require("node:child_process");
 function productionCommand(command) {
   const swapped = command.replace(/\s--(?:environment|target)(?:=|\s+)preview\b/, " --prod");
   return /\s--prod\b/.test(swapped) ? swapped : `${swapped} --prod`;
 }
-function firstDeploy(p, id, yes, run2 = import_node_child_process12.spawnSync) {
+function firstDeploy(p, id, yes, run2 = import_node_child_process13.spawnSync) {
   const text2 = readText(qualityFile(loadChange(p, id)));
   const q = text2 === null ? null : parseQuality(text2, "quality.yaml").config;
   if (!q?.deploy.command || !/\bvercel\b/.test(q.deploy.command)) throw new OpError("first-deploy is for Vercel projects: quality.yaml has no vercel deploy command");
@@ -15386,9 +15653,9 @@ function compactNote(cwd, env) {
 function changeTasks(p) {
   const out = [];
   for (const base2 of [p.changes, p.archive]) {
-    if (!(0, import_node_fs36.existsSync)(base2)) continue;
-    for (const d of (0, import_node_fs36.readdirSync)(base2)) {
-      const text2 = readText((0, import_node_path41.join)(base2, d, "tasks.yaml"));
+    if (!(0, import_node_fs37.existsSync)(base2)) continue;
+    for (const d of (0, import_node_fs37.readdirSync)(base2)) {
+      const text2 = readText((0, import_node_path42.join)(base2, d, "tasks.yaml"));
       if (text2 !== null) out.push(parseTasks(text2).tasks);
     }
   }
@@ -15428,6 +15695,11 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
                                          the project's own test browser for the e2e, a11y, ui-ux and performance layers:
                                          Chrome on a free port it picks itself, one profile per project; layers get it
                                          as E2E_CDP_URL and E2E_CDP_PORT (no fixed 9222)
+  mock font "<family>" [--weights 400,700] [--italic] [--to DIR]
+                                         download an OFL font from Fontsource into DIR (default .aidw/design/mock/fonts):
+                                         woff2 per weight and subset (latin, latin-ext, vietnamese), <id>.css, SOURCE.md
+  mock shots <dir> [--full]              screenshot every .html in a mock folder at 1440 and 390 px, light and dark, in
+                                         the test browser (aidw browser start); PNGs go to <dir>/shots/
   doctor [<id>] [--fresh]                check the machine for the run: binaries of the quality commands, package store, registry,
                                          a real test install (retried; --fresh ignores a recent pass), Chrome CDP, Vercel login and
                                          link; exit 1 on a blocking problem
@@ -15507,7 +15779,7 @@ Hooks:
 States: ${STATES.join(", ")}
 Exit codes: 0 ok, 1 failed check or refused operation, 2 usage error
 `;
-var VALUE_FLAGS = /* @__PURE__ */ new Set(["session", "last", "root", "title", "input-type", "workflow", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude", "model", "case", "runs", "text", "lang"]);
+var VALUE_FLAGS = /* @__PURE__ */ new Set(["session", "last", "root", "title", "input-type", "workflow", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude", "model", "case", "runs", "text", "lang", "weights", "to"]);
 function parseArgs(argv) {
   const pos = [];
   const flags = {};
@@ -15534,12 +15806,12 @@ var UsageError = class extends Error {
 function addBinToPath(env) {
   const file = env.CLAUDE_ENV_FILE;
   if (!file) return false;
-  const bin = (0, import_node_path41.join)(pluginRoot(env), "bin");
+  const bin = (0, import_node_path42.join)(pluginRoot(env), "bin");
   if (bin.includes("'")) return false;
   const line = `export PATH="$PATH":'${bin}'`;
-  const current = (0, import_node_fs36.existsSync)(file) ? (0, import_node_fs36.readFileSync)(file, "utf8") : "";
+  const current = (0, import_node_fs37.existsSync)(file) ? (0, import_node_fs37.readFileSync)(file, "utf8") : "";
   if (current.split("\n").includes(line)) return false;
-  (0, import_node_fs36.appendFileSync)(file, `${current && !current.endsWith("\n") ? "\n" : ""}${line}
+  (0, import_node_fs37.appendFileSync)(file, `${current && !current.endsWith("\n") ? "\n" : ""}${line}
 `);
   return true;
 }
@@ -15552,7 +15824,7 @@ function logHook(env, hook, input, output) {
       parsed = JSON.parse(input);
     } catch {
     }
-    (0, import_node_fs36.appendFileSync)(file, `${JSON.stringify({ at: (/* @__PURE__ */ new Date()).toISOString(), hook, input: parsed, output: output || null })}
+    (0, import_node_fs37.appendFileSync)(file, `${JSON.stringify({ at: (/* @__PURE__ */ new Date()).toISOString(), hook, input: parsed, output: output || null })}
 `);
   } catch {
   }
@@ -15679,7 +15951,7 @@ ${r2.dependents.length ? `WARNING: done task(s) ${r2.dependents.join(", ")} depe
           return 0;
         }
         const r = startTask(p, id, need(rest[1], "task id"), { worktree: args.flags.worktree === true });
-        const brief = buildBrief(p, id, r.task, "implement", (0, import_node_path41.join)(pluginRoot(env), "library", "vendor"));
+        const brief = buildBrief(p, id, r.task, "implement", (0, import_node_path42.join)(pluginRoot(env), "library", "vendor"));
         const agent = agentForTask(pluginRoot(env), r.role);
         emit(
           { ok: true, change: id, ...r, agent, brief: brief.path },
@@ -15705,7 +15977,7 @@ Then: aidw triage ${taskId}
           return 0;
         }
         if (kind !== "implement" && kind !== "review") throw new UsageError('--for must be "implement" or "review" (or "triage" for brief)');
-        const b = buildBrief(p, id, taskId, kind, (0, import_node_path41.join)(pluginRoot(env), "library", "vendor"));
+        const b = buildBrief(p, id, taskId, kind, (0, import_node_path42.join)(pluginRoot(env), "library", "vendor"));
         if (cmd2 === "skills") {
           emit({ change: id, task: taskId, for: kind, skills: b.skills }, b.skills.map((s) => `${s.path}  # ${s.reason}
 `).join(""));
@@ -15738,7 +16010,7 @@ Then: aidw triage ${taskId}
             after = `review ${auto.task}: auto-passed (converge tests, or a layer fix its own reviewer judges again)${auto.commit ? ` (commit ${auto.commit.slice(0, 8)})` : ""}
 ${nextLine(p, id)}${sessionEnd(env, p, id)}`;
           } else {
-            reviewBrief = buildBrief(p, id, r.task, "review", (0, import_node_path41.join)(pluginRoot(env), "library", "vendor")).path;
+            reviewBrief = buildBrief(p, id, r.task, "review", (0, import_node_path42.join)(pluginRoot(env), "library", "vendor")).path;
             after = `review brief ${reviewBrief}
 SPAWN ${AGENTS.taskReview} with: ${REVIEWER_PROMPT(reviewBrief)}
 Then: aidw verdict ${r.task}
@@ -15766,7 +16038,7 @@ ${failed.tail}
           ...str(args.flags.layer) ? { layer: str(args.flags.layer) } : {},
           fresh: args.flags.fresh === true,
           ...timeout ? { timeoutMs: Number(timeout) * 1e3 } : {},
-          vendorDir: (0, import_node_path41.join)(pluginRoot(env), "library", "vendor")
+          vendorDir: (0, import_node_path42.join)(pluginRoot(env), "library", "vendor")
         });
         const lines = r.layers.map((l) => {
           const bad = l.runs.find((x) => x.exit !== 0);
@@ -15797,14 +16069,14 @@ ${failed.tail}
         let verdict = rest[1];
         let notesFile = str(args.flags["notes-file"]);
         if (verdict === void 0 || verdict === "auto") {
-          notesFile = notesFile ?? (0, import_node_path41.join)(p.run, `layer-review-${layer}.md`);
-          if (!(0, import_node_fs36.existsSync)(notesFile)) throw new OpError(`no verdict file at ${notesFile}: the reviewer did not write it. Spawn a fresh reviewer, or save its reply there and run this again`);
-          const parsed = parseVerdict((0, import_node_fs36.readFileSync)(notesFile, "utf8"));
+          notesFile = notesFile ?? (0, import_node_path42.join)(p.run, `layer-review-${layer}.md`);
+          if (!(0, import_node_fs37.existsSync)(notesFile)) throw new OpError(`no verdict file at ${notesFile}: the reviewer did not write it. Spawn a fresh reviewer, or save its reply there and run this again`);
+          const parsed = parseVerdict((0, import_node_fs37.readFileSync)(notesFile, "utf8"));
           if (!parsed) throw new OpError(`${notesFile} does not start with "VERDICT: pass" or "VERDICT: fix"; spawn a fresh reviewer once more`);
           verdict = parsed;
         }
         if (verdict !== "pass" && verdict !== "fix") throw new UsageError('verdict must be "pass" or "fix"');
-        const notes = notesFile ? (0, import_node_fs36.readFileSync)(notesFile, "utf8") : str(args.flags.notes) ?? "";
+        const notes = notesFile ? (0, import_node_fs37.readFileSync)(notesFile, "utf8") : str(args.flags.notes) ?? "";
         if (verdict === "fix" && !notes.trim()) throw new UsageError("a fix verdict needs --notes or --notes-file");
         const r = recordLayerReview(p, id, layer, verdict, notes);
         emit(
@@ -15975,7 +16247,7 @@ ${r.ok && r.ran ? "Previews work from now on: run aidw deploy.\n" : ""}`);
         const verdict = need(rest[1], "verdict (pass|fix)");
         if (verdict !== "pass" && verdict !== "fix") throw new UsageError('verdict must be "pass" or "fix"');
         const notesFile = str(args.flags["notes-file"]);
-        const notes = notesFile ? (0, import_node_fs36.readFileSync)(notesFile, "utf8") : str(args.flags.notes) ?? "";
+        const notes = notesFile ? (0, import_node_fs37.readFileSync)(notesFile, "utf8") : str(args.flags.notes) ?? "";
         if (verdict === "fix" && !notes.trim()) throw new UsageError("a fix verdict needs --notes or --notes-file");
         const r = recordReview(p, id, taskId, verdict, notes, { commit: args.flags["no-commit"] !== true });
         emit(
@@ -15989,8 +16261,8 @@ ${r.ok && r.ran ? "Previews work from now on: run aidw deploy.\n" : ""}`);
         const id = resolveChangeId(p, str(args.flags.change));
         const taskId = need(rest[0], "task id");
         const file = str(args.flags["notes-file"]) ?? triageFile(p, taskId);
-        if (!(0, import_node_fs36.existsSync)(file)) throw new OpError(`no triage answer at ${file}: the Agent did not write it. Spawn it once more with \`aidw brief ${taskId} --for triage\``);
-        const r = recordTriage(p, id, taskId, (0, import_node_fs36.readFileSync)(file, "utf8"));
+        if (!(0, import_node_fs37.existsSync)(file)) throw new OpError(`no triage answer at ${file}: the Agent did not write it. Spawn it once more with \`aidw brief ${taskId} --for triage\``);
+        const r = recordTriage(p, id, taskId, (0, import_node_fs37.readFileSync)(file, "utf8"));
         const first = r.diagnosis.split("\n").find((l) => l.trim()) ?? "";
         const line = r.outcome === "retry" ? `${r.task} triaged: the cause is the implementation. One further attempt is granted with the diagnosis in its brief: ${first}
 ` : r.cause === "environment" ? `${r.task} triaged: the cause is the environment, so it escalated. What the user must fix: ${first}
@@ -16005,9 +16277,9 @@ ${r.ok && r.ran ? "Previews work from now on: run aidw deploy.\n" : ""}`);
         const p = project();
         const id = resolveChangeId(p, str(args.flags.change));
         const taskId = need(rest[0], "task id");
-        const file = str(args.flags["notes-file"]) ?? (0, import_node_path41.join)(p.run, `review-${taskId}.md`);
-        if (!(0, import_node_fs36.existsSync)(file)) throw new OpError(`no verdict file at ${file}: the reviewer did not write it. Spawn a fresh reviewer, or save its reply there and run this again`);
-        const notes = (0, import_node_fs36.readFileSync)(file, "utf8");
+        const file = str(args.flags["notes-file"]) ?? (0, import_node_path42.join)(p.run, `review-${taskId}.md`);
+        if (!(0, import_node_fs37.existsSync)(file)) throw new OpError(`no verdict file at ${file}: the reviewer did not write it. Spawn a fresh reviewer, or save its reply there and run this again`);
+        const notes = (0, import_node_fs37.readFileSync)(file, "utf8");
         const verdict = parseVerdict(notes);
         if (!verdict) throw new OpError(`${file} does not start with "VERDICT: pass" or "VERDICT: fix"; spawn a fresh reviewer once more, and if it is still unclear record it with \`aidw review ${taskId} fix --notes-file\``);
         const r = recordReview(p, id, taskId, verdict, notes, { commit: args.flags["no-commit"] !== true });
@@ -16020,8 +16292,8 @@ ${r.ok && r.ran ? "Previews work from now on: run aidw deploy.\n" : ""}`);
       case "vendor-path": {
         const ref = need(rest[0], "<upstream>/<skill>");
         if (!/^[a-z0-9-]+\/[a-z0-9-]+$/.test(ref)) throw new UsageError(`invalid vendored skill "${ref}"`);
-        const file = skillPath((0, import_node_path41.join)(pluginRoot(env), "library", "vendor"), ref);
-        if (!(0, import_node_fs36.existsSync)(file)) throw new OpError(`skill "${ref}" not found at ${file}`);
+        const file = skillPath((0, import_node_path42.join)(pluginRoot(env), "library", "vendor"), ref);
+        if (!(0, import_node_fs37.existsSync)(file)) throw new OpError(`skill "${ref}" not found at ${file}`);
         emit({ path: file }, `${file}
 `);
         return 0;
@@ -16031,12 +16303,12 @@ ${r.ok && r.ran ? "Previews work from now on: run aidw deploy.\n" : ""}`);
         const report = need(rest[0], "LCOV report file (e.g. coverage/lcov.info)");
         const min = args.flags.min === void 0 ? 80 : Number(args.flags.min);
         if (!Number.isFinite(min) || min < 0 || min > 100) throw new UsageError("--min must be a number from 0 to 100");
-        const file = (0, import_node_path41.resolve)(p.project, report);
-        if (!(0, import_node_fs36.existsSync)(file)) throw new OpError(`no coverage report at ${report}: run the tests with an lcov reporter first`);
+        const file = (0, import_node_path42.resolve)(p.project, report);
+        if (!(0, import_node_fs37.existsSync)(file)) throw new OpError(`no coverage report at ${report}: run the tests with an lcov reporter first`);
         const open = listChangeIds(p).flatMap((id) => loadTasks(p, id).tasks.map((t) => typeof t.base === "string" ? t.base : null));
         const base2 = typeof args.flags.base === "string" ? args.flags.base : open.find((b) => b) ?? trunkBase(p.project);
         if (!base2) throw new OpError("no base commit to compare with: pass --base <ref>");
-        const c = diffCoverage(p.project, base2, (0, import_node_fs36.readFileSync)(file, "utf8"));
+        const c = diffCoverage(p.project, base2, (0, import_node_fs37.readFileSync)(file, "utf8"));
         emit(c, `${coverageReport(c, min)}
 `);
         return c.percent >= min ? 0 : 1;
@@ -16141,7 +16413,7 @@ ${d.kind === "brownfield" ? `${d.signals.map((s) => `  signal  ${s}
       case "plan": {
         const p = project();
         const id = resolveChangeId(p, rest[0]);
-        const tasks = parseTasks(readText((0, import_node_path41.join)(loadChange(p, id).dir, "tasks.yaml")) ?? "").tasks;
+        const tasks = parseTasks(readText((0, import_node_path42.join)(loadChange(p, id).dir, "tasks.yaml")) ?? "").tasks;
         const shape = planShape(tasks);
         emit({ change: id, ...shape, summary: planSummary(tasks), advice: planAdvice(tasks) }, `${planSummary(tasks)}
 ${planAdvice(tasks).map((a) => `  advice: ${a}
@@ -16197,6 +16469,32 @@ layers get it as E2E_CDP_URL and E2E_CDP_PORT; for your own shell: export E2E_CD
           return 0;
         }
         throw new UsageError("browser needs start, status, url or stop");
+      }
+      case "mock": {
+        const sub = rest[0];
+        if (sub === "font") {
+          const family = need(rest.slice(1).join(" ").trim() || void 0, "font family");
+          const weights = str(args.flags.weights)?.split(",").map((w) => Number(w.trim()));
+          if (weights?.some((w) => !Number.isInteger(w))) throw new UsageError("--weights takes numbers, for example 400,700");
+          const to = (0, import_node_path42.resolve)(cwd, str(args.flags.to) ?? (0, import_node_path42.join)(project().design, "mock", "fonts"));
+          const f = fetchFont(family, { weights, italic: args.flags.italic === true, to });
+          emit({ ok: true, ...f, dir: to }, `${f.family} ${f.version} (${f.license}): ${f.files.length} file(s) in ${to}${f.cached ? `, ${f.cached} from cache` : ""}
+link ${f.css} from the mock's CSS (@import url("fonts/${f.css}")) and use font-family: "${f.family}"
+`);
+          return 0;
+        }
+        if (sub === "shots") {
+          const dir = (0, import_node_path42.resolve)(cwd, need(rest[1], "mock folder"));
+          const s = browserStatus(project());
+          if (!s.running || !s.record) throw new OpError("mock shots need the test browser: run `aidw browser start` (outside the sandbox if it is refused)");
+          const self = typeof __filename !== "undefined" ? __filename : (0, import_node_path42.join)(pluginRoot(env), "bin", "aidw");
+          const r = takeShots({ dir, cdp: s.record.url, full: args.flags.full === true }, self);
+          emit({ ok: r.errors.length === 0, dir, ...r }, `${r.written.length} screenshot(s) in ${(0, import_node_path42.join)(dir, "shots")}
+${r.errors.map((e) => `failed: ${e}
+`).join("")}`);
+          return r.errors.length ? 1 : 0;
+        }
+        throw new UsageError("mock needs font or shots");
       }
       case "doctor": {
         const p = project();
@@ -16349,7 +16647,7 @@ SPAWN aidw:${role} with: Audit brief: ${b.path}. Read it and write your answer a
             const r = all2[x.id];
             return r ? `**${x.id}**: ${[r.answer].flat().join(", ")} (${r.reason || "no reason recorded"})` : `**${x.id}**: open (${x.options.join(" | ")})`;
           });
-          const tasks = parseTasks(readText((0, import_node_path41.join)(c.dir, "tasks.yaml")) ?? "").tasks;
+          const tasks = parseTasks(readText((0, import_node_path42.join)(c.dir, "tasks.yaml")) ?? "").tasks;
           return [
             ...points.length ? [{ id: "decision-points", title: "Decision Points", body: "", points, html: "" }] : [],
             ...tasks.length ? [{ id: "plan", title: "Plan", body: planSummary(tasks), points: [], html: "" }] : []
@@ -16367,13 +16665,13 @@ Fix the file and render again.`);
           return r.page;
         };
         const save = (name, data) => {
-          (0, import_node_fs36.mkdirSync)(pagesDir(p), { recursive: true });
-          (0, import_node_fs36.writeFileSync)(pageDataFile(p, name), typeof data === "string" ? data : (0, import_yaml15.stringify)(data));
+          (0, import_node_fs37.mkdirSync)(pagesDir(p), { recursive: true });
+          (0, import_node_fs37.writeFileSync)(pageDataFile(p, name), typeof data === "string" ? data : (0, import_yaml15.stringify)(data));
         };
         const show = (name) => {
           const page = load(name);
           const file = pageHtmlFile(p, name);
-          (0, import_node_fs36.writeFileSync)(file, renderPage(page));
+          (0, import_node_fs37.writeFileSync)(file, renderPage(page));
           const url = (0, import_node_url.pathToFileURL)(file).href;
           emit(
             { ok: true, page: name, version: page.version, layout: page.layout, file, url },
@@ -16476,7 +16774,7 @@ Ask the user about exactly these; do not guess an answer for them.
   covers ${files.length} file(s)
 ${kept.length ? `  done work kept: ${kept.join(", ")}
 ` : ""}${reopened.length ? `  edited tasks run again: ${reopened.join(", ")}
-` : ""}  cheapest build (about a quarter of the tokens): in your own terminal, ${(0, import_node_path41.join)(pluginRoot(env), "bin", "aidw")} run ${id} --permission-mode auto
+` : ""}  cheapest build (about a quarter of the tokens): in your own terminal, ${(0, import_node_path42.join)(pluginRoot(env), "bin", "aidw")} run ${id} --permission-mode auto
 `
         );
         return 0;
@@ -16567,13 +16865,20 @@ ${d ? printDiags(d) : ""}`);
     throw e;
   }
 }
-if (typeof require !== "undefined" && require.main === module) {
+if (typeof require !== "undefined" && require.main === module && process.argv[2] === SHOTS_WORKER) {
+  runShotsWorker(JSON.parse(process.argv[3] ?? "{}")).then((r) => process.stdout.write(`${JSON.stringify(r)}
+`)).catch((e) => {
+    process.stderr.write(`${e.message}
+`);
+    process.exitCode = 1;
+  });
+} else if (typeof require !== "undefined" && require.main === module) {
   process.exitCode = run(process.argv.slice(2), process.env, process.cwd(), {
     out: (s) => process.stdout.write(s),
     err: (s) => process.stderr.write(s),
     stdin: () => {
       try {
-        return (0, import_node_fs36.readFileSync)(0, "utf8");
+        return (0, import_node_fs37.readFileSync)(0, "utf8");
       } catch {
         return "";
       }

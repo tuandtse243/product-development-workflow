@@ -15,6 +15,7 @@ import { pluginRoot, resolvePluginFile } from "./plugin.js";
 import { installRunner } from "./installcheck.js";
 import { BrowserError, browserEnv, browserStatus, startBrowser, stopBrowser, usesOwnBrowser } from "./browser.js";
 import { checkArtifacts } from "./artifacts.js";
+import { fetchFont, runShotsWorker, SHOTS_WORKER, takeShots } from "./mock.js";
 import { boundaryOf } from "./boundary.js";
 import { buildAuditBrief, chosenLenses, compileReport, lensRoles, pickFindings } from "./audit.js";
 import { DecisionError, readDecisions, recordDecision, workflowOfChange } from "./decisions.js";
@@ -159,6 +160,11 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
                                          the project's own test browser for the e2e, a11y, ui-ux and performance layers:
                                          Chrome on a free port it picks itself, one profile per project; layers get it
                                          as E2E_CDP_URL and E2E_CDP_PORT (no fixed 9222)
+  mock font "<family>" [--weights 400,700] [--italic] [--to DIR]
+                                         download an OFL font from Fontsource into DIR (default .aidw/design/mock/fonts):
+                                         woff2 per weight and subset (latin, latin-ext, vietnamese), <id>.css, SOURCE.md
+  mock shots <dir> [--full]              screenshot every .html in a mock folder at 1440 and 390 px, light and dark, in
+                                         the test browser (aidw browser start); PNGs go to <dir>/shots/
   doctor [<id>] [--fresh]                check the machine for the run: binaries of the quality commands, package store, registry,
                                          a real test install (retried; --fresh ignores a recent pass), Chrome CDP, Vercel login and
                                          link; exit 1 on a blocking problem
@@ -244,7 +250,7 @@ interface Args {
   flags: Record<string, string | true>;
 }
 
-const VALUE_FLAGS = new Set(["session", "last", "root", "title", "input-type", "workflow", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude", "model", "case", "runs", "text", "lang"]);
+const VALUE_FLAGS = new Set(["session", "last", "root", "title", "input-type", "workflow", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude", "model", "case", "runs", "text", "lang", "weights", "to"]);
 
 export function parseArgs(argv: string[]): Args {
   const pos: string[] = [];
@@ -929,6 +935,29 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         throw new UsageError("browser needs start, status, url or stop");
       }
 
+      case "mock": {
+        const sub = rest[0];
+        if (sub === "font") {
+          const family = need(rest.slice(1).join(" ").trim() || undefined, "font family");
+          const weights = str(args.flags.weights)?.split(",").map((w) => Number(w.trim()));
+          if (weights?.some((w) => !Number.isInteger(w))) throw new UsageError("--weights takes numbers, for example 400,700");
+          const to = resolve(cwd, str(args.flags.to) ?? join(project().design, "mock", "fonts"));
+          const f = fetchFont(family, { weights, italic: args.flags.italic === true, to });
+          emit({ ok: true, ...f, dir: to }, `${f.family} ${f.version} (${f.license}): ${f.files.length} file(s) in ${to}${f.cached ? `, ${f.cached} from cache` : ""}\nlink ${f.css} from the mock's CSS (@import url("fonts/${f.css}")) and use font-family: "${f.family}"\n`);
+          return 0;
+        }
+        if (sub === "shots") {
+          const dir = resolve(cwd, need(rest[1], "mock folder"));
+          const s = browserStatus(project());
+          if (!s.running || !s.record) throw new OpError("mock shots need the test browser: run `aidw browser start` (outside the sandbox if it is refused)");
+          const self = typeof __filename !== "undefined" ? __filename : join(pluginRoot(env), "bin", "aidw");
+          const r = takeShots({ dir, cdp: s.record.url, full: args.flags.full === true }, self);
+          emit({ ok: r.errors.length === 0, dir, ...r }, `${r.written.length} screenshot(s) in ${join(dir, "shots")}\n${r.errors.map((e) => `failed: ${e}\n`).join("")}`);
+          return r.errors.length ? 1 : 0;
+        }
+        throw new UsageError("mock needs font or shots");
+      }
+
       case "doctor": {
         const p = project();
         let id: string | null = rest[0] ?? null;
@@ -1283,7 +1312,14 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
 }
 
 // Entry point when executed as the bundled bin (not when imported by tests).
-if (typeof require !== "undefined" && require.main === module) {
+if (typeof require !== "undefined" && require.main === module && process.argv[2] === SHOTS_WORKER) {
+  runShotsWorker(JSON.parse(process.argv[3] ?? "{}"))
+    .then((r) => process.stdout.write(`${JSON.stringify(r)}\n`))
+    .catch((e: Error) => {
+      process.stderr.write(`${e.message}\n`);
+      process.exitCode = 1;
+    });
+} else if (typeof require !== "undefined" && require.main === module) {
   process.exitCode = run(process.argv.slice(2), process.env, process.cwd(), {
     out: (s) => process.stdout.write(s),
     err: (s) => process.stderr.write(s),
