@@ -335,17 +335,26 @@ the owner has judged the one before it on before-and-after screenshots of the sa
   Workbench, Tide, Color Field, Transit (not banned from being composed).
 - [x] The library is not dealt from (ADR-0008, amended 2026-11-18): three directions dealt to every product
   repeat. The accepted directions become examples of format and bar; the directions are composed per product.
-- [ ] Composing directions: the `ui-ux-designer` asks the `research` Role for worlds outside software that fit
-  the product's subject and users, and composes three directions in one context, each borrowing one whole world,
-  no two sharing a world. A world may come back for another product or in another round; no record of worlds
-  used is kept and no world is banned.
-- [ ] Authored Skill for the `ui-ux-designer`: commit to one composed direction, build the Design Mock, check it
-  against the craft floor on the rendered page. Sources: Hallmark, Impeccable, Anthropic `frontend-design`.
+- [x] Composing directions: `research` skill `world-scan` (worlds outside software with traits and cited pictures,
+  and the conventions shared by three live products of the kind) and `ui-ux-designer` skill `compose-directions`
+  (three directions in one context, each borrowing one whole world, no two sharing a world or three of six axes).
+  A world may come back for another product or in another round; no record of worlds used is kept and no world is
+  banned.
+- [x] Authored Skill `build-design-mock` for the `ui-ux-designer`: one direction only, content inventoried as real,
+  sample or absent, the plan as a comment at the top of `tokens.css`, first region first, checks in three tiers
+  (floor, slop, finish) on screenshots, two rounds of fixes at most; extend mode adds up to two screens and the
+  main screen's states. References `mock-files.md` and `render-check.md`; four Role evals. Sources: Hallmark,
+  Impeccable, Anthropic `frontend-design`.
+- [x] `aidw mock font` (OFL only, checked from Fontsource's metadata; latin, latin-ext and vietnamese; cached under
+  `~/.aidw/cache/fonts`) and `aidw mock shots` (every page at 1440 and 390 px, light and dark, in the test browser
+  over CDP; `--full` for landing pages).
+- [ ] Wire the design stage of `/aidw:start` to these: `research` runs `world-scan` on every `full-design`, one
+  `ui-ux-designer` Agent of the deep Tier composes, and the Role gets write access for mocks.
 - [ ] `ui-ux-designer` as a worker Agent of the deep Tier for mocks: three in parallel, one direction each. The
   Decision Page shows a thumbnail and a link per mock. The chosen mock is extended to at most three screens.
 - [ ] The Design Mock as an Artifact, frozen with the tokens (read from its CSS), its images and their credits.
   UI briefs point to it; the reviewer compares screenshots with it for structure and treatment.
-- [ ] Fonts: open licences only, fetched when the mock is built and stored beside it.
+- [x] Fonts: open licences only, fetched when the direction is composed and stored beside the mock (`aidw mock font`).
 - [ ] Slop Check (ADR-0009): aidw's own detection for the rules it can measure, at the checkpoint and in the `ui-ux`
   layer; exceptions from `direction.md`. The failures of use become a Guard on every project. Change the
   reviewer's "taste is non-blocking" rule accordingly.

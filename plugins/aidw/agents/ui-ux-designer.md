@@ -52,3 +52,7 @@ Each line gives the exact command that prints the skill's path; run it as writte
 
 - `ui-review-rubric`: for every UI review, before you judge - what to look for, in order of how much it hurts the user
   `aidw plugin-path roles/ui-ux-designer/skills/ui-review-rubric.md`
+- `compose-directions`: when the brief asks for the three Design Directions of a product (ADR-0008)
+  `aidw plugin-path roles/ui-ux-designer/skills/compose-directions.md`
+- `build-design-mock`: when the brief names one Design Direction and asks for its Design Mock, as a candidate or extended after the choice
+  `aidw plugin-path roles/ui-ux-designer/skills/build-design-mock.md`
