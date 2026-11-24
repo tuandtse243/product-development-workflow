@@ -2,7 +2,7 @@
  * T10 probes (plan D9, D10; ADR-0014): the edges of the upstream fix loop, of not-built propagation and of the
  * Agent-run cap that tests/fixloop.test.ts does not walk.
  */
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import YAML from "yaml";
 import { describe, expect, it } from "vitest";
@@ -67,8 +67,17 @@ function triage(root: string, id: string, cause: string) {
   write(root, `.aidw/run/triage-${id}.md`, `CAUSE: ${cause}\nthe evidence says so.\n`);
   return cli(root, "triage", id);
 }
+let edits = 0;
+/** One author round through T9's Deviation: open (by the brief), the author edits the task's title in tasks.yaml, close, rerun. */
 function upstreamRound(root: string, id: string): void {
-  expect(cli(root, "brief", id, "--for", "upstream").code).toBe(0);
+  const b = cli(root, "brief", id, "--for", "upstream", "--json");
+  expect(b.code, b.err).toBe(0);
+  edits += 1;
+  const file = join(root, (b.json().files as string[])[0] as string);
+  if (file === tasksFile(root)) writeFileSync(file, readFileSync(file, "utf8").replace(new RegExp(`title: Task ${id}.*`), `title: Task ${id} v${edits}`));
+  else writeFileSync(file, `${existsSync(file) ? readFileSync(file, "utf8") : "# Architecture\n"}\nThe author's fix, round ${edits}.\n`);
+  const c = cli(root, "deviation", "close");
+  expect(c.code, c.err).toBe(0);
   expect(cli(root, "upstream", id).code).toBe(0);
 }
 
@@ -166,6 +175,25 @@ describe("Agent runs: the count (D10)", () => {
     expect(countAgentRun(change, "consulted", "C01")).toBe(false);
     expect(used(root)).toBe(0);
   });
+
+  it("counts the reviewer of a rerun after an upstream round as a new Agent run", () => {
+    const root = executingProject({ tasks: CHAIN, quality: GRANTS(60) });
+    // R: three attempts, each reviewed and sent back
+    for (let i = 0; i < 3; i++) {
+      expect(cli(root, "task", "start", "R").code).toBe(0);
+      expect(cli(root, "checkpoint", "R").code).toBe(0);
+      expect(cli(root, "review", "R", "fix", "--notes", "1. still wrong").code).toBe(0);
+    }
+    expect(used(root)).toBe(6);
+    expect(next(root)).toMatchObject({ action: "triage", task: "R" });
+    triage(root, "R", "plan"); // 7
+    upstreamRound(root, "R"); // 8
+    expect(cli(root, "task", "start", "R").code).toBe(0); // 9
+    expect(used(root)).toBe(9);
+    // a new reviewer is spawned for the rerun's first attempt: a different Agent run from round 0's first review
+    expect(cli(root, "checkpoint", "R").out).toMatch(/SPAWN aidw:code-reviewer/);
+    expect(used(root)).toBe(10);
+  });
 });
 
 describe("Agent runs: the cap (D10)", () => {
@@ -232,7 +260,7 @@ describe("the gate keeps the count out of the Agents' hands (D10)", () => {
     agent_type,
   });
 
-  it.each(["aidw:fullstack", "aidw:code-reviewer"])(
+  it.each(["aidw:fullstack", "aidw:code-reviewer", "aidw:technical-planner", "aidw:business-analyst", "aidw:software-architect"])(
     "denies %s writing evidence/agent-runs.json during the build",
     (who) => {
       const root = executingProject({ tasks: CHAIN });
