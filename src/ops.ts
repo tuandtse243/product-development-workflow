@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { approvalStatus, computeApprovalHash } from "./approval.js";
+import { approvalStatus, computeApprovalHash, PACKAGE_VERSION } from "./approval.js";
+import { openDeviation } from "./deviationrecord.js";
 import {
   CHANGE_ID,
   ChangeError,
@@ -332,6 +333,9 @@ export function approve(p: Paths, id: string, opts: { auto?: { pluginRoot: strin
   if (state !== "awaiting_approval") {
     throw new OpError(`change "${id}" is in state "${String(change.data.state)}"; only "awaiting_approval" can be approved`);
   }
+  // ADR-0014: an open Deviation counts its files as they were; approving over it would hash a package nobody checked
+  const deviating = openDeviation(change);
+  if (deviating) throw new OpError(`Deviation ${deviating.id} of "${id}" is still open: \`aidw deviation close\` or \`aidw deviation abandon\` first`);
   const d = readinessCheck(p, id);
   if (d.errors.length) throw new OpError(`change "${id}" has validation errors; fix them before approving`, d);
   if (opts.auto) {
@@ -351,8 +355,8 @@ export function approve(p: Paths, id: string, opts: { auto?: { pluginRoot: strin
   }
   // ADR-0012: the push grant holds only for the branch, remote URL and base fixed here, hashed with the package.
   const push = bindPush(p, change).binding;
-  const { hash, files } = computeApprovalHash(p, change, push);
-  change.doc.set("approval", change.doc.createNode({ hash, at: now(), by, ...(push ? { push } : {}) }));
+  const { hash, files } = computeApprovalHash(p, change, push, { version: PACKAGE_VERSION });
+  change.doc.set("approval", change.doc.createNode({ hash, at: now(), by, package: PACKAGE_VERSION, ...(push ? { push } : {}) }));
   change.doc.set("state", "approved");
   saveChange(change);
   return { hash, files, by };
@@ -588,6 +592,8 @@ export interface ChangeStatus {
   tasks: { total: number; done: number; byStatus: Record<string, number> } | null;
   paused: { from?: string; reason?: string; at?: string } | null;
   deltas: number;
+  /** an open Deviation (ADR-0014): its id, files and author Roles */
+  deviation?: { id: string; files: string[]; roles: string[] };
   error?: string;
 }
 
@@ -630,6 +636,7 @@ export function projectStatus(p: Paths, only?: string): ProjectStatus {
         tasks,
         paused,
         deltas: deltaFiles(p, c, new Diags()).length,
+        ...((d) => (d ? { deviation: { id: d.id, files: d.files, roles: d.roles } } : {}))(openDeviation(c)),
       };
     } catch (e) {
       if (e instanceof ChangeError) {

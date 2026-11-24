@@ -200,14 +200,44 @@ The Agent wrote a request file and ended its turn with `CONSULT <path>`:
    `.aidw/changes/<id>/consult/C<NN>.answer.md` and replies with its `STATUS:` line.
 3. `aidw consult answer C<NN> --change <id>` (`step: record`: the answer is on disk, do not spawn again). It records the
    answer and always writes a resume brief (original brief, progress note, answer path). `ROUTE: ... Deviation`: after
-   the gate the answer could not be given without changing something approved; nobody asks the user (ADR-0014), the
-   asker builds what was approved and reports the gap.
+   the gate the answer could not be given without changing something approved; nobody asks the user (ADR-0014). `next`
+   now says `step: deviation`: read the answer and open a Deviation for the Role that wrote the approved file
+   (`aidw deviation open --role <author> --files <approved files> --reason "<why>" --consultation C<NN>`, see
+   **`deviation`**); resume the asker only after it is closed. If nothing approved has to change after all, resume it
+   straight away.
 4. `aidw consult resume C<NN> --change <id>` (`step: resume`) prints both ways on. If the Agent that asked is still
    running in this session (you can still reach it), continue it with SendMessage and the printed line: cheaper, it
    keeps its context. Otherwise (a new session, the runner, the Agent is gone) spawn the Agent on the `SPAWN` line with
    the resume brief. Then go on as after any implementer: `aidw checkpoint <T>`.
 An implementer whose reply names a Consultation that was routed to a Deviation (`needs-deviation`) is not a blocker:
 checkpoint it as usual; the gap is on record and the pull request will show it. It is never an escalation.
+
+**`deviation`** (something approved must change after the gate, ADR-0014; `next` returns it while one is open, with
+`meanwhile` for work already in flight). The Role that wrote the file decides; you never edit it and never ask the user.
+1. Open it, once: `aidw deviation open --change <id> --role <author> --files <a,b> --reason "<why>"` (add
+   `--consultation C<NN>` when a Consultation routed here, `--task <T>` for the task that needs it). The CLI refuses a
+   Role that did not write a file (artifacts.yaml) and a file outside the approved package. Several Roles only when one
+   change spans their files (a scenario renamed in the delta spec and in tasks.yaml: business-analyst and
+   technical-planner). It prints the brief (the three rules: keep the purpose, smallest change, no new scope) and one
+   `SPAWN` line per Role.
+2. Spawn each Agent on a `SPAWN` line with the printed prompt and nothing else. While it is open the hook lets each file be
+   edited by its author Role only, never you (by Bash neither); an edit anywhere else in the package is still drift.
+3. When they reply: `aidw deviation close --change <id> --summary "<their one paragraph>"`. Refused, it says why
+   (another approved file drifted, a contract or scenario is half written, the grants, permissions or layer commands changed, the
+   package does not validate, an approved scenario is removed without a reason, a new requirement, a new task serves no
+   approved scenario): send the author back with that line. When the author removed an approved scenario and said why,
+   add `--remove-reason "<scenario>=<its reason>; ..."`; when it says a new requirement is not new scope and why, add
+   `--scope-reason "<why>"`. "Task still in flight": finish that task's step (`meanwhile`), then close again. Closed,
+   it prints the contract classification (additive, breaking, prose or unclassified), the tasks that run again (done
+   ones are back to pending) and, for a Consultation, the `aidw consult resume` to run.
+4. Nothing needs to change after all, or the author cannot meet the rules: `aidw deviation abandon --change <id>` puts
+   the files back.
+
+**Not built** (D10): an implementer that reports work outside what the user granted (the permission envelope in the
+brief, or anything never automatic: credentials outside `.env`, anything that costs money, production deploys, deleting
+cloud data) is not retried and not escalated: `aidw not-built <T> --change <id> --reason "<what it needs>"`
+(`--cause environment` for a missing key or the network). The task
+and the tasks that depend on it are marked `not_built`; the rest carries on and the pull request lists them.
 
 **`escalate`**: see below.
 

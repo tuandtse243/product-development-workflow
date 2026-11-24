@@ -339,14 +339,82 @@ is checked by Role, which holds with today's stage order (no Role answers while 
 brief of the task lists every answered Consultation of it, so the answer survives a resumed Agent that was lost too.
 After the Approval Gate the run never asks the user ([ADR-0014](adr/0014-after-the-approval-gate-the-run-does-not-ask-the-user.md)):
 an answer that cannot be given, or would change something approved, is recorded as `needs-deviation` with
-`route: deviation` and `deviation: pending` (T9 sets `recorded`) and goes to the author Role as a Deviation (built by T9; until then the asker resumes, builds what the
-approved package states and reports the gap). Before the gate a question nobody could answer becomes an open question
+`route: deviation` and `deviation: pending`; `next` then asks for a Deviation by the author Role (below), and closing it
+sets `deviation: recorded`, adds what changed to the resume brief and lets the asker resume on the changed package. Before the gate a question nobody could answer becomes an open question
 in the asker's Artifact and is listed, with its words, on the gate's Decision Page beside the open findings; a stage is
 not reported done, and the package is not approved, while a Consultation of it is in flight. The request, the answer and the resume brief are the only new
 files: the gate hook lets an implementing Agent write only `<task>.request.md` of a task running in that Change, only the Role
 consulted in an open Consultation write its `C<NN>.answer.md`, no Agent any other `C<NN>` file (compared without case),
 and no Agent `consultations.yaml`; an authoring Role writes its own request under its usual `.aidw/` rule.
 `aidw consult` is a state command, so only the Orchestrator runs it.
+
+**Deviation** ([ADR-0014](adr/0014-after-the-approval-gate-the-run-does-not-ask-the-user.md), `src/deviation.ts`).
+After the gate the approved package still moves, but only by a recorded decision of the Role that wrote what moves.
+The Orchestrator opens one (`aidw deviation open --role R[,R2] --files a,b --reason "..." [--consultation C01] [--task T]`):
+the Change must be building (executing, verifying, converging) with a valid approval, no other Deviation open, every
+file part of the approved package (the change's package files, its delta specs, `tasks.yaml`, the constitution, the
+project's design, domain, architecture and requirements folders, the main specs its deltas apply to; each named file
+is resolved to its spelling on disk, so a case variant is one file) and each file written by a named Role in
+`artifacts.yaml`. Several Roles only when one change spans their files (a scenario renamed in the delta spec and in
+`tasks.yaml`). Opening copies the files into `changes/<id>/deviations/D<NN>/` with the per-file digests of the approved
+package and its scenario and requirement index, and writes the author's brief with the three rules (keep the purpose,
+smallest change, no new scope). The first two are the author's and the reviewers' judgment; the CLI checks what it can
+of the third. While it is open the gate hook lets each named file be edited by its author Role only, with the Write
+tool at its exact path (every other Agent and the Orchestrator are denied, and so is a Bash write naming the file:
+redirects, in-place edits, copies, inline code, `git checkout --`, `git restore`, a formatter's `--write` or `--fix`;
+best effort like H1, since a path relative to another `cd`, a glob or a variable is not caught), the
+approval hash reads those files as they were when it opened, so an edit to any other approved file is still drift,
+and while `quality.yaml` is open the grants and the tier 2 permissions are read from its approved copy. `next` returns
+the Deviation first, with `meanwhile` for work already in flight (none when `tasks.yaml` is open: the CLI would record
+progress in the file being edited). `aidw deviation close [--remove-reason R] [--scope-reason R] [--summary S]` checks
+what the CLI can check:
+
+| Check | Refused when |
+|---|---|
+| drift | another approved file changed (named, from the per-file digests) |
+| half written | `openapi.yaml` does not parse, `data-model.dbml` has an unclosed block, a new or changed scenario lacks its WHEN or THEN |
+| grants | `grants`, `permissions` or a layer's `run` or `setup` commands in quality.yaml changed: they are the user's |
+| package | `aidw validate` + `aidw analyze` report an error on the changed package |
+| scenarios | an approved scenario is gone with no reason (`--remove-reason "<why>"` for all, or `"<scenario>=<why>; ..."`) |
+| scope | a new requirement without `--scope-reason`; a new scenario under no approved requirement |
+| tasks | a new planned task lists no approved scenario under `scenarios:` |
+| in flight | a task that must run again (other than the one the Deviation names) is running, in review or in conflict: wait for it to settle |
+| contracts | never refused: `openapi.yaml` and `data-model.dbml` are classified additive, breaking or, when the text changed with no difference the CLI can classify, unclassified (`src/contractdiff.ts`: operations, parameters, bodies, responses, schema properties, required, types, enums; tables, columns, a new NOT NULL column without a default, enums); `api-contract.md` and `data-model.md` are `prose` (rerun by Role, even beside an `openapi.yaml` or `data-model.dbml`: the notes carry rules the machine-readable contract does not) |
+
+Then it records the closed Deviation and rehashes the package with the approval's own version (`approval.push` is
+read from the record and kept, so the push grant still holds), appending `{deviation, previous, hash, reason, roles,
+files, at}` to `approval.history`; only after that does it reset tasks, so a Change in verifying or converging returns
+to executing on a valid approval, and it marks the record `finished`. A close interrupted between these steps is
+finished by the next CLI command (`finishDeviations`, run before every command reads the Change): when the approval
+still names the starting hash and the package hashes to the recorded new one, it writes the new hash; then it makes the
+recorded resets and the Consultation update, which are idempotent. The tasks to run again: tasks whose planned fields changed, whose scenarios were
+removed or changed, whose requirements changed; every task that reads a changed constitution, domain, architecture or
+requirements file, or a changed "Decisions to honor"; for a breaking, prose or unclassified contract the Roles that build
+against it (API: backend, frontend, fullstack, integration; data model: database, backend, fullstack, integration; an
+additive change reruns none and records them as `readers`); the UI tasks for a design change; the task the Deviation
+names; and every task that depends on one of them. The done ones go back to pending with their quality results
+dropped; the others are not running (close waits for those), so they build on the changed package when they next
+start. `aidw deviation abandon` puts the files back (for `tasks.yaml` only the planned fields, keeping the progress the
+CLI recorded meanwhile) and marks a Consultation that routed here `deviation: abandoned`; `aidw consult resume` waits
+while its Deviation is open. `aidw status` shows an open Deviation; the runner counts opening and closing one (and a
+rehash) as progress. The record is `changes/<id>/deviations.yaml`, beside the package and not in it (writing it is never
+drift; no Agent may write it or `deviations/`): per Deviation its roles, files and authors, reason, Consultation and
+task, the previous and new hash, the files that changed, the author's summary, the scenarios removed (each with its
+reason), added and changed, the requirements added, removed and changed (with the scope reason), the contract
+classifications with their readers, the tasks added, removed (and which of those were done) and changed, the rerun list
+and the tasks reset. It is the source of the pull request's "differs from the approved package" section. The seam for
+the upstream fix loop: `openDeviationFor(p, id, {role, files, reason, task, pluginRoot})` and `closeDeviation(p, id,
+{pluginRoot})` are the same path for a Triage cause in the plan, a spec or the architecture.
+
+**Package version.** The approval record names the package version it was hashed with (`approval.package`). Version 2
+added the contracts (`openapi.yaml`, `api-contract.md`, `data-model.md`, `data-model.dbml`) to the hashed and frozen
+files; an approval that names no version is version 1 and keeps the older list, so a Change approved before the upgrade
+does not turn into drift. `aidw approve` writes version 2; a Deviation's close keeps the approval's version, so a
+contract the user never approved is never adopted into the package after the gate.
+
+**Not built** (D10). Work outside the permission envelope is never done: `aidw not-built <T> --reason "..." [--cause
+envelope|environment]` sets the task to `not_built` with `not_built: {cause, reason, at}`, and every open task that
+depends on it to `not_built` with `cause: dependency`. `next` skips them and reports `complete` when the rest is done.
 
 **Triage.** When a task runs out of attempts, a fresh `software-architect` Agent classifies the cause from the
 evidence. It writes only its answer (`.aidw/run/triage-<task>.md`): the gate keeps the approved package and the
