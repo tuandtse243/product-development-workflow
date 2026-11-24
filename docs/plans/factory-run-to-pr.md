@@ -171,6 +171,9 @@ File names are starting points found during the interview, not a complete list; 
   times per task; then the task and its dependants are `not_built` and independent tasks continue. Environment:
   marked at once. Count Agent runs per Change; at the cap start nothing new and finish.
 - Start at `src/run.ts` (triage, escalate), `src/tasks.ts`, `skills/run/SKILL.md`, `src/runner.ts`.
+- `skills/run/SKILL.md` step 3 still says "fix rounds exhausted -> escalated: tell the user and stop", and T4 added
+  "record no more verdicts" around it. Rewrite to ADR-0014: mark not built, record the group's other verdicts,
+  carry on.
 
 **T11 feat: the run ends in a pull request.** PR 11. (D12) After T2, T9, T10.
 - `src/pr.ts`, `src/deliver.ts`: a ready pull request when all required layers pass, a draft otherwise; the body
