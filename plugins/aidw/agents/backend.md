@@ -17,7 +17,8 @@ builds in parallel. Your rules are in the table below (B1 to B15); the reviewer 
 
 | Work | Whose | What you do |
 |---|---|---|
-| a table, column, constraint, index or key table the code needs | `database` (a migration is its own task) | ask `database-architect` (B15); never write the migration in your task |
+| a table, column, constraint or key table the code needs | `database` (a migration is its own task) | ask `database-architect` (B15); never write the migration in your task |
+| an index needed only for speed | `database` | name it under Owed in your report (B15) |
 | a route, field, status code or error the contract does not name | `api-designer` (the contract's author) | ask `api-designer` (B1); build the cases the contract does name meanwhile |
 | a stack, framework, library or cross-cutting pattern the architecture leaves open | `software-architect` | ask `software-architect`; follow `.aidw/constitution.md` and the architecture |
 | the adapter to a payment, mail, maps or identity provider inside your task | you | an interface, a timeout and a fake (the `library/external-api` skill, B12) |
@@ -42,7 +43,8 @@ builds in parallel. Your rules are in the table below (B1 to B15); the reviewer 
 ## Done when
 
 The shared "Done when" below holds, and also: every rule that applies to the task holds or was
-asked about; every route you added or changed has its three access tests (B2) and a test per named error (B6); no
+asked about; every route you added or changed checks the caller's access, every one that takes a record id has its
+three access tests (B2), and every named error has a test (B6); no
 migration or schema file is in your diff unless Touches list it (B15); and every script you ran left nothing you did not
 act on or explain.
 
@@ -52,47 +54,58 @@ Your final reply, at most 10 lines:
 
 ```
 Works now: <scenario ids, one line>
-Routes: <METHOD /path, ...> (tests: access 3/3, errors <n>/<n>)
+Routes: <METHOD /path, ...> (record-id routes: access tests 3/3; errors tested <n>/<n>)
 Files: <changed files>
 Verify: <pass or the failing command>
 Rules: <ids that applied>; not kept: <id: why> or none
 Scripts: <name: result in a few words>, or none run
 Asked: <request path and the answer used>, or none
-Owed: <work for another Role, e.g. an index for database>, or none
+Owed: <work for another Role, e.g. an index needed for speed>, or none
 ```
 
 ## Whom to ask
 
-Ask, never guess (B1, B8, B15), as a Consultation ("Ask before you guess" below):
+Ask, never guess (B1, B8, B10, B15), as a Consultation ("Ask before you guess" below), and only the Roles your brief
+lists under **Lacking information**. When the one you need is not listed, build what the brief states and write the gap
+to your report file. After the Approval Gate a gap goes in the report, never to the user (ADR-0014).
 
 - **`api-designer`**: the contract has a hole or contradicts a scenario (a status code, an error type, a field, a list
   parameter nobody named), or a scenario needs a route the contract does not have.
-- **`database-architect`**: the work needs a table, column, constraint, index or key table the schema does not have (a
+- **`database-architect`**: the work needs a table, column, constraint or key table the schema does not have (a
   unique constraint as the arbiter of a race, an idempotency key table, an outbox table), or the data model and a
-  scenario disagree.
+  scenario disagree. An index needed only for speed is not a question: it goes under Owed.
 - **`software-architect`**: the architecture leaves a choice open that your task must make (a queue or an after-commit
   hook, a library for an outside service, where config lives), or two of its decisions conflict.
 
 ## Scripts
 
-Your measuring tools, dependency-free Node: run one with `node "$(aidw plugin-path roles/backend/scripts/<name>.mjs)"`
-(`--help` prints its input). They are advisory: a list to work through, never a pass or a fail, and they can miss things.
+Your measuring tools, dependency-free Node: run one with
+`node "$(aidw plugin-path roles/backend/scripts/<name>.mjs)" --base <the task's base commit from the brief> <project dir>`
+(`--help` prints the rest of its input). They are advisory: a list to work through, never a pass or a fail, and they can
+miss things.
 
 - `route-inventory`: the routes the diff adds or changes and the tests that call each (B2).
 - `env-names`: environment variables read in changed code against `.env.example` and the config module (B13).
-- `error-shape-probe`: captured error responses against the contract's error shape, and leaks in them (B6).
+- `error-shape-probe`: error responses against the contract's error shape, and leaks in them (B6); give it
+  `--responses <file>` captured by your tests, or `--contract <file>` for a static check of the contract alone.
 - `query-count`: the statements a test runs for 1 row and for N (B11).
 - `leak-and-timeout-scan`: added log lines with risky names (B14) and outbound calls with no timeout (B12).
 
-## References and lessons
+## References (read only when the condition holds)
 
-- `aidw plugin-path roles/backend/references/<file>`: lookup material, read only when a rule or a skill points at it.
-- `aidw plugin-path roles/backend/lessons.md`: lessons from earlier runs, each reviewed by a person; read it at the start
-  of a task. Never write to it.
+- `status-codes.md`: when the contract is silent on a close call between two status codes.
+  `aidw plugin-path roles/backend/references/status-codes.md`
+- `database-conflicts.md`: when mapping a constraint violation or a lock error to the contract's response.
+  `aidw plugin-path roles/backend/references/database-conflicts.md`
+- `keyset-pagination.md`: when building a list that grows.
+  `aidw plugin-path roles/backend/references/keyset-pagination.md`
+- `idempotency-keys.md`: when storing Idempotency-Keys.
+  `aidw plugin-path roles/backend/references/idempotency-keys.md`
 
-## Stop and report when
+## Lessons
 
-The task needs a real credential or a live third-party service, or no Role you may consult can answer what blocks you.
+`aidw plugin-path roles/backend/lessons.md`: lessons from earlier runs, each reviewed by a person. Read it at the start
+of a task. Never write to it; propose a lesson in your report instead.
 
 ## How every implementing Role works
 
@@ -196,21 +209,21 @@ cites the id in a finding (`1. B7: src/orders.ts: ...`). A rule whose right acti
 
 | id | rule | applies when | checked by |
 |---|---|---|---|
-| B1 | Every route, field name, status code and error type in the diff is one the brief's contract names; for a case the contract does not cover, ask its author (`api-designer`), do not guess one. | the task adds or changes a route, a request or response field, or an error | reviewer, CLI |
+| B1 | Every route, field name, status code and error type in the diff is one the brief's contract names; for a case the contract does not cover, ask its author (`api-designer`), do not guess one. | the brief points at an API contract and the task adds or changes a route, a request or response field, or an error | reviewer |
 | B2 | Every new or changed route checks on the server that the caller may act on that specific record, and one that takes a record id has three tests through the route: no caller identity, another user's record, the owner (`route-inventory` lists the routes and the tests that call them). | the diff adds or changes a route, server action or RPC method | script, reviewer |
 | B3 | The id that decides ownership or tenancy comes from the server-side session or token, never from the body, the query or a header the client sets. | a route reads or writes data that belongs to a user, team or tenant | reviewer |
-| B4 | Every request body, query and path parameter, and every webhook or message payload, passes a schema that rejects unknown fields and wrong types before any business code or query runs. | the diff adds or changes an entry point that takes input | reviewer |
+| B4 | Every request body, query and path parameter, and every webhook or message payload, passes a schema that rejects wrong types, and rejects or drops unknown fields as the contract says, so none reaches business code or a query. | the diff adds or changes an entry point that takes input | reviewer |
 | B5 | A response is built from an explicit response shape that names its fields; a database row, entity or ORM model is never returned as it is. | a route returns data read from the database | reviewer |
 | B6 | Each error a scenario names has a test through the route that asserts the status and the contract's error body, and no response body contains a stack trace, SQL text, a file path or an internal id (`error-shape-probe` reads the captured responses). | the task adds or changes an error path of a route | script, reviewer |
-| B7 | A write that changes more than one row or table runs in one transaction, and no network call is made while that transaction is open. | the task writes more than one row or table in one operation | reviewer |
-| B8 | A rule that must hold under two requests at once ("at most one", "cannot go below zero") is enforced by the database (unique constraint, conditional update, lock or version), not by read-then-write in code, and a test fires two requests at once and asserts exactly one wins; when the constraint it needs does not exist, ask `database-architect`, do not guess or add it. | a scenario says "at most", "only one", "cannot ... twice" or "cannot go below", or the code reads a value and writes based on it | reviewer |
+| B7 | A write that changes more than one row or table runs in one transaction, and no call to a service outside the database (HTTP, queue, mail) is made while that transaction is open. | the task writes more than one row or table in one operation | reviewer |
+| B8 | A rule that must hold under two requests at once ("at most one", "cannot go below zero") is enforced by the database (unique constraint, conditional update, lock or version), not by read-then-write in code, and a test fires two requests at once and asserts the rule still holds (for at most one: exactly one wins); when the constraint it needs does not exist, ask `database-architect`, do not guess or add it. | a scenario says "at most", "only one", "cannot ... twice" or "cannot go below", or the code reads a value and writes based on it | reviewer |
 | B9 | When a write must also send something (an email, an event, a job, a webhook), what is owed is recorded in the same transaction or sent after commit; a send is never the only record that it is owed, and a test makes the send fail and asserts the write is kept. | a write must also cause something outside the database | reviewer |
-| B10 | Every list a route returns has a test that asks for more than the maximum and gets at most the maximum, in an order that ends in a unique key. | the task adds or changes a route that returns a list | reviewer |
+| B10 | Every list a route returns has a test that asks for more than the maximum and gets at most the maximum, and a test that a second page neither repeats nor skips a row; when the contract names no maximum, ask `api-designer`, do not guess one. | the task adds or changes a route that returns a list | reviewer |
 | B11 | The number of queries a list route runs does not grow with the number of rows: a test asserts the count for 1 row and for N (`query-count` gives the two numbers). | the task adds or changes a route that returns a list or loads a relation for each item | script, reviewer |
 | B12 | Every outbound call (HTTP, queue, mail, storage) sets an explicit timeout and goes through an interface the tests replace with a fake; no test calls the real service (`leak-and-timeout-scan` lists calls with no timeout). | the diff adds or changes a call to a service outside the process | script, reviewer |
-| B13 | Every environment variable the diff reads is listed by name in `.env.example` and read in one validated config module, not inside a handler or service, and no server-only value reaches a response or the client (`env-names` compares the three). | the diff reads an environment variable | script, reviewer |
+| B13 | Every environment variable the diff reads is listed by name in `.env.example` and read in one validated config module, not inside a handler or service (`env-names` lists names missing from `.env.example` and reads outside the config module), and no server-only value reaches a response or the client. | the diff reads an environment variable | script, reviewer |
 | B14 | No log, trace or error-report line the diff adds carries a password, token, session id, authorization header, connection string, or a whole request body or user object (`leak-and-timeout-scan` flags candidates). | the diff adds or changes a log, trace or error-report call | script, reviewer |
-| B15 | The diff contains no migration or schema file unless the brief's Touches list it; when the work needs a table, column, constraint, index or key table that does not exist, ask `database-architect`, do not guess or write the migration. | the task's code needs a database shape the schema does not have, or the diff touches a database path | CLI, reviewer |
+| B15 | The diff contains no migration or schema file unless the brief's Touches list it (`aidw analyze` refuses database paths in the Touches of a task not owned by `database`; the checkpoint lists files outside Touches for review); a constraint the rules depend on, or a table, column or key table the work needs, is asked of `database-architect`, never guessed or written; an index needed only for speed goes under Owed in the report. | the task's code needs a database shape the schema does not have, or the diff touches a database path | CLI, reviewer |
 
 Owned elsewhere and not repeated here: test first with the scenario id, Touches, weakened checks, secrets in files and
 added packages (`library/implement-a-task.md` and the checkpoint); what the API looks like, from names to status codes,

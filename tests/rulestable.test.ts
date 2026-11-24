@@ -160,7 +160,7 @@ describe("cases cover rules and skills (C1)", () => {
     expect(out).toMatch(/rule B2 has no case/);
     out = "";
     expect(run(["roster"], { AIDW_PLUGIN_ROOT: plugin }, process.cwd(), { out: (s) => (out += s), err: (s) => (out += s) }), out).toBe(0);
-    expect(out).not.toMatch(/results\.json/); // no Role is in table format yet: no staleness warning
+    expect(out).not.toMatch(/results\.json/); // every table Role's result file is committed and fresh: no warning
   });
 });
 

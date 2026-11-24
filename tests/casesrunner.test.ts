@@ -49,7 +49,7 @@ describe("the Role case runner", () => {
     expect(s).toContain("### Skill: expand-contract");
     expect(s).toContain("### Skill: prisma-migration");
     expect(s).not.toMatch(/^name: expand-contract/m); // the skill's front matter is dropped
-    expect(roleSystem(plugin, "fullstack")).not.toContain("Your skills, in full"); // a Role with no skills
+    expect(roleSystem(plugin, "frontend")).not.toContain("Your skills, in full"); // a Role with no skills
   });
 
   it("passes a case when every criterion passes, and fails it otherwise", () => {

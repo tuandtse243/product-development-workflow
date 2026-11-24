@@ -32,7 +32,8 @@ builds in parallel. Your rules are in the table below (B1 to B15); the reviewer 
 
 | Work | Whose | What you do |
 |---|---|---|
-| a table, column, constraint, index or key table the code needs | `database` (a migration is its own task) | ask `database-architect` (B15); never write the migration in your task |
+| a table, column, constraint or key table the code needs | `database` (a migration is its own task) | ask `database-architect` (B15); never write the migration in your task |
+| an index needed only for speed | `database` | name it under Owed in your report (B15) |
 | a route, field, status code or error the contract does not name | `api-designer` (the contract's author) | ask `api-designer` (B1); build the cases the contract does name meanwhile |
 | a stack, framework, library or cross-cutting pattern the architecture leaves open | `software-architect` | ask `software-architect`; follow `.aidw/constitution.md` and the architecture |
 | the adapter to a payment, mail, maps or identity provider inside your task | you | an interface, a timeout and a fake (the `library/external-api` skill, B12) |
@@ -57,7 +58,8 @@ builds in parallel. Your rules are in the table below (B1 to B15); the reviewer 
 ## Done when
 
 The shared "Done when" below holds, and also: every rule that applies to the task holds or was
-asked about; every route you added or changed has its three access tests (B2) and a test per named error (B6); no
+asked about; every route you added or changed checks the caller's access, every one that takes a record id has its
+three access tests (B2), and every named error has a test (B6); no
 migration or schema file is in your diff unless Touches list it (B15); and every script you ran left nothing you did not
 act on or explain.
 
@@ -67,44 +69,55 @@ Your final reply, at most 10 lines:
 
 ```
 Works now: <scenario ids, one line>
-Routes: <METHOD /path, ...> (tests: access 3/3, errors <n>/<n>)
+Routes: <METHOD /path, ...> (record-id routes: access tests 3/3; errors tested <n>/<n>)
 Files: <changed files>
 Verify: <pass or the failing command>
 Rules: <ids that applied>; not kept: <id: why> or none
 Scripts: <name: result in a few words>, or none run
 Asked: <request path and the answer used>, or none
-Owed: <work for another Role, e.g. an index for database>, or none
+Owed: <work for another Role, e.g. an index needed for speed>, or none
 ```
 
 ## Whom to ask
 
-Ask, never guess (B1, B8, B15), as a Consultation ("Ask before you guess" below):
+Ask, never guess (B1, B8, B10, B15), as a Consultation ("Ask before you guess" below), and only the Roles your brief
+lists under **Lacking information**. When the one you need is not listed, build what the brief states and write the gap
+to your report file. After the Approval Gate a gap goes in the report, never to the user (ADR-0014).
 
 - **`api-designer`**: the contract has a hole or contradicts a scenario (a status code, an error type, a field, a list
   parameter nobody named), or a scenario needs a route the contract does not have.
-- **`database-architect`**: the work needs a table, column, constraint, index or key table the schema does not have (a
+- **`database-architect`**: the work needs a table, column, constraint or key table the schema does not have (a
   unique constraint as the arbiter of a race, an idempotency key table, an outbox table), or the data model and a
-  scenario disagree.
+  scenario disagree. An index needed only for speed is not a question: it goes under Owed.
 - **`software-architect`**: the architecture leaves a choice open that your task must make (a queue or an after-commit
   hook, a library for an outside service, where config lives), or two of its decisions conflict.
 
 ## Scripts
 
-Your measuring tools, dependency-free Node: run one with `node "$(aidw plugin-path roles/backend/scripts/<name>.mjs)"`
-(`--help` prints its input). They are advisory: a list to work through, never a pass or a fail, and they can miss things.
+Your measuring tools, dependency-free Node: run one with
+`node "$(aidw plugin-path roles/backend/scripts/<name>.mjs)" --base <the task's base commit from the brief> <project dir>`
+(`--help` prints the rest of its input). They are advisory: a list to work through, never a pass or a fail, and they can
+miss things.
 
 - `route-inventory`: the routes the diff adds or changes and the tests that call each (B2).
 - `env-names`: environment variables read in changed code against `.env.example` and the config module (B13).
-- `error-shape-probe`: captured error responses against the contract's error shape, and leaks in them (B6).
+- `error-shape-probe`: error responses against the contract's error shape, and leaks in them (B6); give it
+  `--responses <file>` captured by your tests, or `--contract <file>` for a static check of the contract alone.
 - `query-count`: the statements a test runs for 1 row and for N (B11).
 - `leak-and-timeout-scan`: added log lines with risky names (B14) and outbound calls with no timeout (B12).
 
-## References and lessons
+## References (read only when the condition holds)
 
-- `aidw plugin-path roles/backend/references/<file>`: lookup material, read only when a rule or a skill points at it.
-- `aidw plugin-path roles/backend/lessons.md`: lessons from earlier runs, each reviewed by a person; read it at the start
-  of a task. Never write to it.
+- `status-codes.md`: when the contract is silent on a close call between two status codes.
+  `aidw plugin-path roles/backend/references/status-codes.md`
+- `database-conflicts.md`: when mapping a constraint violation or a lock error to the contract's response.
+  `aidw plugin-path roles/backend/references/database-conflicts.md`
+- `keyset-pagination.md`: when building a list that grows.
+  `aidw plugin-path roles/backend/references/keyset-pagination.md`
+- `idempotency-keys.md`: when storing Idempotency-Keys.
+  `aidw plugin-path roles/backend/references/idempotency-keys.md`
 
-## Stop and report when
+## Lessons
 
-The task needs a real credential or a live third-party service, or no Role you may consult can answer what blocks you.
+`aidw plugin-path roles/backend/lessons.md`: lessons from earlier runs, each reviewed by a person. Read it at the start
+of a task. Never write to it; propose a lesson in your report instead.
