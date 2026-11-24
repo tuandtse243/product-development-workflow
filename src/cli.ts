@@ -52,6 +52,7 @@ import { formatCost, parallelSavings, readSessions } from "./cost.js";
 import { detectProject } from "./detect.js";
 import { doctor, doctorText, drivesBrowser } from "./doctor.js";
 import { createPr, planPr } from "./pr.js";
+import { grantsSection } from "./grants.js";
 import { planAdvice, planShape, planSummary } from "./plan.js";
 import { detachRun, runLoop, runnerPid, stopRunner } from "./runner.js";
 import { deliver } from "./deliver.js";
@@ -1116,6 +1117,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           return [
             ...(points.length ? [{ id: "decision-points", title: "Decision Points", body: "", points, html: "" }] : []),
             ...(tasks.length ? [{ id: "plan", title: "Plan", body: planSummary(tasks), points: [], html: "" }] : []),
+            ...[grantsSection(p, c)].filter((x): x is PageSection => x !== null),
           ];
         };
         const load = (name: string) => {

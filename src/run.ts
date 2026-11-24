@@ -30,6 +30,7 @@ import { ensureWorktree, removeSnapshot, snapshotBase, integrate, mergeWorktree,
 import { parseQuality, qualityFile, resetQualitySummary } from "./quality.js";
 import { selectSkills, skillPath, SKILLS_WITH_NOTES, touchesUi, isSecuritySensitive, type BriefKind } from "./skills.js";
 import { configEvidence, type ConfigEvidence } from "./configlock.js";
+import { envelopeBrief } from "./grants.js";
 import { packageEvidence, packageProblems, type PackageEvidence } from "./depsafety.js";
 import { secretsInChanges, secretsMessage, secretsProblem, stagedSecrets, type SecretFinding } from "./secrets.js";
 import { tamperEvidence, tamperProblems, type TamperEvidence } from "./tamper.js";
@@ -906,6 +907,7 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
       "Design tokens (approved; binding for UI)",
       tokens.length ? [...tokensTable(tokens), "", `Source: \`${rel(p, tokensFile(p))}\`. Each token's **Use** says where it must appear.`] : [],
     ),
+    ...h("Permission envelope (granted at the Approval Gate)", envelopeBrief(tf.change)),
     ...h("Builds on (finished tasks; see `git log`)", done),
     ...h("Touches (files this task may change)", touches.map((g) => `- \`${g}\``)),
     ...h("Verify", verify.map((v) => `- \`${v}\``)),

@@ -43,8 +43,11 @@ const normalize = (s: string) => s.replace(/\r\n?/g, "\n");
  *   project: constitution.md, design/**, domain/**, architecture/**, requirements/**
  * Execution progress (task status, evidence, run state) is deliberately excluded.
  * decisions/ (ADRs) is excluded: implementation-level ADRs may be added during execution.
+ * The push binding fixed at approval (`approval.push`: Change Branch, remote and its URL, base; src/grants.ts) is
+ * hashed too, so editing it in change.yaml is drift. `push` is passed by `aidw approve` (null: none); otherwise it
+ * is read from the recorded approval.
  */
-export function computeApprovalHash(p: Paths, change: Change): ApprovalHash {
+export function computeApprovalHash(p: Paths, change: Change, push?: unknown): ApprovalHash {
   const entries: { path: string; digest: string }[] = [];
   const add = (file: string, content?: string) => {
     if (!existsSync(file)) return;
@@ -61,7 +64,9 @@ export function computeApprovalHash(p: Paths, change: Change): ApprovalHash {
   for (const dir of FROZEN_PROJECT_DIRS(p)) for (const f of walkFiles(dir)) add(f);
 
   entries.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-  const manifest = entries.map((e) => `${e.path}\n${e.digest}\n`).join("");
+  const bound = push !== undefined ? push : (change.data.approval as { push?: unknown } | null | undefined)?.push;
+  const binding = bound ? `approval.push\n${sha256(JSON.stringify(bound))}\n` : "";
+  const manifest = entries.map((e) => `${e.path}\n${e.digest}\n`).join("") + binding;
   return { hash: `sha256:${sha256(manifest)}`, files: entries.map((e) => e.path) };
 }
 

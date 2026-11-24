@@ -268,6 +268,9 @@ user can check:
 - `## Permissions`: one bullet per tier-2 resource, starting with its key, e.g.
   ``- `vercel-preview`: preview deploy of the demo, deleted after handoff``, or `None`. `aidw analyze` checks
   that every key in quality.yaml is named here.
+- `grants:` in quality.yaml: what the user grants at the gate (push remote and base, envelope, Agent-run cap;
+  `aidw plugin-path company/permissions.md`, "Grants at the Approval Gate"). Draft `push: { remote: origin, base: <the
+  branch the change starts from> }` and leave the rest out; the gate page shows them and the user changes them there.
 
 ## 9. Analyze and present
 

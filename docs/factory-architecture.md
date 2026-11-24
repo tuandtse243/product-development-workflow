@@ -367,7 +367,8 @@ through step 4.
 
 ## 14. Limits kept from aidw
 
-One Change at a time per project. No monorepo support. Task commits go to the change branch; aidw does not
-merge or push without asking. Role, skill and Workflow files are written in English; the factory talks with
+One Change at a time per project. No monorepo support. Task commits go to the change branch; aidw never
+merges, and pushes without asking only the Change Branch and its one pull request, when the Approval Gate granted it
+(ADR-0012, `grants:` in `quality.yaml`). Role, skill and Workflow files are written in English; the factory talks with
 the user in the user's language. The commands `/aidw:start`, `approve`, `run`, `resume`, `status` and
 `deliver` keep their names through all four steps.

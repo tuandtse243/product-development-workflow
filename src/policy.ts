@@ -41,7 +41,7 @@ const RUNNER = String.raw`(?:(?:npx|bunx|pnpm\s+(?:dlx|exec)|yarn\s+(?:dlx|exec)
 
 /** Tier 3: outward-facing or costly actions. Always ask. Checked before tier 2. */
 export const ASK_COMMANDS: Rule[] = [
-  { re: /\bgit\s+push\b/, why: "pushes to a remote repository" },
+  { re: /\bgit(?:\s+(?:-[Cc]\s+(?:"[^"]*"|'[^']*'|\S+)|--?[\w.-]+(?:=\S+)?))*\s+push\b/, why: "pushes to a remote repository" }, // git -C <dir> push too
   { re: cmd(String.raw`${RUNNER}vercel\b[^|;&]*(?:--prod\b|--(?:environment|target)(?:=|\s+)production\b|\bpromote\b|\bdomains?\b|\balias\b|\bremove\b|\brm\b)`), why: "changes Vercel production, domains or deletes deployments" },
   { re: cmd(String.raw`${RUNNER}netlify\s+deploy\b[^|;&]*--prod\b`), why: "deploys Netlify production" },
   { re: /\b(railway\s+up|fly\s+deploy|flyctl\s+deploy)\b/, why: "deploys to a hosting provider" },
