@@ -250,6 +250,19 @@ describe("the Approval Gate waits for the plan review", () => {
     expect(rounds(root).map((x) => x.round)).toEqual([1, 2]);
   });
 
+  it("refuses a verdict on a plan that changed after its brief, and lets the lead brief again", () => {
+    const root = drafted();
+    expect(cli(root, "plan-review", ID, "--brief").code).toBe(0);
+    write(root, `.aidw/run/review-plan-${ID}.md`, PASS);
+    write(root, `.aidw/changes/${ID}/tasks.yaml`, TASKS_YAML.replace("title: Booking page", "title: Booking page with a cache"));
+    expect(cli(root, "plan-review", ID).err).toMatch(/the plan changed after the brief of round 1, so the verdict grades a plan that is gone: brief again/);
+    expect(cli(root, "transition", ID, "awaiting_approval").code).toBe(1);
+    const again = review(root, PASS);
+    expect(again.code, again.err).toBe(0);
+    expect(again.out).toMatch(/plan review round 1: pass/);
+    expect(cli(root, "transition", ID, "awaiting_approval").code).toBe(0);
+  });
+
   it("refuses a record of rounds it cannot read instead of reading it as no rounds", () => {
     const root = drafted();
     expect(review(root, PASS).code).toBe(0);

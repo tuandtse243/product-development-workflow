@@ -121,7 +121,7 @@ const REPORT_FILE = /^report-[A-Za-z0-9._-]+\.md$/;
 const VERDICT_FILE = /^(?:layer-)?review-[A-Za-z0-9._-]+\.md$/;
 
 /** The plan review's verdict (D4): only the code-reviewer writes it. */
-const PLAN_REVIEW_FILE = /^review-plan-[A-Za-z0-9._-]+\.md$/;
+const PLAN_REVIEW_FILE = /^review-plan-[A-Za-z0-9._-]+\.md$/i;
 /** The CLI's record of the plan review's rounds: no Agent writes it. */
 const PLAN_REVIEW_RECORD = "plan-review.yaml";
 
@@ -192,10 +192,12 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
     // D4: an author of the package must not forge the review of it, and no Agent writes the CLI's record of rounds
     if (input.agent_type) {
       const name = input.agent_type.split(":").pop() ?? "";
-      if (inside(p.changes, file) && basename(file) === PLAN_REVIEW_RECORD && dirname(dirname(file)) === p.changes) {
+      // compared without case: macOS and Windows file systems take Plan-Review.yaml for plan-review.yaml
+      const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+      if (same(basename(file), PLAN_REVIEW_RECORD) && same(dirname(dirname(file)), p.changes)) {
         return deny("plan-review.yaml is the CLI's record of the plan review; only `aidw plan-review` writes it");
       }
-      if (dirname(file) === p.run && PLAN_REVIEW_FILE.test(basename(file)) && name !== "code-reviewer") {
+      if (same(dirname(file), p.run) && PLAN_REVIEW_FILE.test(basename(file)) && name !== "code-reviewer") {
         return deny("the plan review's verdict is written only by the code-reviewer that the orchestrator spawned with its brief");
       }
     }

@@ -9752,7 +9752,7 @@ function isFrozenPackageFile(p, file, frozen) {
 var MCP_READ_TOOL = /^(?:get|list|search|read|fetch|find|query|show|view|describe|whoami)(?:_|$)/i;
 var REPORT_FILE = /^report-[A-Za-z0-9._-]+\.md$/;
 var VERDICT_FILE = /^(?:layer-)?review-[A-Za-z0-9._-]+\.md$/;
-var PLAN_REVIEW_FILE = /^review-plan-[A-Za-z0-9._-]+\.md$/;
+var PLAN_REVIEW_FILE = /^review-plan-[A-Za-z0-9._-]+\.md$/i;
 var PLAN_REVIEW_RECORD = "plan-review.yaml";
 var AUDIT_FILE = /^audit-[a-z0-9-]+\.md$/;
 function agentRole(agentType, env = process.env) {
@@ -9804,10 +9804,11 @@ function decide(input, env) {
     if (!inside(project, file)) return null;
     if (input.agent_type) {
       const name = input.agent_type.split(":").pop() ?? "";
-      if (inside(p.changes, file) && (0, import_node_path12.basename)(file) === PLAN_REVIEW_RECORD && (0, import_node_path12.dirname)((0, import_node_path12.dirname)(file)) === p.changes) {
+      const same = (a, b) => a.toLowerCase() === b.toLowerCase();
+      if (same((0, import_node_path12.basename)(file), PLAN_REVIEW_RECORD) && same((0, import_node_path12.dirname)((0, import_node_path12.dirname)(file)), p.changes)) {
         return deny("plan-review.yaml is the CLI's record of the plan review; only `aidw plan-review` writes it");
       }
-      if ((0, import_node_path12.dirname)(file) === p.run && PLAN_REVIEW_FILE.test((0, import_node_path12.basename)(file)) && name !== "code-reviewer") {
+      if (same((0, import_node_path12.dirname)(file), p.run) && PLAN_REVIEW_FILE.test((0, import_node_path12.basename)(file)) && name !== "code-reviewer") {
         return deny("the plan review's verdict is written only by the code-reviewer that the orchestrator spawned with its brief");
       }
     }
@@ -12102,19 +12103,30 @@ function readRecord(p, change) {
   const rec = data;
   const cycle = typeof rec.cycle === "number" ? rec.cycle : 1;
   const current = rec.rounds.filter((r) => (r.cycle ?? 1) === cycle);
-  return { cycle, briefed: typeof rec.briefed === "number" ? rec.briefed : current.length, rounds: rec.rounds };
+  return {
+    cycle,
+    briefed: typeof rec.briefed === "number" ? rec.briefed : current.length,
+    ...typeof rec.briefedPlan === "string" ? { briefedPlan: rec.briefedPlan } : {},
+    rounds: rec.rounds
+  };
 }
 var currentRounds = (rec) => rec.rounds.filter((r) => (r.cycle ?? 1) === rec.cycle);
 var writeRecord2 = (change, rec) => (0, import_node_fs22.writeFileSync)(roundsFile(change), import_yaml11.default.stringify(rec));
 function planDigest(p, change) {
+  const c = (f) => (0, import_node_path27.join)(change.dir, f);
   const files = [
-    (0, import_node_path27.join)(change.dir, "tasks.yaml"),
-    ...walkFiles((0, import_node_path27.join)(change.dir, "specs")).sort(),
+    c("tasks.yaml"),
+    ...walkFiles((0, import_node_fs22.existsSync)(c("specs")) ? c("specs") : p.specs).sort(),
+    (0, import_node_path27.join)(p.requirements, `${change.id}.md`),
     (0, import_node_path27.join)(p.architecture, "overview.md"),
+    ...walkFiles(p.decisions).sort(),
     p.constitution,
-    (0, import_node_path27.join)(change.dir, "data-model.md"),
-    (0, import_node_path27.join)(change.dir, "api-contract.md"),
-    (0, import_node_path27.join)(change.dir, "test-plan.md")
+    c("decisions.yaml"),
+    c("data-model.md"),
+    c("api-contract.md"),
+    c("openapi.yaml"),
+    c("test-plan.md"),
+    c("quality.yaml")
   ];
   const parts = files.map((f) => {
     const t = readText(f);
@@ -12179,6 +12191,8 @@ function recordPlanReview(p, id, pluginRoot2) {
   const { change, w, stage, rec, rounds } = load(p, id, pluginRoot2, "record");
   const n = rounds.length + 1;
   if (rec.briefed !== n) throw new OpError(`round ${n} has no brief yet: run \`aidw plan-review ${id} --brief\` first, then spawn the reviewer with it`);
+  const plan = planDigest(p, change);
+  if (rec.briefedPlan !== void 0 && rec.briefedPlan !== plan) throw new OpError(`the plan changed after the brief of round ${n}, so the verdict grades a plan that is gone: brief again (\`aidw plan-review ${id} --brief\`) and spawn the reviewer with the new brief`);
   const file = verdictFile(p, id);
   const text2 = readText(file);
   if (text2 === null) throw new OpError(`no verdict at ${rel(p, file)}: ${how(id)}`);
@@ -12194,7 +12208,7 @@ function recordPlanReview(p, id, pluginRoot2) {
 ${parsed.problems.map((x) => `  - ${x}`).join("\n")}
 Spawn the reviewer once more with the same brief.`);
   }
-  const round = { round: n, cycle: rec.cycle, verdict: parsed.verdict, digest: digestOf(text2), plan: planDigest(p, change), at: (/* @__PURE__ */ new Date()).toISOString(), findings: parsed.findings };
+  const round = { round: n, cycle: rec.cycle, verdict: parsed.verdict, digest: digestOf(text2), plan, at: (/* @__PURE__ */ new Date()).toISOString(), findings: parsed.findings };
   writeRecord2(change, { ...rec, rounds: [...rec.rounds, round] });
   let registry = null;
   try {
@@ -12211,10 +12225,11 @@ function buildPlanReviewBrief(p, id, pluginRoot2) {
   if (d.errors.length) throw new OpError("the CLI's own checks come first: fix what `aidw analyze` reports, then write the brief", d);
   const out = verdictFile(p, id);
   const left = readText(out);
-  if (left !== null && !rec.rounds.some((r) => r.digest === digestOf(left))) throw new OpError(`the verdict at ${rel(p, out)} is not recorded yet: run \`aidw plan-review ${id}\` first`);
+  const stale = rec.briefedPlan !== void 0 && rec.briefedPlan !== planDigest(p, change);
+  if (left !== null && !stale && !rec.rounds.some((r) => r.digest === digestOf(left))) throw new OpError(`the verdict at ${rel(p, out)} is not recorded yet: run \`aidw plan-review ${id}\` first`);
   (0, import_node_fs22.rmSync)(out, { force: true });
   const round = rounds.length + 1;
-  writeRecord2(change, { ...rec, briefed: round });
+  writeRecord2(change, { ...rec, briefed: round, briefedPlan: planDigest(p, change) });
   const last = rounds.at(-1);
   const at = (f) => (0, import_node_fs22.existsSync)(f) ? `- \`${rel(p, f)}\`` : null;
   const c = (f) => (0, import_node_path27.join)(change.dir, f);

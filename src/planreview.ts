@@ -113,6 +113,8 @@ export function parsePlanReview(text: string): { verdict: "pass" | "fix" | null;
 export interface ReviewRecord {
   cycle: number;
   briefed: number;
+  /** planDigest when the last brief was written: the plan the reviewer grades */
+  briefedPlan?: string;
   rounds: Round[];
 }
 
@@ -130,10 +132,15 @@ export function readRecord(p: Paths, change: Change): ReviewRecord {
   }
   const ok = isRecord(data) && Array.isArray(data.rounds) && data.rounds.every((r) => isRecord(r) && typeof r.round === "number" && (r.verdict === "pass" || r.verdict === "fix") && typeof r.digest === "string" && Array.isArray(r.findings));
   if (!ok) throw new OpError(`${rel(p, file)} cannot be read (no list of rounds with round, verdict, digest and findings): it is written only by \`aidw plan-review\`; restore it from git`);
-  const rec = data as { cycle?: unknown; briefed?: unknown; rounds: Round[] };
+  const rec = data as { cycle?: unknown; briefed?: unknown; briefedPlan?: unknown; rounds: Round[] };
   const cycle = typeof rec.cycle === "number" ? rec.cycle : 1;
   const current = rec.rounds.filter((r) => (r.cycle ?? 1) === cycle);
-  return { cycle, briefed: typeof rec.briefed === "number" ? rec.briefed : current.length, rounds: rec.rounds };
+  return {
+    cycle,
+    briefed: typeof rec.briefed === "number" ? rec.briefed : current.length,
+    ...(typeof rec.briefedPlan === "string" ? { briefedPlan: rec.briefedPlan } : {}),
+    rounds: rec.rounds,
+  };
 }
 
 /** The rounds of the current cycle. */
@@ -142,19 +149,26 @@ export const currentRounds = (rec: ReviewRecord): Round[] => rec.rounds.filter((
 const writeRecord = (change: Change, rec: ReviewRecord) => writeFileSync(roundsFile(change), YAML.stringify(rec));
 
 /**
- * A digest of what the review graded: the plan, the specs, the architecture, the constitution, the contracts and the
- * test plan (not analysis.md, whose summary the lead writes around the review). A finished review counts only while
- * this is unchanged.
+ * A digest of what the review graded: every input the brief asks the reviewer to read except analysis.md (whose summary
+ * the lead writes around the review): the plan, the specs (the main specs when the change has none), the requirements,
+ * the architecture and project decisions, the constitution, the decisions of the change, the contracts, the test plan
+ * and quality.yaml. It is taken when the brief is written; a finished review counts only while it is unchanged.
  */
 export function planDigest(p: Paths, change: Change): string {
+  const c = (f: string) => join(change.dir, f);
   const files = [
-    join(change.dir, "tasks.yaml"),
-    ...walkFiles(join(change.dir, "specs")).sort(),
+    c("tasks.yaml"),
+    ...walkFiles(existsSync(c("specs")) ? c("specs") : p.specs).sort(),
+    join(p.requirements, `${change.id}.md`),
     join(p.architecture, "overview.md"),
+    ...walkFiles(p.decisions).sort(),
     p.constitution,
-    join(change.dir, "data-model.md"),
-    join(change.dir, "api-contract.md"),
-    join(change.dir, "test-plan.md"),
+    c("decisions.yaml"),
+    c("data-model.md"),
+    c("api-contract.md"),
+    c("openapi.yaml"),
+    c("test-plan.md"),
+    c("quality.yaml"),
   ];
   const parts = files.map((f) => {
     const t = readText(f);
@@ -251,6 +265,8 @@ export function recordPlanReview(p: Paths, id: string, pluginRoot: string): Reco
   const { change, w, stage, rec, rounds } = load(p, id, pluginRoot, "record");
   const n = rounds.length + 1;
   if (rec.briefed !== n) throw new OpError(`round ${n} has no brief yet: run \`aidw plan-review ${id} --brief\` first, then spawn the reviewer with it`);
+  const plan = planDigest(p, change);
+  if (rec.briefedPlan !== undefined && rec.briefedPlan !== plan) throw new OpError(`the plan changed after the brief of round ${n}, so the verdict grades a plan that is gone: brief again (\`aidw plan-review ${id} --brief\`) and spawn the reviewer with the new brief`);
   const file = verdictFile(p, id);
   const text = readText(file);
   if (text === null) throw new OpError(`no verdict at ${rel(p, file)}: ${how(id)}`);
@@ -264,7 +280,7 @@ export function recordPlanReview(p: Paths, id: string, pluginRoot: string): Reco
   if (parsed.problems.length || !parsed.verdict) {
     throw new OpError(`the plan review's verdict (${rel(p, file)}) is not in the right shape; the round is not counted:\n${parsed.problems.map((x) => `  - ${x}`).join("\n")}\nSpawn the reviewer once more with the same brief.`);
   }
-  const round: Round = { round: n, cycle: rec.cycle, verdict: parsed.verdict, digest: digestOf(text), plan: planDigest(p, change), at: new Date().toISOString(), findings: parsed.findings };
+  const round: Round = { round: n, cycle: rec.cycle, verdict: parsed.verdict, digest: digestOf(text), plan, at: new Date().toISOString(), findings: parsed.findings };
   writeRecord(change, { ...rec, rounds: [...rec.rounds, round] });
   let registry: Record<string, ArtifactEntry> | null = null;
   try {
@@ -283,10 +299,12 @@ export function buildPlanReviewBrief(p: Paths, id: string, pluginRoot: string): 
   if (d.errors.length) throw new OpError("the CLI's own checks come first: fix what `aidw analyze` reports, then write the brief", d);
   const out = verdictFile(p, id);
   const left = readText(out);
-  if (left !== null && !rec.rounds.some((r) => r.digest === digestOf(left))) throw new OpError(`the verdict at ${rel(p, out)} is not recorded yet: run \`aidw plan-review ${id}\` first`);
+  // a verdict not recorded yet is kept, unless it graded a plan that changed since its brief
+  const stale = rec.briefedPlan !== undefined && rec.briefedPlan !== planDigest(p, change);
+  if (left !== null && !stale && !rec.rounds.some((r) => r.digest === digestOf(left))) throw new OpError(`the verdict at ${rel(p, out)} is not recorded yet: run \`aidw plan-review ${id}\` first`);
   rmSync(out, { force: true });
   const round = rounds.length + 1;
-  writeRecord(change, { ...rec, briefed: round });
+  writeRecord(change, { ...rec, briefed: round, briefedPlan: planDigest(p, change) });
   const last = rounds.at(-1);
   const at = (f: string) => (existsSync(f) ? `- \`${rel(p, f)}\`` : null);
   const c = (f: string) => join(change.dir, f);
