@@ -6,11 +6,14 @@ import { typeProblem } from "./commit.js";
 /**
  * pending -> running -> review -> done        (implement, checkpoint, independent review)
  *              ^   \-> failed --/             (checkpoint or review asked for fixes; retried)
- *              \------ escalated              (attempts exhausted; needs the user)
+ *              \------ escalated              (set by hand or by an older aidw; the run itself does not escalate tasks)
+ * failed (out of attempts) -> Triage -> failed (one more attempt, or an upstream round, then a rerun)
+ *                                   \-> not_built (environment; or after MAX_UPSTREAM_ROUNDS; or at the Agent-run cap),
+ *                                       with `not_built: { cause, reason, at }`, and so is every task that depends on it (ADR-0014)
  * review -> conflict -> review -> done           (a wave task whose merge conflicts: integration resolves it, T7)
  *              \-> pending (sequential)      (the resolution failed: dropped, reruns on the latest code)
  */
-export const TASK_STATUSES = ["pending", "running", "review", "done", "failed", "blocked", "escalated", "conflict"] as const;
+export const TASK_STATUSES = ["pending", "running", "review", "done", "failed", "blocked", "escalated", "conflict", "not_built"] as const;
 
 /** Fields the orchestrator updates during execution; excluded from the approval hash. */
 export const RUNTIME_FIELDS = [
@@ -34,6 +37,10 @@ export const RUNTIME_FIELDS = [
   "conflict",
   // ADR-0013: the Agent-run counter, raised on every new attempt and never reset; the Consultation budget counts per run
   "runs",
+  // ADR-0014: why a task was not built (with status not_built): { cause, reason, at }
+  "not_built",
+  // T10: the upstream round of a task after Triage: { cause, role, round, phase, at }
+  "upstream",
 ] as const;
 
 export const DEFAULT_MAX_ATTEMPTS = 3;

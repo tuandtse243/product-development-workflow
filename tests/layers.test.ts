@@ -58,7 +58,8 @@ function project(quality = Q()): string {
   write(root, ".aidw/design/tokens.yaml", TOKENS_YAML);
   write(root, ".aidw/design/direction.md", "# Direction\n\nCalm clinical palette.\n");
   write(root, `${c}/tasks.yaml`, TASKS);
-  write(root, `${c}/quality.yaml`, quality);
+  // these tests are about fix rounds: an Agent-run cap well above what they spawn (the default, 3 per planned task, is 3 here)
+  write(root, `${c}/quality.yaml`, /^grants:/m.test(quality) ? quality : `${quality}grants:\n  agent_runs: 50\n`);
   write(root, `${c}/specs/booking/spec.md`, `## ADDED Requirements\n\n${REQ("Reschedule appointment")}`);
   write(root, "check.js", "process.exit(require('fs').existsSync(process.argv[2]) ? 0 : (console.log('missing ' + process.argv[2]), 1));\n");
   write(root, "shots.js", "const fs=require('fs');fs.mkdirSync('test-results/shots',{recursive:true});fs.writeFileSync('test-results/shots/home-mobile-light.png','');fs.writeFileSync('test-results/shots/home-desktop-dark.png','');console.log('2 shots');\n");
@@ -186,7 +187,7 @@ describe("verify with review layers (S7)", () => {
     expect(report).not.toMatch(/layer "ui-ux" was not/);
   });
 
-  it("turns a fix verdict into a fix task with the notes, and escalates past max_fix_rounds", () => {
+  it("turns a fix verdict into a fix task with the notes, and marks the layer not built past max_fix_rounds", () => {
     const root = project(Q("max_fix_rounds: 1\n"));
     cli(root, "verify");
     const fix = cli(root, "layer-review", "ui-ux", "fix", "--notes-file", notes(root, "VERDICT: fix\n1. home, mobile: the icon grid overflows by 8px -> use a 6-column grid"), "--json").json();
@@ -207,9 +208,14 @@ describe("verify with review layers (S7)", () => {
     // the whole chain reruns on the new code, the reviewer still says fix: rounds exhausted
     expect(cli(root, "verify", "--json").json().awaitingReview).toMatchObject({ layer: "ui-ux" });
     const again = cli(root, "layer-review", "ui-ux", "fix", "--notes", "VERDICT: fix\n1. still overflows", "--json");
-    expect(again.code).toBe(1);
-    expect(again.json()).toMatchObject({ escalated: true });
-    expect(state(root)).toBe("escalated");
+    expect(again.code).toBe(0);
+    expect(again.json()).toMatchObject({ notBuilt: true });
+    expect(again.json().summary).toMatch(/not built: still failing after 1 fix round/);
+    // nobody is asked after the gate (ADR-0014): the run carries on without the layer
+    expect(state(root)).toBe("verifying");
+    const after = cli(root, "verify", "--json").json();
+    expect(after.layers.find((l: { name: string }) => l.name === "ui-ux").status).toBe("not_built");
+    expect(after.awaitingReview).toMatchObject({ layer: "security" });
   });
 
   it("reports missing artifacts to the reviewer instead of failing silently", () => {

@@ -26,8 +26,9 @@ export function transitionGuard(p: Paths, id: string, target: string): string | 
   }
   if (!("deploying" in machineOf(p, change).transitions)) return null;
   if (target === "verifying") {
-    const open = loadTasks(p, id).tasks.filter((t) => String(t.status ?? "pending") !== "done");
-    if (open.length) return `"verifying" needs every task done; open: ${open.map((t) => `${t.id} (${String(t.status ?? "pending")})`).join(", ")}`;
+    // A task not built (ADR-0014) is closed: the Change goes on and the pull request lists it.
+    const open = loadTasks(p, id).tasks.filter((t) => !["done", "not_built"].includes(String(t.status ?? "pending")));
+    if (open.length) return `"verifying" needs every task done or not built; open: ${open.map((t) => `${t.id} (${String(t.status ?? "pending")})`).join(", ")}`;
     const merged = pendingIntegration(loadChange(p, id), loadTasks(p, id).tasks);
     if (merged.length) return `"verifying" needs the last wave integrated: run \`aidw integrate\` (merged: ${merged.map((t) => t.id).join(", ")})`;
   }

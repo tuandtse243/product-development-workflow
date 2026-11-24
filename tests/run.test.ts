@@ -152,8 +152,8 @@ describe("execution loop (exit criterion [4])", () => {
     expect(ev.reviews[0].verdict).toBe("pass");
   });
 
-  it("feeds review notes back to the implementer and escalates when attempts run out", () => {
-    root = executingProject({ t2Verify: FAIL });
+  it("feeds review notes back to the implementer and sends a spec cause back to its author when attempts run out", () => {
+    root = executingProject({ t2Verify: FAIL, quality: `${QUALITY_YAML}grants:\n  agent_runs: 20\n` });
     write(root, "tests/booking.test.ts", SCENARIO_TEST);
     cli(root, "task", "start", "T01");
     cli(root, "checkpoint", "T01");
@@ -172,19 +172,18 @@ describe("execution loop (exit criterion [4])", () => {
     expect(task(root, "T02").notes).toMatch(/verify failed: `node -e .*` \(exit 3\)/);
     cli(root, "task", "start", "T02");
     cli(root, "checkpoint", "T02");
-    // out of attempts: one independent triage first (step 3); a spec cause stops for the user
+    // out of attempts: one independent triage first (step 3); a spec cause goes back to its author, never to the user (ADR-0014)
     expect(cli(root, "next", "--json").json()).toMatchObject({ action: "triage", task: "T02" });
     write(root, ".aidw/run/triage-T02.md", "CAUSE: spec\nThe THEN of the scenario cannot be observed.\n");
     expect(cli(root, "triage", "T02").code).toBe(0);
     const n = cli(root, "next", "--json").json();
-    expect(n).toMatchObject({ action: "escalate", task: "T02" });
-    expect(n.reason).toMatch(/triage: spec/);
-    expect(task(root, "T02").status).toBe("escalated");
-
-    // the orchestrator escalates the change; the user resolves it and grants a retry
+    expect(n).toMatchObject({ action: "upstream", task: "T02", cause: "spec", role: "business-analyst", round: 1 });
+    expect(task(root, "T02").status).toBe("failed");
     expect(cli(root, "transition", ID, "escalated", "--reason", "T02 keeps failing").code).toBe(0);
     expect(cli(root, "task", "retry", "T02").err).toMatch(/tasks run only in state executing/);
     expect(cli(root, "transition", ID, "executing").code).toBe(0);
+
+    // a retry the user grants by hand still gives a fresh attempt budget
     expect(cli(root, "task", "retry", "T01").err).toMatch(/only escalated or failed tasks can be retried/);
     expect(cli(root, "task", "retry", "T02").code).toBe(0);
     expect(cli(root, "next", "--json").json()).toMatchObject({ action: "implement", task: "T02", reason: "retry" });

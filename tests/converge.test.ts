@@ -116,7 +116,31 @@ describe("converge with presence evidence", () => {
     expect(cli(root, "transition", ID, "deploying").code).toBe(0);
   });
 
-  it("escalates instead of looping when a converge task did not close the gap", () => {
+  it("at the Agent-run cap a gap gets no converge task: it is not built and the Change moves on (D10)", () => {
+    const root = project(`${PRESENCE_Q}grants:\n  agent_runs: 2\n`);
+    finishTask(root, "T01", () => write(root, "tests/a.test.ts", `test("${S1}: works", () => {})\ntest("${S2}: joins", () => {})\n`));
+    write(root, "tests/a.test.ts", `test("${S1}: works", () => {})\n`);
+    toConverging(root);
+    const r = cli(root, "converge", "--json").json();
+    expect(r).toMatchObject({ ok: true, added: [], not_built: [{ scenario: S2, reason: expect.stringMatching(/cap of 2 Agent runs/) }] });
+    expect(r.summary).toMatch(/not built: booking\/waitlist\/waitlist-works/);
+    expect(cli(root, "transition", ID, "deploying").code).toBe(0);
+  });
+
+  it("a scenario whose task was not built is listed, not given a converge task", () => {
+    const root = project(PRESENCE_Q);
+    // T01 carries S1 and S2; mark it not built as the run would (status and reason are runtime fields, not drift)
+    const file = join(root, ".aidw/changes", ID, "tasks.yaml");
+    write(root, `.aidw/changes/${ID}/tasks.yaml`, readFileSync(file, "utf8").replace("status: pending", 'status: not_built\n    not_built: { cause: environment, reason: "triage: environment. no database" }'));
+    toConverging(root);
+    const r = cli(root, "converge", "--json").json();
+    expect(r.ok).toBe(true);
+    expect(r.added).toEqual([]);
+    expect(r.not_built.map((x: { scenario: string }) => x.scenario)).toEqual([S1, S2]);
+    expect(r.not_built[0].reason).toMatch(/its task T01 was not built: triage: environment/);
+  });
+
+  it("marks a scenario not built instead of looping when a converge task did not close the gap", () => {
     const root = project(PRESENCE_Q);
     const both = `test("${S1}: works", () => {})\ntest("${S2}: joins", () => {})\n`;
     const skipped = `test("${S1}: works", () => {})\ntest.todo("${S2}: joins")\n`;
@@ -128,8 +152,10 @@ describe("converge with presence evidence", () => {
     write(root, "tests/a.test.ts", skipped);
     toConverging(root);
     const r = cli(root, "converge", "--json").json();
-    expect(r).toMatchObject({ ok: false, escalated: [S2], added: [] });
-    expect(state(root)).toBe("escalated");
+    expect(r).toMatchObject({ ok: true, not_built: [{ scenario: S2, reason: "still no passing test after converge task C01" }], added: [] });
+    // nobody is asked after the gate (ADR-0014): the Change moves on and the pull request lists the scenario
+    expect(state(root)).toBe("converging");
+    expect(cli(root, "transition", ID, "deploying").code).toBe(0);
   });
 });
 

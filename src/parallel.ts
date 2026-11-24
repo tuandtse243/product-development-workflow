@@ -27,6 +27,7 @@ import { DEFAULT_PARALLEL, parseQuality, qualityFile, type ParallelConfig, type 
 import { touchesUi } from "./skills.js";
 import { globsOverlap, staticPrefix, touchesOverlap } from "./touches.js";
 import type { Task } from "./tasks.js";
+import { agentRunStatus, capReason } from "./agentruns.js";
 import type { CommandRunner, VerifyRun } from "./run.js";
 
 const list = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : []);
@@ -278,6 +279,8 @@ export interface IntegrationRun {
   tasks: string[];
   runs: VerifyRun[];
   fixTask?: string;
+  /** ADR-0014: the run gave up on this integration (fix rounds exhausted or the Agent-run cap); the quality layers judge the merged code */
+  not_built?: string;
 }
 
 const integrationFile = (change: Change) => join(change.dir, "evidence", "integration.json");
@@ -292,8 +295,9 @@ export function integrationRuns(change: Change): IntegrationRun[] {
   }
 }
 
+/** The last integration that closed its wave: one that passed, or one the run gave up on (ADR-0014). */
 function lastPassAt(change: Change): string {
-  return integrationRuns(change).filter((r) => r.ok).at(-1)?.at ?? "";
+  return integrationRuns(change).filter((r) => r.ok || r.not_built).at(-1)?.at ?? "";
 }
 
 /** Wave tasks merged since the last passing integration verify. */
@@ -307,7 +311,8 @@ export interface IntegrateResult {
   tasks: string[];
   runs: VerifyRun[];
   fixTask?: string;
-  escalated?: boolean;
+  /** the integration is not built (fix rounds exhausted or the Agent-run cap): the run carries on, the PR lists it */
+  notBuilt?: boolean;
   summary: string;
 }
 
@@ -346,10 +351,12 @@ export function integrate(
   const since = lastPassAt(change);
   const failures = history.filter((r) => !r.ok && r.at > since).length + 1;
   const max = deps.quality?.maxFixRounds ?? 3;
-  if (failures > max) {
+  const cap = agentRunStatus(p, change);
+  if (failures > max || cap.reached) {
+    // Nobody is asked after the gate (ADR-0014): the wave stays merged, the quality layers judge it, the PR lists this.
+    record.not_built = failures > max ? `integration verify still failing after ${failures - 1} fix round(s)` : `${capReason(cap)}; no fix task starts`;
     write();
-    transition(p, id, "escalated", { reason: `integration verify of ${record.tasks.join(", ")} still failing after ${failures - 1} fix round(s)` });
-    return { ok: false, tasks: record.tasks, runs, escalated: true, summary: `integration verify failed; fix rounds exhausted (${failures - 1}/${max}): escalated` };
+    return { ok: false, tasks: record.tasks, runs, notBuilt: true, summary: `integration verify of ${record.tasks.join(", ")} failed and is not built: ${record.not_built}; the run carries on` };
   }
   const n = tf.tasks.filter((t) => t.origin === "integration").length + 1;
   const taskId = `I${String(n).padStart(2, "0")}`;

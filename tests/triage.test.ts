@@ -60,7 +60,7 @@ describe("triage of a task that ran out of attempts", () => {
     expect(task(root, "T02")).not.toHaveProperty("triage");
   });
 
-  it("implementation: grants one further attempt with the diagnosis in the brief, and escalates if that fails too", () => {
+  it("implementation: grants one further attempt with the diagnosis in the brief; if that fails too the task is not built", () => {
     const root = exhausted();
     answer(root, "CAUSE: implementation\nThe handler in app/api/bookings/route.ts returns before it frees the slot.\n");
     const r = cli(root, "triage", "T02", "--json").json();
@@ -70,20 +70,33 @@ describe("triage of a task that ran out of attempts", () => {
     cli(root, "task", "start", "T02");
     expect(readFileSync(cli(root, "brief", "T02").out.trim(), "utf8")).toMatch(/independent architect diagnosed[\s\S]*before it frees the slot/);
     cli(root, "checkpoint", "T02");
-    // the extra attempt failed: no second triage, the user is told
-    expect(cli(root, "next", "--json").json()).toMatchObject({ action: "escalate", task: "T02" });
+    // the extra attempt failed: no second triage and nobody asked after the gate (ADR-0014): not built, the rest carries on
+    expect(cli(root, "next", "--json").json()).toMatchObject({ action: "complete", not_built: ["T02"] });
+    expect(task(root, "T02")).toMatchObject({ status: "not_built" });
   });
 
-  it.each(["plan", "spec", "architecture", "environment"])("%s: stops for the user with the diagnosis instead of retrying", (cause) => {
+  it.each([
+    ["plan", "technical-planner"],
+    ["spec", "business-analyst"],
+    ["architecture", "software-architect"],
+  ])("%s: goes back to the Role that wrote it (%s), not to the user", (cause, role) => {
     const root = exhausted();
     answer(root, `CAUSE: ${cause}\nthe evidence says so.\n`);
     const r = cli(root, "triage", "T02");
     expect(r.code).toBe(0);
-    expect(r.out).toMatch(cause === "environment" ? /the environment, so it escalated\. What the user must fix/ : new RegExp(`the ${cause}, so it escalated: the approved package would change`));
-    expect(task(root, "T02").status).toBe("escalated");
-    const n = cli(root, "next", "--json").json();
-    expect(n).toMatchObject({ action: "escalate", task: "T02" });
-    expect(n.reason).toMatch(new RegExp(`triage: ${cause}`));
+    expect(r.out).toMatch(new RegExp(`the ${cause}, so it goes back to the ${role}, who wrote it: upstream round 1 of 3`));
+    expect(task(root, "T02").status).toBe("failed");
+    expect(cli(root, "next", "--json").json()).toMatchObject({ action: "upstream", task: "T02", cause, role, round: 1 });
+  });
+
+  it("environment: not built at once, with what the user must fix to finish it", () => {
+    const root = exhausted();
+    answer(root, "CAUSE: environment\nThe test database is not running on port 5432.\n");
+    const r = cli(root, "triage", "T02");
+    expect(r.code).toBe(0);
+    expect(r.out).toMatch(/the environment, which nothing inside the factory fixes, so it is not built[\s\S]*port 5432/);
+    expect(task(root, "T02")).toMatchObject({ status: "not_built" });
+    expect(cli(root, "next", "--json").json()).toMatchObject({ action: "complete", not_built: ["T02"] });
   });
 
   it("is done once per task, and only for a task that ran out of attempts", () => {
