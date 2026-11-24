@@ -84,6 +84,18 @@ describe("the implementer brief", () => {
     expect(brief(root)).toMatch(/stacks\/nextjs\.md`: how to build with Next\.js \(framework pack\)/);
   });
 
+  it("points at the language pack of the project, for the implementer and the reviewer", () => {
+    const root = executingProject({ tasks: BACKEND_TASK });
+    write(root, "package.json", JSON.stringify({ dependencies: { fastify: "5.2.0" } }));
+    const implement = brief(root);
+    expect(implement).toMatch(/stacks\/node\.md`: tooling of the project's language: install, format, lint, typecheck, tests \(stack pack\)/);
+    let out = "";
+    run(["brief", "T01", "--for", "review", "--root", root], {}, root, { out: (s) => (out += s), err: () => undefined });
+    const review = readFileSync(out.trim(), "utf8");
+    expect(review).toMatch(/stacks\/node\.md`: tooling/);
+    expect(review).toMatch(/stacks\/fastify\.md`: how to build with Fastify \(framework pack\)/);
+  });
+
   it("names none when the project uses no framework with a pack", () => {
     const root = executingProject();
     write(root, "package.json", JSON.stringify({ dependencies: { koa: "2.15.0" } }));

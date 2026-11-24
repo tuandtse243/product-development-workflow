@@ -1333,12 +1333,22 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
   const retry = kind === "implement" && (!!failedCheckpoint || !!fixReview);
 
   // A framework pack names the Skills that load with it (ADR-0005): no framework is named in the selection code.
-  const stackNow = detectProject(p.project).stack;
+  const detected = detectProject(p.project);
+  const stackNow = detected.stack;
   const pluginHome = resolve(vendorDir, "..", "..");
+  // The Role that builds the task: its framework packs, its rules (and those of the Roles it follows, plan R2).
+  const builder = implementerOf(pluginHome, typeof t.role === "string" ? t.role : undefined) ?? defaultTaskRole();
+  const builderPacks = packsFor(pluginHome, stackNow, builder);
   const fromPacks =
     kind === "implement"
-      ? packsFor(pluginHome, stackNow, implementerOf(pluginHome, typeof t.role === "string" ? t.role : undefined) ?? defaultTaskRole()).flatMap((k) => k.skills.map((id) => ({ id, reason: `the project is built with ${k.framework} (framework pack)` })))
+      ? builderPacks.flatMap((k) => k.skills.map((id) => ({ id, reason: `the project is built with ${k.framework} (framework pack)` })))
       : packsOf(pluginHome, stackNow).flatMap((k) => k.reviewSkills.map((id) => ({ id, reason: `review of ${k.framework} code (framework pack)` })));
+  const ruleFiles = [builder, ...(loadRole(pluginHome, builder)?.follows_rules ?? [])]
+    .map((r) => ({ role: r, file: join(pluginHome, "roles", r, "rules.md") }))
+    .filter((x) => existsSync(x.file))
+    .map((x) => ({ ...x, table: loadRuleTable(pluginHome, x.role) }));
+  const exampleId = ruleFiles.find((x) => x.table?.length)?.table?.[0]?.id;
+  const followed = ruleFiles.filter((x) => x.role !== builder);
   const picked = selectSkills(t, kind, { retry, reviewFix: kind === "implement" && !!fixReview });
   const skills = [...picked, ...fromPacks.filter((s) => !picked.some((x) => x.id === s.id))]
     .map((s) => ({ ...s, path: skillPath(vendorDir, s.id) }));
@@ -1384,14 +1394,13 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
     })
     .filter((x): x is string => x !== null);
   const adrs = adrPointers(p);
-  // The framework pack of the stack the project uses, for the Roles that build with it (never another side's framework).
-  const pluginDir = resolve(vendorDir, "..", "..");
-  const packLines =
-    kind === "implement"
-      ? packsFor(pluginDir, detectProject(p.project).stack, implementerOf(pluginDir, typeof t.role === "string" ? t.role : undefined) ?? defaultTaskRole()).map(
-          (k) => `- \`${k.file}\`: how to build with ${k.framework} (framework pack)`,
-        )
-      : [];
+  // The Stack Packs of the project (ADR-0001): the language pack for tooling, and the framework pack of the stack it uses
+  // for the Role that builds the task (never another side's framework). The reviewer gets the same, to judge by them.
+  const languagePack = detected.stackPack ? join(pluginHome, "stacks", `${detected.stackPack}.md`) : null;
+  const packLines = [
+    ...(languagePack && existsSync(languagePack) ? [`- \`${languagePack}\`: tooling of the project's language: install, format, lint, typecheck, tests (stack pack)`] : []),
+    ...builderPacks.map((k) => `- \`${k.file}\`: how to build with ${k.framework} (framework pack)`),
+  ];
 
   const touches = list(t.touches);
   const verify = list(t.verify);
@@ -1507,6 +1516,15 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
       ...h("Problem to fix", typeof t.problem === "string" ? ["```", t.problem.trim(), "```", "", "Find the root cause (debugging skill below), fix it, and make the verify commands pass. Touches is the whole project, but change only what the fix needs."] : []),
       ...h("Previous attempt", previous),
       ...h("Consultations of this task (answered; read each answer before you continue)", answers),
+      // Plan R2 from the implementer's side: the Role's own rules.md is already in its agent profile (generated), but
+      // the rules of a Role it follows (`follows_rules`: fullstack follows backend's) are not; the reviewer judges by both.
+      ...h("Rules of the Roles yours follows", followed.length
+        ? [
+            ...followed.map((x) => `- \`${x.file}\`: rules of ${x.role}${x.table ? ", one per row with an id" : ""}.`),
+            "",
+            `Your own rules are in your agent profile. These bind the ${builder} work too: follow every rule whose "applies when" fits the part of this task it covers. The reviewer cites a broken rule's id as a blocking issue.`,
+          ]
+        : []),
       ...shared,
     ];
   } else {
@@ -1517,12 +1535,6 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
     const design = lastCheckpoint?.design;
     // Plan R2: the reviewer judges the task against the rules of the Role that built it (and of the Roles it follows,
     // `follows_rules` in role.md: fullstack follows backend's), and names the rule a finding breaks.
-    const builder = implementerOf(pluginHome, typeof t.role === "string" ? t.role : undefined) ?? defaultTaskRole();
-    const ruleFiles = [builder, ...(loadRole(pluginHome, builder)?.follows_rules ?? [])]
-      .map((r) => ({ role: r, file: join(pluginHome, "roles", r, "rules.md") }))
-      .filter((x) => existsSync(x.file))
-      .map((x) => ({ ...x, table: loadRuleTable(pluginHome, x.role) }));
-    const exampleId = ruleFiles.find((x) => x.table?.length)?.table?.[0]?.id;
     const rulesSection = ruleFiles.length
       ? h(`Rules of the Role that built it (${builder})`, [
           ...ruleFiles.map((x) =>
