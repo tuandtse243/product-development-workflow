@@ -7832,6 +7832,11 @@ function git(cwd, args) {
   const r = (0, import_node_child_process.spawnSync)("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024 });
   return { ok: r.status === 0, out: (r.stdout ?? "").trim(), err: (r.stderr ?? "").trim() || (r.error?.message ?? "") };
 }
+function isDefaultBranch(cwd, name) {
+  const origin = git(cwd, ["symbolic-ref", "-q", "--short", "refs/remotes/origin/HEAD"]);
+  if (origin.ok && origin.out) return origin.out.replace(/^origin\//, "") === name;
+  return ["main", "master", "trunk", "develop"].includes(name);
+}
 function isGitRepo(cwd) {
   return git(cwd, ["rev-parse", "--is-inside-work-tree"]).out === "true";
 }
@@ -8415,7 +8420,7 @@ function baseSpecFiles(p, change) {
 }
 var sha256 = (s) => (0, import_node_crypto3.createHash)("sha256").update(s).digest("hex");
 var normalize = (s) => s.replace(/\r\n?/g, "\n");
-function computeApprovalHash(p, change) {
+function computeApprovalHash(p, change, push) {
   const entries = [];
   const add = (file, content) => {
     if (!(0, import_node_fs4.existsSync)(file)) return;
@@ -8430,9 +8435,13 @@ function computeApprovalHash(p, change) {
   add(p.constitution);
   for (const dir of FROZEN_PROJECT_DIRS(p)) for (const f of walkFiles(dir)) add(f);
   entries.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+  const bound = push !== void 0 ? push : change.data.approval?.push;
+  const binding = bound ? `approval.push
+${sha256(JSON.stringify(bound))}
+` : "";
   const manifest = entries.map((e) => `${e.path}
 ${e.digest}
-`).join("");
+`).join("") + binding;
   return { hash: `sha256:${sha256(manifest)}`, files: entries.map((e) => e.path) };
 }
 function approvalStatus(p, change) {
@@ -9278,7 +9287,7 @@ var FORBIDDEN_COMMANDS = [
 ];
 var RUNNER = String.raw`(?:(?:npx|bunx|pnpm\s+(?:dlx|exec)|yarn\s+(?:dlx|exec)|npm\s+exec(?:\s+--)?)\s+(?:--?[\w-]+\s+)*)?`;
 var ASK_COMMANDS = [
-  { re: /\bgit(?:\s+(?:-[Cc]\s+\S+|--?[\w.-]+(?:=\S+)?))*\s+push\b/, why: "pushes to a remote repository" },
+  { re: /\bgit(?:\s+(?:-[Cc]\s+(?:"[^"]*"|'[^']*'|\S+)|--?[\w.-]+(?:=\S+)?))*\s+push\b/, why: "pushes to a remote repository" },
   // git -C <dir> push too
   { re: cmd(String.raw`${RUNNER}vercel\b[^|;&]*(?:--prod\b|--(?:environment|target)(?:=|\s+)production\b|\bpromote\b|\bdomains?\b|\balias\b|\bremove\b|\brm\b)`), why: "changes Vercel production, domains or deletes deployments" },
   { re: cmd(String.raw`${RUNNER}netlify\s+deploy\b[^|;&]*--prod\b`), why: "deploys Netlify production" },
@@ -9397,9 +9406,34 @@ function readGrants(change) {
   return d.errors.length ? { ...NO_GRANTS } : g;
 }
 var agentRunCap = (g, plannedTasks) => g.agentRuns ?? AGENT_RUNS_PER_TASK * Math.max(1, plannedTasks);
-function changeBranchOf(change) {
+var TASK_BRANCH = /\.T\d+$/;
+var remoteUrl = (p, remote) => {
+  const r = git(p.project, ["remote", "get-url", remote]);
+  return r.ok && r.out ? r.out : null;
+};
+function githubSlug(url) {
+  const m = url ? /^(?:https:\/\/(?:[^@/]+@)?github\.com\/|(?:ssh:\/\/)?git@github\.com[:/])([\w.-]+\/[\w.-]+?)(?:\.git)?\/?$/.exec(url) : null;
+  return m ? m[1] : null;
+}
+function plannedBranch(p, change) {
   const b = change.data.run?.branch;
-  return typeof b === "string" && b ? b : `aidw/${change.id}`;
+  if (typeof b === "string" && b) return b;
+  const current = isGitRepo(p.project) ? git(p.project, ["branch", "--show-current"]).out : "";
+  return current && !isDefaultBranch(p.project, current) ? current : `aidw/${change.id}`;
+}
+function bindPush(p, change) {
+  const grant = readGrants(change).push;
+  if (!grant) return { binding: null, problem: null };
+  const branch = plannedBranch(p, change);
+  const problem = !BRANCH_NAME.test(branch) || branch.startsWith("refs/") ? `"${branch}" is not a plain branch name` : TASK_BRANCH.test(branch) ? `"${branch}" is a Task Worktree branch, never pushed` : branch === grant.base ? `the Change Branch "${branch}" is the base itself` : isDefaultBranch(p.project, branch) ? `"${branch}" is the project's default branch` : null;
+  if (problem) return { binding: null, problem };
+  return { binding: { branch, remote: grant.remote, url: remoteUrl(p, grant.remote), base: grant.base }, problem: null };
+}
+function boundPush(change) {
+  const grant = readGrants(change).push;
+  const b = change.data.approval?.push;
+  if (!grant || !b || typeof b.branch !== "string" || b.remote !== grant.remote || b.base !== grant.base) return null;
+  return { branch: b.branch, remote: b.remote, url: typeof b.url === "string" ? b.url : null, base: b.base };
 }
 var plannedTaskCount = (change) => {
   try {
@@ -9408,25 +9442,27 @@ var plannedTaskCount = (change) => {
     return 0;
   }
 };
-function grantLines(g, branch, plannedTasks) {
+function grantLines(g, push, plannedTasks) {
+  const b = push.binding;
   return [
-    g.push ? `**Push and pull request**: push \`${branch}\` to remote \`${g.push.remote}\` and open one pull request (a draft when something is not built) against base \`${g.push.base}\`, without asking. No other branch or remote; Task Worktree branches are never pushed.` : "**Push and pull request**: not granted; the push and the pull request ask at the end of the run.",
+    g.push && b ? `**Push and pull request**: push \`${b.branch}\` to remote \`${b.remote}\`${b.url ? ` (${b.url})` : ""} and open one pull request (a draft when something is not built) against base \`${b.base}\`, without asking. No other branch or remote; Task Worktree branches are never pushed.` : g.push ? `**Push and pull request**: granted in quality.yaml but it cannot hold: ${push.problem ?? "no Change Branch"}; the push and the pull request will ask.` : "**Push and pull request**: not granted; the push and the pull request ask at the end of the run.",
     g.envelope ? `**Permission envelope**: ${ENVELOPE.join("; ")}. Work outside it is marked not built.` : "**Permission envelope**: not granted; only the tier 2 resources listed under Permissions.",
     `**Cap**: ${agentRunCap(g, plannedTasks)} Agent runs${g.agentRuns === null ? ` (default: ${AGENT_RUNS_PER_TASK} per planned task)` : ""}; at the cap no new task starts and the run ends cleanly.`,
     `**Never automatic**, whatever is granted: ${NEVER_AUTOMATIC.join(", ")}.`
   ];
 }
-function grantsSection(change) {
+function grantsSection(p, change) {
   try {
     (0, import_node_fs8.readFileSync)((0, import_node_path10.join)(change.dir, "quality.yaml"));
   } catch {
     return null;
   }
+  const bound = boundPush(change);
   return {
     id: "grants",
     title: "Grants for this Change",
-    body: "Recorded in quality.yaml `grants` and approved with the package. Mark it for a change to grant or withdraw any of them.",
-    points: grantLines(readGrants(change), changeBranchOf(change), plannedTaskCount(change)),
+    body: "Recorded in quality.yaml `grants` and approved with the package; the branch and the remote's URL are fixed when you approve. Mark it for a change to grant or withdraw any of them.",
+    points: grantLines(readGrants(change), bound ? { binding: bound, problem: null } : bindPush(p, change), plannedTaskCount(change)),
     html: ""
   };
 }
@@ -9488,7 +9524,10 @@ function splitFlags(words, valued, bool) {
   }
   return { flags, args };
 }
-function requestOf(cmd2) {
+function aidwBinPaths(env) {
+  return ["aidw", (0, import_node_path10.join)(bundledRoot() ?? pluginRoot(env), "bin", "aidw"), ...env.CLAUDE_PLUGIN_ROOT ? [(0, import_node_path10.join)(env.CLAUDE_PLUGIN_ROOT, "bin", "aidw")] : []];
+}
+function requestOf(cmd2, env) {
   const w = shellWords(cmd2);
   if (!w) return null;
   if (w[0] === "git" && w[1] === "push") {
@@ -9499,13 +9538,14 @@ function requestOf(cmd2) {
   if (w[0] === "gh" && w[1] === "pr" && w[2] === "create") {
     const o = splitFlags(
       w.slice(3),
-      { "--base": "base", "-B": "base", "--head": "head", "-H": "head", "--title": "title", "-t": "title", "--body": "body", "-b": "body", "--body-file": "bodyFile", "-F": "bodyFile" },
+      { "--base": "base", "-B": "base", "--head": "head", "-H": "head", "--title": "title", "-t": "title", "--body": "body", "-b": "body", "--body-file": "bodyFile", "-F": "bodyFile", "--repo": "repo", "-R": "repo" },
       { "--draft": "draft", "-d": "draft", "--fill": "fill", "-f": "fill" }
     );
     if (!o || o.args.length || typeof o.flags.base !== "string" || typeof o.flags.head !== "string") return null;
-    return { kind: "pr", base: o.flags.base, head: o.flags.head };
+    const str2 = (v) => typeof v === "string" ? v : null;
+    return { kind: "pr", base: o.flags.base, head: o.flags.head, repo: str2(o.flags.repo), bodyFile: str2(o.flags.bodyFile) };
   }
-  if (w[0] && (0, import_node_path10.basename)(w[0]) === "aidw" && w[1] === "pr") {
+  if (w[0] && aidwBinPaths(env).includes(w[0]) && w[1] === "pr") {
     const o = splitFlags(w.slice(2), { "--change": "change", "--base": "base" }, { "--create": "create", "--draft": "draft", "--json": "json" });
     if (!o || o.flags.create !== true || o.args.length > 1) return null;
     const id = typeof o.flags.change === "string" ? o.flags.change : o.args[0];
@@ -9515,28 +9555,34 @@ function requestOf(cmd2) {
   return null;
 }
 function refIsBranch(ref, branch) {
+  const is = (x) => x === branch || x === `refs/heads/${branch}`;
   const i = ref.indexOf(":");
-  if (i < 0) return ref === branch || ref === `refs/heads/${branch}`;
-  const src = ref.slice(0, i);
-  const dst = ref.slice(i + 1);
-  return (src === branch || src === "HEAD" || src === `refs/heads/${branch}`) && (dst === branch || dst === `refs/heads/${branch}`);
+  return i < 0 ? is(ref) : is(ref.slice(0, i)) && is(ref.slice(i + 1));
 }
-function pushGrantReason(p, cmd2, states) {
-  const req = requestOf(cmd2);
+var TASK_BRANCH_REF = /(?:^|[\s:+'"=])(?:refs\/heads\/)?aidw\/[\w.-]+\.T\d+(?=$|[\s:'";&|])/;
+function taskBranchPush(cmd2) {
+  if (!/\bgit\b[^;&|]*\spush\b|\bgh\s+pr\s+create\b/.test(cmd2) || !TASK_BRANCH_REF.test(cmd2)) return null;
+  return "a Task Worktree branch is merged into the Change Branch and never pushed (ADR-0012)";
+}
+function pushGrantReason(p, cmd2, states, cwd, env) {
+  const worktrees = (0, import_node_path10.join)(p.run, "worktrees");
+  const fromWorktree = (0, import_node_path10.relative)(worktrees, (0, import_node_path10.resolve)(cwd));
+  if (fromWorktree === "" || !fromWorktree.startsWith("..") && !(0, import_node_path10.isAbsolute)(fromWorktree)) return null;
+  const req = requestOf(cmd2, env);
   if (!req) return null;
   for (const id of listChangeIds(p)) {
     try {
       const c = loadChange(p, id);
       const state = stateOf(c);
       if (!state || !states.has(state) || approvalStatus(p, c).status !== "valid") continue;
-      const grant = readGrants(c).push;
-      if (!grant) continue;
-      const branch = changeBranchOf(c);
-      if (branch === grant.base) continue;
+      const b = boundPush(c);
+      if (!b || remoteUrl(p, b.remote) !== b.url) continue;
       const by = `granted at the Approval Gate of ${id}`;
-      if (req.kind === "push" && req.remote === grant.remote && refIsBranch(req.ref, branch)) return `push of the Change Branch ${branch} to ${grant.remote} was ${by}`;
-      if (req.kind === "pr" && req.head === branch && req.base === grant.base) return `the pull request of ${branch} against ${grant.base} was ${by}`;
-      if (req.kind === "aidw-pr" && req.id === id && (req.base ?? grant.base) === grant.base) return `pushing ${branch} to ${grant.remote} and its pull request against ${grant.base} were ${by}`;
+      if (req.kind === "push" && req.remote === b.remote && refIsBranch(req.ref, b.branch)) return `push of the Change Branch ${b.branch} to ${b.remote} was ${by}`;
+      if (req.kind === "pr" && req.head === b.branch && req.base === b.base && (req.repo === null || req.repo === githubSlug(b.url)) && (req.bodyFile === null || (0, import_node_path10.resolve)(cwd, req.bodyFile) === (0, import_node_path10.join)(p.run, `pr-${id}.md`))) {
+        return `the pull request of ${b.branch} against ${b.base} was ${by}`;
+      }
+      if (req.kind === "aidw-pr" && req.id === id && (req.base ?? b.base) === b.base) return `pushing ${b.branch} to ${b.remote} and its pull request against ${b.base} were ${by}`;
     } catch {
     }
   }
@@ -9682,6 +9728,8 @@ function decide(input, env) {
     const cmd2 = String(ti.command ?? "");
     const forbidden = firstMatch(FORBIDDEN_COMMANDS, cmd2) ?? firstMatch(SECRET_PATHS, cmd2);
     if (forbidden) return deny(`command ${forbidden.why}; forbidden (tier x)`);
+    const taskPush = taskBranchPush(cmd2);
+    if (taskPush) return deny(taskPush);
     if (role && AIDW_STATE_COMMAND.test(cmd2)) {
       return deny(`the ${role} does not change aidw state (no self-verification); report back to the orchestrator`);
     }
@@ -9691,7 +9739,7 @@ function decide(input, env) {
     if (APPROVE_COMMAND.test(cmd2)) {
       return ask("approving the Analysis package is the user's decision. Approve only if you (the user) reviewed analysis.md.");
     }
-    const pushGranted = role ? null : pushGrantReason(p, cmd2, GRANT_STATES);
+    const pushGranted = input.agent_type ? null : pushGrantReason(p, cmd2, GRANT_STATES, cwd, env);
     if (pushGranted) return allow(pushGranted);
     const risky = firstMatch(ASK_COMMANDS, cmd2);
     if (risky) return ask(`this command ${risky.why}; it needs your confirmation (tier 3)`);
@@ -12192,8 +12240,9 @@ function approve(p, id, opts = {}) {
     }
     by = `aidw (${workflow} boundary)`;
   }
-  const { hash, files } = computeApprovalHash(p, change);
-  change.doc.set("approval", change.doc.createNode({ hash, at: now3(), by }));
+  const push = bindPush(p, change).binding;
+  const { hash, files } = computeApprovalHash(p, change, push);
+  change.doc.set("approval", change.doc.createNode({ hash, at: now3(), by, ...push ? { push } : {} }));
   change.doc.set("state", "approved");
   saveChange(change);
   return { hash, files, by };
@@ -12277,11 +12326,6 @@ function offBranchNote(cwd, env) {
   const current = git(dir, ["branch", "--show-current"]).out;
   if (!open.length || open.includes(current)) return null;
   return `AIDW: HEAD is on ${current || "a detached commit"}, but unmerged change branch(es) ${open.join(", ")} hold newer aidw state. Before /aidw:run, /aidw:resume or /aidw:status, run \`git switch ${open[0]}\` (or merge it).`;
-}
-function isDefaultBranch(cwd, name) {
-  const origin = git(cwd, ["symbolic-ref", "-q", "--short", "refs/remotes/origin/HEAD"]);
-  if (origin.ok && origin.out) return origin.out.replace(/^origin\//, "") === name;
-  return ["main", "master", "trunk", "develop"].includes(name);
 }
 function useChangeBranch(p, change, id) {
   if (!isGitRepo(p.project) || !headCommit(p.project)) return null;
@@ -15530,6 +15574,8 @@ function planPr(p, id, opts = {}) {
   const grant = readGrants(change).push;
   const base2 = opts.base ?? grant?.base ?? run2.base_branch ?? "main";
   const remote = grant?.remote ?? "origin";
+  const url = git(p.project, ["remote", "get-url", remote]);
+  const repo = url.ok ? githubSlug(url.out) : null;
   const tasks = parseTasks(readText((0, import_node_path41.join)(change.dir, "tasks.yaml")) ?? "").tasks;
   const planned = tasks.filter((t) => !t.origin);
   const allFix = planned.length > 0 && planned.every((t) => t.type === "fix");
@@ -15564,8 +15610,8 @@ function planPr(p, id, opts = {}) {
     ""
   ].join("\n");
   const bodyFile = (0, import_node_path41.join)(p.run, `pr-${id}.md`);
-  const commands = [`git push -u ${remote} ${head}`, `gh pr create --base ${base2} --head ${head} --title "${title}" --body-file ${rel(p, bodyFile)}`];
-  return { title, body, head, base: base2, remote, bodyFile, commands };
+  const commands = [`git push -u ${remote} ${head}`, `gh pr create --base ${base2} --head ${head} --title "${title}" --body-file ${rel(p, bodyFile)}${repo ? ` --repo ${repo}` : ""}`];
+  return { title, body, head, base: base2, remote, repo, bodyFile, commands };
 }
 function createPr(p, id, opts = {}) {
   const change = loadAny(p, id);
@@ -15581,7 +15627,7 @@ function createPr(p, id, opts = {}) {
   return { url: r, plan };
 }
 function ghCreate(p, plan, draft) {
-  const r = (0, import_node_child_process11.spawnSync)("gh", ["pr", "create", "--base", plan.base, "--head", plan.head, "--title", plan.title, "--body-file", plan.bodyFile, ...draft ? ["--draft"] : []], { cwd: p.project, encoding: "utf8" });
+  const r = (0, import_node_child_process11.spawnSync)("gh", ["pr", "create", "--base", plan.base, "--head", plan.head, "--title", plan.title, "--body-file", plan.bodyFile, ...plan.repo ? ["--repo", plan.repo] : [], ...draft ? ["--draft"] : []], { cwd: p.project, encoding: "utf8" });
   if (r.error || r.status !== 0) throw new OpError(`gh pr create failed: ${(r.stderr || String(r.error ?? "")).trim().split("\n")[0]} (the branch is pushed; open the PR by hand with the body in ${rel(p, plan.bodyFile)})`);
   return r.stdout.trim().split("\n").pop() ?? "";
 }
@@ -16854,7 +16900,7 @@ SPAWN aidw:${role} with: Audit brief: ${b.path}. Read it and write your answer a
           return [
             ...points.length ? [{ id: "decision-points", title: "Decision Points", body: "", points, html: "" }] : [],
             ...tasks.length ? [{ id: "plan", title: "Plan", body: planSummary(tasks), points: [], html: "" }] : [],
-            ...[grantsSection(c)].filter((x) => x !== null)
+            ...[grantsSection(p, c)].filter((x) => x !== null)
           ];
         };
         const load = (name) => {

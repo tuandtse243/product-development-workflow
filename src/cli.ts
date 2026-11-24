@@ -1117,7 +1117,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           return [
             ...(points.length ? [{ id: "decision-points", title: "Decision Points", body: "", points, html: "" }] : []),
             ...(tasks.length ? [{ id: "plan", title: "Plan", body: planSummary(tasks), points: [], html: "" }] : []),
-            ...[grantsSection(c)].filter((x): x is PageSection => x !== null),
+            ...[grantsSection(p, c)].filter((x): x is PageSection => x !== null),
           ];
         };
         const load = (name: string) => {

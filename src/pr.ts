@@ -9,7 +9,7 @@ import { join } from "node:path";
 import YAML from "yaml";
 import { ChangeError, loadChange, stateOf, type Change } from "./change.js";
 import { header, scopeOf } from "./commit.js";
-import { readGrants } from "./grants.js";
+import { githubSlug, readGrants } from "./grants.js";
 import { lastDeploy, readSummary } from "./quality.js";
 import { git } from "./git.js";
 import { OpError } from "./ops.js";
@@ -24,6 +24,8 @@ export interface PrPlan {
   base: string;
   /** the remote the branch is pushed to: the one granted at the Approval Gate, else origin */
   remote: string;
+  /** owner/repo of the remote when it is on GitHub: `gh pr create --repo`, so the PR goes where the push went */
+  repo: string | null;
   bodyFile: string;
   commands: string[];
 }
@@ -70,6 +72,8 @@ export function planPr(p: Paths, id: string, opts: { base?: string } = {}): PrPl
   const grant = readGrants(change).push;
   const base = opts.base ?? grant?.base ?? run.base_branch ?? "main";
   const remote = grant?.remote ?? "origin";
+  const url = git(p.project, ["remote", "get-url", remote]);
+  const repo = url.ok ? githubSlug(url.out) : null;
   const tasks = parseTasks(readText(join(change.dir, "tasks.yaml")) ?? "").tasks;
   const planned = tasks.filter((t) => !t.origin);
   const allFix = planned.length > 0 && planned.every((t) => t.type === "fix");
@@ -105,8 +109,8 @@ export function planPr(p: Paths, id: string, opts: { base?: string } = {}): PrPl
     "",
   ].join("\n");
   const bodyFile = join(p.run, `pr-${id}.md`);
-  const commands = [`git push -u ${remote} ${head}`, `gh pr create --base ${base} --head ${head} --title "${title}" --body-file ${rel(p, bodyFile)}`];
-  return { title, body, head, base, remote, bodyFile, commands };
+  const commands = [`git push -u ${remote} ${head}`, `gh pr create --base ${base} --head ${head} --title "${title}" --body-file ${rel(p, bodyFile)}${repo ? ` --repo ${repo}` : ""}`];
+  return { title, body, head, base, remote, repo, bodyFile, commands };
 }
 
 /** Pushes the change branch and opens the PR. Only after delivery, and only with a remote and the GitHub CLI. */
@@ -125,7 +129,7 @@ export function createPr(p: Paths, id: string, opts: { base?: string; draft?: bo
 }
 
 function ghCreate(p: Paths, plan: PrPlan, draft: boolean): string {
-  const r = spawnSync("gh", ["pr", "create", "--base", plan.base, "--head", plan.head, "--title", plan.title, "--body-file", plan.bodyFile, ...(draft ? ["--draft"] : [])], { cwd: p.project, encoding: "utf8" });
+  const r = spawnSync("gh", ["pr", "create", "--base", plan.base, "--head", plan.head, "--title", plan.title, "--body-file", plan.bodyFile, ...(plan.repo ? ["--repo", plan.repo] : []), ...(draft ? ["--draft"] : [])], { cwd: p.project, encoding: "utf8" });
   if (r.error || r.status !== 0) throw new OpError(`gh pr create failed: ${(r.stderr || String(r.error ?? "")).trim().split("\n")[0]} (the branch is pushed; open the PR by hand with the body in ${rel(p, plan.bodyFile)})`);
   return r.stdout.trim().split("\n").pop() ?? "";
 }

@@ -32,7 +32,7 @@ import {
   maskQuotedAngles,
   RUNNER_COMMAND,
 } from "./policy.js";
-import { pushGrantReason } from "./grants.js";
+import { pushGrantReason, taskBranchPush } from "./grants.js";
 import { grantedResources } from "./quality.js";
 import { machineOf } from "./machine.js";
 import { bundledRoot, pluginRoot } from "./plugin.js";
@@ -237,6 +237,8 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
     const cmd = String(ti.command ?? "");
     const forbidden = firstMatch(FORBIDDEN_COMMANDS, cmd) ?? firstMatch(SECRET_PATHS, cmd);
     if (forbidden) return deny(`command ${forbidden.why}; forbidden (tier x)`);
+    const taskPush = taskBranchPush(cmd);
+    if (taskPush) return deny(taskPush);
     if (role && AIDW_STATE_COMMAND.test(cmd)) {
       return deny(`the ${role} does not change aidw state (no self-verification); report back to the orchestrator`);
     }
@@ -246,8 +248,9 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
     if (APPROVE_COMMAND.test(cmd)) {
       return ask("approving the Analysis package is the user's decision. Approve only if you (the user) reviewed analysis.md.");
     }
-    // ADR-0012: the push of the Change Branch and its pull request, granted at the Approval Gate, for the Orchestrator only.
-    const pushGranted = role ? null : pushGrantReason(p, cmd, GRANT_STATES);
+    // ADR-0012: the push of the Change Branch and its pull request, granted at the Approval Gate, for the Orchestrator
+    // only: any agent (an aidw Role or not) still asks.
+    const pushGranted = input.agent_type ? null : pushGrantReason(p, cmd, GRANT_STATES, cwd, env);
     if (pushGranted) return allow(pushGranted);
     const risky = firstMatch(ASK_COMMANDS, cmd);
     if (risky) return ask(`this command ${risky.why}; it needs your confirmation (tier 3)`);

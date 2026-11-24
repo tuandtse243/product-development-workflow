@@ -11,6 +11,13 @@ export function git(cwd: string, args: string[]): GitResult {
   return { ok: r.status === 0, out: (r.stdout ?? "").trim(), err: (r.stderr ?? "").trim() || (r.error?.message ?? "") };
 }
 
+/** The project's default branch: what origin/HEAD names, else one of the usual names. */
+export function isDefaultBranch(cwd: string, name: string): boolean {
+  const origin = git(cwd, ["symbolic-ref", "-q", "--short", "refs/remotes/origin/HEAD"]);
+  if (origin.ok && origin.out) return origin.out.replace(/^origin\//, "") === name;
+  return ["main", "master", "trunk", "develop"].includes(name);
+}
+
 export function isGitRepo(cwd: string): boolean {
   return git(cwd, ["rev-parse", "--is-inside-work-tree"]).out === "true";
 }

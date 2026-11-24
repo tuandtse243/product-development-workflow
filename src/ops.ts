@@ -22,7 +22,8 @@ import { aidwCommitMessage } from "./commit.js";
 import { capabilityOf, findProject, isDir, KEBAB_SEGMENT, pathsFor, projectKind, readText, rel, walkFiles, type Paths } from "./project.js";
 import { applyDelta, type MergeSummary } from "./spec/merge.js";
 import { parseSpec } from "./spec/parse.js";
-import { git, headCommit, isGitRepo } from "./git.js";
+import { git, headCommit, isDefaultBranch, isGitRepo } from "./git.js";
+import { bindPush } from "./grants.js";
 import { checkDelivery } from "./deliver.js";
 import { transitionGuard } from "./guards.js";
 import { parseTasks } from "./tasks.js";
@@ -340,8 +341,10 @@ export function approve(p: Paths, id: string, opts: { auto?: { pluginRoot: strin
     }
     by = `aidw (${workflow} boundary)`;
   }
-  const { hash, files } = computeApprovalHash(p, change);
-  change.doc.set("approval", change.doc.createNode({ hash, at: now(), by }));
+  // ADR-0012: the push grant holds only for the branch, remote URL and base fixed here, hashed with the package.
+  const push = bindPush(p, change).binding;
+  const { hash, files } = computeApprovalHash(p, change, push);
+  change.doc.set("approval", change.doc.createNode({ hash, at: now(), by, ...(push ? { push } : {}) }));
   change.doc.set("state", "approved");
   saveChange(change);
   return { hash, files, by };
@@ -456,11 +459,7 @@ export function offBranchNote(cwd: string, env: NodeJS.ProcessEnv): string | nul
   return `AIDW: HEAD is on ${current || "a detached commit"}, but unmerged change branch(es) ${open.join(", ")} hold newer aidw state. Before /aidw:run, /aidw:resume or /aidw:status, run \`git switch ${open[0]}\` (or merge it).`;
 }
 
-export function isDefaultBranch(cwd: string, name: string): boolean {
-  const origin = git(cwd, ["symbolic-ref", "-q", "--short", "refs/remotes/origin/HEAD"]);
-  if (origin.ok && origin.out) return origin.out.replace(/^origin\//, "") === name;
-  return ["main", "master", "trunk", "develop"].includes(name);
-}
+export { isDefaultBranch };
 
 /**
  * Keeps task commits off the default branch (permissions.md: "commit on the change branch"). The first time

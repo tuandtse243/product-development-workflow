@@ -16,11 +16,13 @@
  * Never automatic, whatever is granted: see NEVER_AUTOMATIC.
  */
 import { readFileSync } from "node:fs";
-import { basename, join } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import YAML from "yaml";
 import { approvalStatus } from "./approval.js";
 import { listChangeIds, loadChange, stateOf, type Change } from "./change.js";
 import { Diags } from "./diag.js";
+import { git, isDefaultBranch, isGitRepo } from "./git.js";
+import { bundledRoot, pluginRoot } from "./plugin.js";
 import type { Paths } from "./project.js";
 import { parseTasks } from "./tasks.js";
 
@@ -91,10 +93,64 @@ export function readGrants(change: Change): Grants {
 
 export const agentRunCap = (g: Grants, plannedTasks: number): number => g.agentRuns ?? AGENT_RUNS_PER_TASK * Math.max(1, plannedTasks);
 
-/** The Change Branch: recorded when the build starts, `aidw/<id>` before that (as `aidw pr` names it). */
-export function changeBranchOf(change: Change): string {
+/** What `aidw approve` fixes for the push grant, hashed with the package: the gate matches only these values. */
+export interface PushBinding {
+  branch: string;
+  remote: string;
+  /** the remote's URL at approval (null: no such remote then); a different URL at push time asks again */
+  url: string | null;
+  base: string;
+}
+
+/** A Task Worktree branch (`aidw/<change>.<task>`, src/parallel.ts): never pushed (ADR-0012). */
+const TASK_BRANCH = /\.T\d+$/;
+
+const remoteUrl = (p: Paths, remote: string): string | null => {
+  const r = git(p.project, ["remote", "get-url", remote]);
+  return r.ok && r.out ? r.out : null;
+};
+
+/** `owner/repo` of a GitHub remote URL, for `gh pr create --repo`; null for any other host. */
+export function githubSlug(url: string | null): string | null {
+  const m = url ? /^(?:https:\/\/(?:[^@/]+@)?github\.com\/|(?:ssh:\/\/)?git@github\.com[:/])([\w.-]+\/[\w.-]+?)(?:\.git)?\/?$/.exec(url) : null;
+  return m ? (m[1] as string) : null;
+}
+
+/**
+ * The Change Branch the build will commit on, as `useChangeBranch` (src/ops.ts) picks it: the one already recorded,
+ * else the feature branch the project is on, else `aidw/<id>`.
+ */
+function plannedBranch(p: Paths, change: Change): string {
   const b = (change.data.run as { branch?: unknown } | undefined)?.branch;
-  return typeof b === "string" && b ? b : `aidw/${change.id}`;
+  if (typeof b === "string" && b) return b;
+  const current = isGitRepo(p.project) ? git(p.project, ["branch", "--show-current"]).out : "";
+  return current && !isDefaultBranch(p.project, current) ? current : `aidw/${change.id}`;
+}
+
+/** The push binding `aidw approve` records, or why the push grant cannot hold (null binding, no grant: no problem). */
+export function bindPush(p: Paths, change: Change): { binding: PushBinding | null; problem: string | null } {
+  const grant = readGrants(change).push;
+  if (!grant) return { binding: null, problem: null };
+  const branch = plannedBranch(p, change);
+  const problem = !BRANCH_NAME.test(branch) || branch.startsWith("refs/")
+    ? `"${branch}" is not a plain branch name`
+    : TASK_BRANCH.test(branch)
+      ? `"${branch}" is a Task Worktree branch, never pushed`
+      : branch === grant.base
+        ? `the Change Branch "${branch}" is the base itself`
+        : isDefaultBranch(p.project, branch)
+          ? `"${branch}" is the project's default branch`
+          : null;
+  if (problem) return { binding: null, problem };
+  return { binding: { branch, remote: grant.remote, url: remoteUrl(p, grant.remote), base: grant.base }, problem: null };
+}
+
+/** The binding recorded at approval, when it still agrees with the frozen grant. */
+function boundPush(change: Change): PushBinding | null {
+  const grant = readGrants(change).push;
+  const b = (change.data.approval as { push?: Partial<PushBinding> } | null | undefined)?.push;
+  if (!grant || !b || typeof b.branch !== "string" || b.remote !== grant.remote || b.base !== grant.base) return null;
+  return { branch: b.branch, remote: b.remote, url: typeof b.url === "string" ? b.url : null, base: b.base };
 }
 
 const plannedTaskCount = (change: Change): number => {
@@ -106,11 +162,14 @@ const plannedTaskCount = (change: Change): number => {
 };
 
 /** One line per grant, for the gate Decision Page. */
-export function grantLines(g: Grants, branch: string, plannedTasks: number): string[] {
+export function grantLines(g: Grants, push: { binding: PushBinding | null; problem: string | null }, plannedTasks: number): string[] {
+  const b = push.binding;
   return [
-    g.push
-      ? `**Push and pull request**: push \`${branch}\` to remote \`${g.push.remote}\` and open one pull request (a draft when something is not built) against base \`${g.push.base}\`, without asking. No other branch or remote; Task Worktree branches are never pushed.`
-      : "**Push and pull request**: not granted; the push and the pull request ask at the end of the run.",
+    g.push && b
+      ? `**Push and pull request**: push \`${b.branch}\` to remote \`${b.remote}\`${b.url ? ` (${b.url})` : ""} and open one pull request (a draft when something is not built) against base \`${b.base}\`, without asking. No other branch or remote; Task Worktree branches are never pushed.`
+      : g.push
+        ? `**Push and pull request**: granted in quality.yaml but it cannot hold: ${push.problem ?? "no Change Branch"}; the push and the pull request will ask.`
+        : "**Push and pull request**: not granted; the push and the pull request ask at the end of the run.",
     g.envelope
       ? `**Permission envelope**: ${ENVELOPE.join("; ")}. Work outside it is marked not built.`
       : "**Permission envelope**: not granted; only the tier 2 resources listed under Permissions.",
@@ -120,17 +179,18 @@ export function grantLines(g: Grants, branch: string, plannedTasks: number): str
 }
 
 /** The Grants section the CLI adds to a gate Decision Page; null without a quality.yaml. */
-export function grantsSection(change: Change): { id: string; title: string; body: string; points: string[]; html: string } | null {
+export function grantsSection(p: Paths, change: Change): { id: string; title: string; body: string; points: string[]; html: string } | null {
   try {
     readFileSync(join(change.dir, "quality.yaml"));
   } catch {
     return null;
   }
+  const bound = boundPush(change);
   return {
     id: "grants",
     title: "Grants for this Change",
-    body: "Recorded in quality.yaml `grants` and approved with the package. Mark it for a change to grant or withdraw any of them.",
-    points: grantLines(readGrants(change), changeBranchOf(change), plannedTaskCount(change)),
+    body: "Recorded in quality.yaml `grants` and approved with the package; the branch and the remote's URL are fixed when you approve. Mark it for a change to grant or withdraw any of them.",
+    points: grantLines(readGrants(change), bound ? { binding: bound, problem: null } : bindPush(p, change), plannedTaskCount(change)),
     html: "",
   };
 }
@@ -205,10 +265,18 @@ function splitFlags(words: string[], valued: Record<string, string>, bool: Recor
   return { flags, args };
 }
 
-type Request = { kind: "push"; remote: string; ref: string } | { kind: "pr"; base: string | null; head: string } | { kind: "aidw-pr"; id: string; base: string | null };
+type Request =
+  | { kind: "push"; remote: string; ref: string }
+  | { kind: "pr"; base: string; head: string; repo: string | null; bodyFile: string | null }
+  | { kind: "aidw-pr"; id: string; base: string | null };
+
+/** The aidw CLI the gate trusts with a grant: bare `aidw` on PATH, or the plugin's own bin/aidw. */
+export function aidwBinPaths(env: NodeJS.ProcessEnv): string[] {
+  return ["aidw", join(bundledRoot() ?? pluginRoot(env), "bin", "aidw"), ...(env.CLAUDE_PLUGIN_ROOT ? [join(env.CLAUDE_PLUGIN_ROOT, "bin", "aidw")] : [])];
+}
 
 /** The push or pull request a command asks for, in the only forms the grant covers; null for anything else. */
-function requestOf(cmd: string): Request | null {
+function requestOf(cmd: string, env: NodeJS.ProcessEnv): Request | null {
   const w = shellWords(cmd);
   if (!w) return null;
   if (w[0] === "git" && w[1] === "push") {
@@ -219,13 +287,14 @@ function requestOf(cmd: string): Request | null {
   if (w[0] === "gh" && w[1] === "pr" && w[2] === "create") {
     const o = splitFlags(
       w.slice(3),
-      { "--base": "base", "-B": "base", "--head": "head", "-H": "head", "--title": "title", "-t": "title", "--body": "body", "-b": "body", "--body-file": "bodyFile", "-F": "bodyFile" },
+      { "--base": "base", "-B": "base", "--head": "head", "-H": "head", "--title": "title", "-t": "title", "--body": "body", "-b": "body", "--body-file": "bodyFile", "-F": "bodyFile", "--repo": "repo", "-R": "repo" },
       { "--draft": "draft", "-d": "draft", "--fill": "fill", "-f": "fill" },
     );
     if (!o || o.args.length || typeof o.flags.base !== "string" || typeof o.flags.head !== "string") return null;
-    return { kind: "pr", base: o.flags.base, head: o.flags.head };
+    const str = (v: string | true | undefined) => (typeof v === "string" ? v : null);
+    return { kind: "pr", base: o.flags.base, head: o.flags.head, repo: str(o.flags.repo), bodyFile: str(o.flags.bodyFile) };
   }
-  if (w[0] && basename(w[0]) === "aidw" && w[1] === "pr") {
+  if (w[0] && aidwBinPaths(env).includes(w[0]) && w[1] === "pr") {
     const o = splitFlags(w.slice(2), { "--change": "change", "--base": "base" }, { "--create": "create", "--draft": "draft", "--json": "json" });
     if (!o || o.flags.create !== true || o.args.length > 1) return null;
     const id = typeof o.flags.change === "string" ? o.flags.change : o.args[0];
@@ -235,36 +304,52 @@ function requestOf(cmd: string): Request | null {
   return null;
 }
 
-/** `git push <remote> <ref>` names exactly the branch: `b`, `b:b`, `HEAD:b`, with `refs/heads/b` allowed as the destination. */
+/** `git push <remote> <ref>` names exactly the branch: `b`, `b:b`, with `refs/heads/b` allowed on either side. HEAD is not: it may be a Task Worktree's. */
 function refIsBranch(ref: string, branch: string): boolean {
+  const is = (x: string) => x === branch || x === `refs/heads/${branch}`;
   const i = ref.indexOf(":");
-  if (i < 0) return ref === branch || ref === `refs/heads/${branch}`;
-  const src = ref.slice(0, i);
-  const dst = ref.slice(i + 1);
-  return (src === branch || src === "HEAD" || src === `refs/heads/${branch}`) && (dst === branch || dst === `refs/heads/${branch}`);
+  return i < 0 ? is(ref) : is(ref.slice(0, i)) && is(ref.slice(i + 1));
+}
+
+const TASK_BRANCH_REF = /(?:^|[\s:+'"=])(?:refs\/heads\/)?aidw\/[\w.-]+\.T\d+(?=$|[\s:'";&|])/;
+
+/** A push or pull request of a Task Worktree branch: denied for everyone, granted or not (ADR-0012). */
+export function taskBranchPush(cmd: string): string | null {
+  if (!/\bgit\b[^;&|]*\spush\b|\bgh\s+pr\s+create\b/.test(cmd) || !TASK_BRANCH_REF.test(cmd)) return null;
+  return "a Task Worktree branch is merged into the Change Branch and never pushed (ADR-0012)";
 }
 
 /**
  * The reason a push or pull-request command passes without asking, or null. It passes only when a Change with a
- * valid approval, in one of `states`, grants push, and the command names that Change's branch, the granted remote
- * and (for the pull request) the granted base. Callers check tier x before and run this only for the Orchestrator.
+ * valid approval, in one of `states`, grants push and its approval fixed the branch, remote (with its URL) and base,
+ * and the command names exactly those, from outside any Task Worktree. Callers check tier x before and run this
+ * only for the Orchestrator (no agent_type).
  */
-export function pushGrantReason(p: Paths, cmd: string, states: ReadonlySet<string>): string | null {
-  const req = requestOf(cmd);
+export function pushGrantReason(p: Paths, cmd: string, states: ReadonlySet<string>, cwd: string, env: NodeJS.ProcessEnv): string | null {
+  const worktrees = join(p.run, "worktrees");
+  const fromWorktree = relative(worktrees, resolve(cwd));
+  if (fromWorktree === "" || (!fromWorktree.startsWith("..") && !isAbsolute(fromWorktree))) return null;
+  const req = requestOf(cmd, env);
   if (!req) return null;
   for (const id of listChangeIds(p)) {
     try {
       const c = loadChange(p, id);
       const state = stateOf(c);
       if (!state || !states.has(state) || approvalStatus(p, c).status !== "valid") continue;
-      const grant = readGrants(c).push;
-      if (!grant) continue;
-      const branch = changeBranchOf(c);
-      if (branch === grant.base) continue;
+      const b = boundPush(c);
+      if (!b || remoteUrl(p, b.remote) !== b.url) continue;
       const by = `granted at the Approval Gate of ${id}`;
-      if (req.kind === "push" && req.remote === grant.remote && refIsBranch(req.ref, branch)) return `push of the Change Branch ${branch} to ${grant.remote} was ${by}`;
-      if (req.kind === "pr" && req.head === branch && req.base === grant.base) return `the pull request of ${branch} against ${grant.base} was ${by}`;
-      if (req.kind === "aidw-pr" && req.id === id && (req.base ?? grant.base) === grant.base) return `pushing ${branch} to ${grant.remote} and its pull request against ${grant.base} were ${by}`;
+      if (req.kind === "push" && req.remote === b.remote && refIsBranch(req.ref, b.branch)) return `push of the Change Branch ${b.branch} to ${b.remote} was ${by}`;
+      if (
+        req.kind === "pr" &&
+        req.head === b.branch &&
+        req.base === b.base &&
+        (req.repo === null || req.repo === githubSlug(b.url)) &&
+        (req.bodyFile === null || resolve(cwd, req.bodyFile) === join(p.run, `pr-${id}.md`))
+      ) {
+        return `the pull request of ${b.branch} against ${b.base} was ${by}`;
+      }
+      if (req.kind === "aidw-pr" && req.id === id && (req.base ?? b.base) === b.base) return `pushing ${b.branch} to ${b.remote} and its pull request against ${b.base} were ${by}`;
     } catch {
       // an unreadable change grants nothing
     }
