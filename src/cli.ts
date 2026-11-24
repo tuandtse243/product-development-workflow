@@ -59,11 +59,12 @@ import { detachRun, runLoop, runnerPid, stopRunner } from "./runner.js";
 import { deliver } from "./deliver.js";
 import { deploy, parseQuality, qualityFile, recordLayerReview, verify } from "./quality.js";
 import { firstDeploy } from "./firstdeploy.js";
-import { reconcileDoneTasks, reopenTask } from "./run.js";
-import { autoReview, buildBrief, buildTriageBrief, checkpoint, integrateChange, nextAction, parseVerdict, recordReview, recordTriage, retryTask, startTask, triageFile, type ConsultAction, type DeviationAction, type NextAction } from "./run.js";
+import { markNotBuilt, recordBlocked, reconcileDoneTasks, reopenTask, settleChange } from "./run.js";
+import { autoReview, buildBrief, buildTriageBrief, buildUpstreamBrief, checkpoint, integrateChange, MAX_UPSTREAM_ROUNDS, nextAction, parseVerdict, recordReview, recordTriage, recordUpstream, retryTask, startTask, triageFile, type ConsultAction, type DeviationAction, type NextAction } from "./run.js";
+import { countAgentRun, type AgentRunKind } from "./agentruns.js";
 import { recordStageDone, stagesNext, stagesView } from "./stages.js";
 import { changeOfRequest, consultNextText, unansweredSection, pendingConsultation, recordAnswer, requestConsultation, resumeConsultation } from "./consult.js";
-import { abandonDeviation, closeDeviation, finishDeviations, markNotBuilt, openDeviationFor } from "./deviation.js";
+import { abandonDeviation, closeDeviation, finishDeviations, openDeviationFor } from "./deviation.js";
 import { loadDeviations } from "./deviationrecord.js";
 import { buildPlanReviewBrief, MAX_FIX_ROUNDS, openFindingsSection, recordPlanReview } from "./planreview.js";
 import { buildConflictBrief, buildMergeReviewBrief, resolveConflict } from "./conflict.js";
@@ -152,13 +153,48 @@ function nextText(n: NextAction): string {
         ? consultText(n)
       : n.action === "triage"
         ? `triage ${n.task} (${n.reason}): \`aidw brief ${n.task} --for triage\`, spawn ${AGENTS.triage} with the brief, then \`aidw triage ${n.task}\``
+      : n.action === "upstream"
+        ? n.step === "author"
+          ? `upstream round ${n.round} of ${MAX_UPSTREAM_ROUNDS} for ${n.task}: Deviation ${n.deviation} is open for the ${n.role}; spawn aidw:${n.role} with: Upstream brief: ${n.brief}. Read it and fix your Artifact as it says. (If you already spawned it and it has not replied, wait.) Then \`aidw deviation close\` and \`aidw upstream ${n.task}\` (CANNOT FIX: \`aidw upstream ${n.task} --cannot "<its reason>"\`)`
+          : `upstream round ${n.round} of ${MAX_UPSTREAM_ROUNDS} for ${n.task} (Triage cause: ${n.cause}): \`aidw brief ${n.task} --for upstream\` opens the Deviation and prints the brief; spawn aidw:${n.role} with it, then \`aidw deviation close\` and \`aidw upstream ${n.task}\``
         : n.action === "escalate"
         ? `escalate: ${n.reason}`
         : n.action === "wave"
           ? `wave of ${n.tasks.length}: ${n.tasks.map((x) => `${x.task} (${x.title})`).join(", ")}`
           : n.action === "integrate"
             ? `integrate ${n.tasks.join(", ")}: run \`aidw integrate\` on the merged code`
-            : `complete: all ${n.done} task(s) done`;
+            : n.not_built?.length
+              ? `complete: ${n.done} task(s) done, not built: ${n.not_built.join(", ")} (the reasons are in tasks.yaml; the pull request lists them). Go on to verify.`
+              : `complete: all ${n.done} task(s) done`;
+}
+
+/** D10: one Agent run the CLI is about to print a SPAWN line for (src/agentruns.ts); the same key is counted once. */
+function spawned(p: Paths, id: string, kind: AgentRunKind, key: string, task?: string): void {
+  try {
+    countAgentRun(loadChange(p, id), kind, key, task);
+  } catch {
+    // counting never blocks the run
+  }
+}
+
+/** A task's runtime field, for the key of an Agent run. */
+function taskField(p: Paths, id: string, taskId: string, field: string): string {
+  try {
+    const v = loadTasks(p, id).tasks.find((t) => t.id === taskId)?.[field];
+    return v === undefined || v === null ? "" : typeof v === "object" ? JSON.stringify(v) : String(v);
+  } catch {
+    return "";
+  }
+}
+
+/** After a state change: what the run decides by itself first (not built, the cap: src/run.ts settleChange), then nextLine. */
+function settledNextLine(p: Paths, id: string): string {
+  try {
+    settleChange(p, id);
+  } catch {
+    // not executing, or nothing to settle
+  }
+  return nextLine(p, id);
 }
 
 /** What to do next, printed after a state change so the orchestrator needs no separate `aidw next` turn. */
@@ -260,7 +296,8 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
                                          (--write regenerates agents/ from roles/)
 
 Execution (state executing; add --change <id> when several changes are active):
-  next                                   what the orchestrator does next (implement | review | escalate | complete)
+  next                                   what the orchestrator does next (implement | review | triage | upstream | complete ...);
+                                         at the Agent-run cap it marks the tasks that have not started not built
   task start <task> [--worktree]         mark a task running (counts attempts, records the base commit);
                                          --worktree: a wave task in its own git worktree
   integrate                              after a wave: verify the merged code; a failure adds a fix task
@@ -274,8 +311,11 @@ Unattended (in your own terminal, not inside Claude Code):
   run --status | --stop                  the background runner started with --detach
                                          loop \`claude -p "/aidw:resume <id>"\` until archived; waits out usage
                                          limits (stated reset time or 5-60 min backoff); stops on escalation
-  triage <task> [--notes-file F]         a task out of attempts: record the architect's diagnosis from .aidw/run/triage-<task>.md
-                                         (CAUSE: implementation -> one more attempt; anything else escalates with the diagnosis)
+  triage <task> [--notes-file F|--unclear] a task out of attempts: record the architect's diagnosis from .aidw/run/triage-<task>.md
+                                         (implementation -> one more attempt; plan, spec, architecture -> the author Role fixes
+                                         it, at most ${MAX_UPSTREAM_ROUNDS} rounds; environment, or past the rounds -> not built with its dependants)
+  brief <task> --for upstream            the author Role's brief for an upstream round, and the Deviation to open first
+  upstream <task> [--cannot "<why>"]     the author fixed its Artifact: the task runs again (--cannot: it is not built)
   task retry <task>                      user-granted fresh attempt budget for an escalated/failed task
   task reopen <task> [--revert]          a done task was wrong: back to pending (and git revert its commit with --revert)
   brief <task> [--for implement|review]  write the context packet for a fresh subagent; prints its path
@@ -311,7 +351,7 @@ interface Args {
   flags: Record<string, string | true>;
 }
 
-const VALUE_FLAGS = new Set(["role", "files", "consultation", "remove-reason", "scope-reason", "summary", "cause", "task", "session", "last", "root", "title", "input-type", "workflow", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude", "model", "case", "runs", "text", "lang", "weights", "to", "done"]);
+const VALUE_FLAGS = new Set(["role", "files", "consultation", "remove-reason", "scope-reason", "summary", "cause", "task", "session", "last", "root", "title", "input-type", "workflow", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude", "model", "case", "runs", "text", "lang", "weights", "to", "done", "cannot"]);
 
 export function parseArgs(argv: string[]): Args {
   const pos: string[] = [];
@@ -501,6 +541,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
       case "next": {
         const p = project();
         const id = resolveChangeId(p, str(args.flags.change) ?? rest[0]);
+        settleChange(p, id);
         const n = nextAction(p, id);
         emit({ change: id, ...n }, `${nextText(n)}\n`);
         return 0;
@@ -525,6 +566,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         }
         const r = startTask(p, id, need(rest[1], "task id"), { worktree: args.flags.worktree === true });
         const brief = buildBrief(p, id, r.task, "implement", join(pluginRoot(env), "library", "vendor"));
+        spawned(p, id, "implementer", `${r.task}:r${taskField(p, id, r.task, "runs")}`, r.task);
         const agent = agentForTask(pluginRoot(env), r.role);
         emit(
           { ok: true, change: id, ...r, agent, brief: brief.path },
@@ -541,21 +583,34 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const kind = str(args.flags.for) ?? "implement";
         if (kind === "triage" && cmd === "brief") {
           const tb = buildTriageBrief(p, id, taskId);
+          spawned(p, id, "triage", `${taskId}:${taskField(p, id, taskId, "runs")}`, taskId);
           emit({ change: id, task: taskId, for: kind, path: tb.path }, `${tb.path}\nSPAWN ${AGENTS.triage} with: Triage brief: ${tb.path}. Read it and write your answer as it says.\nThen: aidw triage ${taskId}\n`);
+          return 0;
+        }
+        if (kind === "upstream" && cmd === "brief") {
+          const ub = buildUpstreamBrief(p, id, taskId, { pluginHome: pluginRoot(env) });
+          spawned(p, id, "author", `${taskId}:${ub.deviation}`, taskId);
+          emit(
+            { change: id, task: taskId, for: kind, path: ub.path, role: ub.role, cause: ub.cause, round: ub.round, files: ub.files, deviation: ub.deviation, deviation_brief: ub.deviationBrief },
+            `${ub.path}\nDeviation ${ub.deviation} is open for the ${ub.role}: ${ub.files.join(", ")}\nSPAWN aidw:${ub.role} with: Upstream brief: ${ub.path}. Read it and fix your Artifact as it says.\nThen: aidw deviation close, and aidw upstream ${taskId} (or, when it replies CANNOT FIX, aidw upstream ${taskId} --cannot "<its reason>")\n`,
+          );
           return 0;
         }
         if (kind === "conflict" && cmd === "brief") {
           const cb = buildConflictBrief(p, id, taskId);
+          spawned(p, id, "integration", `${taskId}:${taskField(p, id, taskId, "conflict")}`, taskId);
           emit({ change: id, task: taskId, for: kind, path: cb.path }, `${cb.path}\nSPAWN aidw:integration with: Conflict brief: ${cb.path}. Read it and resolve the conflict.\nThen: aidw resolve ${taskId}\n`);
           return 0;
         }
         if (kind === "merge-review" && cmd === "brief") {
           const mb = buildMergeReviewBrief(p, id, taskId);
+          spawned(p, id, "merge-reviewer", `${taskId}:${taskField(p, id, taskId, "conflict")}`, taskId);
           emit({ change: id, task: taskId, for: kind, path: mb.path }, `${mb.path}\nSPAWN ${AGENTS.taskReview} with: Merge review brief: ${mb.path}. Review the merge and reply with the verdict.\nThen: aidw verdict ${taskId}\n`);
           return 0;
         }
-        if (kind !== "implement" && kind !== "review") throw new UsageError('--for must be "implement" or "review" (or "triage", "conflict", "merge-review" for brief)');
+        if (kind !== "implement" && kind !== "review") throw new UsageError('--for must be "implement" or "review" (or "triage", "upstream", "conflict", "merge-review" for brief)');
         const b = buildBrief(p, id, taskId, kind, join(pluginRoot(env), "library", "vendor"));
+        if (kind === "review" && cmd === "brief") spawned(p, id, "reviewer", `${taskId}:r${taskField(p, id, taskId, "runs")}`, taskId);
         if (cmd === "skills") {
           emit({ change: id, task: taskId, for: kind, skills: b.skills }, b.skills.map((s) => `${s.path}  # ${s.reason}\n`).join(""));
         } else {
@@ -571,7 +626,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         if (timeout !== undefined && !(Number(timeout) > 0)) throw new UsageError("--timeout must be a number of seconds");
         const r = checkpoint(p, id, need(rest[0], "task id"), timeout ? { timeoutMs: Number(timeout) * 1000 } : {});
         const lines = [
-          `${r.ok ? "PASS" : r.status === "blocked" ? "BLOCKED (environment)" : "FAIL"} ${r.task} -> ${r.status === "blocked" ? "running, no attempt used" : r.status}  (evidence ${r.evidence})`,
+          `${r.ok ? "PASS" : r.status === "blocked" ? "BLOCKED (environment)" : r.status === "not_built" ? "NOT BUILT (environment)" : "FAIL"} ${r.task} -> ${r.status === "blocked" ? "running, no attempt used" : r.status === "not_built" ? `not built, with ${(r.not_built ?? []).join(", ")}; the rest carries on` : r.status}  (evidence ${r.evidence})`,
           ...Object.entries(r.scenarios).map(([s, locs]) => `  ${locs.length ? "ok     " : "MISSING"} ${s}${locs.length ? `  ${locs[0]}` : ""}`),
           ...r.verify.map((v) => `  ${v.exit === 0 ? "ok     " : "FAILED "} ${v.command}  (${Math.round(v.ms / 1000)}s${v.timedOut ? ", timed out" : ""})`),
           ...(r.outside_touches.length ? [`  outside touches: ${r.outside_touches.join(", ")}`] : []),
@@ -584,18 +639,19 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         if (r.ok) {
           const auto = autoReview(p, id, r.task, r.changed_files);
           if (auto) {
-            after = `review ${auto.task}: auto-passed (converge tests, or a layer fix its own reviewer judges again)${auto.commit ? ` (commit ${auto.commit.slice(0, 8)})` : ""}\n${nextLine(p, id)}${sessionEnd(env, p, id)}`;
+            after = `review ${auto.task}: auto-passed (converge tests, or a layer fix its own reviewer judges again)${auto.commit ? ` (commit ${auto.commit.slice(0, 8)})` : ""}\n${settledNextLine(p, id)}${sessionEnd(env, p, id)}`;
           } else {
             reviewBrief = buildBrief(p, id, r.task, "review", join(pluginRoot(env), "library", "vendor")).path;
+            spawned(p, id, "reviewer", `${r.task}:r${taskField(p, id, r.task, "runs")}`, r.task);
             after = `review brief ${reviewBrief}\nSPAWN ${AGENTS.taskReview} with: ${REVIEWER_PROMPT(reviewBrief)}\nThen: aidw verdict ${r.task}\n`;
           }
         } else if (r.status === "blocked") {
-          after = `NEXT: the machine refused a check, not the code. Run \`aidw checkpoint ${r.task} --change ${id}\` once more outside the sandbox (dangerouslyDisableSandbox: true); if it is blocked again, escalate with this line. Do not start a new attempt or spawn the implementer again.\n`;
+          after = `NEXT: the machine refused a check, not the code. Run \`aidw checkpoint ${r.task} --change ${id}\` once more outside the sandbox (dangerouslyDisableSandbox: true); if it is refused again, the task is not built (environment) and the run carries on. Do not start a new attempt or spawn the implementer again.\n`;
         } else {
-          after = nextLine(p, id);
+          after = `${r.status === "not_built" ? "Tell the user in one line what the machine refused; nothing waits for them (ADR-0014).\n" : ""}${settledNextLine(p, id)}`;
         }
         emit({ change: id, ...r, ...(reviewBrief ? { review_brief: reviewBrief } : {}) }, `${lines.join("\n")}\n${failed ? `\n--- ${failed.command} (tail)\n${failed.tail}\n` : ""}${after}`);
-        return r.ok ? 0 : 1;
+        return r.ok || r.status === "not_built" ? 0 : 1;
       }
 
       case "verify": {
@@ -611,12 +667,16 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         });
         const lines = r.layers.map((l) => {
           const bad = l.runs.find((x) => x.exit !== 0);
-          const mark = l.status === "pass" ? "ok     " : l.status === "fail" ? "FAILED " : l.status === "review" ? "REVIEW " : l.reused ? "ok     " : "skipped";
+          const mark = l.status === "pass" ? "ok     " : l.status === "fail" ? "FAILED " : l.status === "review" ? "REVIEW " : l.status === "not_built" ? "NOT BUILT" : l.reused ? "ok     " : "skipped";
           return `  ${mark} ${l.name}${l.reused ? "  (passed earlier on this commit; --fresh reruns it)" : ""}${bad ? `  (${bad.command}${bad.timedOut ? ", timed out" : `, exit ${bad.exit}`})` : ""}`;
         });
         const failed = r.layers.find((l) => l.status === "fail")?.runs.find((x) => x.exit !== 0);
         const a = r.awaitingReview;
         const group = r.awaitingReviews ?? (a ? [a] : []);
+        if (group.length) {
+          const rounds = (layer: string) => loadTasks(p, id).tasks.filter((t) => t.origin === "quality" && t.layer === layer).length;
+          for (const x of group) spawned(p, id, "layer-reviewer", `${x.layer}:${rounds(x.layer)}:${git(p.project, ["rev-parse", "HEAD"]).out}`);
+        }
         const reviewer = (x: typeof group[number]) => `\n${group.length > 1 ? `  layer  ${x.layer}\n` : ""}  agent  ${x.agent}\n  brief  ${x.brief}\n  prompt Layer review brief: ${x.brief}. Review the layer and reply with the verdict.\n`;
         emit(
           { change: id, ...r },
@@ -646,12 +706,12 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         if (verdict === "fix" && !notes.trim()) throw new UsageError("a fix verdict needs --notes or --notes-file");
         const r = recordLayerReview(p, id, layer, verdict, notes);
         emit(
-          { ok: !r.escalated, change: id, ...r },
+          { ok: true, change: id, ...r },
           `${r.layer}: ${r.kind} review ${r.verdict} -> ${r.summary}${
             verdict === "pass" && !notes.trim() ? "\n  note: no reviewer reply recorded; pass it with --notes-file so its non-blocking remarks reach the handoff" : ""
           }\n`,
         );
-        return r.escalated ? 1 : 0;
+        return 0;
       }
 
       case "cost": {
@@ -743,9 +803,9 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const failed = r.runs.find((x) => x.exit !== 0);
         emit(
           { change: id, ...r },
-          `${r.ok ? "PASS" : "FAIL"}: ${r.summary}\n${r.runs.map((x) => `  ${x.exit === 0 ? "ok     " : "FAILED "} ${x.command}`).join("\n")}\n${failed ? `\n--- ${failed.command} (tail)\n${failed.tail}\n` : ""}`,
+          `${r.ok ? "PASS" : r.notBuilt ? "NOT BUILT" : "FAIL"}: ${r.summary}\n${r.runs.map((x) => `  ${x.exit === 0 ? "ok     " : "FAILED "} ${x.command}`).join("\n")}\n${failed ? `\n--- ${failed.command} (tail)\n${failed.tail}\n` : ""}${r.notBuilt ? settledNextLine(p, id) : ""}`,
         );
-        return r.ok ? 0 : 1;
+        return r.ok || r.notBuilt ? 0 : 1;
       }
 
       case "converge": {
@@ -803,7 +863,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const r = recordReview(p, id, taskId, verdict, notes, { commit: args.flags["no-commit"] !== true });
         emit(
           { ok: true, change: id, ...r },
-          `${reviewLine(r, verdict, notes)}${nextLine(p, id)}${r.status === "done" ? sessionEnd(env, p, id) : ""}`,
+          `${reviewLine(r, verdict, notes)}${settledNextLine(p, id)}${r.status === "done" ? sessionEnd(env, p, id) : ""}`,
         );
         return 0;
       }
@@ -818,17 +878,19 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           ...c.missing_scenarios.map((s) => `  MISSING ${c.task} ${s}`),
           ...c.runs.map((x) => `  ${x.exit === 0 ? "ok     " : "FAILED "} ${c.task} ${x.command}`),
         ]);
-        let after = nextLine(p, id);
-        if (r.blocked) after = `NEXT: the machine refused a check, not the code. Run \`aidw resolve ${taskId} --change ${id}\` once more outside the sandbox (dangerouslyDisableSandbox: true); if it is blocked again, escalate with this line.\n`;
+        const marked = r.blocked ? recordBlocked(p, id, taskId, r.reason ?? "a check was refused by the machine") : null;
+        let after = settledNextLine(p, id);
+        if (r.blocked && !marked) after = `NEXT: the machine refused a check, not the code. Run \`aidw resolve ${taskId} --change ${id}\` once more outside the sandbox (dangerouslyDisableSandbox: true); if it is refused again, the task is not built (environment) and the run carries on.\n`;
         if (r.ok) {
           const mb = buildMergeReviewBrief(p, id, taskId);
+          spawned(p, id, "merge-reviewer", `${taskId}:${taskField(p, id, taskId, "conflict")}`, taskId);
           after = `review brief ${mb.path}\nSPAWN ${AGENTS.taskReview} with: Merge review brief: ${mb.path}. Review the merge and reply with the verdict.\nThen: aidw verdict ${taskId}\n`;
         }
         emit(
           { change: id, ...r },
-          `${r.ok ? "RESOLVED" : r.blocked ? "BLOCKED (environment)" : "DROPPED"} ${taskId}: ${r.ok ? `merge ${String(r.resolution).slice(0, 8)}; both tasks' checks pass` : r.blocked ? `${r.reason}; nothing dropped, the conflict stays open` : `${r.reason}; the task reruns sequentially on the latest code`}\n${lines.length ? `${lines.join("\n")}\n` : ""}${after}`,
+          `${r.ok ? "RESOLVED" : marked ? "NOT BUILT (environment)" : r.blocked ? "BLOCKED (environment)" : "DROPPED"} ${taskId}: ${r.ok ? `merge ${String(r.resolution).slice(0, 8)}; both tasks' checks pass` : marked ? `${r.reason}; refused a second time: not built, with ${marked.join(", ")}; the rest carries on` : r.blocked ? `${r.reason}; nothing dropped, the conflict stays open` : `${r.reason}; the task reruns sequentially on the latest code`}\n${lines.length ? `${lines.join("\n")}\n` : ""}${after}`,
         );
-        return r.ok ? 0 : 1;
+        return r.ok || marked ? 0 : 1;
       }
 
       case "triage": {
@@ -837,16 +899,38 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const id = resolveChangeId(p, str(args.flags.change));
         const taskId = need(rest[0], "task id");
         const file = str(args.flags["notes-file"]) ?? triageFile(p, taskId);
-        if (!existsSync(file)) throw new OpError(`no triage answer at ${file}: the Agent did not write it. Spawn it once more with \`aidw brief ${taskId} --for triage\``);
-        const r = recordTriage(p, id, taskId, readFileSync(file, "utf8"));
+        const unclear = args.flags.unclear === true;
+        if (!unclear && !existsSync(file)) throw new OpError(`no triage answer at ${file}: the Agent did not write it. Spawn it once more with \`aidw brief ${taskId} --for triage\``);
+        const r = recordTriage(p, id, taskId, unclear ? "" : readFileSync(file, "utf8"), { pluginHome: pluginRoot(env), unclear });
         const first = r.diagnosis.split("\n").find((l) => l.trim()) ?? "";
-        const line =
-          r.outcome === "retry"
+        const others = (r.not_built ?? []).filter((t) => t !== r.task);
+        const along = others.length ? ` Not built with it (they depend on it): ${others.join(", ")}.` : "";
+        const line = r.unclear
+          ? `${r.task}: Triage gave no clear cause, so it is not built; the rest carries on.${along}\n`
+          : r.outcome === "retry"
             ? `${r.task} triaged: the cause is the implementation. One further attempt is granted with the diagnosis in its brief: ${first}\n`
-            : r.cause === "environment"
-              ? `${r.task} triaged: the cause is the environment, so it escalated. What the user must fix: ${first}\n(full diagnosis: ${rel(p, file)})\n`
-              : `${r.task} triaged: the cause is the ${r.cause}, so it escalated: the approved package would change and the user decides. ${first}\n(full diagnosis: ${rel(p, file)})\n`;
-        emit({ ok: true, change: id, ...r }, `${line}${nextLine(p, id)}`);
+            : r.outcome === "upstream"
+              ? `${r.task} triaged: the cause is the ${r.cause}, so it goes back to the ${r.role}, who wrote it: upstream round ${r.round} of ${MAX_UPSTREAM_ROUNDS}. ${first}\n(full diagnosis: ${rel(p, file)})\n`
+              : r.cause === "environment"
+                ? `${r.task} triaged: the cause is the environment, which nothing inside the factory fixes, so it is not built; the rest carries on.${along} What the user must fix to finish it: ${first}\n(full diagnosis: ${rel(p, file)})\n`
+                : `${r.task} triaged: the cause is the ${r.cause} again after ${MAX_UPSTREAM_ROUNDS} upstream rounds, so it is not built; the rest carries on.${along} ${first}\n(full diagnosis: ${rel(p, file)})\n`;
+        emit({ ok: true, change: id, ...r }, `${line}${settledNextLine(p, id)}`);
+        return 0;
+      }
+
+      case "upstream": {
+        // ADR-0014: the author Role fixed its Artifact (through a Deviation) after a Triage; the task runs again.
+        const p = project();
+        const id = resolveChangeId(p, str(args.flags.change));
+        const taskId = need(rest[0], "task id");
+        const cannot = str(args.flags.cannot);
+        const r = recordUpstream(p, id, taskId, cannot === undefined ? {} : { cannot });
+        const others = (r.not_built ?? []).filter((t) => t !== r.task);
+        const line =
+          r.outcome === "rerun"
+            ? `${r.task}: the ${r.role} fixed the ${r.cause} (upstream round ${r.round} of ${MAX_UPSTREAM_ROUNDS}); the task runs again with a fresh attempt budget\n`
+            : `${r.task}: the ${r.role} could not fix the ${r.cause}, so it is not built; the rest carries on${others.length ? `. Not built with it: ${others.join(", ")}` : ""}\n`;
+        emit({ ok: true, change: id, ...r }, `${line}${settledNextLine(p, id)}`);
         return 0;
       }
 
@@ -863,7 +947,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const r = recordReview(p, id, taskId, verdict, notes, { commit: args.flags["no-commit"] !== true });
         emit(
           { ok: true, change: id, ...r },
-          `${reviewLine(r, verdict, notes)}${nextLine(p, id)}${r.status === "done" ? sessionEnd(env, p, id) : ""}`,
+          `${reviewLine(r, verdict, notes)}${settledNextLine(p, id)}${r.status === "done" ? sessionEnd(env, p, id) : ""}`,
         );
         return 0;
       }
@@ -1386,6 +1470,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           }
           const r = resumeConsultation(p, id, cid);
           const c = r.consultation;
+          spawned(p, id, "resumed", cid, c.task);
           const after = c.task ? `Then, when it reports: aidw checkpoint ${c.task}` : `Then, when it reports: continue stage ${c.stage} (\`aidw stages\`)`;
           emit(
             { ok: true, change: id, ...r },
@@ -1398,6 +1483,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const id = resolveChangeId(p, changeOfRequest(p, abs, str(args.flags.change)));
         const r = requestConsultation(p, id, abs, pluginRoot(env));
         const c = r.consultation;
+        spawned(p, id, "consulted", c.id, c.task);
         emit(
           { ok: true, change: id, ...r },
           `${c.id} recorded: ${c.from} (${c.task ?? `stage ${c.stage}`}) asks ${c.to}\nbrief ${r.brief}\nSPAWN ${r.agent} with: Consultation brief: ${r.brief}. Read it and answer as it says.\nThen: aidw consult answer ${c.id}\nMeanwhile the other tasks or stages carry on.\n`,
@@ -1446,12 +1532,12 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
             `  run again: ${d.rerun?.length ? d.rerun.join(", ") : "none"}${d.reset?.length ? ` (reset to pending: ${d.reset.join(", ")})` : ""}`,
             ...(d.consultation ? [`  ${d.consultation}: deviation recorded; resume the asker: aidw consult resume ${d.consultation}`] : []),
           ];
-          emit({ ok: true, change: id, deviation: d }, `${lines.join("\n")}\n${nextLine(p, id)}`);
+          emit({ ok: true, change: id, deviation: d }, `${lines.join("\n")}\n${settledNextLine(p, id)}`);
           return 0;
         }
         if (sub === "abandon") {
           const d = abandonDeviation(p, id);
-          emit({ ok: true, change: id, deviation: d }, `${d.id} abandoned: ${d.files.join(", ")} put back as approved\n${nextLine(p, id)}`);
+          emit({ ok: true, change: id, deviation: d }, `${d.id} abandoned: ${d.files.join(", ")} put back as approved\n${settledNextLine(p, id)}`);
           return 0;
         }
         if (sub === "list") {
@@ -1468,8 +1554,16 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const id = resolveChangeId(p, str(args.flags.change));
         const cause = str(args.flags.cause) ?? "envelope";
         if (cause !== "envelope" && cause !== "environment") throw new UsageError("--cause is envelope (outside what the user granted) or environment (a missing key, the network)");
-        const marked = markNotBuilt(p, id, need(rest[0], "task id"), str(args.flags.reason) ?? "", cause);
-        emit({ ok: true, change: id, not_built: marked }, `not built: ${marked.join(", ")}\n${nextLine(p, id)}`);
+        const taskId = need(rest[0], "task id");
+        const reason = (str(args.flags.reason) ?? "").trim();
+        if (!reason) throw new OpError('say why it is not built (--reason "...")');
+        const tf = loadTasks(p, id);
+        const t = tf.tasks.find((x) => x.id === taskId);
+        if (!t) throw new OpError(`change "${id}" has no task ${taskId}`);
+        if (String(t.status ?? "pending") === "done") throw new OpError(`task ${taskId} is done; reopen it first if what it built lies outside the grants`);
+        if (String(t.status ?? "pending") === "not_built") throw new OpError(`task ${taskId} is already not built`);
+        const marked = markNotBuilt(p, tf, taskId, reason, cause);
+        emit({ ok: true, change: id, not_built: marked }, `not built: ${marked.join(", ")}\n${settledNextLine(p, id)}`);
         return 0;
       }
 

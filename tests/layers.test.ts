@@ -186,7 +186,7 @@ describe("verify with review layers (S7)", () => {
     expect(report).not.toMatch(/layer "ui-ux" was not/);
   });
 
-  it("turns a fix verdict into a fix task with the notes, and escalates past max_fix_rounds", () => {
+  it("turns a fix verdict into a fix task with the notes, and marks the layer not built past max_fix_rounds", () => {
     const root = project(Q("max_fix_rounds: 1\n"));
     cli(root, "verify");
     const fix = cli(root, "layer-review", "ui-ux", "fix", "--notes-file", notes(root, "VERDICT: fix\n1. home, mobile: the icon grid overflows by 8px -> use a 6-column grid"), "--json").json();
@@ -207,9 +207,14 @@ describe("verify with review layers (S7)", () => {
     // the whole chain reruns on the new code, the reviewer still says fix: rounds exhausted
     expect(cli(root, "verify", "--json").json().awaitingReview).toMatchObject({ layer: "ui-ux" });
     const again = cli(root, "layer-review", "ui-ux", "fix", "--notes", "VERDICT: fix\n1. still overflows", "--json");
-    expect(again.code).toBe(1);
-    expect(again.json()).toMatchObject({ escalated: true });
-    expect(state(root)).toBe("escalated");
+    expect(again.code).toBe(0);
+    expect(again.json()).toMatchObject({ notBuilt: true });
+    expect(again.json().summary).toMatch(/not built: still failing after 1 fix round/);
+    // nobody is asked after the gate (ADR-0014): the run carries on without the layer
+    expect(state(root)).toBe("verifying");
+    const after = cli(root, "verify", "--json").json();
+    expect(after.layers.find((l: { name: string }) => l.name === "ui-ux").status).toBe("not_built");
+    expect(after.awaitingReview).toMatchObject({ layer: "security" });
   });
 
   it("reports missing artifacts to the reviewer instead of failing silently", () => {

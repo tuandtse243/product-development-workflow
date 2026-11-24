@@ -4,7 +4,10 @@
  * The user starts it in their own terminal, or the main session of an approved change starts it with `--detach` when
  * `aidw approve` routes the build to it (plan D2, src/buildroute.ts; the gate denies every other start). It
  * loops `claude -p "/aidw:resume <id>" --permission-mode <mode>` until the change is archived, needs the
- * user (escalated, before approval, tier-3 question), or stops making progress. When a session ends on a
+ * user (escalated, before approval, tier-3 question), or stops making progress. After the Approval Gate the run
+ * itself does not escalate (ADR-0014): a task that fails after Triage, an environment cause, a layer out of fix rounds
+ * and the Agent-run cap all end in "not built" and the Change carries on towards its pull request, so the runner keeps
+ * driving it; `escalated` is left for what is never automatic (plan D14) and for a stop the user makes. When a session ends on a
  * usage or rate limit (the StopFailure hook paused the change, or the output says so), it waits until the
  * stated reset time, or backs off (5, 10, 20, 40, 60 minutes), then resumes.
  *
@@ -173,6 +176,7 @@ export function runLoop(p: Paths, id: string, opts: RunnerOptions = {}): RunnerR
     if (archived(p, id)) return result("archived", "archived", `change ${id} is archived; the delivery package is in .aidw/archive/`);
     const change = loadChange(p, id);
     const state = stateOf(change) ?? String(change.data.state);
+    // Only what is never automatic (D14) or a stop the user made escalates after the gate: not-built work does not (ADR-0014).
     if (state === "escalated") return result("escalated", state, "the change is escalated and needs your decision: open Claude Code and run /aidw:status");
     if (!DRIVABLE.has(state)) return result("needs_user", state, `state "${state}" needs you (approval or analysis); the runner continues only approved work`);
 

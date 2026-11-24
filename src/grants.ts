@@ -8,7 +8,7 @@
  *                                            (draft included) against `base`, without asking
  *     envelope: true                         any free resource of a provider already in use; data-changing
  *                                            migrations on local and dev databases, reversible, tried on seed data
- *     agent_runs: 30                         cap on Agent runs for the Change (default 3 per planned task)
+ *     agent_runs: 30                         cap on Agent runs for the Change (default 3 times the planned Agent runs)
  *
  * Only the push grant is enforced here, by the gate hook: it is the one tier 3 action that can be granted ahead of
  * time, for one branch and one remote. The envelope cannot be told apart from other actions by a pattern, so it is
@@ -41,7 +41,8 @@ export interface Grants {
 }
 
 export const NO_GRANTS: Grants = { push: null, envelope: false, agentRuns: null };
-export const AGENT_RUNS_PER_TASK = 3;
+/** D5: the default cap is this many times the Agent runs the plan needs (plannedAgentRuns). */
+export const AGENT_RUNS_FACTOR = 3;
 
 export const ENVELOPE = [
   "any free resource of a provider the project already uses",
@@ -96,7 +97,31 @@ export function readGrants(change: Change): Grants {
   return d.errors.length ? { ...NO_GRANTS } : g;
 }
 
-export const agentRunCap = (g: Grants, plannedTasks: number): number => g.agentRuns ?? AGENT_RUNS_PER_TASK * Math.max(1, plannedTasks);
+export const agentRunCap = (g: Grants, plannedRuns: number): number => g.agentRuns ?? AGENT_RUNS_FACTOR * Math.max(1, plannedRuns);
+
+/**
+ * The Agent runs the approved plan needs (D5), what the default cap is measured against: an implementer and a reviewer
+ * per planned task, and one reviewer per review layer of quality.yaml. The plan review is not counted: it runs before
+ * the gate.
+ */
+export function plannedAgentRuns(change: Change): { tasks: number; reviewLayers: number; runs: number } {
+  const tasks = plannedTaskCount(change);
+  let reviewLayers = 0;
+  try {
+    // the approved text: a Deviation that has quality.yaml open does not move the count meanwhile
+    const data = YAML.parse(approvedText(change, join(change.dir, "quality.yaml")) ?? "") as { layers?: unknown } | null;
+    if (Array.isArray(data?.layers)) reviewLayers = data.layers.filter((l) => isGrantMap(l) && typeof l.review === "string" && l.review).length;
+  } catch {
+    reviewLayers = 0;
+  }
+  return { tasks, reviewLayers, runs: tasks * 2 + reviewLayers };
+}
+
+/** The cap of a Change: as fixed in the approval record at `aidw approve` (a Deviation adding tasks does not move it), else computed. */
+export function changeAgentRunCap(change: Change): number {
+  const fixed = (change.data.approval as { agent_run_cap?: unknown } | null | undefined)?.agent_run_cap;
+  return Number.isInteger(fixed) && Number(fixed) >= 1 ? Number(fixed) : agentRunCap(readGrants(change), plannedAgentRuns(change).runs);
+}
 
 /** What `aidw approve` fixes for the push grant, hashed with the package: the gate matches only these values. */
 export interface PushBinding {
@@ -174,14 +199,14 @@ export function boundPush(p: Paths, change: Change): PushBinding | null {
 
 const plannedTaskCount = (change: Change): number => {
   try {
-    return parseTasks(readFileSync(join(change.dir, "tasks.yaml"), "utf8")).tasks.filter((t) => !t.origin).length;
+    return parseTasks(approvedText(change, join(change.dir, "tasks.yaml")) ?? "").tasks.filter((t) => !t.origin).length;
   } catch {
     return 0;
   }
 };
 
 /** One line per grant, for the gate Decision Page. */
-export function grantLines(g: Grants, push: { binding: PushBinding | null; problem: string | null }, plannedTasks: number): string[] {
+export function grantLines(g: Grants, push: { binding: PushBinding | null; problem: string | null }, planned: { tasks: number; reviewLayers: number; runs: number }): string[] {
   const b = push.binding;
   return [
     g.push && b
@@ -192,7 +217,7 @@ export function grantLines(g: Grants, push: { binding: PushBinding | null; probl
     g.envelope
       ? `**Permission envelope**: ${ENVELOPE.join("; ")}. Work outside it is marked not built.`
       : "**Permission envelope**: not granted; only the tier 2 resources listed under Permissions.",
-    `**Cap**: ${agentRunCap(g, plannedTasks)} Agent runs${g.agentRuns === null ? ` (default: ${AGENT_RUNS_PER_TASK} per planned task)` : ""}; at the cap no new task starts and the run ends cleanly.`,
+    `**Cap**: ${agentRunCap(g, planned.runs)} Agent runs${g.agentRuns === null ? ` (default: ${AGENT_RUNS_FACTOR} × ${planned.runs} planned = ${planned.tasks} tasks × 2 + ${planned.reviewLayers} review layers)` : ""}; at the cap no new task starts, running work finishes and the run ends cleanly in a pull request.`,
     `**Never automatic**, whatever is granted: ${NEVER_AUTOMATIC.join(", ")}.`,
   ];
 }
@@ -209,7 +234,7 @@ export function grantsSection(p: Paths, change: Change): { id: string; title: st
     id: "grants",
     title: "Grants for this Change",
     body: "Recorded in quality.yaml `grants` and approved with the package; the branch and the remote's URL are fixed when you approve. Mark it for a change to grant or withdraw any of them.",
-    points: grantLines(readGrants(change), bound ? { binding: bound, problem: null } : bindPush(p, change), plannedTaskCount(change)),
+    points: grantLines(readGrants(change), bound ? { binding: bound, problem: null } : bindPush(p, change), plannedAgentRuns(change)),
     html: "",
   };
 }

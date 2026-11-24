@@ -244,6 +244,48 @@ describe("a wave in worktrees (git)", () => {
     expect(cli(root, "transition", ID, "verifying").err).toMatch(/needs every task done/);
   });
 
+  /** T01 and T02 merged in a wave, then the merged code breaks: the integration verify fails. */
+  function brokenWave(quality: string): string {
+    const root = project(TASKS(), quality);
+    for (const t of ["T01", "T02"]) cli(root, "task", "start", t, "--worktree");
+    const wt = (t: string) => join(root, `.aidw/run/worktrees/${ID}/${t}`);
+    write(wt("T01"), "tests/a/booking.test.js", `test("${SCENARIO}: works", () => {})\n`);
+    write(wt("T02"), "lib/b/report.js", "module.exports = 2;\n");
+    for (const t of ["T01", "T02"]) expect(cli(root, "checkpoint", t).code).toBe(0);
+    for (const t of ["T01", "T02"]) cli(root, "review", t, "pass");
+    execFileSync("git", ["rm", "-q", "lib/b/report.js"], { cwd: root });
+    execFileSync("git", ["commit", "-qm", "break"], { cwd: root });
+    return root;
+  }
+  const state = (root: string) => String((YAML.parse(readFileSync(join(root, ".aidw/changes", ID, "change.yaml"), "utf8")) as { state: string }).state);
+
+  it("an integration still failing past its fix rounds is not built, not escalated, and the run carries on (ADR-0014)", () => {
+    const root = brokenWave(`${QUALITY()}max_fix_rounds: 1\n`);
+    expect(cli(root, "integrate", "--json").json()).toMatchObject({ ok: false, fixTask: "I01" });
+    const r = cli(root, "integrate", "--json");
+    expect(r.code).toBe(0);
+    expect(r.json()).toMatchObject({ ok: false, notBuilt: true });
+    expect(r.json().summary).toMatch(/not built.*fix round/);
+    expect(state(root)).toBe("executing");
+    // the wave counts as closed: nothing waits for another integrate
+    expect(next(root).action).not.toBe("integrate");
+    expect(next(root).action).not.toBe("escalate");
+  });
+
+  it("at the Agent-run cap a failing integration gets no fix task: it is not built (D10)", () => {
+    // T01 and T02: implementer and reviewer each, four runs: the cap
+    const root = brokenWave(`${QUALITY()}grants:\n  agent_runs: 4\n`);
+    const r = cli(root, "integrate", "--json");
+    expect(r.code).toBe(0);
+    expect(r.json()).toMatchObject({ ok: false, notBuilt: true });
+    expect(r.json().summary).toMatch(/cap of 4 Agent runs/);
+    expect(task(root, "I01")).toBeUndefined();
+    expect(state(root)).toBe("executing");
+    // the wave counts as closed: the run moves on instead of integrating it again
+    expect(next(root)).toMatchObject({ action: "complete" });
+    expect(cli(root, "transition", ID, "verifying").code).toBe(0);
+  });
+
   it("drops a branch whose conflict integration cannot resolve and reruns the task sequentially", () => {
     const root = project();
     for (const t of ["T01", "T02"]) cli(root, "task", "start", t, "--worktree");

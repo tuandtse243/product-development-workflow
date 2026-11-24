@@ -12,7 +12,7 @@ import { tempProject, write } from "./fixtures.js";
 const ID = "2026-11-10-app";
 
 /**
- * Each session takes the next step from steps.json: { state?, paused?, progress?, out?, exit?, archive? }.
+ * Each session takes the next step from steps.json: { state?, paused?, progress?, tasks?, out?, exit?, archive? }.
  * It records its argv in calls.jsonl.
  */
 const FAKE_CLAUDE = `#!/usr/bin/env node
@@ -24,6 +24,7 @@ const n = fs.existsSync(path.join(root, "calls.jsonl")) ? fs.readFileSync(path.j
 fs.appendFileSync(path.join(root, "calls.jsonl"), JSON.stringify(process.argv.slice(2)) + "\\n");
 const s = steps[n] || {};
 if (s.progress) fs.appendFileSync(path.join(dir, "tasks.yaml"), "# progress " + n + "\\n");
+if (s.tasks) fs.writeFileSync(path.join(dir, "tasks.yaml"), s.tasks);
 if (s.state) {
   let y = fs.readFileSync(path.join(dir, "change.yaml"), "utf8").replace(/^state: .*$/m, "state: " + s.state);
   y = y.replace(/^  paused: .*$/m, "  paused: " + (s.paused ? JSON.stringify({ from: "executing", reason: s.paused, at: "2026-11-10T00:00:00Z" }) : "null"));
@@ -119,6 +120,14 @@ describe("aidw run", () => {
     const log = readFileSync(join(t.root, ".aidw/run/runner.log"), "utf8");
     expect(log).toMatch(/paused \(rate_limit: retry after 30 seconds\): waiting 2 min, the error says retry after 30 seconds/);
     expect(log).toMatch(/stop: escalated/);
+  });
+
+  it("carries on past tasks that were not built and past the Agent-run cap, to delivery (ADR-0014)", () => {
+    const notBuilt = "tasks:\n  - id: T01\n    status: done\n  - id: T02\n    status: not_built\n    not_built: { cause: environment, reason: 'triage: environment' }\n  - id: T03\n    status: not_built\n    not_built: { cause: cap, reason: 'the cap of 6 Agent runs set at the Approval Gate was reached (6 used)' }\n";
+    const t = setup("executing", [{ tasks: notBuilt }, { state: "verifying", progress: true }, { state: "delivered", progress: true }, { archive: true }]);
+    const r = t.go();
+    expect(r).toMatchObject({ outcome: "archived", runs: 4 });
+    expect(t.calls().map((c) => c[1])).toEqual([`/aidw:resume ${ID}`, `/aidw:resume ${ID}`, `/aidw:resume ${ID}`, `/aidw:deliver ${ID}`]);
   });
 
   it("waits when a session ends on a limit nobody recorded, then finishes when the change is archived", () => {

@@ -5,7 +5,9 @@ import YAML from "yaml";
 import { afterEach, describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
 import { decide, type HookInput } from "../src/gate.js";
-import { parseQuality } from "../src/quality.js";
+import { loadChange } from "../src/change.js";
+import { pathsFor } from "../src/project.js";
+import { notBuiltLayers, parseQuality } from "../src/quality.js";
 import { ANALYSIS_MD, TOKENS_YAML, MAIN_SPEC, QUALITY_YAML, REQ, tempProject, write, planReviewed } from "./fixtures.js";
 
 const ID = "2026-11-08-booking";
@@ -143,7 +145,7 @@ describe("quality.yaml", () => {
 describe("verify -> fix -> deploy (exit criterion [6])", () => {
   it("turns a failing layer into a fix task, re-verifies on the new code, deploys and delivers", () => {
     const root = project();
-    expect(cli(root, "transition", ID, "verifying").err).toMatch(/needs every task done; open: T01 \(pending\)/);
+    expect(cli(root, "transition", ID, "verifying").err).toMatch(/needs every task done or not built; open: T01 \(pending\)/);
     completeTask(root, "T01", () => write(root, "tests/booking.test.ts", `test("${SCENARIO}: works", () => {})\n`));
     expect(cli(root, "next", "--json").json().action).toBe("complete");
     expect(cli(root, "transition", ID, "verifying").code).toBe(0);
@@ -199,7 +201,7 @@ describe("verify -> fix -> deploy (exit criterion [6])", () => {
     expect(ev.runs.map((r: { ok: boolean }) => r.ok)).toEqual([false, true]);
   });
 
-  it("escalates when a layer keeps failing past max_fix_rounds", () => {
+  it("marks a layer not built when it keeps failing past max_fix_rounds, and carries on (ADR-0014)", () => {
     const root = project(Q("max_fix_rounds: 1\n"));
     completeTask(root, "T01", () => write(root, "tests/booking.test.ts", `test("${SCENARIO}: works", () => {})\n`));
     write(root, "unit-ok", "");
@@ -211,10 +213,27 @@ describe("verify -> fix -> deploy (exit criterion [6])", () => {
     rmSync(join(root, "e2e-ok"));
     cli(root, "transition", ID, "verifying");
     const v = cli(root, "verify", "--json").json();
-    expect(v).toMatchObject({ ok: false, failed: "e2e", escalated: true });
-    expect(v.summary).toMatch(/fix rounds exhausted \(1\/1\): escalated/);
-    expect(state(root)).toBe("escalated");
+    expect(v).toMatchObject({ ok: true, notBuilt: ["e2e"] });
+    expect(v.summary).toMatch(/layer "e2e" failed and is not built: still failing after 1 fix round\(s\)[\s\S]*not built: e2e/);
+    expect(state(root)).toBe("verifying");
     expect(tasks(root).filter((t) => t.origin === "quality")).toHaveLength(1);
+    expect(notBuiltLayers(loadChange(pathsFor(root), ID))).toEqual([{ layer: "e2e", reason: expect.stringMatching(/fix round/) }]);
+    // the Change moves on: the layer stays not built (the pull request is a draft), the next verify does not rerun it
+    expect(cli(root, "verify").out).toMatch(/NOT BUILT e2e/);
+    expect(cli(root, "transition", ID, "converging").code).toBe(0);
+  });
+
+  it("at the Agent-run cap a failing layer gets no fix task: it is not built and the run carries on (D10)", () => {
+    const root = project(Q("grants:\n  agent_runs: 2\n"));
+    completeTask(root, "T01", () => write(root, "tests/booking.test.ts", `test("${SCENARIO}: works", () => {})\n`)); // implementer + reviewer: the cap
+    write(root, "unit-ok", "");
+    rmSync(join(root, "e2e-ok"));
+    cli(root, "transition", ID, "verifying");
+    const v = cli(root, "verify", "--json").json();
+    expect(v).toMatchObject({ ok: true, notBuilt: ["e2e"] });
+    expect(v.summary).toMatch(/not built: the cap of 2 Agent runs/);
+    expect(tasks(root).filter((t) => t.origin === "quality")).toHaveLength(0);
+    expect(state(root)).toBe("verifying");
   });
 
   it("records target none without deploying", () => {

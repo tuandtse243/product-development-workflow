@@ -27,6 +27,7 @@ import { buildLayerBrief } from "./layers.js";
 import { pickGroup } from "./stages.js";
 import { loadTasks, saveTasksDoc, retryingShellRunner, shellRunner, type CommandRunner, type VerifyRun } from "./run.js";
 import type { Task } from "./tasks.js";
+import { agentRunStatus, capReason } from "./agentruns.js";
 
 export const DEPLOY_TARGETS = ["none", "local", "preview"] as const;
 export type DeployTarget = (typeof DEPLOY_TARGETS)[number];
@@ -226,8 +227,14 @@ export interface LayerReview {
 }
 
 export interface LayerResult {
-  /** `review`: commands passed, the layer waits for the reviewer's verdict (aidw layer-review) */
-  status: "pass" | "fail" | "review";
+  /**
+   * `review`: commands passed, the layer waits for the reviewer's verdict (aidw layer-review). `not_built`: its fix
+   * rounds ran out (or the Agent-run cap was reached), so the run carries on without it and the pull request is a draft
+   * (ADR-0014); it stays so until the quality summary is reset.
+   */
+  status: "pass" | "fail" | "review" | "not_built";
+  /** not_built: why */
+  not_built_reason?: string;
   at: string;
   head: string | null;
   runs: VerifyRun[];
@@ -298,8 +305,18 @@ export function pendingLayers(p: Paths, id: string): { config: QualityConfig; pe
   const tasks = loadTasks(p, id).tasks;
   const summary = readSummary(change);
   const head = headCommit(p.project);
-  const pending = config.layers.filter((l) => !(summary.layers[l.name]?.status === "pass" && isFresh(summary.layers[l.name], tasks, head))).map((l) => l.name);
+  const pending = config.layers
+    .filter((l) => summary.layers[l.name]?.status !== "not_built")
+    .filter((l) => !(summary.layers[l.name]?.status === "pass" && isFresh(summary.layers[l.name], tasks, head)))
+    .map((l) => l.name);
   return { config, pending, summary };
+}
+
+/** Layers the run gave up on (ADR-0014): what the pull request lists as still failing. */
+export function notBuiltLayers(change: Change): { layer: string; reason: string }[] {
+  return Object.entries(readSummary(change).layers)
+    .filter(([, r]) => r.status === "not_built")
+    .map(([layer, r]) => ({ layer, reason: r.not_built_reason ?? "" }));
 }
 
 // ---------------------------------------------------------------- JUnit
@@ -361,7 +378,7 @@ export function readJunit(project: string, reports: string[]): { tests: TestCase
 export interface VerifyLayerOutcome {
   name: string;
   /** `review`: the layer waits for its reviewer (see VerifyResult.awaitingReview) */
-  status: "pass" | "fail" | "skipped" | "review";
+  status: "pass" | "fail" | "skipped" | "review" | "not_built";
   runs: VerifyRun[];
   /** skipped because it already passed on this commit (rerun with --fresh) */
   reused?: boolean;
@@ -385,8 +402,8 @@ export interface VerifyResult {
   failed?: string;
   /** fix task added for the failing layer (the change is back in executing) */
   fixTask?: string;
-  /** fix rounds for the failing layer are exhausted (the change is escalated) */
-  escalated?: boolean;
+  /** layers given up on in this run: fix rounds exhausted or the Agent-run cap reached (ADR-0014; the rest carries on) */
+  notBuilt?: string[];
   /** a review layer's commands passed; verify stops until `aidw layer-review` records the verdict (the first of awaitingReviews) */
   awaitingReview?: AwaitingReview;
   /** D13: the review layers whose reviewers run now, at the same time (src/stages.ts pickGroup) */
@@ -468,6 +485,10 @@ export function verify(
   const reviews: AwaitingReview[] = [];
   for (const layer of config.layers) {
     const wanted = opts.layer ? layer.name === opts.layer : opts.fresh || pending.includes(layer.name);
+    if (!wanted && !failed && summary.layers[layer.name]?.status === "not_built") {
+      outcomes.push({ name: layer.name, status: "not_built", runs: [] });
+      continue;
+    }
     if (!wanted || failed) {
       const reused = !failed && !opts.layer && !pending.includes(layer.name);
       outcomes.push({ name: layer.name, status: "skipped", runs: [], ...(reused ? { reused: true } : {}) });
@@ -515,7 +536,9 @@ export function verify(
   if (!failed) {
     const left = pendingLayers(p, id).pending;
     const ok = left.length === 0;
-    return { ok, layers: outcomes, summary: ok ? "all quality layers pass" : `layers still to run: ${left.join(", ")}` };
+    const off = notBuiltLayers(change).map((x) => x.layer);
+    const passed = off.length ? `every other quality layer passes (not built: ${off.join(", ")})` : "all quality layers pass";
+    return { ok, layers: outcomes, summary: ok ? passed : `layers still to run: ${left.join(", ")}` };
   }
 
   const bad = failedRun(summary.layers[failed.name]?.runs ?? []);
@@ -530,22 +553,37 @@ export function verify(
     ? `Quality layer "${failed.name}" failed: \`${bad.command}\`${bad.timedOut ? " timed out" : ` exited ${bad.exit}`}.\n\n${cases}${bad.tail}`
     : `Quality layer "${failed.name}" did not complete.`;
   const fix = addFixTask(p, id, config, failed, problem);
-  return { ok: false, layers: outcomes, failed: failed.name, ...fix };
+  if (fix.notBuilt && !opts.layer) {
+    // The run carries on without it (ADR-0014): the layers after it run now.
+    const rest = verify(p, id, opts);
+    return { ...rest, notBuilt: [failed.name, ...(rest.notBuilt ?? [])], summary: `${fix.summary}; ${rest.summary}` };
+  }
+  const { notBuilt, ...outcome } = fix;
+  return { ok: false, layers: outcomes, failed: failed.name, ...outcome, ...(notBuilt ? { notBuilt: [failed.name] } : {}) };
 }
 
 export interface FixOutcome {
   fixTask?: string;
-  escalated?: boolean;
+  /** the layer is not built: its fix rounds are exhausted, or the Agent-run cap was reached */
+  notBuilt?: boolean;
   summary: string;
 }
 
-/** A failing layer becomes a fix task in the normal loop, within the approved fix-round budget. */
+/**
+ * A failing layer becomes a fix task in the normal loop, within the approved fix-round budget. Past the budget, or at
+ * the cap on Agent runs, the layer is not built: nobody is asked (ADR-0014), the run goes on and the pull request is a
+ * draft that lists it.
+ */
 export function addFixTask(p: Paths, id: string, config: QualityConfig, layer: Layer, problem: string): FixOutcome {
   const tf = loadTasks(p, id);
   const rounds = tf.tasks.filter((t) => t.origin === "quality" && t.layer === layer.name).length;
-  if (rounds >= config.maxFixRounds) {
-    transition(p, id, "escalated", { reason: `quality layer "${layer.name}" still failing after ${rounds} fix round(s)` });
-    return { escalated: true, summary: `layer "${layer.name}" failed; fix rounds exhausted (${rounds}/${config.maxFixRounds}): escalated` };
+  const cap = agentRunStatus(p, tf.change);
+  if (rounds >= config.maxFixRounds || cap.reached) {
+    const reason = cap.reached && rounds < config.maxFixRounds ? `${capReason(cap)}; no fix task starts` : `still failing after ${rounds} fix round(s) (max_fix_rounds ${config.maxFixRounds})`;
+    const summary = readSummary(tf.change);
+    const prev = summary.layers[layer.name];
+    recordLayerResult(tf.change, summary, layer.name, { ...(prev ?? { runs: [] }), status: "not_built", at: now(), head: headCommit(p.project), not_built_reason: `${reason}: ${problem.split("\n")[0] ?? ""}`.slice(0, 500) });
+    return { notBuilt: true, summary: `layer "${layer.name}" failed and is not built: ${reason}; the run carries on and the pull request lists it` };
   }
   const n = tf.tasks.filter((t) => t.origin === "quality").length + 1;
   const taskId = `Q${String(n).padStart(2, "0")}`;
@@ -575,7 +613,8 @@ export interface LayerReviewResult {
   /** layers still to pass after this verdict (pass) */
   pending?: string[];
   fixTask?: string;
-  escalated?: boolean;
+  /** the layer is not built (fix rounds exhausted or the Agent-run cap); the group's other verdicts are still recorded */
+  notBuilt?: boolean;
   summary: string;
 }
 

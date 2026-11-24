@@ -616,37 +616,5 @@ function restorePlanned(approvedText: string, currentText: string | null): strin
 }
 
 // ---------------------------------------------------------------- not built (D10)
-
-/**
- * D10: work that needs more than the user granted (the permission envelope, src/grants.ts) is marked not built, never
- * done: the task and every open task that depends on it. The rest carries on; the pull request lists them.
- */
-export function markNotBuilt(p: Paths, id: string, taskId: string, reason: string, cause = "envelope"): string[] {
-  if (!reason.trim()) throw new OpError('say why it is not built (--reason "...")');
-  const tf = loadTasks(p, id);
-  const i = tf.tasks.findIndex((t) => t.id === taskId);
-  if (i < 0) throw new OpError(`change "${id}" has no task ${taskId}`);
-  const t = tf.tasks[i] as Task;
-  if (statusOf(t) === "done") throw new OpError(`task ${taskId} is done; reopen it first if what it built lies outside the grants`);
-  if (statusOf(t) === "not_built") throw new OpError(`task ${taskId} is already not built`);
-  const marked: string[] = [];
-  const mark = (j: number, why: string, c: string) => {
-    setField(tf, j, "status", "not_built");
-    setField(tf, j, "not_built", tf.doc.createNode({ cause: c, reason: why, at: now() }));
-    setField(tf, j, "notes", why);
-    marked.push((tf.tasks[j] as Task).id);
-  };
-  mark(i, reason.trim(), cause);
-  for (let grew = true; grew; ) {
-    grew = false;
-    tf.tasks.forEach((x, j) => {
-      if (marked.includes(x.id) || ["done", "not_built"].includes(statusOf(x))) return;
-      const dep = list(x.depends_on).find((y) => marked.includes(y));
-      if (!dep) return;
-      mark(j, `depends on ${dep}, which is not built`, "dependency");
-      grew = true;
-    });
-  }
-  saveTasksDoc(tf);
-  return marked;
-}
+// Marking a task not built is `markNotBuilt` in src/run.ts (one function for envelope, environment, Triage and the cap);
+// `aidw not-built` checks its input and calls it.

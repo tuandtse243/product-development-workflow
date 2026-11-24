@@ -414,7 +414,7 @@ describe("work outside the permission envelope (D10)", () => {
     expect(task("T03").status).toBe("pending");
     expect(cli("next").out).toMatch(/implement T03/);
     setStatus({ T03: "done" });
-    expect(cli("next").out).toMatch(/complete: all 1 task/);
+    expect(cli("next").out).toMatch(/complete: 1 task\(s\) done, not built: T01, T02/);
     expect(cli("not-built", "T03", "--reason", "x").code).toBe(1);
     expect(cli("approval", "check", ID).code).toBe(0);
   });

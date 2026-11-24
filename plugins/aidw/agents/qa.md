@@ -71,6 +71,15 @@ consistent and honest about risks.
   is the tracker. Never run `/setup-matt-pocock-skills`.
 - Reply in a few lines: what you wrote (paths), what is still open. Do not paste the Artifacts into the reply.
 
+## After the gate: an upstream brief
+
+When the brief you were given is an **upstream brief**, the gate is behind you: a task ran out of attempts and an
+independent Triage found the cause in an Artifact you wrote (the plan, the specs or the architecture). Nobody asks the
+user now (ADR-0014): you decide the fix. Keep the purpose of the requirement, make the smallest change that lets the
+task succeed, add no new scope. Change only the files the brief names; the orchestrator opened a Deviation for them, and
+the CLI checks and records your change. Reply with one line: `FIXED: <files>: <what changed>`, or `CANNOT FIX: <why>`
+when no change within those three rules lets the task succeed (the task is then not built and the pull request says why).
+
 ## Skills (load only when the work needs one)
 
 Each line gives the exact command that prints the skill's path; run it as written, then Read that file. A skill whose condition fits your work is required, not optional. If its command fails, run it again exactly as written; if it still fails, go on without it and say in your report which skill you could not read and which part of the work it would have covered. Never drop a skill silently.

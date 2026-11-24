@@ -55,11 +55,11 @@ export function buildRoute(id: string, tasks: number, aidw = "aidw", pluginDir?:
   };
 }
 
-/** Tasks of the Change that are not done (an unreadable task list counts as none). */
+/** Tasks of the Change that are not done or not built (an unreadable task list counts as none). */
 export function tasksLeft(p: Paths, id: string): number {
   try {
     const { tasks } = parseTasks(readFileSync(join(loadChange(p, id).dir, "tasks.yaml"), "utf8"));
-    return tasks.filter((t) => t.status !== "done").length;
+    return tasks.filter((t) => t.status !== "done" && t.status !== "not_built").length;
   } catch {
     return 0;
   }

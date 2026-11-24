@@ -28,6 +28,7 @@ import { defaultTaskRole, implementerOf, loadRole, loadRoster } from "./roles.js
 import { touchesUi } from "./skills.js";
 import { parseTasks, type Task } from "./tasks.js";
 import { openDeviation } from "./deviationrecord.js";
+import { agentRunStatus, capReason } from "./agentruns.js";
 
 /** One Agent run asks at most this many questions (ADR-0013): the worst-case cost is known beforehand. */
 export const MAX_CONSULTATIONS_PER_RUN = 2;
@@ -278,6 +279,9 @@ export function requestConsultation(p: Paths, id: string, requestFile: string, p
     if (!contractAuthors(p, id, task, pluginRoot).includes(req.to)) {
       throw new OpError(`${req.to} wrote no contract that ${req.task} builds against: in the build ${req.from} asks only the authors of the Artifacts its brief reads (${contractAuthors(p, id, task, pluginRoot).join(", ") || "none"})`);
     }
+    // D10: at the cap on Agent runs no new Agent is spawned to answer: the asker builds what was approved and reports the gap
+    const cap = agentRunStatus(p, change);
+    if (cap.reached) throw new OpError(`no Consultation at the cap: ${capReason(cap)}. ${req.from} builds what the approved package states and reports the gap; nobody answers in its place`);
     run = `task:${req.task}#${taskRun(task)}`;
     const brief = join(briefsDir(p, id), `${req.task}.implement.md`);
     if (existsSync(brief)) origin = relative(p.aidw, brief).split(sep).join("/");

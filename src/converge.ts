@@ -22,6 +22,7 @@ import { isFresh, loadQuality, pendingLayers, type TestCase } from "./quality.js
 import type { Paths } from "./project.js";
 import { loadTasks, saveTasksDoc, SKIPPED_LINE, testFiles } from "./run.js";
 import type { Task } from "./tasks.js";
+import { agentRunStatus, capReason } from "./agentruns.js";
 
 export type ScenarioStatus = "pass" | "fail" | "skipped" | "missing";
 
@@ -38,7 +39,8 @@ export interface ConvergeRecord {
   ok: boolean;
   scenarios: Record<string, ScenarioResult>;
   added: string[];
-  escalated: string[];
+  /** scenarios the run does not build (ADR-0014): their task was not built, a converge task did not close the gap, or the Agent-run cap was reached */
+  not_built: { scenario: string; reason: string }[];
 }
 
 const convergeFile = (change: Change) => join(change.dir, "evidence", "converge.json");
@@ -96,8 +98,8 @@ export interface ConvergeResult extends ConvergeRecord {
 
 /**
  * Runs converge in state converging. Gaps become converge tasks and the change goes back to
- * executing; a scenario that is still a gap after its converge task is done escalates instead
- * of looping.
+ * executing. A gap is not built instead (ADR-0014: nobody is asked after the gate, the pull request lists it) when the
+ * task that carries the scenario was not built, when its converge task did not close it, or at the Agent-run cap.
  */
 export function converge(p: Paths, id: string): ConvergeResult {
   const change = loadChange(p, id);
@@ -112,17 +114,24 @@ export function converge(p: Paths, id: string): ConvergeResult {
     .map(([s]) => s);
   const tf = loadTasks(p, id);
   const config = loadQuality(p, change);
-  const record: ConvergeRecord = { at: now(), head: headCommit(p.project), mode, ok: gaps.length === 0, scenarios, added: [], escalated: [] };
+  const record: ConvergeRecord = { at: now(), head: headCommit(p.project), mode, ok: gaps.length === 0, scenarios, added: [], not_built: [] };
 
-  const coveredBefore = (s: string) => tf.tasks.some((t: Task) => t.origin === "converge" && Array.isArray(t.scenarios) && t.scenarios.includes(s));
-  record.escalated = gaps.filter(coveredBefore);
-  const fresh = gaps.filter((s) => !coveredBefore(s));
-
-  if (record.escalated.length) {
-    writeRecord(change, record);
-    transition(p, id, "escalated", { reason: `converge: still no passing test after a converge task for ${record.escalated.join(", ")}` });
-    return { ...record, summary: `escalated: ${record.escalated.length} scenario(s) still without a passing test after a converge task` };
+  const st = (t: Task) => String(t.status ?? "pending");
+  const scenariosOf = (t: Task): string[] => (Array.isArray(t.scenarios) ? t.scenarios.map(String) : []);
+  const notBuiltTask = (s: string) => tf.tasks.find((t) => st(t) === "not_built" && scenariosOf(t).includes(s));
+  const coveredBefore = (s: string) => tf.tasks.find((t: Task) => t.origin === "converge" && st(t) === "done" && scenariosOf(t).includes(s));
+  const cap = agentRunStatus(p, change);
+  let fresh: string[] = [];
+  for (const s of gaps) {
+    const off = notBuiltTask(s);
+    const tried = coveredBefore(s);
+    if (off) record.not_built.push({ scenario: s, reason: `its task ${off.id} was not built: ${String((off.not_built as { reason?: unknown } | undefined)?.reason ?? "")}`.slice(0, 500) });
+    else if (tried) record.not_built.push({ scenario: s, reason: `still no passing test after converge task ${tried.id}` });
+    else if (cap.reached) record.not_built.push({ scenario: s, reason: `${capReason(cap)}; no converge task starts` });
+    else fresh.push(s);
   }
+  fresh = fresh.sort();
+  record.ok = fresh.length === 0;
 
   if (fresh.length) {
     // The fix runs the approved test layers (not code), so its verify proves the scenario test passes.
@@ -170,6 +179,10 @@ export function converge(p: Paths, id: string): ConvergeResult {
   }
 
   writeRecord(change, record);
+  if (record.not_built.length) {
+    const passing = Object.keys(scenarios).length - record.not_built.length;
+    return { ...record, summary: `${passing} scenario(s) have a passing test (${mode} evidence); not built: ${record.not_built.map((x) => x.scenario).join(", ")} (the pull request lists them)` };
+  }
   return { ...record, summary: `all ${Object.keys(scenarios).length} scenario(s) have a passing test (${mode} evidence)` };
 }
 

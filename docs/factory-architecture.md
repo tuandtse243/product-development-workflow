@@ -211,7 +211,7 @@ Six kinds of decision, and who makes each:
 | Whether a stage applies (UI? data change?) | the declared Role, from a fixed set of answers | shown at the next Approval Gate |
 | Which Role owns a task, and the shape of each Slice | `technical-planner` | approved at the plan gate, then frozen |
 | Whether work is done | CLI: tests, evidence, an independent reviewer's verdict | an Agent's own report is never evidence |
-| Where to go after repeated failure | `software-architect` with the triage skill | upstream causes go to the user |
+| Where to go after repeated failure | `software-architect` with the triage skill | the CLI routes the cause; upstream causes go to the author Role (ADR-0014), never to the user |
 
 A Decision Point in a Workflow:
 
@@ -418,13 +418,55 @@ depends on it to `not_built` with `cause: dependency`. `next` skips them and rep
 
 **Triage.** When a task runs out of attempts, a fresh `software-architect` Agent classifies the cause from the
 evidence. It writes only its answer (`.aidw/run/triage-<task>.md`): the gate keeps the approved package and the
-project files closed to it. One triage per task; `implementation` grants one further attempt, then the task escalates:
+project files closed to it. After the Approval Gate nothing waits for the user (ADR-0014, plan D9); the CLI routes the
+cause (`src/run.ts`, `recordTriage`):
 
 | Cause | What the CLI does |
 |---|---|
-| `implementation` | grants a further bounded attempt with the diagnosis in the brief |
-| `environment` | escalates with the exact thing the user must fix |
-| `plan`, `spec`, `architecture` | stops; the user sees the diagnosis and decides, because the approved package would change |
+| `implementation` | grants one further attempt with the diagnosis in the brief; if that fails too, the task is not built |
+| `plan`, `spec`, `architecture` | an **upstream round**: the owner in `artifacts.yaml` of the Artifact in question (`tasks` -> `technical-planner`, `delta-specs` -> `business-analyst`, `architecture` -> `software-architect`) fixes it under three rules (keep the purpose, smallest change, no new scope) through a Deviation, then the task reruns with a fresh attempt budget and is triaged again if it fails. At most `MAX_UPSTREAM_ROUNDS` (3) rounds per task; then not built |
+| `environment` | not built at once: nothing inside the factory fixes a key or the network; the reason names the user's fix |
+
+Triage may name the approved files at fault with a line `FILES: a, b`; their owner in artifacts.yaml is then the author
+(`api-designer` for openapi.yaml, `database-architect` for the data model), else the Artifact of the cause (for a spec
+cause on a task without specs: every delta spec of the Change). The round lives on the task (`upstream: { cause, role,
+round, phase, deviation?, files? }`, a runtime field). `aidw next` returns `upstream` (step `open`); `aidw brief <T>
+--for upstream` opens the round's Deviation (T9, `openDeviationFor`, with a reason that points at the diagnosis and the
+upstream brief), writes the author's one brief and prints one `SPAWN` (one `author` run). While that Deviation is open
+`aidw next` returns `upstream` step `author`, never the Deviation's own spawn. After `aidw deviation close`, `aidw
+upstream <T>` reruns the task; it is refused while the round's Deviation is open or when it was abandoned. `--cannot
+"<why>"` abandons an open one and marks the task not built; `aidw triage <T> --unclear` marks it not built when Triage
+gives no clear cause twice.
+
+**Not built.** A task the run cannot build gets status `not_built` and `not_built: { cause, reason, at }` (the shape of the Deviation record); every task that depends on
+it, directly or not, and has not started or failed, gets the same with the cause `dependency`. Independent tasks carry on;
+`aidw next` reports `complete` with the `not_built` list once nothing else is open, and `verifying` accepts not-built
+tasks. The same holds after the tasks: a quality layer out of fix rounds is recorded `not_built` in the quality summary
+and verify goes on with the next layers; an integration out of fix rounds is closed as not built; a converge gap whose
+task was not built, or whose converge task did not close it, is listed under `not_built` and the converge passes.
+A task not built after it ran on the main checkout leaves nothing behind for the next task's commit: what it left
+uncommitted outside `.aidw/` is put back as HEAD has it, files it created are removed (paths already dirty when it first
+started, `start_dirty`, are kept), and the list is recorded in `not_built.discarded`. Nothing is lost: first the
+tracked edits are saved as `.aidw/run/evidence/notbuilt-<T>.patch` (`git apply` restores them) and the created files are
+copied under `.aidw/run/evidence/notbuilt-<T>/`; `not_built.saved` and the reason name both. No Agent writes `change.yaml` (the
+state and the approval record with `agent_run_cap`): the gate denies it, by Write, Edit or the shell.
+Everything not built ends up in the pull request (a draft), never in a question.
+
+**Agent runs and the cap** (plan D10, `src/agentruns.ts`). The CLI counts an Agent run when it prints its `SPAWN` line:
+implementer (per attempt), reviewer (per attempt), triage, author (per round), integration and merge reviewer (per
+conflict), consulted Role and resumed asker (per Consultation), layer reviewer (per round and commit). Each run has a key,
+so a brief printed again is not counted twice; only runs after approval count. The record is
+`evidence/agent-runs.json` (no Agent may write it; a record that cannot be read counts as the cap reached). The reviewer
+key is the task's run counter, so a rerun after an upstream round or a retry is a new run. The cap is `grants.agent_runs`,
+else 3 times the planned Agent runs (`plannedAgentRuns`: planned tasks x 2 for implementer and reviewer, plus one per
+review layer; the plan review is before the gate), fixed in the approval record (`approval.agent_run_cap`) at `aidw
+approve` so a Deviation that adds tasks does not move it. At the cap: `aidw task start` refuses a new attempt and `aidw
+consult` a new Consultation; `settleChange` (run by `aidw next` and the commands that change state, never by the
+read-only views) abandons an open upstream Deviation and marks every pending or failed task not built with the cap as
+the reason, while running work (running, review, conflict) finishes; verify, integration and converge add no fix task
+and mark what fails not built; review layers still run their reviewers. The Change then goes on to verify, deploy and
+delivery: a clean end, ready for a draft pull request. The same settling marks tasks that can never run not built, and a
+check the machine refused twice (`blocked_runs`, checkpoint or resolve) is an environment cause.
 
 ## 8. Workflows
 
@@ -552,8 +594,8 @@ These follow from the decisions but were not put to the user as questions. Each 
 5. **A no-gate Workflow and the gate hook.** The hook denies writes outside `.aidw/` before approval. For
    `bugfix` the CLI records an automatic approval once the plan passes the Q40 boundary check, so the hash and
    drift protection still apply to what runs.
-6. **Triage budget.** One triage per task; an `implementation` cause grants one further attempt, then the
-   task escalates.
+6. **Triage budget.** One triage per failure; an `implementation` cause grants one further attempt, then the
+   task is not built; an upstream cause grants up to three rounds by the author Role (ADR-0014).
 
 ## 13. Migration
 

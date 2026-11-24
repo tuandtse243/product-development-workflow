@@ -38,7 +38,7 @@ deploy:
     - vercel curl / --deployment "$AIDW_DEPLOY_URL" --yes -- --fail --silent --show-error --output /dev/null
     - vercel curl /api/health --deployment "$AIDW_DEPLOY_URL" --yes -- --fail --silent --show-error --output /dev/null
 permissions: [vercel-preview]   # tier-2 resource keys; each must also be named in ## Permissions
-max_fix_rounds: 3               # fix tasks per failing layer before escalating (default 3)
+max_fix_rounds: 3               # fix tasks per failing layer; then the layer is not built (default 3)
 parallel:                       # waves of tasks with disjoint touches, each in its own git worktree (S8)
   max: 3                        # 1 = sequential
   setup: []                     # commands run in each new worktree, e.g. ["pnpm install --offline --frozen-lockfile"]

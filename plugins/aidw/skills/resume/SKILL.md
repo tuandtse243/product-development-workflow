@@ -21,7 +21,8 @@ All progress lives in `.aidw/` and git, so resuming needs no memory of the previ
 2. By state:
    - `paused`: `aidw transition <id> resume` (returns to the state it paused from).
    - `escalated`: show the user why (the escalation reason and the task's evidence) and ask what to do. When the task
-     has a triage diagnosis whose cause is `plan`, `spec` or `architecture`, ask with a Decision Page: `aidw page triage <T>
+     has a triage diagnosis whose cause is `plan`, `spec` or `architecture` (a Change escalated by an aidw from before
+     ADR-0014, which no longer escalates them), ask with a Decision Page: `aidw page triage <T>
      --change <id> --lang <en|vi>` prints its link; give the user the link and two lines, and when they paste the answer
      check it with `aidw page answers triage-<t>` (the task id in lowercase) before acting on it:
      - the cause is resolved (they fixed it, or gave the missing decision): `aidw transition <id> executing`,

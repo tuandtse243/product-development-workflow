@@ -6,7 +6,10 @@ import { typeProblem } from "./commit.js";
 /**
  * pending -> running -> review -> done        (implement, checkpoint, independent review)
  *              ^   \-> failed --/             (checkpoint or review asked for fixes; retried)
- *              \------ escalated              (attempts exhausted; needs the user)
+ *              \------ escalated              (set by hand or by an older aidw; the run itself does not escalate tasks)
+ * failed (out of attempts) -> Triage -> failed (one more attempt, or an upstream round, then a rerun)
+ *                                   \-> not_built (environment; or after MAX_UPSTREAM_ROUNDS; or at the Agent-run cap),
+ *                                       with `not_built: { cause, reason, at }`, and so is every task that depends on it (ADR-0014)
  * review -> conflict -> review -> done           (a wave task whose merge conflicts: integration resolves it, T7)
  *              \-> pending (sequential)      (the resolution failed: dropped, reruns on the latest code)
  * any open task -> not_built                  (D10: its work lies outside what the user granted; never done)
@@ -35,8 +38,14 @@ export const RUNTIME_FIELDS = [
   "conflict",
   // ADR-0013: the Agent-run counter, raised on every new attempt and never reset; the Consultation budget counts per run
   "runs",
-  // D10: why a task is not built: { cause, reason, at }
+  // ADR-0014: why a task was not built (with status not_built): { cause, reason, at }
   "not_built",
+  // T10: the upstream round of a task after Triage: { cause, role, round, phase, at, deviation?, files? }
+  "upstream",
+  // T10: checks of the task the machine refused in a row; the second makes it not built (environment)
+  "blocked_runs",
+  // T10: paths already uncommitted when the task first started on the main checkout (kept if it is not built)
+  "start_dirty",
 ] as const;
 
 export const DEFAULT_MAX_ATTEMPTS = 3;

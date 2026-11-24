@@ -34,12 +34,14 @@ import { envelopeBrief } from "./grants.js";
 import { loadArtifacts } from "./artifacts.js";
 import { BRIEF_READS } from "./briefreads.js";
 export { BRIEF_READS } from "./briefreads.js";
-import { openDeviation } from "./deviationrecord.js";
+import { loadDeviations, openDeviation } from "./deviationrecord.js";
+import { abandonDeviation, authorsOf, openDeviationFor } from "./deviation.js";
 import { loadConsultations, MAX_CONSULTATIONS_PER_RUN, pendingConsultation, taskAnswers, taskConsultable, taskRequestPath } from "./consult.js";
 import { packageEvidence, packageProblems, type PackageEvidence } from "./depsafety.js";
 import { secretsInChanges, secretsMessage, secretsProblem, stagedSecrets, type SecretFinding } from "./secrets.js";
 import { tamperEvidence, tamperProblems, type TamperEvidence } from "./tamper.js";
 import { DEFAULT_MAX_ATTEMPTS, parseTasks, planSha, validateTasksText, type Task } from "./tasks.js";
+import { agentRunStatus, capReason } from "./agentruns.js";
 
 const now = () => new Date().toISOString();
 const list = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : []);
@@ -108,6 +110,221 @@ export function requireExecuting(p: Paths, change: Change): void {
   }
 }
 
+// ---------------------------------------------------------------- not built (ADR-0014)
+
+/** D9: rounds in which the author Role fixes its Artifact for one task before the task is marked not built. */
+export const MAX_UPSTREAM_ROUNDS = 3;
+export const UPSTREAM_CAUSES = ["plan", "spec", "architecture"] as const;
+export type UpstreamCause = (typeof UPSTREAM_CAUSES)[number];
+
+/** The Artifact of each upstream cause (artifacts.yaml): its owner is the Role that fixes it. */
+const CAUSE_ARTIFACT: Record<UpstreamCause, string> = { plan: "tasks", spec: "delta-specs", architecture: "architecture" };
+const DEFAULT_AUTHOR: Record<UpstreamCause, string> = { plan: "technical-planner", spec: "business-analyst", architecture: "software-architect" };
+const DEFAULT_PATH: Record<UpstreamCause, string> = { plan: "changes/<id>/tasks.yaml", spec: "changes/<id>/specs/<capability>/spec.md", architecture: "architecture/overview.md" };
+
+/** One upstream round of a task: the author Role of the cause fixes its Artifact (`open`), then the task reruns (`fixed`). */
+export interface Upstream {
+  cause: UpstreamCause;
+  role: string;
+  round: number;
+  phase: "open" | "fixed";
+  /** the Deviation this round opened for the author (T9), once `aidw brief --for upstream` opened it */
+  deviation?: string;
+  /** the files Triage named (an architecture or contract cause), else the Artifact of the cause */
+  files?: string[];
+}
+
+function upstreamOf(t: Task): Upstream | null {
+  const u = t.upstream;
+  if (!isRecord(u) || !(UPSTREAM_CAUSES as readonly unknown[]).includes(u.cause) || typeof u.role !== "string" || !Number.isInteger(u.round)) return null;
+  return {
+    cause: u.cause as UpstreamCause,
+    role: u.role,
+    round: Number(u.round),
+    phase: u.phase === "open" ? "open" : "fixed",
+    ...(typeof u.deviation === "string" ? { deviation: u.deviation } : {}),
+    ...(Array.isArray(u.files) ? { files: u.files.map(String) } : {}),
+  };
+}
+
+function registryOf(pluginHome: string | undefined): ReturnType<typeof loadArtifacts> {
+  if (!pluginHome) return null;
+  try {
+    return loadArtifacts(pluginHome);
+  } catch {
+    return null; // `aidw roster` reports a broken registry
+  }
+}
+
+/** The Role that wrote the Artifact a cause points at: its owner in artifacts.yaml. */
+export function authorOf(cause: UpstreamCause, pluginHome?: string): string {
+  const owner = registryOf(pluginHome)?.[CAUSE_ARTIFACT[cause]]?.owner;
+  return typeof owner === "string" && owner ? owner : DEFAULT_AUTHOR[cause];
+}
+
+/** Project-relative files of the Artifact the author changes for this task (the delta specs of the task's capabilities for a spec cause). */
+function upstreamFiles(p: Paths, id: string, t: Task, cause: UpstreamCause, pluginHome?: string): string[] {
+  const e = registryOf(pluginHome)?.[CAUSE_ARTIFACT[cause]];
+  const path = (typeof e?.path === "string" ? e.path : DEFAULT_PATH[cause]).replace(/<id>/g, id);
+  const file = (x: string) => rel(p, join(p.aidw, x));
+  if (!path.includes("<capability>")) return [file(path)];
+  const caps = [...new Set(list(t.specs).map((s) => s.split("/").slice(0, -1).join("/")).filter(Boolean))];
+  if (caps.length) return caps.map((c) => file(path.replace(/<capability>/g, c)));
+  // a task with no specs: every delta spec of the Change (a Deviation names files, not folders)
+  const root = join(p.aidw, path.slice(0, path.indexOf("<capability>")));
+  const all = walkFiles(root).filter((f) => f.endsWith(`${sep}spec.md`) || f.endsWith("/spec.md")).map((f) => rel(p, f)).sort();
+  return all.length ? all : [file(path.replace(/<capability>/g, "<capability>"))];
+}
+
+/** Files Triage named in its answer (`FILES: a, b`), as project-relative paths inside .aidw/. */
+function triageFiles(p: Paths, raw: string[]): string[] {
+  return raw
+    .map((f) => f.trim().replace(/^`|`$/g, ""))
+    .filter(Boolean)
+    .map((f) => (f.startsWith(".aidw/") ? f : `.aidw/${f.replace(/^\/+/, "")}`))
+    .filter((f) => !f.split("/").includes("..") && existsSync(join(p.project, f)));
+}
+
+const OPEN_WORK = new Set(["done", "not_built", "running", "review", "conflict"]);
+
+/** Why a task was not built: the same shape as the Deviation record's (T9). */
+export type NotBuiltCause = "triage" | "environment" | "dependency" | "envelope" | "cap" | "fix-rounds";
+
+/**
+ * Marks a task not built (`not_built: { cause, reason, at }`), and every task that depends on it, directly or not, that
+ * has not started or failed, with the cause `dependency` (D9). Work that is done or still running is left alone. A
+ * failed wave task's worktree is removed: nothing of it is merged. Saves tasks.yaml and returns the ids marked.
+ */
+export function markNotBuilt(p: Paths, tf: TaskFile, taskId: string, reason: string, cause: NotBuiltCause): string[] {
+  const marked: string[] = [];
+  const queue: [string, string, NotBuiltCause][] = [[taskId, reason, cause]];
+  while (queue.length) {
+    const [tid, why, kind] = queue.shift() as [string, string, NotBuiltCause];
+    const i = tf.tasks.findIndex((t) => t.id === tid);
+    const t = tf.tasks[i];
+    if (!t || marked.includes(tid) || (tid !== taskId && OPEN_WORK.has(statusOf(t)))) continue;
+    if (typeof t.worktree === "string" && t.worktree) removeWorktree(p, t.worktree, typeof t.branch === "string" ? t.branch : undefined);
+    // its half-done work on the main checkout must not ride along in the next task's commit
+    const gone = tid === taskId ? discardWork(p, tf, t) : { files: [] as string[] };
+    const text = gone.files.length
+      ? `${why}; its uncommitted work on the main checkout was discarded: ${gone.files.slice(0, 20).join(", ")}${gone.files.length > 20 ? ` and ${gone.files.length - 20} more` : ""} (saved in ${(gone.saved ?? []).join(" and ")})`
+      : gone.skipped
+        ? `${why}; ${gone.skipped}`
+        : why;
+    for (const f of ["worktree", "branch"]) setField(tf, i, f, null);
+    setField(tf, i, "status", "not_built");
+    setField(tf, i, "not_built", { cause: kind, reason: text.slice(0, 1000), at: now(), ...(gone.files.length ? { discarded: gone.files, saved: gone.saved ?? [] } : {}) });
+    setField(tf, i, "notes", text.slice(0, 500));
+    marked.push(tid);
+    for (const d of tf.tasks) if (list(d.depends_on).includes(tid)) queue.push([d.id, `depends on ${tid}, which is not built`, "dependency"]);
+  }
+  if (marked.length) saveTasks(tf);
+  return marked;
+}
+
+/** Lists of paths from a NUL-separated git output. */
+const zList = (out: string): string[] => out.split("\0").filter(Boolean);
+
+/** Paths that differ from HEAD on the main checkout (changed, deleted, staged or untracked), outside .aidw/. */
+function dirtyPaths(p: Paths): string[] {
+  const changed = git(p.project, ["diff", "--name-only", "-z", "HEAD", "--", ".", ":(exclude).aidw"]);
+  const untracked = git(p.project, ["ls-files", "--others", "--exclude-standard", "-z", "--", ".", ":(exclude).aidw"]);
+  return [...new Set([...zList(changed.out), ...zList(untracked.out)])].sort();
+}
+
+/**
+ * A task that ran on the main checkout and is now not built (ADR-0014): what it left uncommitted is put back as HEAD
+ * has it (tracked files) or removed (files it created), so the next task's commit does not carry it. Paths that were
+ * already dirty when the task first started (`start_dirty`) and everything under .aidw/ are left alone. Nothing is
+ * touched while another task works on the main checkout.
+ */
+function discardWork(p: Paths, tf: TaskFile, t: Task): { files: string[]; skipped?: string; saved?: string[] } {
+  if ((typeof t.worktree === "string" && t.worktree) || typeof t.base !== "string" || !isGitRepo(p.project)) return { files: [] };
+  if (!["running", "failed", "review", "conflict"].includes(statusOf(t))) return { files: [] };
+  const busy = tf.tasks.find((x) => x.id !== t.id && ["running", "review"].includes(statusOf(x)) && !(typeof x.worktree === "string" && x.worktree));
+  if (busy) return { files: [], skipped: `its uncommitted work was left on the main checkout because ${busy.id} works there too` };
+  const keep = new Set(list(t.start_dirty));
+  const files = dirtyPaths(p).filter((f) => !keep.has(f));
+  if (!files.length) return { files };
+  // nothing is destroyed for good: the tracked edits as a patch, the files the task created as copies
+  const inHead = (f: string) => git(p.project, ["cat-file", "-e", `HEAD:${f}`]).ok;
+  const evidence = join(p.run, "evidence");
+  const patchFile = join(evidence, `notbuilt-${t.id}.patch`);
+  const copyDir = join(evidence, `notbuilt-${t.id}`);
+  const tracked = files.filter(inHead);
+  const created = files.filter((f) => !inHead(f));
+  const saved: string[] = [];
+  mkdirSync(evidence, { recursive: true });
+  if (tracked.length) {
+    const d = git(p.project, ["diff", "--binary", "HEAD", "--", ...tracked]);
+    if (!d.ok) return { files: [], skipped: `its uncommitted work was left on the main checkout: saving it failed (${d.err})` };
+    writeFileSync(patchFile, `${d.out}\n`);
+    saved.push(rel(p, patchFile));
+  }
+  rmSync(copyDir, { recursive: true, force: true });
+  for (const f of created) {
+    const from = join(p.project, f);
+    if (!existsSync(from) || !statSync(from).isFile()) continue;
+    mkdirSync(dirname(join(copyDir, f)), { recursive: true });
+    copyFileSync(from, join(copyDir, f));
+  }
+  if (created.length && existsSync(copyDir)) saved.push(`${rel(p, copyDir)}/`);
+  for (const f of files) {
+    if (git(p.project, ["cat-file", "-e", `HEAD:${f}`]).ok) git(p.project, ["checkout", "HEAD", "--", f]);
+    else {
+      git(p.project, ["rm", "-q", "--cached", "--ignore-unmatch", "--", f]);
+      rmSync(join(p.project, f), { force: true });
+    }
+  }
+  return { files, saved };
+}
+
+/**
+ * What the run decides by itself before it picks the next step (ADR-0014); `aidw next` and the commands that change
+ * state run it, the read-only views (the SessionStart hook, a NEXT line) do not:
+ *   - a task whose extra attempt after an `implementation` Triage failed too is not built;
+ *   - at the cap on Agent runs no new task starts: an open upstream Deviation is abandoned (its author was not spawned
+ *     or is cut short), then every task that has not started or that failed is not built; running work
+ *     (running, review, conflict) finishes;
+ *   - tasks that can never run (no runnable task and nothing in flight) are not built, so the run never stops on them.
+ * Nothing is written while a Deviation of tasks.yaml is open: its author is editing that file.
+ */
+export function settleChange(p: Paths, id: string): void {
+  let tf = loadTasks(p, id);
+  if (stateOf(tf.change) !== "executing") return;
+  const cap = agentRunStatus(p, tf.change);
+  let dev = openDeviation(tf.change);
+  if (cap.reached && dev?.task) {
+    const u = upstreamOf(tf.tasks.find((t) => t.id === dev?.task) ?? { id: "" });
+    if (u?.phase === "open" && u.deviation === dev.id) {
+      abandonDeviation(p, id);
+      tf = loadTasks(p, id);
+      dev = openDeviation(tf.change);
+    }
+  }
+  if (dev && dev.files.includes(rel(p, tf.file))) return;
+  for (const t of [...tf.tasks]) {
+    const now = tf.tasks.find((x) => x.id === t.id) as Task;
+    if (statusOf(now) === "failed" && attemptsOf(now) >= maxAttemptsOf(now) && isRecord(now.triage) && now.triage.cause === "implementation") {
+      markNotBuilt(p, tf, now.id, `triage: implementation; the further attempt failed too: ${String(now.notes ?? "")}`, "triage");
+    }
+  }
+  if (cap.reached) {
+    for (const t of [...tf.tasks]) {
+      const now = tf.tasks.find((x) => x.id === t.id) as Task;
+      if (statusOf(now) === "pending" || statusOf(now) === "failed") markNotBuilt(p, tf, now.id, capReason(cap), "cap");
+    }
+  }
+  // the last fallback: nothing runnable and nothing in flight, yet tasks are open (a dependency that is escalated or blocked)
+  const n = taskAction(p, tf, new Set());
+  if (n.action === "escalate" && !n.task) {
+    for (const t of [...tf.tasks]) {
+      const now = tf.tasks.find((x) => x.id === t.id) as Task;
+      if (!OPEN_WORK.has(statusOf(now)) && statusOf(now) !== "escalated") markNotBuilt(p, tf, now.id, `can never run: ${n.reason}`, "dependency");
+    }
+  }
+}
+
 // ---------------------------------------------------------------- next
 
 export type TaskAction =
@@ -118,8 +335,10 @@ export type TaskAction =
   | { action: "resolve"; task: string; title: string; with: string[]; files: string[] }
   | { action: "review-merge"; task: string; title: string; with: string[] }
   | { action: "triage"; task: string; title: string; reason: string }
+  /** open: `aidw brief --for upstream` opens the round's Deviation and briefs the author; author: it is open, the author works */
+  | { action: "upstream"; step: "open" | "author"; task: string; title: string; cause: UpstreamCause; role: string; round: number; deviation?: string; brief?: string }
   | { action: "escalate"; task?: string; reason: string }
-  | { action: "complete"; done: number };
+  | { action: "complete"; done: number; not_built?: string[] };
 
 /**
  * A Consultation in flight (ADR-0013): `answer` spawns the consulted Role, `record` runs `aidw consult answer` (the
@@ -165,6 +384,7 @@ function besideAction(p: Paths, tf: TaskFile, waiting: Task[], rest: TaskAction)
     case "resolve":
     case "review-merge":
     case "triage":
+    case "upstream":
     case "integrate":
       return rest;
     case "implement": {
@@ -193,6 +413,12 @@ export function nextAction(p: Paths, id: string): NextAction {
   const rest = taskAction(p, tf, waitingIds);
   // ADR-0014: an open Deviation before anything new; work already in flight goes on beside it.
   const dev = openDeviation(tf.change);
+  const up = dev?.task ? tf.tasks.find((t) => t.id === dev.task) : undefined;
+  const upRound = up ? upstreamOf(up) : null;
+  if (dev && up && upRound?.phase === "open" && upRound.deviation === dev.id) {
+    // the Deviation of an upstream round: its author was spawned with the upstream brief, one brief for one Agent run
+    return { action: "upstream", step: "author", task: up.id, title: String(up.title ?? ""), cause: upRound.cause, role: upRound.role, round: upRound.round, deviation: dev.id, brief: join(p.run, "briefs", id, `${up.id}.upstream.md`) };
+  }
   if (dev) {
     // nothing beside a Deviation of the task list: the CLI would record progress in the file its author is editing
     const tasksOpen = dev.files.includes(rel(p, join(tf.change.dir, "tasks.yaml")));
@@ -242,8 +468,10 @@ function taskAction(p: Paths, tf: TaskFile, waiting: ReadonlySet<string>): TaskA
   for (const t of tf.tasks) {
     if (statusOf(t) !== "failed") continue;
     if (attemptsOf(t) >= maxAttemptsOf(t)) {
-      // A task that ran out of attempts is diagnosed once by an independent Agent before the user hears about it.
+      // A task that ran out of attempts is diagnosed by an independent Agent; the CLI routes its cause (ADR-0014).
       if (t.triage === undefined) return { action: "triage", task: t.id, title: title(t), reason: `task ${t.id} used ${attemptsOf(t)} of ${maxAttemptsOf(t)} attempts: ${String(t.notes ?? "")}` };
+      const u = upstreamOf(t);
+      if (u?.phase === "open") return { action: "upstream", step: "open", task: t.id, title: title(t), cause: u.cause, role: u.role, round: u.round };
       return { action: "escalate", task: t.id, reason: `task ${t.id} failed ${attemptsOf(t)} of ${maxAttemptsOf(t)} attempts: ${String(t.notes ?? "")}` };
     }
     return { action: "implement", task: t.id, title: title(t), reason: "retry" };
@@ -259,7 +487,10 @@ function taskAction(p: Paths, tf: TaskFile, waiting: ReadonlySet<string>): TaskA
   if (wave.length >= 2) return { action: "wave", tasks: wave.map((t) => ({ task: t.id, title: title(t) })) };
   if (wave[0]) return { action: "implement", task: wave[0].id, title: title(wave[0]), reason: "new" };
   const open = tf.tasks.filter((t) => statusOf(t) !== "done" && statusOf(t) !== "not_built");
-  if (open.length === 0) return { action: "complete", done: tf.tasks.filter((t) => statusOf(t) === "done").length };
+  if (open.length === 0) {
+    const notBuilt = tf.tasks.filter((t) => statusOf(t) === "not_built").map((t) => t.id);
+    return { action: "complete", done: tf.tasks.length - notBuilt.length, ...(notBuilt.length ? { not_built: notBuilt } : {}) };
+  }
   const stuck = open.map((t) => `${t.id} (${statusOf(t)}${list(t.depends_on).length ? `, needs ${list(t.depends_on).join(", ")}` : ""})`);
   return { action: "escalate", reason: `no runnable task: ${stuck.join("; ")}` };
 }
@@ -296,12 +527,11 @@ export function startTask(p: Paths, id: string, taskId: string, opts: { worktree
   const resumed = status === "running";
   const attempt = resumed ? Math.max(attemptsOf(t), 1) : attemptsOf(t) + 1;
   const max = maxAttemptsOf(t);
-  if (attempt > max) {
-    setField(tf, i, "status", "escalated");
-    setField(tf, i, "notes", `attempts exhausted (${max}); last: ${String(t.notes ?? "unknown")}`);
-    saveTasks(tf);
-    throw new OpError(`task ${taskId} used all ${max} attempts; it is now escalated`);
-  }
+  // Triage decides what follows a task out of attempts (ADR-0014); starting it again is not the way on.
+  if (attempt > max) throw new OpError(`task ${taskId} used all ${max} attempts: run \`aidw next\` (Triage comes next)`);
+  // D10: at the cap on Agent runs no new attempt starts; one already running is resumed and finishes.
+  const cap = agentRunStatus(p, tf.change);
+  if (!resumed && cap.reached) throw new OpError(`task ${taskId} does not start: ${capReason(cap)}; run \`aidw next\``);
   // The base commit is fixed at the first attempt, so the reviewer sees the whole task's diff.
   const base = typeof t.base === "string" ? t.base : status === "pending" ? headCommit(p.project) : null;
   let worktree = typeof t.worktree === "string" ? t.worktree : undefined;
@@ -326,6 +556,8 @@ export function startTask(p: Paths, id: string, taskId: string, opts: { worktree
     setField(tf, i, "worktree", wt.dir);
     setField(tf, i, "branch", wt.branch);
   }
+  // what was already uncommitted when the task first started on the main checkout is not its work (see discardWork)
+  if (!worktree && status === "pending" && t.start_dirty === undefined && isGitRepo(p.project) && base) setField(tf, i, "start_dirty", dirtyPaths(p).slice(0, 2000));
   setField(tf, i, "status", "running");
   setField(tf, i, "attempts", attempt);
   // ADR-0013: a Consultation budget belongs to one Agent run; a new attempt (a granted retry too) is a new run.
@@ -347,6 +579,9 @@ export function retryTask(p: Paths, id: string, taskId: string): { task: string 
   }
   setField(tf, i, "status", "failed");
   setField(tf, i, "attempts", 0);
+  // a fresh budget: a later failure is triaged again; an open upstream round is closed (the rounds already used still count)
+  setField(tf, i, "triage", null);
+  if (upstreamOf(t)?.phase === "open") setField(tf, i, "upstream", { ...(t.upstream as Record<string, unknown>), phase: "fixed" });
   setField(tf, i, "notes", `retry granted by the user; before: ${String(t.notes ?? "")}`.slice(0, 500));
   saveTasks(tf);
   return { task: taskId };
@@ -557,8 +792,13 @@ export const ENVIRONMENT_FAILURE =
 
 export interface CheckpointResult extends CheckpointRecord {
   task: string;
-  /** `blocked`: a check failed for a reason outside the code; the task stays running and no attempt is used */
-  status: "review" | "failed" | "blocked";
+  /**
+   * `blocked`: a check failed for a reason outside the code; the task stays running and no attempt is used.
+   * `not_built`: the machine refused a check of this task a second time (ADR-0014: an environment cause)
+   */
+  status: "review" | "failed" | "blocked" | "not_built";
+  /** not_built: the task and its dependants */
+  not_built?: string[];
   /** why the checkpoint failed, one line each (empty when it passed) */
   problems: string[];
   evidence: string;
@@ -697,15 +937,46 @@ export function checkpoint(
   const refused = failed && !failed.timedOut ? ENVIRONMENT_FAILURE.exec(failed.tail)?.[0] : undefined;
   if (refused) {
     const why = `environment: \`${failed!.command}\` was refused by the machine (${refused}), not by the code`;
-    setField(tf, i, "notes", `checkpoint blocked: ${why}`);
-    saveTasks(tf);
-    return { ...record, task: taskId, status: "blocked", problems: [why, ...problems.filter((x) => !x.startsWith("verify failed"))], evidence: rel(p, join(tf.change.dir, evidenceRel(taskId))) };
+    const evidence = rel(p, join(tf.change.dir, evidenceRel(taskId)));
+    const marked = noteBlocked(p, tf, i, why);
+    if (marked) return { ...record, task: taskId, status: "not_built", not_built: marked, problems: [why], evidence };
+    return { ...record, task: taskId, status: "blocked", problems: [why, ...problems.filter((x) => !x.startsWith("verify failed"))], evidence };
   }
+  setField(tf, i, "blocked_runs", null);
   setField(tf, i, "status", ok ? "review" : "failed");
   setField(tf, i, "evidence", evidenceRel(taskId));
   setField(tf, i, "notes", ok ? null : `checkpoint: ${problems.join("; ")}`);
   saveTasks(tf);
   return { ...record, task: taskId, status: ok ? "review" : "failed", problems, evidence: rel(p, join(tf.change.dir, evidenceRel(taskId))) };
+}
+
+/**
+ * A check of the task the machine refused (the sandbox, a proxy, a scanner): the first time the task stays as it is and
+ * the lead runs the check once more outside the sandbox; the second time it is an environment cause (ADR-0014): the
+ * task and its dependants are not built and the rest carries on. Returns the ids marked, or null on the first refusal.
+ */
+function noteBlocked(p: Paths, tf: TaskFile, i: number, why: string): string[] | null {
+  const t = tf.tasks[i] as Task;
+  const n = (Number.isInteger(t.blocked_runs) ? Number(t.blocked_runs) : 0) + 1;
+  if (n < 2) {
+    setField(tf, i, "blocked_runs", n);
+    setField(tf, i, "notes", `blocked: ${why}`);
+    saveTasks(tf);
+    return null;
+  }
+  setField(tf, i, "blocked_runs", n);
+  if (isRecord(t.conflict)) {
+    setField(tf, i, "conflict", null);
+    closeConflict(tf.change, t.id, "dropped", `${why}; refused twice, not built`);
+  }
+  saveTasks(tf);
+  return markNotBuilt(p, tf, t.id, `the machine refused a check twice: ${why}`, "environment");
+}
+
+/** `aidw resolve` was blocked by the machine (src/conflict.ts): counted like a blocked checkpoint. */
+export function recordBlocked(p: Paths, id: string, taskId: string, why: string): string[] | null {
+  const tf = loadTasks(p, id);
+  return noteBlocked(p, tf, indexOf(tf, taskId), why);
 }
 
 // ---------------------------------------------------------------- review
@@ -727,7 +998,7 @@ export interface ReviewResult {
 function dropToSequential(p: Paths, tf: TaskFile, i: number, why: string): void {
   const t = tf.tasks[i] as Task;
   removeWorktree(p, typeof t.worktree === "string" ? t.worktree : undefined, typeof t.branch === "string" ? t.branch : undefined);
-  for (const f of ["worktree", "branch", "base", "started_at", "conflict"]) setField(tf, i, f, null);
+  for (const f of ["worktree", "branch", "base", "started_at", "conflict", "start_dirty"]) setField(tf, i, f, null);
   setField(tf, i, "status", "pending");
   setField(tf, i, "attempts", 0);
   setField(tf, i, "sequential", true);
@@ -782,11 +1053,12 @@ export function recordReview(
   }
 
   if (verdict === "fix") {
+    // Out of attempts it waits for Triage like a failed checkpoint (`aidw next`), never for the user (ADR-0014).
     const exhausted = attemptsOf(t) >= maxAttemptsOf(t);
-    setField(tf, i, "status", exhausted ? "escalated" : "failed");
+    setField(tf, i, "status", "failed");
     setField(tf, i, "notes", `review requested fixes (see ${evidenceRel(taskId)})${exhausted ? "; attempts exhausted" : ""}`);
     saveTasks(tf);
-    return { task: taskId, verdict, status: exhausted ? "escalated" : "failed", commit: null };
+    return { task: taskId, verdict, status: "failed", commit: null };
   }
 
   const msg = taskCommitMessage(t, id, `.aidw/changes/${id}/${evidenceRel(taskId)}`);
@@ -849,7 +1121,7 @@ export function recordReview(
   return { task: taskId, verdict, status: "done", commit: headCommit(p.project) };
 }
 
-const RESET_FIELDS = ["worktree", "branch", "base", "started_at", "finished_at", "merged_at", "plan_sha", "evidence", "sequential", "conflict"];
+const RESET_FIELDS = ["worktree", "branch", "base", "started_at", "finished_at", "merged_at", "plan_sha", "evidence", "sequential", "conflict", "upstream", "not_built", "start_dirty"];
 
 function resetTask(tf: TaskFile, i: number, note: string): void {
   for (const f of RESET_FIELDS) setField(tf, i, f, null);
@@ -975,7 +1247,16 @@ export function integrateChange(p: Paths, id: string, opts: { runner?: CommandRu
   requireExecuting(p, tf.change);
   const text = readText(qualityFile(tf.change));
   const quality = text === null ? null : parseQuality(text, "quality.yaml").config;
-  return integrate(p, id, { loadTasks, save: (x) => saveTasks(x as TaskFile), runner: opts.runner ?? shellRunner, quality, ...(opts.timeoutMs ? { timeoutMs: opts.timeoutMs } : {}) });
+  const r = integrate(p, id, { loadTasks, save: (x) => saveTasks(x as TaskFile), runner: opts.runner ?? shellRunner, quality, ...(opts.timeoutMs ? { timeoutMs: opts.timeoutMs } : {}) });
+  if (r.notBuilt) {
+    // the integration is given up on: a fix task still waiting goes with it
+    const after = loadTasks(p, id);
+    const cap = agentRunStatus(p, after.change).reached;
+    for (const t of after.tasks.filter((x) => x.origin === "integration" && statusOf(x) === "pending")) {
+      markNotBuilt(p, loadTasks(p, id), t.id, `the integration of ${r.tasks.join(", ")} is not built: ${r.summary}`, cap ? "cap" : "fix-rounds");
+    }
+  }
+  return r;
 }
 
 // ---------------------------------------------------------------- brief
@@ -1146,6 +1427,10 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
     if (triaged && isRecord(t.triage) && t.triage.cause === "implementation") {
       previous.push("- The attempts ran out and an independent architect diagnosed the cause as the implementation. Its diagnosis (follow it; this is your last attempt):", "", triaged.diagnosis.split("\n").map((l) => `  ${l}`).join("\n"));
     }
+    const up = upstreamOf(t);
+    if (up?.phase === "fixed" && t.triage === undefined) {
+      previous.push(`- The attempts ran out and Triage found the cause in the ${up.cause}; the ${up.role} changed it (upstream round ${up.round} of ${MAX_UPSTREAM_ROUNDS}). Read this task again in the plan and the specs: what it asks may have changed.`);
+    }
     body = [
       "You are the implementer of exactly this task, in a fresh context. Work from this brief and the files it points to.",
       "",
@@ -1260,10 +1545,13 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
 
 /**
  * Why a task ran out of attempts (docs/factory-architecture.md, section 7). One independent Agent (the Software Architect
- * with its triage skill) reads the evidence and names the cause; the CLI decides what follows:
- *   implementation  one further attempt, with the diagnosis in the brief; if that fails too the task escalates
- *   environment     escalates with the exact thing the user must fix
- *   plan, spec, architecture  escalates: the approved package would change, so the user decides
+ * with its triage skill) reads the evidence and names the cause; the CLI decides what follows, and after the Approval
+ * Gate nothing waits for the user (ADR-0014, plan D9):
+ *   implementation  one further attempt, with the diagnosis in the brief; if that fails too the task is not built
+ *   environment     not built at once (a key, the network: nothing inside the factory fixes it); the reason names the fix
+ *   plan, spec, architecture  an upstream round: the Role that wrote that Artifact fixes it (through a Deviation, T9) and
+ *                   the task runs again, at most MAX_UPSTREAM_ROUNDS times; then the task is not built
+ * A task marked not built takes every task that depends on it along; independent tasks carry on.
  */
 export const TRIAGE_CAUSES = ["implementation", "environment", "plan", "spec", "architecture"] as const;
 export type TriageCause = (typeof TRIAGE_CAUSES)[number];
@@ -1271,11 +1559,16 @@ export type TriageCause = (typeof TRIAGE_CAUSES)[number];
 const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 export const triageFile = (p: Paths, taskId: string) => join(p.run, `triage-${taskId}.md`);
 
-/** `CAUSE: <cause>` on the first line, then the diagnosis. Null when the first line is not one. */
-export function parseTriage(text: string): { cause: TriageCause; diagnosis: string } | null {
+/**
+ * `CAUSE: <cause>` on the first line, then the diagnosis. Null when the first line is not one. A line `FILES: a, b` in
+ * the diagnosis names the approved files at fault (an architecture or contract cause): their owner fixes them.
+ */
+export function parseTriage(text: string): { cause: TriageCause; diagnosis: string; files?: string[] } | null {
   const m = /^\s*CAUSE:\s*([a-z]+)\s*\n?([\s\S]*)$/.exec(text);
   if (!m || !(TRIAGE_CAUSES as readonly string[]).includes(m[1] as string)) return null;
-  return { cause: m[1] as TriageCause, diagnosis: (m[2] ?? "").trim() };
+  const diagnosis = (m[2] ?? "").trim();
+  const f = /^FILES:\s*(.+)$/m.exec(diagnosis);
+  return { cause: m[1] as TriageCause, diagnosis, ...(f ? { files: (f[1] as string).split(",").map((x) => x.trim()).filter(Boolean) } : {}) };
 }
 
 function readTriage(p: Paths, taskId: string): { cause: TriageCause; diagnosis: string } | null {
@@ -1287,8 +1580,8 @@ function readTriage(p: Paths, taskId: string): { cause: TriageCause; diagnosis: 
 export function buildTriageBrief(p: Paths, id: string, taskId: string): { path: string; text: string } {
   const tf = loadTasks(p, id);
   const t = tf.tasks[indexOf(tf, taskId)] as Task;
+  if (t.triage !== undefined) throw new OpError(`task ${taskId} was already triaged: one triage per failure`);
   if (statusOf(t) !== "failed" || attemptsOf(t) < maxAttemptsOf(t)) throw new OpError(`task ${taskId} is "${statusOf(t)}" with ${attemptsOf(t)} of ${maxAttemptsOf(t)} attempts: triage is for a failed task that ran out of attempts`);
-  if (t.triage !== undefined) throw new OpError(`task ${taskId} was already triaged: one triage per task`);
   rmSync(triageFile(p, taskId), { force: true }); // task ids repeat across changes: an old diagnosis must not be read as this one
   const ev = readEvidence(tf.change, t);
   const reqs = requirementsAfterChange(p, id);
@@ -1352,7 +1645,7 @@ export function buildTriageBrief(p: Paths, id: string, taskId: string): { path: 
     "",
     "## Answer",
     "",
-    `**Write the answer to \`${out}\` with the Write tool** (the only file you may write): the first line is exactly \`CAUSE: <one of implementation, environment, plan, spec, architecture>\`, then the diagnosis: the evidence that shows it (file, command, error), and what must change. For \`implementation\` say what to do differently; for \`environment\` the exact fix for the user; for \`plan\`, \`spec\` or \`architecture\` what the user must decide. Reply with only the first line.`,
+    `**Write the answer to \`${out}\` with the Write tool** (the only file you may write): the first line is exactly \`CAUSE: <one of implementation, environment, plan, spec, architecture>\`, then the diagnosis: the evidence that shows it (file, command, error), and what must change. For \`implementation\` say what to do differently; for \`environment\` the exact fix for the user; for \`plan\`, \`spec\` or \`architecture\` what the Role that wrote it must change. Reply with only the first line.`,
     "",
   ].join("\n");
   const dir = join(p.run, "briefs", id);
@@ -1365,30 +1658,199 @@ export function buildTriageBrief(p: Paths, id: string, taskId: string): { path: 
 export interface TriageResult {
   task: string;
   cause: TriageCause;
-  /** retry: one further attempt was granted; escalate: the task stopped for the user */
-  outcome: "retry" | "escalate";
+  /** retry: one further attempt; upstream: the author Role fixes its Artifact, then the task reruns; not_built: it stops here */
+  outcome: "retry" | "upstream" | "not_built";
   diagnosis: string;
+  /** upstream: the author Role and the round (1..MAX_UPSTREAM_ROUNDS) */
+  role?: string;
+  round?: number;
+  /** not_built: the task and its dependants */
+  not_built?: string[];
+  /** `--unclear`: the triage Agent gave no clear cause twice */
+  unclear?: boolean;
 }
 
-/** Records the triage Agent's answer and applies the rule of its cause. One triage per task. */
-export function recordTriage(p: Paths, id: string, taskId: string, text: string): TriageResult {
+/** Records the triage Agent's answer and applies the rule of its cause (ADR-0014). One triage per failure. */
+export function recordTriage(p: Paths, id: string, taskId: string, text: string, opts: { pluginHome?: string; unclear?: boolean } = {}): TriageResult {
   const tf = loadTasks(p, id);
   requireExecuting(p, tf.change);
   const i = indexOf(tf, taskId);
   const t = tf.tasks[i] as Task;
+  if (t.triage !== undefined) throw new OpError(`task ${taskId} was already triaged: one triage per failure`);
   if (statusOf(t) !== "failed" || attemptsOf(t) < maxAttemptsOf(t)) throw new OpError(`task ${taskId} is "${statusOf(t)}" with ${attemptsOf(t)} of ${maxAttemptsOf(t)} attempts: triage is for a failed task that ran out of attempts`);
-  if (t.triage !== undefined) throw new OpError(`task ${taskId} was already triaged: one triage per task`);
+  if (opts.unclear) {
+    // the triage Agent gave no clear cause twice: nobody else guesses one (ADR-0014)
+    setField(tf, i, "triage", { cause: "unclear", at: now() });
+    saveTasks(tf);
+    const marked = markNotBuilt(p, tf, taskId, `triage gave no clear cause; the task's last note: ${String(t.notes ?? "")}`, "triage");
+    return { task: taskId, cause: "environment", outcome: "not_built", diagnosis: "no clear cause", not_built: marked, unclear: true };
+  }
   const parsed = parseTriage(text);
-  if (!parsed) throw new OpError(`the triage answer must start with "CAUSE: ${TRIAGE_CAUSES.join("|")}"; spawn the triage Agent once more`);
+  if (!parsed) throw new OpError(`the triage answer must start with "CAUSE: ${TRIAGE_CAUSES.join("|")}"; spawn the triage Agent once more, and if it is still unclear run \`aidw triage ${taskId} --unclear\``);
   const { cause, diagnosis } = parsed;
   const gist = diagnosis.split("\n").find((l) => l.trim()) ?? "";
+  const full = `(full diagnosis: .aidw/run/triage-${taskId}.md)`;
   setField(tf, i, "triage", { cause, at: now() });
   if (cause === "implementation") {
     setField(tf, i, "notes", `triage: implementation, one more attempt: ${gist}`.slice(0, 500));
-  } else {
-    setField(tf, i, "status", "escalated");
-    setField(tf, i, "notes", `triage: ${cause}. ${gist} (full diagnosis: .aidw/run/triage-${taskId}.md)`.slice(0, 500));
+    saveTasks(tf);
+    return { task: taskId, cause, outcome: "retry", diagnosis };
   }
+  if (cause === "environment") {
+    saveTasks(tf);
+    const marked = markNotBuilt(p, tf, taskId, `triage: environment. ${gist} ${full}`, "environment");
+    return { task: taskId, cause, outcome: "not_built", diagnosis, not_built: marked };
+  }
+  const done = upstreamOf(t)?.round ?? 0;
+  // the files Triage named decide the author (artifacts.yaml: api-designer for the API contract, database-architect for
+  // the data model...); without any, the Artifact of the cause and its owner
+  const named = triageFiles(p, parsed.files ?? []);
+  const fromAidw = (f: string) => relative(p.aidw, join(p.project, f)).split(sep).join("/");
+  const owner = named.length && opts.pluginHome ? authorsOf(opts.pluginHome, id, fromAidw(named[0] as string))[0] : undefined;
+  const role = owner ?? authorOf(cause, opts.pluginHome);
+  const files = owner && opts.pluginHome ? named.filter((f) => authorsOf(opts.pluginHome as string, id, fromAidw(f)).includes(owner)) : undefined;
+  if (done >= MAX_UPSTREAM_ROUNDS) {
+    saveTasks(tf);
+    const marked = markNotBuilt(p, tf, taskId, `triage: ${cause} after ${MAX_UPSTREAM_ROUNDS} upstream rounds by ${role}. ${gist} ${full}`, "triage");
+    return { task: taskId, cause, outcome: "not_built", diagnosis, role, not_built: marked };
+  }
+  const round = done + 1;
+  setField(tf, i, "upstream", { cause, role, round, phase: "open", at: now(), ...(files?.length ? { files } : {}) });
+  setField(tf, i, "notes", `triage: ${cause}, upstream round ${round} of ${MAX_UPSTREAM_ROUNDS}: ${role} fixes its Artifact. ${gist} ${full}`.slice(0, 500));
   saveTasks(tf);
-  return { task: taskId, cause, outcome: cause === "implementation" ? "retry" : "escalate", diagnosis };
+  return { task: taskId, cause, outcome: "upstream", diagnosis, role, round };
+}
+
+export interface UpstreamBrief {
+  path: string;
+  text: string;
+  role: string;
+  cause: UpstreamCause;
+  round: number;
+  files: string[];
+  /** the Deviation this round opened for the author (T9): its brief carries the rules and what the CLI checks */
+  deviation: string;
+  deviationBrief: string;
+}
+
+/**
+ * The author Role's one brief for an upstream round: it opens the round's Deviation (T9) for the files at fault, with a
+ * reason that points at the diagnosis and at this brief, and writes the brief: the diagnosis, the files, the Deviation
+ * brief to read, how to answer. Printing it again reuses the open Deviation.
+ */
+export function buildUpstreamBrief(p: Paths, id: string, taskId: string, opts: { pluginHome?: string } = {}): UpstreamBrief {
+  const tf = loadTasks(p, id);
+  const i = indexOf(tf, taskId);
+  const t = tf.tasks[i] as Task;
+  const u = upstreamOf(t);
+  if (statusOf(t) !== "failed" || u?.phase !== "open") throw new OpError(`task ${taskId} has no open upstream round: an upstream brief follows a Triage whose cause is plan, spec or architecture`);
+  const path = join(p.run, "briefs", id, `${taskId}.upstream.md`);
+  const triage = `.aidw/run/triage-${taskId}.md`;
+  const diagnosis = readText(triageFile(p, taskId))?.trim() ?? `(the diagnosis file is gone; the task's note: ${String(t.notes ?? "")})`;
+  const gist = diagnosis.split("\n").find((l) => l.trim() && !l.startsWith("FILES:")) ?? "";
+  let did = u.deviation;
+  let files: string[];
+  let deviationBrief: string;
+  const mine = did ? loadDeviations(tf.change).find((d) => d.id === did) : undefined;
+  if (mine && mine.status === "open") {
+    files = mine.files;
+    deviationBrief = join(p.run, "briefs", id, `${mine.id}.deviation.md`);
+  } else {
+    files = u.files?.length ? u.files : upstreamFiles(p, id, t, u.cause, opts.pluginHome);
+    const reason = `Triage of task ${taskId} found the cause in the ${u.cause} (upstream round ${u.round} of ${MAX_UPSTREAM_ROUNDS}): ${gist} The full diagnosis is ${triage}; the ${u.role}'s brief is ${rel(p, path)}.`;
+    const opened = openDeviationFor(p, id, { role: u.role, files, reason: reason.slice(0, 1000), task: taskId, pluginRoot: opts.pluginHome ?? "" });
+    did = opened.deviation.id;
+    files = opened.deviation.files;
+    deviationBrief = opened.brief;
+    const fresh = loadTasks(p, id);
+    const j = indexOf(fresh, taskId);
+    setField(fresh, j, "upstream", { ...((fresh.tasks[j] as Task).upstream as Record<string, unknown>), deviation: did });
+    saveTasks(fresh);
+  }
+  const text = [
+    `# Upstream brief: ${taskId} - ${String(t.title ?? "")}`,
+    "",
+    `Change \`${id}\` · Triage cause **${u.cause}** · round ${u.round} of ${MAX_UPSTREAM_ROUNDS} · you are the ${u.role}, the Role that wrote it.`,
+    "",
+    `Task ${taskId} ran out of attempts, and an independent Triage found that the cause is in the ${u.cause}, not in the code. The Approval Gate is behind: nobody asks the user now (ADR-0014). You decide the fix, the task then runs again. After ${MAX_UPSTREAM_ROUNDS} rounds it is not built, together with the tasks that depend on it.`,
+    "",
+    "## Rules for the change",
+    "",
+    "1. Keep the purpose of the requirement: what the user approved this for must still hold.",
+    "2. Make the smallest change that lets the task succeed.",
+    "3. Add no new scope: no behaviour, screen or endpoint that no approved scenario asks for.",
+    "",
+    "## The diagnosis",
+    "",
+    "```markdown",
+    diagnosis,
+    "```",
+    "",
+    "## Your files",
+    "",
+    ...files.map((f) => `- \`${f}\``),
+    "",
+    `Deviation ${did} is open for exactly these files: the gate lets you change them and nothing else. Read its brief \`${deviationBrief}\` too: it says what the CLI checks when the lead closes it. If the fix needs another file, do not write it: say so in your reply.`,
+    "",
+    "## The task",
+    "",
+    `- Scenarios: ${list(t.scenarios).map((s) => `\`${s}\``).join(", ") || "(none)"}`,
+    `- Touches: ${list(t.touches).map((g) => `\`${g}\``).join(", ")}`,
+    `- Verify: ${list(t.verify).map((v) => `\`${v}\``).join(", ")}`,
+    `- Depends on: ${list(t.depends_on).join(", ") || "nothing"}`,
+    "",
+    "## Answer",
+    "",
+    "Reply with one line: `FIXED: <files you changed>: <what changed>`, or `CANNOT FIX: <why>` when no change within the three rules lets the task succeed (the task is then not built, and the pull request says why).",
+    "",
+  ].join("\n");
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, text);
+  return { path, text, role: u.role, cause: u.cause, round: u.round, files, deviation: did as string, deviationBrief };
+}
+
+export interface UpstreamResult {
+  task: string;
+  cause: UpstreamCause;
+  role: string;
+  round: number;
+  outcome: "rerun" | "not_built";
+  not_built?: string[];
+}
+
+/**
+ * Closes the author's round. After `aidw deviation close` recorded the change, the task runs again with a fresh attempt
+ * budget; with `cannot` (the author found no change within the rules) the round's Deviation is abandoned if it is still
+ * open and the task is not built.
+ */
+export function recordUpstream(p: Paths, id: string, taskId: string, opts: { cannot?: string } = {}): UpstreamResult {
+  let tf = loadTasks(p, id);
+  requireExecuting(p, tf.change);
+  const t = tf.tasks[indexOf(tf, taskId)] as Task;
+  const u = upstreamOf(t);
+  // closing the Deviation (T9) may already have reset the task for its rerun: pending is accepted too
+  if (!["failed", "pending"].includes(statusOf(t)) || u?.phase !== "open") throw new OpError(`task ${taskId} has no open upstream round`);
+  const base = { task: taskId, cause: u.cause, role: u.role, round: u.round };
+  const devs = loadDeviations(tf.change);
+  const mine = u.deviation ? devs.find((d) => d.id === u.deviation) : undefined;
+  if (opts.cannot !== undefined) {
+    if (mine?.status === "open") {
+      abandonDeviation(p, id);
+      tf = loadTasks(p, id);
+    }
+    const why = opts.cannot.trim() || "no reason given";
+    return { ...base, outcome: "not_built", not_built: markNotBuilt(p, tf, taskId, `triage: ${u.cause}; the ${u.role} could not fix it: ${why}`, "triage") };
+  }
+  const openForTask = devs.find((d) => d.status === "open" && d.task === taskId);
+  if (openForTask) throw new OpError(`Deviation ${openForTask.id} for ${taskId} is still open: \`aidw deviation close\` first (or \`aidw upstream ${taskId} --cannot "<why>"\` when the author cannot fix it)`);
+  if (!mine) throw new OpError(`the upstream round of ${taskId} has no Deviation yet: \`aidw brief ${taskId} --for upstream\` opens it and briefs the ${u.role}`);
+  if (mine.status !== "closed") throw new OpError(`Deviation ${mine.id} of this round was ${mine.status}: nothing was recorded, so ${taskId} does not rerun; \`aidw upstream ${taskId} --cannot "<why>"\``);
+  const i = indexOf(tf, taskId);
+  const cur = tf.tasks[i] as Task;
+  setField(tf, i, "upstream", { ...(cur.upstream as Record<string, unknown>), phase: "fixed", fixed_at: now() });
+  setField(tf, i, "triage", null);
+  if (statusOf(cur) === "failed") setField(tf, i, "attempts", 0);
+  setField(tf, i, "notes", `the ${u.role} fixed the ${u.cause} after Triage (upstream round ${u.round} of ${MAX_UPSTREAM_ROUNDS}, Deviation ${mine.id}); the task runs again on the changed Artifact`);
+  saveTasks(tf);
+  return { ...base, outcome: "rerun" };
 }

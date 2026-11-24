@@ -152,7 +152,7 @@ describe("execution loop (exit criterion [4])", () => {
     expect(ev.reviews[0].verdict).toBe("pass");
   });
 
-  it("feeds review notes back to the implementer and escalates when attempts run out", () => {
+  it("feeds review notes back to the implementer and sends a spec cause back to its author when attempts run out", () => {
     root = executingProject({ t2Verify: FAIL });
     write(root, "tests/booking.test.ts", SCENARIO_TEST);
     cli(root, "task", "start", "T01");
@@ -172,19 +172,18 @@ describe("execution loop (exit criterion [4])", () => {
     expect(task(root, "T02").notes).toMatch(/verify failed: `node -e .*` \(exit 3\)/);
     cli(root, "task", "start", "T02");
     cli(root, "checkpoint", "T02");
-    // out of attempts: one independent triage first (step 3); a spec cause stops for the user
+    // out of attempts: one independent triage first (step 3); a spec cause goes back to its author, never to the user (ADR-0014)
     expect(cli(root, "next", "--json").json()).toMatchObject({ action: "triage", task: "T02" });
     write(root, ".aidw/run/triage-T02.md", "CAUSE: spec\nThe THEN of the scenario cannot be observed.\n");
     expect(cli(root, "triage", "T02").code).toBe(0);
     const n = cli(root, "next", "--json").json();
-    expect(n).toMatchObject({ action: "escalate", task: "T02" });
-    expect(n.reason).toMatch(/triage: spec/);
-    expect(task(root, "T02").status).toBe("escalated");
-
-    // the orchestrator escalates the change; the user resolves it and grants a retry
+    expect(n).toMatchObject({ action: "upstream", task: "T02", cause: "spec", role: "business-analyst", round: 1 });
+    expect(task(root, "T02").status).toBe("failed");
     expect(cli(root, "transition", ID, "escalated", "--reason", "T02 keeps failing").code).toBe(0);
     expect(cli(root, "task", "retry", "T02").err).toMatch(/tasks run only in state executing/);
     expect(cli(root, "transition", ID, "executing").code).toBe(0);
+
+    // a retry the user grants by hand still gives a fresh attempt budget
     expect(cli(root, "task", "retry", "T01").err).toMatch(/only escalated or failed tasks can be retried/);
     expect(cli(root, "task", "retry", "T02").code).toBe(0);
     expect(cli(root, "next", "--json").json()).toMatchObject({ action: "implement", task: "T02", reason: "retry" });
@@ -511,14 +510,20 @@ describe("a check the machine refused", () => {
     cli(root, "review", "T01", "pass");
 
     expect(cli(root, "task", "start", "T02", "--json").json().attempt).toBe(1);
-    for (let i = 0; i < 2; i++) {
-      const r = cli(root, "checkpoint", "T02");
-      expect(r.code).toBe(1);
-      expect(r.out).toMatch(/BLOCKED \(environment\) T02 -> running, no attempt used/);
-      expect(r.out).toMatch(/refused by the machine \(ERR_PNPM_STORE_DIR_OPEN_OPERATION_LOCK\)/);
-      expect(r.out).toMatch(/outside the sandbox/);
-      expect(task(root, "T02")).toMatchObject({ status: "running", attempts: 1 }); // T02 allows 2: it would be escalated otherwise
-    }
+    const r = cli(root, "checkpoint", "T02");
+    expect(r.code).toBe(1);
+    expect(r.out).toMatch(/BLOCKED \(environment\) T02 -> running, no attempt used/);
+    expect(r.out).toMatch(/refused by the machine \(ERR_PNPM_STORE_DIR_OPEN_OPERATION_LOCK\)/);
+    expect(r.out).toMatch(/outside the sandbox/);
+    expect(task(root, "T02")).toMatchObject({ status: "running", attempts: 1, blocked_runs: 1 });
+
+    // refused a second time: an environment cause (ADR-0014): not built, the rest carries on, nobody is asked
+    const again = cli(root, "checkpoint", "T02");
+    expect(again.code).toBe(0);
+    expect(again.out).toMatch(/NOT BUILT \(environment\) T02/);
+    expect(again.out).not.toMatch(/escalate/);
+    expect(task(root, "T02")).toMatchObject({ status: "not_built", not_built: { cause: "environment", reason: expect.stringMatching(/refused a check twice[\s\S]*ERR_PNPM_STORE_DIR_OPEN_OPERATION_LOCK/) } });
+    expect(again.out).toMatch(/NEXT: complete: 1 task\(s\) done, not built: T02/);
   });
 
   it("still fails a task whose own check fails", () => {
