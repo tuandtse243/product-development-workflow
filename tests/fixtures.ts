@@ -48,6 +48,22 @@ export function write(root: string, rel: string, content: string): string {
   return file;
 }
 
+/**
+ * The scope round of the discovery interview (a \`product\` change records it word for word from the \`scope\` page).
+ * Part of ANALYSIS_MD because a change created on a greenfield project, with or without --workflow, is a product
+ * change that records scope_round: true. Tests of a change that owes no round strip it (scoperound.test.ts).
+ */
+export const SCOPE_ROUND = `
+## Appendix: discovery Q&A
+
+### Scope round
+
+vision Who it is for: clinics whose patients book by phone today
+scope Capabilities in scope: booking, rescheduling
+mvp The first cut: booking and rescheduling; cancelling comes with staff tools
+out Out of scope: payments
+`;
+
 export const ANALYSIS_MD = `# Analysis: Booking
 
 ## Summary
@@ -106,7 +122,7 @@ Vercel preview.
 ## Risks and assumptions
 
 Assumes one clinic, one timezone.
-`;
+${SCOPE_ROUND}`;
 
 export const TOKENS_YAML = `tokens:
   - name: accent

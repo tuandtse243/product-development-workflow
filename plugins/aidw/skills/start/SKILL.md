@@ -28,7 +28,7 @@ Input: `$ARGUMENTS` (an idea, a path to a PRD/JD, pasted client text, or "this c
 - Finding *facts* is your job: explore the repo or docs yourself (use an Explore subagent for wide searches).
   *Decisions* belong to the user: put them to the user and wait.
 - **Questions go on a Decision Page, not into the chat.** Read `$(aidw plugin-path library/decision-pages.md)` once, now. Every
-  round of questions below, every open decision of a drafting Agent, the design direction and both Approval Gates are
+  round of questions below, every open decision of a drafting Agent, the design direction and the Approval Gate are
   written as page data, rendered with `aidw page render <name>` and shown to the user as a link plus one or two lines; the
   text they paste back is checked with `aidw page answers <name>` before you record it. One simple question (a yes or
   no, a name) is still asked in the chat. Set the page's `lang` to the user's language.
@@ -50,7 +50,7 @@ already `awaiting_approval` or later, tell the user and stop: one change at a ti
    only propose another: a **bug report** in an existing codebase is a `bugfix` and a request to **review** the code ("audit", "check", "is it secure") is an `audit` (see "Bugfix" and "Audit" below). Say which one you
    propose and why, and wait for the user to confirm it.
    `aidw change new <id> --title "<title>" --input-type <idea|prd|upwork_jd|client_request|codebase> --workflow <product|feature|bugfix|audit>`
-   Always pass `--workflow`: it records the confirmed Workflow, and a `product` change gets its scope gate (step 2b) that way.
+   Always pass `--workflow`: it records the confirmed Workflow, and a `product` change gets the place for its scope round (step 2b) that way.
 3. `aidw transition <id> intake`
 4. Fill `.aidw/changes/<id>/intake.md`: paste the original request **verbatim** (or its path), record the
    client's explicit constraints, including any stack the client requires.
@@ -89,7 +89,8 @@ your suggested answer. The checked answer goes into the discovery appendix word 
 
 1. **The job (Product Manager).** `$(aidw plugin-path roles/product-manager/role.md)` and its `discovery-frame` skill:
    the size (`Size: small|normal` in the Summary, which the user confirms at the gate), the job to be done, today's
-   workaround, the measure of done, scope and what is out. A `Size: small` change stops here.
+   workaround, the measure of done, scope and what is out. A `product` change ends this stage with the scope round
+   (step 2b), then returns to stage 2 of step 2. A `Size: small` change stops here.
 2. **Rules and edges (Business Analyst).** `$(aidw plugin-path roles/business-analyst/role.md)` and its
    `rule-and-edge-elicitation` skill: for each behavior, the rules behind it, an example of each, and the edge and
    failure paths.
@@ -116,20 +117,27 @@ discovery page, or on a page of their own.
   and spawn **`aidw:ux-research`** with this prompt and nothing else:
   `Change <id>. The discovery interview is recorded in .aidw/changes/<id>/analysis.md. Write .aidw/changes/<id>/journeys.md as your Procedure says and reply with the user kinds, the stages no requirement covers, and what is assumed.`
 
-## 2b. Scope gate (`product` only)
+## 2b. Scope round (`product` only)
 
-A `product` change has a first approval before any requirement is written (`brief.md` exists in the change folder). Skip
-this step for `feature`, `bugfix` and `audit`. It stops for the user:
+A `product` change settles its scope in the discovery interview, before any requirement is written (ADR-0011). It is a
+round of questions, not a gate: nothing is approved or frozen here, and the user approves the whole package once, at
+step 9. Skip this step for `feature`, `bugfix` and `audit`.
 
-1. Spawn **`aidw:product-manager`** with this prompt and nothing else:
-   `Change <id>. The discovery interview is recorded in .aidw/changes/<id>/analysis.md. Write only the product brief, .aidw/changes/<id>/brief.md (vision, scope, MVP, out of scope), as your Procedure step 0 says, and reply with every decision still open.`
-2. Settle open decisions with the user, as in step 3. `aidw transition <id> awaiting_scope_approval` refuses a brief that is still a skeleton.
-3. Present the brief as a gate page (`layout: gate`, name `scope-gate`, one section each for vision, scope, MVP and what
-   is out; `change: <id>`). Tell the user the link and that `/aidw:approve` approves the scope. **Stop.** When they paste
-   the page's answer: every section agreed means they approve with `/aidw:approve`; a section marked for a change means
-   `aidw transition <id> analyzing`, revise the brief, and show the gate again.
-4. After the user approves the scope the change is back in `analyzing` (`aidw status` shows it). Continue with step 3.
-   The final approval at step 9 is refused until the scope is approved.
+1. Write one Decision Page named `scope` (`layout: questions`, `kind: scope`, `role: product-manager`) with exactly these
+   question ids, each with your recommendation from what the interview found: `vision` (open: who it is for and what
+   success looks like), `scope` (`multi` choice: the capabilities, one option each), `mvp` (open, with your suggested
+   answer: the smallest cut worth building first, and why) and `out` (open: what is deliberately not built now). None of
+   them is `optional`. `aidw page render scope` refuses the page
+   without one of them.
+2. Show the link and stop. When the user pastes the answer, `aidw page answers scope` checks it; record the printed lines
+   word for word under `### Scope round` in the discovery appendix of `analysis.md` (add the heading if it is
+   missing). A note that changes the scope is settled in the chat first. `aidw analyze` refuses a `product` package whose
+   scope round is missing or leaves one of the four questions unanswered.
+3. Continue with the rules and edges (step 2, stage 2), then step 3. The Product Manager drafts inside the recorded scope.
+
+A change created by an older aidw may still be in `awaiting_scope_approval` with a `brief.md`: aidw reads it as
+`analyzing` (discovery continues) and its brief stands in for the scope round. Continue with step 3; nothing waits for
+a scope approval any more.
 
 ## 3. Domain model and requirements, 4. Delta specs (two drafting Agents, in this order)
 

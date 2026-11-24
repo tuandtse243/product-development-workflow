@@ -93,10 +93,6 @@ analysis-discovery-qa:
   validate: aidw analyze
 
 # --- Product and analysis -------------------------------------------------------------------------------------
-product-brief:
-  path: changes/<id>/brief.md
-  owner: product-manager
-  validate: aidw analyze
 domain-model:
   path: domain/model.md
   owner: product-manager

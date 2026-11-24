@@ -7336,12 +7336,313 @@ var import_yaml16 = __toESM(require_dist(), 1);
 
 // src/page.ts
 var import_node_crypto = require("node:crypto");
-var import_node_path = require("node:path");
+var import_node_path2 = require("node:path");
 var import_yaml = __toESM(require_dist(), 1);
+
+// src/scope.ts
+var import_node_fs = require("node:fs");
+var import_node_path = require("node:path");
+
+// src/diag.ts
+var Diags = class {
+  items = [];
+  error(file, message, line) {
+    this.items.push({ level: "error", file, message, ...line ? { line } : {} });
+  }
+  warn(file, message, line) {
+    this.items.push({ level: "warning", file, message, ...line ? { line } : {} });
+  }
+  add(other) {
+    this.items.push(...other.items);
+  }
+  get errors() {
+    return this.items.filter((d) => d.level === "error");
+  }
+  get warnings() {
+    return this.items.filter((d) => d.level === "warning");
+  }
+  failed(strict = false) {
+    return this.errors.length > 0 || strict && this.warnings.length > 0;
+  }
+};
+var OpError = class extends Error {
+  constructor(message, diags) {
+    super(message);
+    this.diags = diags;
+  }
+};
+
+// src/spec/parse.ts
+var H1 = /^#(?!#)\s+(.*\S)\s*$/;
+var H2 = /^##(?!#)\s+(.*\S)\s*$/;
+var REQ = /^###(?!#)\s+Requirement:\s*(.*\S)\s*$/;
+var SCEN = /^####(?!#)\s+Scenario:\s*(.*\S)\s*$/;
+var WRONG_SCEN = /^(?:#{1,3}|#{5,})\s+Scenario:|^\s*[-*]\s+(?:\*\*)?Scenario\b/i;
+var STEP = /^\s*[-*]\s+\*\*(GIVEN|WHEN|THEN|AND)\*\*/i;
+var FENCE = /^\s*(```|~~~)/;
+var DELTA_SECTION = /^(ADDED|MODIFIED|REMOVED|RENAMED)(?:\s+Requirements?)?$/i;
+function normalizeKey(name) {
+  return name.trim().replace(/\s+/g, " ");
+}
+function toLines(text2) {
+  const out = [];
+  let inFence = false;
+  text2.replace(/\r\n?/g, "\n").split("\n").forEach((t, i) => {
+    const isFence = FENCE.test(t);
+    if (isFence) inFence = !inFence;
+    out.push({ text: t, no: i + 1, fenced: inFence || isFence });
+  });
+  return out;
+}
+function joinTrim(lines) {
+  return lines.map((l) => l.text).join("\n").replace(/\s+$/, "");
+}
+function isH2(l) {
+  return l.fenced ? null : l.text.match(H2);
+}
+function nextH2(lines, from) {
+  for (let i = from; i < lines.length; i++) {
+    const l = lines[i];
+    if (l && isH2(l)) return i;
+  }
+  return lines.length;
+}
+function parseRequirementBlocks(lines, start, end) {
+  const headers = [];
+  for (let i = start; i < end; i++) {
+    const l = lines[i];
+    if (l && !l.fenced && REQ.test(l.text)) headers.push(i);
+  }
+  const preamble = lines.slice(start, headers[0] ?? end);
+  const blocks = headers.map((h, idx) => {
+    const blockEnd = headers[idx + 1] ?? end;
+    return parseBlock(lines.slice(h, blockEnd));
+  });
+  return { blocks, preamble };
+}
+function parseBlock(block) {
+  const header2 = block[0];
+  const name = (header2.text.match(REQ)?.[1] ?? "").trim();
+  const issues = [];
+  const scenarios = [];
+  const descLines = [];
+  let current = null;
+  for (const l of block.slice(1)) {
+    if (!l.fenced) {
+      const sm = l.text.match(SCEN);
+      if (sm) {
+        current = { name: (sm[1] ?? "").trim(), line: l.no, hasTrigger: false, hasOutcome: false };
+        scenarios.push(current);
+        continue;
+      }
+      if (WRONG_SCEN.test(l.text)) {
+        issues.push({
+          level: "error",
+          line: l.no,
+          message: 'Scenario heading must be exactly "#### Scenario: <name>" (4 hashes)'
+        });
+      }
+      const step = l.text.match(STEP);
+      if (step && current) {
+        const kw = (step[1] ?? "").toUpperCase();
+        if (kw === "WHEN" || kw === "GIVEN") current.hasTrigger = true;
+        if (kw === "THEN") current.hasOutcome = true;
+      }
+    }
+    if (!current) descLines.push(l);
+  }
+  const raw = joinTrim(block);
+  const removedMeta = extractRemovedMeta(raw);
+  return {
+    name,
+    key: normalizeKey(name),
+    line: header2.no,
+    raw,
+    description: joinTrim(descLines).trim(),
+    scenarios,
+    issues,
+    ...removedMeta
+  };
+}
+function extractRemovedMeta(raw) {
+  const pick = (label) => {
+    const re = new RegExp(`(?:\\*\\*${label}:?\\*\\*|^${label})\\s*:?\\s*(.*\\S)`, "im");
+    return raw.match(re)?.[1]?.trim();
+  };
+  const reason = pick("Reason");
+  const migration = pick("Migration");
+  return { ...reason ? { reason } : {}, ...migration ? { migration } : {} };
+}
+function parseSpec(text2) {
+  const lines = toLines(text2);
+  let title;
+  for (const l of lines) {
+    if (l.fenced) continue;
+    const m = l.text.match(H1);
+    if (m) {
+      title = m[1];
+      break;
+    }
+  }
+  let purpose;
+  let hasPurpose = false;
+  let reqStart = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i];
+    const m = isH2(l);
+    if (!m) continue;
+    const heading = (m[1] ?? "").trim().toLowerCase();
+    if (heading === "purpose") {
+      hasPurpose = true;
+      purpose = joinTrim(lines.slice(i + 1, nextH2(lines, i + 1))).trim();
+    } else if (heading === "requirements" && reqStart < 0) {
+      reqStart = i;
+    }
+  }
+  if (reqStart < 0) {
+    return {
+      ...title ? { title } : {},
+      ...purpose !== void 0 ? { purpose } : {},
+      hasPurpose,
+      hasRequirementsSection: false,
+      requirements: [],
+      prefix: `${joinTrim(lines)}
+
+## Requirements`.replace(/^\s+/, ""),
+      suffix: ""
+    };
+  }
+  const reqEnd = nextH2(lines, reqStart + 1);
+  const { blocks, preamble } = parseRequirementBlocks(lines, reqStart + 1, reqEnd);
+  return {
+    ...title ? { title } : {},
+    ...purpose !== void 0 ? { purpose } : {},
+    hasPurpose,
+    hasRequirementsSection: true,
+    requirements: blocks,
+    prefix: joinTrim([...lines.slice(0, reqStart + 1), ...preamble]),
+    suffix: joinTrim(lines.slice(reqEnd)).trim()
+  };
+}
+function sections(text2) {
+  const lines = toLines(text2);
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i];
+    const m = isH2(l);
+    if (!m) continue;
+    out.push({ name: (m[1] ?? "").trim(), line: l.no, body: joinTrim(lines.slice(i + 1, nextH2(lines, i + 1))).trim() });
+  }
+  return out;
+}
+function slugify(name) {
+  return name.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/đ/g, "d").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+function cleanRenameName(s) {
+  return normalizeKey(
+    s.replace(/`/g, "").replace(/^###\s+Requirement:\s*/i, "").trim()
+  );
+}
+function parseDelta(text2) {
+  const lines = toLines(text2);
+  const out = { added: [], modified: [], removed: [], renamed: [], unknownSections: [], issues: [] };
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i];
+    const m = isH2(l);
+    if (!m) continue;
+    const heading = (m[1] ?? "").trim();
+    const end = nextH2(lines, i + 1);
+    if (heading.toLowerCase() === "purpose") {
+      out.purpose = joinTrim(lines.slice(i + 1, end)).trim();
+      continue;
+    }
+    const op = heading.match(DELTA_SECTION)?.[1]?.toUpperCase();
+    if (!op) {
+      out.unknownSections.push({ name: heading, line: l.no });
+      continue;
+    }
+    if (op === "RENAMED") {
+      let pending = null;
+      for (const r of lines.slice(i + 1, end)) {
+        if (r.fenced) continue;
+        const from = r.text.match(/^\s*(?:[-*]\s*)?FROM:\s*(.*\S)\s*$/i);
+        const to = r.text.match(/^\s*(?:[-*]\s*)?TO:\s*(.*\S)\s*$/i);
+        if (from) {
+          if (pending) out.issues.push({ level: "error", line: pending.line, message: "RENAMED: FROM without matching TO" });
+          pending = { from: cleanRenameName(from[1] ?? ""), line: r.no };
+        } else if (to) {
+          if (!pending) {
+            out.issues.push({ level: "error", line: r.no, message: "RENAMED: TO without preceding FROM" });
+          } else {
+            out.renamed.push({ from: pending.from, to: cleanRenameName(to[1] ?? ""), line: pending.line });
+            pending = null;
+          }
+        }
+      }
+      if (pending) out.issues.push({ level: "error", line: pending.line, message: "RENAMED: FROM without matching TO" });
+      continue;
+    }
+    const { blocks } = parseRequirementBlocks(lines, i + 1, end);
+    if (op === "ADDED") out.added.push(...blocks);
+    else if (op === "MODIFIED") out.modified.push(...blocks);
+    else out.removed.push(...blocks);
+  }
+  return out;
+}
+
+// src/scope.ts
+var SCOPE_ROUND_HEADING = "Scope round";
+var SCOPE_QUESTIONS = ["vision", "scope", "mvp", "out"];
+var APPENDIX = "appendix: discovery q&a";
+var PLACEHOLDER = "TODO(aidw)";
+function scopeRound(analysis) {
+  const appendix = sections(analysis).find((s) => s.name.toLowerCase() === APPENDIX);
+  if (!appendix) return null;
+  const lines = appendix.body.split(/\r?\n/);
+  const start = lines.findIndex((l) => /^###\s+(.+?)\s*#*\s*$/.exec(l)?.[1]?.toLowerCase() === SCOPE_ROUND_HEADING.toLowerCase());
+  if (start < 0) return null;
+  const end = lines.findIndex((l, i) => i > start && /^#{1,3}\s/.test(l));
+  return lines.slice(start + 1, end < 0 ? void 0 : end).join("\n").trim();
+}
+function missingScopeAnswers(round) {
+  return SCOPE_QUESTIONS.filter((id) => !new RegExp(`^\\s*(?:[-*]\\s+)?${id}\\b[^:\\n]*:\\s*\\S`, "im").test(round));
+}
+function checkScopeRound(change, analysis, file) {
+  const d = new Diags();
+  if (!checkBrief(change).errors.length) return d;
+  const round = scopeRound(analysis);
+  const how = `ask it on the \`scope\` Decision Page (kind: scope) and record the checked answer under "### ${SCOPE_ROUND_HEADING}" in "## Appendix: discovery Q&A"`;
+  if (round === null || !round || round.includes(PLACEHOLDER)) {
+    d.error(file, `the scope round is not recorded: ${how}`);
+    return d;
+  }
+  for (const id of missingScopeAnswers(round)) d.error(file, `the scope round has no answer for "${id}": ${how}`);
+  return d;
+}
+var BRIEF_FILE = "brief.md";
+var BRIEF_SECTIONS = ["Vision", "Scope", "MVP", "Out of scope"];
+var briefPath = (change) => (0, import_node_path.join)(change.dir, BRIEF_FILE);
+function checkBrief(change) {
+  const d = new Diags();
+  const file = `changes/${change.id}/${BRIEF_FILE}`;
+  if (!(0, import_node_fs.existsSync)(briefPath(change))) {
+    d.error(file, "the product brief is missing");
+    return d;
+  }
+  const found = sections((0, import_node_fs.readFileSync)(briefPath(change), "utf8"));
+  for (const name of BRIEF_SECTIONS) {
+    const s = found.find((x) => x.name.toLowerCase() === name.toLowerCase());
+    if (!s) d.error(file, `missing section "## ${name}"`);
+    else if (!s.body || s.body.includes(PLACEHOLDER)) d.error(file, `section "## ${name}" is empty or still a placeholder`, s.line);
+  }
+  return d;
+}
+
+// src/page.ts
 var LAYOUTS = ["questions", "picks", "gate"];
-var pagesDir = (p) => (0, import_node_path.join)(p.run, "pages");
-var pageDataFile = (p, name) => (0, import_node_path.join)(pagesDir(p), `${name}.yaml`);
-var pageHtmlFile = (p, name) => (0, import_node_path.join)(pagesDir(p), `${name}.html`);
+var pagesDir = (p) => (0, import_node_path2.join)(p.run, "pages");
+var pageDataFile = (p, name) => (0, import_node_path2.join)(pagesDir(p), `${name}.yaml`);
+var pageHtmlFile = (p, name) => (0, import_node_path2.join)(pagesDir(p), `${name}.html`);
 var PAGE_NAME = /^[a-z0-9][a-z0-9-]{0,63}$/;
 var ID = /^[A-Za-z][\w.-]{0,39}$/;
 var KEY = /^[A-Za-z0-9][\w.-]{0,39}$/;
@@ -7453,6 +7754,16 @@ function parsePage(name, source, extra = []) {
     });
     if (!page.questions.length) problems.push("questions: missing or empty");
     unique(page.questions.map((q) => q.id), "question id", "questions", problems);
+  }
+  if (page.kind === "scope") {
+    if (layout !== "questions") problems.push("kind: scope is a round of questions (layout: questions)");
+    else
+      for (const id of SCOPE_QUESTIONS) {
+        const q = page.questions.find((x) => x.id === id);
+        if (!q) problems.push(`kind: scope needs the question "${id}" (${SCOPE_QUESTIONS.join(", ")})`);
+        else if (q.optional) problems.push(`kind: scope: the question "${id}" may not be optional; the round records an answer to each`);
+        if (q && id === "scope" && (!q.multi || q.options.length < 2)) problems.push('kind: scope: the question "scope" is a multi choice with one option per capability (multi: true, options)');
+      }
   }
   if (layout === "picks") {
     page.items = rows(raw.items).map((it, i) => {
@@ -7779,6 +8090,7 @@ function parseAnswers(page, pasted) {
     );
   }
   for (const id of given.keys()) if (!known.has(id)) problems.push(`"${id}" is not part of this page`);
+  if (page.kind === "scope" && !problems.length) next.push(`record these lines word for word under "### ${SCOPE_ROUND_HEADING}" in the discovery appendix of analysis.md`);
   return { ok: problems.length === 0, problems, answers, note: given.get("note") ?? "", next };
 }
 function answersText(page, a) {
@@ -7824,7 +8136,7 @@ function triageData(o) {
 }
 
 // src/diffcover.ts
-var import_node_path3 = require("node:path");
+var import_node_path4 = require("node:path");
 
 // src/git.ts
 var import_node_child_process = require("node:child_process");
@@ -7880,8 +8192,8 @@ function changedSince(cwd, base2) {
 }
 
 // src/tamper.ts
-var import_node_fs = require("node:fs");
-var import_node_path2 = require("node:path");
+var import_node_fs2 = require("node:fs");
+var import_node_path3 = require("node:path");
 var CODE_FILE = /\.(?:[cm]?[jt]sx?|vue|svelte|astro|py)$/i;
 var MAX_FILE = 1024 * 1024;
 var SNAPSHOT = /(?:^|\/)__snapshots__\/|\.snap$|-snapshots\/[^/]+\.(?:png|txt)$|\.ambr$/;
@@ -7900,9 +8212,9 @@ function hasReason(rest, needsComment) {
   return words.length >= 2;
 }
 function addedLines(dir, base2, file) {
-  const full = (0, import_node_path2.join)(dir, file);
-  if (!(0, import_node_fs.existsSync)(full) || (0, import_node_fs.statSync)(full).size > MAX_FILE) return [];
-  const whole = () => (0, import_node_fs.readFileSync)(full, "utf8").split(/\r?\n/).map((text2, i) => ({ line: i + 1, text: text2 }));
+  const full = (0, import_node_path3.join)(dir, file);
+  if (!(0, import_node_fs2.existsSync)(full) || (0, import_node_fs2.statSync)(full).size > MAX_FILE) return [];
+  const whole = () => (0, import_node_fs2.readFileSync)(full, "utf8").split(/\r?\n/).map((text2, i) => ({ line: i + 1, text: text2 }));
   if (!base2 || !git(dir, ["cat-file", "-e", `${base2}:${file}`]).ok) return whole();
   const diff = git(dir, ["diff", "-U0", "--no-color", base2, "--", file]);
   if (!diff.ok) return whole();
@@ -7920,16 +8232,16 @@ function deletedTests(dir, base2, changed, isTest) {
   if (!base2) return [];
   const r = git(dir, ["diff", "--name-status", "-M", base2]);
   if (!r.ok) return [];
-  const gone = r.out.split("\n").map((l) => l.split("	")).filter(([status, file]) => status === "D" && file && isTest(file) && !(0, import_node_fs.existsSync)((0, import_node_path2.join)(dir, file))).map(([, file]) => file);
+  const gone = r.out.split("\n").map((l) => l.split("	")).filter(([status, file]) => status === "D" && file && isTest(file) && !(0, import_node_fs2.existsSync)((0, import_node_path3.join)(dir, file))).map(([, file]) => file);
   if (!gone.length) return [];
   const text2 = (f) => {
     try {
-      return (0, import_node_fs.statSync)((0, import_node_path2.join)(dir, f)).size > MAX_FILE ? null : (0, import_node_fs.readFileSync)((0, import_node_path2.join)(dir, f), "utf8");
+      return (0, import_node_fs2.statSync)((0, import_node_path3.join)(dir, f)).size > MAX_FILE ? null : (0, import_node_fs2.readFileSync)((0, import_node_path3.join)(dir, f), "utf8");
     } catch {
       return null;
     }
   };
-  const elsewhere = changed.filter((f) => isTest(f) && (0, import_node_fs.existsSync)((0, import_node_path2.join)(dir, f))).map((f) => (text2(f) ?? "").trim());
+  const elsewhere = changed.filter((f) => isTest(f) && (0, import_node_fs2.existsSync)((0, import_node_path3.join)(dir, f))).map((f) => (text2(f) ?? "").trim());
   const together = elsewhere.join("\n");
   return gone.filter((file) => {
     const old = git(dir, ["show", `${base2}:${file}`]);
@@ -8000,7 +8312,7 @@ function diffCoverage(dir, base2, lcov) {
   const root = git(dir, ["rev-parse", "--show-toplevel"]).out || dir;
   const files = [];
   for (const [name, lines] of parseLcov(lcov)) {
-    const file = ((0, import_node_path3.isAbsolute)(name) ? (0, import_node_path3.relative)(root, name) : name).split(import_node_path3.sep).join("/");
+    const file = ((0, import_node_path4.isAbsolute)(name) ? (0, import_node_path4.relative)(root, name) : name).split(import_node_path4.sep).join("/");
     if (file.startsWith("..")) continue;
     const added = addedLines(root, base2, file).map((l) => l.line).filter((n) => lines.has(n));
     if (!added.length) continue;
@@ -8046,43 +8358,43 @@ var import_node_fs26 = require("node:fs");
 var import_node_path31 = require("node:path");
 
 // src/change.ts
-var import_node_fs3 = require("node:fs");
-var import_node_path5 = require("node:path");
+var import_node_fs4 = require("node:fs");
+var import_node_path6 = require("node:path");
 var import_yaml2 = __toESM(require_dist(), 1);
 
 // src/project.ts
-var import_node_fs2 = require("node:fs");
-var import_node_path4 = require("node:path");
+var import_node_fs3 = require("node:fs");
+var import_node_path5 = require("node:path");
 var AIDW_DIR = ".aidw";
 function pathsFor(project) {
-  const aidw = (0, import_node_path4.join)(project, AIDW_DIR);
+  const aidw = (0, import_node_path5.join)(project, AIDW_DIR);
   return {
     project,
     aidw,
-    projectYaml: (0, import_node_path4.join)(aidw, "project.yaml"),
-    constitution: (0, import_node_path4.join)(aidw, "constitution.md"),
-    requirements: (0, import_node_path4.join)(aidw, "requirements"),
-    specs: (0, import_node_path4.join)(aidw, "specs"),
-    domain: (0, import_node_path4.join)(aidw, "domain"),
-    architecture: (0, import_node_path4.join)(aidw, "architecture"),
-    decisions: (0, import_node_path4.join)(aidw, "decisions"),
-    design: (0, import_node_path4.join)(aidw, "design"),
-    changes: (0, import_node_path4.join)(aidw, "changes"),
-    archive: (0, import_node_path4.join)(aidw, "archive"),
-    run: (0, import_node_path4.join)(aidw, "run")
+    projectYaml: (0, import_node_path5.join)(aidw, "project.yaml"),
+    constitution: (0, import_node_path5.join)(aidw, "constitution.md"),
+    requirements: (0, import_node_path5.join)(aidw, "requirements"),
+    specs: (0, import_node_path5.join)(aidw, "specs"),
+    domain: (0, import_node_path5.join)(aidw, "domain"),
+    architecture: (0, import_node_path5.join)(aidw, "architecture"),
+    decisions: (0, import_node_path5.join)(aidw, "decisions"),
+    design: (0, import_node_path5.join)(aidw, "design"),
+    changes: (0, import_node_path5.join)(aidw, "changes"),
+    archive: (0, import_node_path5.join)(aidw, "archive"),
+    run: (0, import_node_path5.join)(aidw, "run")
   };
 }
-var isProjectDir = (dir) => (0, import_node_fs2.existsSync)((0, import_node_path4.join)(dir, AIDW_DIR, "project.yaml"));
+var isProjectDir = (dir) => (0, import_node_fs3.existsSync)((0, import_node_path5.join)(dir, AIDW_DIR, "project.yaml"));
 function findProject(opts) {
-  if (opts.root) return (0, import_node_path4.resolve)(opts.cwd, opts.root);
+  if (opts.root) return (0, import_node_path5.resolve)(opts.cwd, opts.root);
   const envDir = opts.env.CLAUDE_PROJECT_DIR;
-  if (envDir && isProjectDir(envDir)) return (0, import_node_path4.resolve)(envDir);
-  let dir = (0, import_node_path4.resolve)(opts.cwd);
+  if (envDir && isProjectDir(envDir)) return (0, import_node_path5.resolve)(envDir);
+  let dir = (0, import_node_path5.resolve)(opts.cwd);
   const wt = new RegExp(`^(.*?)[\\/]${AIDW_DIR.replace(".", "\\.")}[\\/]run[\\/]worktrees(?:[\\/]|$)`).exec(dir);
   if (wt?.[1] && isProjectDir(wt[1])) return wt[1];
   for (; ; ) {
     if (isProjectDir(dir)) return dir;
-    const parent = (0, import_node_path4.dirname)(dir);
+    const parent = (0, import_node_path5.dirname)(dir);
     if (parent === dir) return null;
     dir = parent;
   }
@@ -8094,27 +8406,27 @@ function projectKind(p) {
   return m ? m[1] : null;
 }
 function rel(p, file) {
-  return (0, import_node_path4.relative)(p.project, file).split(import_node_path4.sep).join("/");
+  return (0, import_node_path5.relative)(p.project, file).split(import_node_path5.sep).join("/");
 }
 function readText(file) {
-  return (0, import_node_fs2.existsSync)(file) ? (0, import_node_fs2.readFileSync)(file, "utf8") : null;
+  return (0, import_node_fs3.existsSync)(file) ? (0, import_node_fs3.readFileSync)(file, "utf8") : null;
 }
 function isDir(p) {
-  return (0, import_node_fs2.existsSync)(p) && (0, import_node_fs2.statSync)(p).isDirectory();
+  return (0, import_node_fs3.existsSync)(p) && (0, import_node_fs3.statSync)(p).isDirectory();
 }
 function walkFiles(dir) {
   if (!isDir(dir)) return [];
   const out = [];
-  for (const name of (0, import_node_fs2.readdirSync)(dir).sort()) {
+  for (const name of (0, import_node_fs3.readdirSync)(dir).sort()) {
     if (name.startsWith(".")) continue;
-    const full = (0, import_node_path4.join)(dir, name);
+    const full = (0, import_node_path5.join)(dir, name);
     if (isDir(full)) out.push(...walkFiles(full));
     else out.push(full);
   }
   return out;
 }
 function capabilityOf(specsDir, file) {
-  const parts = (0, import_node_path4.relative)(specsDir, file).split(import_node_path4.sep);
+  const parts = (0, import_node_path5.relative)(specsDir, file).split(import_node_path5.sep);
   if (parts.length < 2 || parts[parts.length - 1] !== "spec.md") return null;
   return parts.slice(0, -1).join("/");
 }
@@ -8125,7 +8437,6 @@ var STATES = [
   "draft",
   "intake",
   "analyzing",
-  "awaiting_scope_approval",
   "awaiting_approval",
   "approved",
   "executing",
@@ -8137,30 +8448,36 @@ var STATES = [
   "archived",
   "escalated"
 ];
+var LEGACY_STATES = { awaiting_scope_approval: "analyzing" };
 var CHANGE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 function isState(s) {
   return typeof s === "string" && STATES.includes(s);
 }
 function changeDir(p, id) {
-  return (0, import_node_path5.join)(p.changes, id);
+  return (0, import_node_path6.join)(p.changes, id);
 }
 function listChangeIds(p) {
   if (!isDir(p.changes)) return [];
-  return (0, import_node_fs3.readdirSync)(p.changes).filter((n) => !n.startsWith(".") && isDir((0, import_node_path5.join)(p.changes, n))).sort();
+  return (0, import_node_fs4.readdirSync)(p.changes).filter((n) => !n.startsWith(".") && isDir((0, import_node_path6.join)(p.changes, n))).sort();
 }
 var ChangeError = class extends Error {
 };
 function loadChange(p, id) {
   const dir = changeDir(p, id);
-  const file = (0, import_node_path5.join)(dir, "change.yaml");
-  if (!(0, import_node_fs3.existsSync)(file)) throw new ChangeError(`change "${id}" not found (${file})`);
-  const doc = import_yaml2.default.parseDocument((0, import_node_fs3.readFileSync)(file, "utf8"));
+  const file = (0, import_node_path6.join)(dir, "change.yaml");
+  if (!(0, import_node_fs4.existsSync)(file)) throw new ChangeError(`change "${id}" not found (${file})`);
+  const doc = import_yaml2.default.parseDocument((0, import_node_fs4.readFileSync)(file, "utf8"));
   if (doc.errors.length) throw new ChangeError(`change.yaml of "${id}" is not valid YAML: ${doc.errors[0]?.message}`);
   const data = doc.toJS() ?? {};
+  const legacy = typeof data.state === "string" && Object.hasOwn(LEGACY_STATES, data.state) ? LEGACY_STATES[data.state] : void 0;
+  if (legacy) {
+    doc.set("state", legacy);
+    data.state = legacy;
+  }
   return { id, dir, file, doc, data };
 }
 function saveChange(c) {
-  (0, import_node_fs3.writeFileSync)(c.file, String(c.doc));
+  (0, import_node_fs4.writeFileSync)(c.file, String(c.doc));
   c.data = c.doc.toJS() ?? {};
 }
 function stateOf(c) {
@@ -8180,41 +8497,12 @@ var import_node_path30 = require("node:path");
 
 // src/approval.ts
 var import_node_crypto3 = require("node:crypto");
-var import_node_fs4 = require("node:fs");
-var import_node_path6 = require("node:path");
+var import_node_fs5 = require("node:fs");
+var import_node_path7 = require("node:path");
 
 // src/tasks.ts
 var import_node_crypto2 = require("node:crypto");
 var import_yaml3 = __toESM(require_dist(), 1);
-
-// src/diag.ts
-var Diags = class {
-  items = [];
-  error(file, message, line) {
-    this.items.push({ level: "error", file, message, ...line ? { line } : {} });
-  }
-  warn(file, message, line) {
-    this.items.push({ level: "warning", file, message, ...line ? { line } : {} });
-  }
-  add(other) {
-    this.items.push(...other.items);
-  }
-  get errors() {
-    return this.items.filter((d) => d.level === "error");
-  }
-  get warnings() {
-    return this.items.filter((d) => d.level === "warning");
-  }
-  failed(strict = false) {
-    return this.errors.length > 0 || strict && this.warnings.length > 0;
-  }
-};
-var OpError = class extends Error {
-  constructor(message, diags) {
-    super(message);
-    this.diags = diags;
-  }
-};
 
 // src/commit.ts
 var COMMIT_TYPES = ["feat", "fix", "docs", "style", "refactor", "perf", "test", "build", "ci", "chore", "revert"];
@@ -8410,11 +8698,11 @@ var CHANGE_PACKAGE_FILES = ["intake.md", "analysis.md", "design.md", "quality.ya
 var FROZEN_PROJECT_DIRS = (p) => [p.design, p.domain, p.architecture, p.requirements];
 function baseSpecFiles(p, change) {
   const out = /* @__PURE__ */ new Set();
-  for (const f of walkFiles((0, import_node_path6.join)(change.dir, "specs"))) {
-    const cap = capabilityOf((0, import_node_path6.join)(change.dir, "specs"), f);
+  for (const f of walkFiles((0, import_node_path7.join)(change.dir, "specs"))) {
+    const cap = capabilityOf((0, import_node_path7.join)(change.dir, "specs"), f);
     if (!cap) continue;
-    const main = (0, import_node_path6.join)(p.specs, ...cap.split("/"), "spec.md");
-    if ((0, import_node_fs4.existsSync)(main)) out.add(main);
+    const main = (0, import_node_path7.join)(p.specs, ...cap.split("/"), "spec.md");
+    if ((0, import_node_fs5.existsSync)(main)) out.add(main);
   }
   return [...out];
 }
@@ -8423,15 +8711,15 @@ var normalize = (s) => s.replace(/\r\n?/g, "\n");
 function computeApprovalHash(p, change, push) {
   const entries = [];
   const add = (file, content) => {
-    if (!(0, import_node_fs4.existsSync)(file)) return;
-    const text2 = content ?? normalize((0, import_node_fs4.readFileSync)(file, "utf8"));
+    if (!(0, import_node_fs5.existsSync)(file)) return;
+    const text2 = content ?? normalize((0, import_node_fs5.readFileSync)(file, "utf8"));
     entries.push({ path: rel(p, file), digest: sha256(text2) });
   };
-  for (const name of CHANGE_PACKAGE_FILES) add((0, import_node_path6.join)(change.dir, name));
-  for (const f of walkFiles((0, import_node_path6.join)(change.dir, "specs"))) add(f);
+  for (const name of CHANGE_PACKAGE_FILES) add((0, import_node_path7.join)(change.dir, name));
+  for (const f of walkFiles((0, import_node_path7.join)(change.dir, "specs"))) add(f);
   for (const f of baseSpecFiles(p, change)) add(f);
-  const tasksFile = (0, import_node_path6.join)(change.dir, "tasks.yaml");
-  if ((0, import_node_fs4.existsSync)(tasksFile)) add(tasksFile, canonicalTasks((0, import_node_fs4.readFileSync)(tasksFile, "utf8")));
+  const tasksFile = (0, import_node_path7.join)(change.dir, "tasks.yaml");
+  if ((0, import_node_fs5.existsSync)(tasksFile)) add(tasksFile, canonicalTasks((0, import_node_fs5.readFileSync)(tasksFile, "utf8")));
   add(p.constitution);
   for (const dir of FROZEN_PROJECT_DIRS(p)) for (const f of walkFiles(dir)) add(f);
   entries.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
@@ -8453,40 +8741,40 @@ function approvalStatus(p, change) {
 }
 
 // src/machine.ts
-var import_node_fs6 = require("node:fs");
-var import_node_path8 = require("node:path");
+var import_node_fs7 = require("node:fs");
+var import_node_path9 = require("node:path");
 var import_yaml4 = __toESM(require_dist(), 1);
 
 // src/plugin.ts
-var import_node_fs5 = require("node:fs");
-var import_node_path7 = require("node:path");
+var import_node_fs6 = require("node:fs");
+var import_node_path8 = require("node:path");
 var bundled;
 function pluginRoot(env) {
   if (env.AIDW_PLUGIN_ROOT) return env.AIDW_PLUGIN_ROOT;
   const own = bundledRoot();
   if (own) return own;
   if (env.CLAUDE_PLUGIN_ROOT) return env.CLAUDE_PLUGIN_ROOT;
-  return (0, import_node_path7.join)(process.cwd(), "plugins", "aidw");
+  return (0, import_node_path8.join)(process.cwd(), "plugins", "aidw");
 }
 function bundledRoot() {
   if (typeof __dirname === "undefined") return null;
   if (bundled === void 0) {
-    const up = (0, import_node_path7.join)(__dirname, "..");
-    bundled = (0, import_node_fs5.existsSync)((0, import_node_path7.join)(up, ".claude-plugin", "plugin.json")) ? up : (0, import_node_path7.join)(up, "plugins", "aidw");
+    const up = (0, import_node_path8.join)(__dirname, "..");
+    bundled = (0, import_node_fs6.existsSync)((0, import_node_path8.join)(up, ".claude-plugin", "plugin.json")) ? up : (0, import_node_path8.join)(up, "plugins", "aidw");
   }
   return bundled;
 }
 function resolvePluginFile(root, ref) {
   const parts = ref.split("/");
-  const base2 = (0, import_node_path7.join)(root, ...parts);
-  for (const candidate of [base2, `${base2}.md`, (0, import_node_path7.join)(base2, "SKILL.md")]) {
-    if ((0, import_node_fs5.existsSync)(candidate) && (0, import_node_fs5.statSync)(candidate).isFile()) return { file: candidate };
+  const base2 = (0, import_node_path8.join)(root, ...parts);
+  for (const candidate of [base2, `${base2}.md`, (0, import_node_path8.join)(base2, "SKILL.md")]) {
+    if ((0, import_node_fs6.existsSync)(candidate) && (0, import_node_fs6.statSync)(candidate).isFile()) return { file: candidate };
   }
   let depth = parts.length - 1;
-  while (depth > 0 && !(0, import_node_fs5.existsSync)((0, import_node_path7.join)(root, ...parts.slice(0, depth)))) depth--;
-  const dir = (0, import_node_path7.join)(root, ...parts.slice(0, depth));
+  while (depth > 0 && !(0, import_node_fs6.existsSync)((0, import_node_path8.join)(root, ...parts.slice(0, depth)))) depth--;
+  const dir = (0, import_node_path8.join)(root, ...parts.slice(0, depth));
   const wanted = (parts[depth] ?? "").replace(/\.md$/, "").toLowerCase();
-  const names = (0, import_node_fs5.existsSync)(dir) && (0, import_node_fs5.statSync)(dir).isDirectory() ? (0, import_node_fs5.readdirSync)(dir).filter((n) => !n.startsWith(".")) : [];
+  const names = (0, import_node_fs6.existsSync)(dir) && (0, import_node_fs6.statSync)(dir).isDirectory() ? (0, import_node_fs6.readdirSync)(dir).filter((n) => !n.startsWith(".")) : [];
   const score = (n) => {
     const s = n.replace(/\.md$/, "").toLowerCase();
     return s === wanted ? 0 : s.includes(wanted) || wanted.includes(s) ? 1 : distance(s, wanted);
@@ -8532,11 +8820,11 @@ function machineById(workflow) {
   const hit = cache.get(workflow);
   if (hit) return hit;
   const root = bundledRoot();
-  const file = root && /^[a-z][a-z0-9-]*$/.test(workflow) ? (0, import_node_path8.join)(root, "workflows", `${workflow}.yaml`) : "";
-  if (!file || !(0, import_node_fs6.existsSync)(file)) return null;
+  const file = root && /^[a-z][a-z0-9-]*$/.test(workflow) ? (0, import_node_path9.join)(root, "workflows", `${workflow}.yaml`) : "";
+  if (!file || !(0, import_node_fs7.existsSync)(file)) return null;
   let data;
   try {
-    data = import_yaml4.default.parse((0, import_node_fs6.readFileSync)(file, "utf8"));
+    data = import_yaml4.default.parse((0, import_node_fs7.readFileSync)(file, "utf8"));
   } catch {
     return null;
   }
@@ -8544,10 +8832,11 @@ function machineById(workflow) {
   if (m) cache.set(workflow, m);
   return m;
 }
+var defaultWorkflowId = (p) => projectKind(p) === "brownfield" ? "feature" : "product";
 function workflowIdOf(p, change) {
   const named = change.data.workflow;
   if (typeof named === "string" && named) return named;
-  return projectKind(p) === "brownfield" ? "feature" : "product";
+  return defaultWorkflowId(p);
 }
 function machineOf(p, change) {
   const id = workflowIdOf(p, change);
@@ -8556,224 +8845,6 @@ function machineOf(p, change) {
   return m;
 }
 var statesOf = (m) => STATES.filter((s) => s in m.transitions);
-
-// src/spec/parse.ts
-var H1 = /^#(?!#)\s+(.*\S)\s*$/;
-var H2 = /^##(?!#)\s+(.*\S)\s*$/;
-var REQ = /^###(?!#)\s+Requirement:\s*(.*\S)\s*$/;
-var SCEN = /^####(?!#)\s+Scenario:\s*(.*\S)\s*$/;
-var WRONG_SCEN = /^(?:#{1,3}|#{5,})\s+Scenario:|^\s*[-*]\s+(?:\*\*)?Scenario\b/i;
-var STEP = /^\s*[-*]\s+\*\*(GIVEN|WHEN|THEN|AND)\*\*/i;
-var FENCE = /^\s*(```|~~~)/;
-var DELTA_SECTION = /^(ADDED|MODIFIED|REMOVED|RENAMED)(?:\s+Requirements?)?$/i;
-function normalizeKey(name) {
-  return name.trim().replace(/\s+/g, " ");
-}
-function toLines(text2) {
-  const out = [];
-  let inFence = false;
-  text2.replace(/\r\n?/g, "\n").split("\n").forEach((t, i) => {
-    const isFence = FENCE.test(t);
-    if (isFence) inFence = !inFence;
-    out.push({ text: t, no: i + 1, fenced: inFence || isFence });
-  });
-  return out;
-}
-function joinTrim(lines) {
-  return lines.map((l) => l.text).join("\n").replace(/\s+$/, "");
-}
-function isH2(l) {
-  return l.fenced ? null : l.text.match(H2);
-}
-function nextH2(lines, from) {
-  for (let i = from; i < lines.length; i++) {
-    const l = lines[i];
-    if (l && isH2(l)) return i;
-  }
-  return lines.length;
-}
-function parseRequirementBlocks(lines, start, end) {
-  const headers = [];
-  for (let i = start; i < end; i++) {
-    const l = lines[i];
-    if (l && !l.fenced && REQ.test(l.text)) headers.push(i);
-  }
-  const preamble = lines.slice(start, headers[0] ?? end);
-  const blocks = headers.map((h, idx) => {
-    const blockEnd = headers[idx + 1] ?? end;
-    return parseBlock(lines.slice(h, blockEnd));
-  });
-  return { blocks, preamble };
-}
-function parseBlock(block) {
-  const header2 = block[0];
-  const name = (header2.text.match(REQ)?.[1] ?? "").trim();
-  const issues = [];
-  const scenarios = [];
-  const descLines = [];
-  let current = null;
-  for (const l of block.slice(1)) {
-    if (!l.fenced) {
-      const sm = l.text.match(SCEN);
-      if (sm) {
-        current = { name: (sm[1] ?? "").trim(), line: l.no, hasTrigger: false, hasOutcome: false };
-        scenarios.push(current);
-        continue;
-      }
-      if (WRONG_SCEN.test(l.text)) {
-        issues.push({
-          level: "error",
-          line: l.no,
-          message: 'Scenario heading must be exactly "#### Scenario: <name>" (4 hashes)'
-        });
-      }
-      const step = l.text.match(STEP);
-      if (step && current) {
-        const kw = (step[1] ?? "").toUpperCase();
-        if (kw === "WHEN" || kw === "GIVEN") current.hasTrigger = true;
-        if (kw === "THEN") current.hasOutcome = true;
-      }
-    }
-    if (!current) descLines.push(l);
-  }
-  const raw = joinTrim(block);
-  const removedMeta = extractRemovedMeta(raw);
-  return {
-    name,
-    key: normalizeKey(name),
-    line: header2.no,
-    raw,
-    description: joinTrim(descLines).trim(),
-    scenarios,
-    issues,
-    ...removedMeta
-  };
-}
-function extractRemovedMeta(raw) {
-  const pick = (label) => {
-    const re = new RegExp(`(?:\\*\\*${label}:?\\*\\*|^${label})\\s*:?\\s*(.*\\S)`, "im");
-    return raw.match(re)?.[1]?.trim();
-  };
-  const reason = pick("Reason");
-  const migration = pick("Migration");
-  return { ...reason ? { reason } : {}, ...migration ? { migration } : {} };
-}
-function parseSpec(text2) {
-  const lines = toLines(text2);
-  let title;
-  for (const l of lines) {
-    if (l.fenced) continue;
-    const m = l.text.match(H1);
-    if (m) {
-      title = m[1];
-      break;
-    }
-  }
-  let purpose;
-  let hasPurpose = false;
-  let reqStart = -1;
-  for (let i = 0; i < lines.length; i++) {
-    const l = lines[i];
-    const m = isH2(l);
-    if (!m) continue;
-    const heading = (m[1] ?? "").trim().toLowerCase();
-    if (heading === "purpose") {
-      hasPurpose = true;
-      purpose = joinTrim(lines.slice(i + 1, nextH2(lines, i + 1))).trim();
-    } else if (heading === "requirements" && reqStart < 0) {
-      reqStart = i;
-    }
-  }
-  if (reqStart < 0) {
-    return {
-      ...title ? { title } : {},
-      ...purpose !== void 0 ? { purpose } : {},
-      hasPurpose,
-      hasRequirementsSection: false,
-      requirements: [],
-      prefix: `${joinTrim(lines)}
-
-## Requirements`.replace(/^\s+/, ""),
-      suffix: ""
-    };
-  }
-  const reqEnd = nextH2(lines, reqStart + 1);
-  const { blocks, preamble } = parseRequirementBlocks(lines, reqStart + 1, reqEnd);
-  return {
-    ...title ? { title } : {},
-    ...purpose !== void 0 ? { purpose } : {},
-    hasPurpose,
-    hasRequirementsSection: true,
-    requirements: blocks,
-    prefix: joinTrim([...lines.slice(0, reqStart + 1), ...preamble]),
-    suffix: joinTrim(lines.slice(reqEnd)).trim()
-  };
-}
-function sections(text2) {
-  const lines = toLines(text2);
-  const out = [];
-  for (let i = 0; i < lines.length; i++) {
-    const l = lines[i];
-    const m = isH2(l);
-    if (!m) continue;
-    out.push({ name: (m[1] ?? "").trim(), line: l.no, body: joinTrim(lines.slice(i + 1, nextH2(lines, i + 1))).trim() });
-  }
-  return out;
-}
-function slugify(name) {
-  return name.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/đ/g, "d").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-}
-function cleanRenameName(s) {
-  return normalizeKey(
-    s.replace(/`/g, "").replace(/^###\s+Requirement:\s*/i, "").trim()
-  );
-}
-function parseDelta(text2) {
-  const lines = toLines(text2);
-  const out = { added: [], modified: [], removed: [], renamed: [], unknownSections: [], issues: [] };
-  for (let i = 0; i < lines.length; i++) {
-    const l = lines[i];
-    const m = isH2(l);
-    if (!m) continue;
-    const heading = (m[1] ?? "").trim();
-    const end = nextH2(lines, i + 1);
-    if (heading.toLowerCase() === "purpose") {
-      out.purpose = joinTrim(lines.slice(i + 1, end)).trim();
-      continue;
-    }
-    const op = heading.match(DELTA_SECTION)?.[1]?.toUpperCase();
-    if (!op) {
-      out.unknownSections.push({ name: heading, line: l.no });
-      continue;
-    }
-    if (op === "RENAMED") {
-      let pending = null;
-      for (const r of lines.slice(i + 1, end)) {
-        if (r.fenced) continue;
-        const from = r.text.match(/^\s*(?:[-*]\s*)?FROM:\s*(.*\S)\s*$/i);
-        const to = r.text.match(/^\s*(?:[-*]\s*)?TO:\s*(.*\S)\s*$/i);
-        if (from) {
-          if (pending) out.issues.push({ level: "error", line: pending.line, message: "RENAMED: FROM without matching TO" });
-          pending = { from: cleanRenameName(from[1] ?? ""), line: r.no };
-        } else if (to) {
-          if (!pending) {
-            out.issues.push({ level: "error", line: r.no, message: "RENAMED: TO without preceding FROM" });
-          } else {
-            out.renamed.push({ from: pending.from, to: cleanRenameName(to[1] ?? ""), line: pending.line });
-            pending = null;
-          }
-        }
-      }
-      if (pending) out.issues.push({ level: "error", line: pending.line, message: "RENAMED: FROM without matching TO" });
-      continue;
-    }
-    const { blocks } = parseRequirementBlocks(lines, i + 1, end);
-    if (op === "ADDED") out.added.push(...blocks);
-    else if (op === "MODIFIED") out.modified.push(...blocks);
-    else out.removed.push(...blocks);
-  }
-  return out;
-}
 
 // src/spec/merge.ts
 function titleFromCapability(capability) {
@@ -8984,8 +9055,8 @@ function validateDeltaText(text2, file, mainText, capability) {
 var import_node_fs24 = require("node:fs");
 
 // src/roles.ts
-var import_node_fs7 = require("node:fs");
-var import_node_path9 = require("node:path");
+var import_node_fs8 = require("node:fs");
+var import_node_path10 = require("node:path");
 var import_yaml5 = __toESM(require_dist(), 1);
 var ROLE_STATUSES = ["active", "planned"];
 var RUN_MODES = ["interactive", "worker"];
@@ -9000,8 +9071,8 @@ var AGENTS = new Proxy({}, {
 var defaultTaskRole = () => AGENTS.implement.replace(/^aidw:/, "");
 function loadAgents() {
   const root = bundledRoot();
-  const file = root ? (0, import_node_path9.join)(root, "workflows", "product.yaml") : "";
-  const data = file && (0, import_node_fs7.existsSync)(file) ? import_yaml5.default.parse((0, import_node_fs7.readFileSync)(file, "utf8")) : null;
+  const file = root ? (0, import_node_path10.join)(root, "workflows", "product.yaml") : "";
+  const data = file && (0, import_node_fs8.existsSync)(file) ? import_yaml5.default.parse((0, import_node_fs8.readFileSync)(file, "utf8")) : null;
   const stages = Array.isArray(data?.stages) ? data.stages : [];
   const agents = stages.map((s) => s?.agents).find(isRecord2);
   const layer = isRecord2(agents?.["layer-review"]) ? agents["layer-review"] : {};
@@ -9012,9 +9083,9 @@ function loadAgents() {
   return { implement: `aidw:${implement}`, taskReview: `aidw:${review}`, triage: `aidw:${triage}`, layerReview: { ui: `aidw:${ui}`, security: `aidw:${security}`, performance: `aidw:${performance}` } };
 }
 var oneOf = (list6, v) => typeof v === "string" && list6.includes(v);
-var rosterFile = (root) => (0, import_node_path9.join)(root, "roster.yaml");
-var roleDir = (root, id) => (0, import_node_path9.join)(root, "roles", id);
-var read = (file) => (0, import_node_fs7.readFileSync)(file, "utf8");
+var rosterFile = (root) => (0, import_node_path10.join)(root, "roster.yaml");
+var roleDir = (root, id) => (0, import_node_path10.join)(root, "roles", id);
+var read = (file) => (0, import_node_fs8.readFileSync)(file, "utf8");
 function loadRoster(root) {
   const data = import_yaml5.default.parse(read(rosterFile(root)));
   const departments = isRecord2(data) && isRecord2(data.departments) ? data.departments : {};
@@ -9033,12 +9104,12 @@ function parseRoleText(text2) {
   return isRecord2(header2) ? { header: header2, body: (m[2] ?? "").trim() } : null;
 }
 function loadRole(root, id) {
-  const file = (0, import_node_path9.join)(roleDir(root, id), "role.md");
-  if (!(0, import_node_fs7.existsSync)(file)) return null;
+  const file = (0, import_node_path10.join)(roleDir(root, id), "role.md");
+  if (!(0, import_node_fs8.existsSync)(file)) return null;
   const parsed = parseRoleText(read(file));
   if (!parsed) return null;
   const h = parsed.header;
-  const rulesFile = (0, import_node_path9.join)(roleDir(root, id), "rules.md");
+  const rulesFile = (0, import_node_path10.join)(roleDir(root, id), "rules.md");
   const includes = Array.isArray(h.includes) ? h.includes.map(String) : [];
   return {
     id: String(h.id ?? ""),
@@ -9051,8 +9122,8 @@ function loadRole(root, id) {
     skills: skillIndex(h.skills),
     includes,
     body: parsed.body,
-    shared: includes.map((f) => (0, import_node_fs7.existsSync)((0, import_node_path9.join)(root, f)) ? read((0, import_node_path9.join)(root, f)).trim() : ""),
-    rules: (0, import_node_fs7.existsSync)(rulesFile) ? read(rulesFile).trim() : ""
+    shared: includes.map((f) => (0, import_node_fs8.existsSync)((0, import_node_path10.join)(root, f)) ? read((0, import_node_path10.join)(root, f)).trim() : ""),
+    rules: (0, import_node_fs8.existsSync)(rulesFile) ? read(rulesFile).trim() : ""
   };
 }
 function skillIndex(raw) {
@@ -9060,8 +9131,8 @@ function skillIndex(raw) {
   return raw.flatMap((e) => isRecord2(e) ? Object.entries(e).map(([name, when]) => ({ name, when: String(when) })) : []);
 }
 function loadTiers(root, platform = "claude-code") {
-  const file = (0, import_node_path9.join)(root, "tiers.yaml");
-  const data = (0, import_node_fs7.existsSync)(file) ? import_yaml5.default.parse(read(file)) : null;
+  const file = (0, import_node_path10.join)(root, "tiers.yaml");
+  const data = (0, import_node_fs8.existsSync)(file) ? import_yaml5.default.parse(read(file)) : null;
   return isRecord2(data) && isRecord2(data[platform]) ? data[platform] : {};
 }
 var skillCommand = (roleId, skill) => `aidw plugin-path roles/${roleId}/skills/${skill}.md`;
@@ -9099,9 +9170,9 @@ ${role.body}${shared}${rules}${skills}
 `;
 }
 function profiledRoles(root) {
-  const dir = (0, import_node_path9.join)(root, "roles");
-  if (!(0, import_node_fs7.existsSync)(dir)) return [];
-  return (0, import_node_fs7.readdirSync)(dir).filter((n) => !n.startsWith(".")).filter((n) => (0, import_node_fs7.statSync)((0, import_node_path9.join)(dir, n)).isDirectory()).sort();
+  const dir = (0, import_node_path10.join)(root, "roles");
+  if (!(0, import_node_fs8.existsSync)(dir)) return [];
+  return (0, import_node_fs8.readdirSync)(dir).filter((n) => !n.startsWith(".")).filter((n) => (0, import_node_fs8.statSync)((0, import_node_path10.join)(dir, n)).isDirectory()).sort();
 }
 function generateAgents(root) {
   const roster = loadRoster(root);
@@ -9115,17 +9186,17 @@ function generateAgents(root) {
   return out;
 }
 function writeAgents(root) {
-  const dir = (0, import_node_path9.join)(root, "agents");
-  (0, import_node_fs7.mkdirSync)(dir, { recursive: true });
+  const dir = (0, import_node_path10.join)(root, "agents");
+  (0, import_node_fs8.mkdirSync)(dir, { recursive: true });
   const files = generateAgents(root);
-  for (const name of (0, import_node_fs7.readdirSync)(dir)) if (!(name in files)) (0, import_node_fs7.rmSync)((0, import_node_path9.join)(dir, name), { recursive: true });
-  for (const [name, content] of Object.entries(files)) (0, import_node_fs7.writeFileSync)((0, import_node_path9.join)(dir, name), content);
+  for (const name of (0, import_node_fs8.readdirSync)(dir)) if (!(name in files)) (0, import_node_fs8.rmSync)((0, import_node_path10.join)(dir, name), { recursive: true });
+  for (const [name, content] of Object.entries(files)) (0, import_node_fs8.writeFileSync)((0, import_node_path10.join)(dir, name), content);
   return Object.keys(files).sort();
 }
 function checkRoster(root) {
   const d = new Diags();
   const rf = "roster.yaml";
-  if (!(0, import_node_fs7.existsSync)(rosterFile(root))) {
+  if (!(0, import_node_fs8.existsSync)(rosterFile(root))) {
     d.error(rf, "not found");
     return d;
   }
@@ -9160,8 +9231,8 @@ function checkRoster(root) {
   for (const id of profiled) {
     const file = `roles/${id}/role.md`;
     if (!(id in roster.roles)) d.error(file, `role "${id}" has a folder but is not in roster.yaml`);
-    const path = (0, import_node_path9.join)(roleDir(root, id), "role.md");
-    if (!(0, import_node_fs7.existsSync)(path)) {
+    const path = (0, import_node_path10.join)(roleDir(root, id), "role.md");
+    if (!(0, import_node_fs8.existsSync)(path)) {
       d.error(file, "not found");
       continue;
     }
@@ -9186,13 +9257,13 @@ function checkRoster(root) {
       } else {
         for (const s of skillIndex(h.skills)) {
           if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(s.name)) d.error(file, `skill name "${s.name}" must be kebab-case`);
-          else if (!(0, import_node_fs7.existsSync)((0, import_node_path9.join)(roleDir(root, id), "skills", `${s.name}.md`))) d.error(file, `skill "${s.name}" has no file roles/${id}/skills/${s.name}.md`);
+          else if (!(0, import_node_fs8.existsSync)((0, import_node_path10.join)(roleDir(root, id), "skills", `${s.name}.md`))) d.error(file, `skill "${s.name}" has no file roles/${id}/skills/${s.name}.md`);
         }
       }
     }
     if (h.includes !== void 0) {
       if (!Array.isArray(h.includes) || !h.includes.every((f) => typeof f === "string")) d.error(file, "includes must be a list of plugin-relative file paths");
-      else for (const f of h.includes) if (f.includes("..") || !(0, import_node_fs7.existsSync)((0, import_node_path9.join)(root, f))) d.error(file, `includes: "${f}" not found in the plugin`);
+      else for (const f of h.includes) if (f.includes("..") || !(0, import_node_fs8.existsSync)((0, import_node_path10.join)(root, f))) d.error(file, `includes: "${f}" not found in the plugin`);
     }
     for (const k of ["department", "status", "carried_by"]) if (k in h) d.error(file, `"${k}" belongs in roster.yaml, not in the profile`);
   }
@@ -9201,11 +9272,11 @@ function checkRoster(root) {
   }
   if (d.errors.length) return d;
   const expected = generateAgents(root);
-  const dir = (0, import_node_path9.join)(root, "agents");
-  const present = (0, import_node_fs7.existsSync)(dir) ? (0, import_node_fs7.readdirSync)(dir) : [];
+  const dir = (0, import_node_path10.join)(root, "agents");
+  const present = (0, import_node_fs8.existsSync)(dir) ? (0, import_node_fs8.readdirSync)(dir) : [];
   for (const [name, content] of Object.entries(expected)) {
-    const file = (0, import_node_path9.join)(dir, name);
-    if (!(0, import_node_fs7.existsSync)(file)) d.error(`agents/${name}`, "missing: run `npm run build` (or `aidw roster --write`)");
+    const file = (0, import_node_path10.join)(dir, name);
+    if (!(0, import_node_fs8.existsSync)(file)) d.error(`agents/${name}`, "missing: run `npm run build` (or `aidw roster --write`)");
     else if (read(file) !== content) d.error(`agents/${name}`, "out of date with its role folder: run `npm run build` (agent files are generated, never edited)");
   }
   for (const name of present) if (!(name in expected)) d.error(`agents/${name}`, "not generated from a role: agents/ holds only generated files");
@@ -9263,11 +9334,11 @@ var import_yaml12 = __toESM(require_dist(), 1);
 // src/backstop.ts
 var import_node_child_process2 = require("node:child_process");
 var import_node_crypto4 = require("node:crypto");
-var import_node_fs9 = require("node:fs");
-var import_node_path12 = require("node:path");
+var import_node_fs10 = require("node:fs");
+var import_node_path13 = require("node:path");
 
 // src/gate.ts
-var import_node_path11 = require("node:path");
+var import_node_path12 = require("node:path");
 
 // src/policy.ts
 var CMD = String.raw`(?:^|[;&|(]\s*|\b(?:sudo|xargs|exec|env)\s+)`;
@@ -9359,8 +9430,8 @@ var SHELL_CHAINING = /[;&|`<>]|\$\(/;
 var AIDW_STATE_COMMAND = /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+(?:task|checkpoint|review|layer-review|verify|integrate|converge|deploy|first-deploy|deliver|transition|approve|archive|merge|init|change|brief|pr)\b/;
 
 // src/grants.ts
-var import_node_fs8 = require("node:fs");
-var import_node_path10 = require("node:path");
+var import_node_fs9 = require("node:fs");
+var import_node_path11 = require("node:path");
 var import_yaml6 = __toESM(require_dist(), 1);
 var NO_GRANTS = { push: null, envelope: false, agentRuns: null };
 var AGENT_RUNS_PER_TASK = 3;
@@ -9397,7 +9468,7 @@ function parseGrants(raw, file, d) {
 function readGrants(change) {
   let data;
   try {
-    data = import_yaml6.default.parse((0, import_node_fs8.readFileSync)((0, import_node_path10.join)(change.dir, "quality.yaml"), "utf8"));
+    data = import_yaml6.default.parse((0, import_node_fs9.readFileSync)((0, import_node_path11.join)(change.dir, "quality.yaml"), "utf8"));
   } catch {
     return { ...NO_GRANTS };
   }
@@ -9451,7 +9522,7 @@ function boundPush(p, change) {
 }
 var plannedTaskCount = (change) => {
   try {
-    return parseTasks((0, import_node_fs8.readFileSync)((0, import_node_path10.join)(change.dir, "tasks.yaml"), "utf8")).tasks.filter((t) => !t.origin).length;
+    return parseTasks((0, import_node_fs9.readFileSync)((0, import_node_path11.join)(change.dir, "tasks.yaml"), "utf8")).tasks.filter((t) => !t.origin).length;
   } catch {
     return 0;
   }
@@ -9467,7 +9538,7 @@ function grantLines(g, push, plannedTasks) {
 }
 function grantsSection(p, change) {
   try {
-    (0, import_node_fs8.readFileSync)((0, import_node_path10.join)(change.dir, "quality.yaml"));
+    (0, import_node_fs9.readFileSync)((0, import_node_path11.join)(change.dir, "quality.yaml"));
   } catch {
     return null;
   }
@@ -9539,7 +9610,7 @@ function splitFlags(words, valued, bool) {
   return { flags, args };
 }
 function aidwBinPaths(env) {
-  return ["aidw", (0, import_node_path10.join)(bundledRoot() ?? pluginRoot(env), "bin", "aidw"), ...env.CLAUDE_PLUGIN_ROOT ? [(0, import_node_path10.join)(env.CLAUDE_PLUGIN_ROOT, "bin", "aidw")] : []];
+  return ["aidw", (0, import_node_path11.join)(bundledRoot() ?? pluginRoot(env), "bin", "aidw"), ...env.CLAUDE_PLUGIN_ROOT ? [(0, import_node_path11.join)(env.CLAUDE_PLUGIN_ROOT, "bin", "aidw")] : []];
 }
 function requestOf(cmd2, env) {
   const w = shellWords(cmd2);
@@ -9580,20 +9651,20 @@ function taskBranchPush(cmd2) {
 }
 var real = (f) => {
   try {
-    return (0, import_node_fs8.realpathSync)(f);
+    return (0, import_node_fs9.realpathSync)(f);
   } catch {
     return null;
   }
 };
 var insideDir = (parent, child) => {
-  const r = (0, import_node_path10.relative)(parent, child);
-  return r === "" || r !== ".." && !r.startsWith(`..${import_node_path10.sep}`) && !(0, import_node_path10.isAbsolute)(r);
+  const r = (0, import_node_path11.relative)(parent, child);
+  return r === "" || r !== ".." && !r.startsWith(`..${import_node_path11.sep}`) && !(0, import_node_path11.isAbsolute)(r);
 };
 function runsInProject(p, cwd) {
   const project = real(p.project);
-  const here = real((0, import_node_path10.resolve)(cwd));
+  const here = real((0, import_node_path11.resolve)(cwd));
   if (!project || !here || !insideDir(project, here)) return false;
-  const run2 = real((0, import_node_path10.join)(p.run, "worktrees"));
+  const run2 = real((0, import_node_path11.join)(p.run, "worktrees"));
   if (run2 && insideDir(run2, here)) return false;
   const top = (dir) => {
     const r = git(dir, ["rev-parse", "--show-toplevel"]);
@@ -9602,9 +9673,9 @@ function runsInProject(p, cwd) {
   return top(here) === top(project);
 }
 function isPrBodyFile(p, id, file) {
-  const want = (0, import_node_path10.join)(p.run, `pr-${id}.md`);
+  const want = (0, import_node_path11.join)(p.run, `pr-${id}.md`);
   try {
-    if (!(0, import_node_fs8.lstatSync)(file).isFile() || !(0, import_node_fs8.lstatSync)(want).isFile()) return false;
+    if (!(0, import_node_fs9.lstatSync)(file).isFile() || !(0, import_node_fs9.lstatSync)(want).isFile()) return false;
   } catch {
     return false;
   }
@@ -9622,7 +9693,7 @@ function pushGrantReason(p, cmd2, states, cwd, env) {
       if (!b || remoteUrl(p, b.remote) !== b.url || pushConfigProblem(p, b.remote)) continue;
       const by = `granted at the Approval Gate of ${id}`;
       if (req.kind === "push" && req.remote === b.remote && refIsBranch(req.ref, b.branch)) return `push of the Change Branch ${b.branch} to ${b.remote} was ${by}`;
-      if (req.kind === "pr" && req.head === b.branch && req.base === b.base && (req.repo === null || req.repo === githubSlug(b.url)) && (req.bodyFile === null || isPrBodyFile(p, id, (0, import_node_path10.resolve)(cwd, req.bodyFile)))) {
+      if (req.kind === "pr" && req.head === b.branch && req.base === b.base && (req.repo === null || req.repo === githubSlug(b.url)) && (req.bodyFile === null || isPrBodyFile(p, id, (0, import_node_path11.resolve)(cwd, req.bodyFile)))) {
         return `the pull request of ${b.branch} against ${b.base} was ${by}`;
       }
       const recorded = c.data.run?.branch;
@@ -9660,8 +9731,8 @@ function gateState(p) {
   return st;
 }
 function inside(parent, child) {
-  const r = (0, import_node_path11.relative)(parent, child);
-  return r === "" || r !== ".." && !r.startsWith(`..${import_node_path11.sep}`) && !(0, import_node_path11.isAbsolute)(r);
+  const r = (0, import_node_path12.relative)(parent, child);
+  return r === "" || r !== ".." && !r.startsWith(`..${import_node_path12.sep}`) && !(0, import_node_path12.isAbsolute)(r);
 }
 function isFrozenPackageFile(p, file, frozen) {
   if (file === p.constitution || FROZEN_PROJECT_DIRS(p).some((d) => inside(d, file))) return frozen.length > 0;
@@ -9670,9 +9741,9 @@ function isFrozenPackageFile(p, file, frozen) {
       if (baseSpecFiles(p, loadChange(p, id)).includes(file)) return true;
     } catch {
     }
-    const dir = (0, import_node_path11.join)(p.changes, id);
+    const dir = (0, import_node_path12.join)(p.changes, id);
     if (!inside(dir, file)) continue;
-    const r = (0, import_node_path11.relative)(dir, file).split(import_node_path11.sep).join("/");
+    const r = (0, import_node_path12.relative)(dir, file).split(import_node_path12.sep).join("/");
     if (CHANGE_PACKAGE_FILES.includes(r) || r.startsWith("specs/")) return true;
   }
   return false;
@@ -9718,13 +9789,13 @@ function decide(input, env) {
   if (tool === "Read") {
     const file = String(ti.file_path ?? "");
     const secret = firstMatch(SECRET_PATHS, file);
-    return secret && !inside(project, (0, import_node_path11.resolve)(cwd, file)) ? deny(`reading ${secret.why} is forbidden (tier x)`) : null;
+    return secret && !inside(project, (0, import_node_path12.resolve)(cwd, file)) ? deny(`reading ${secret.why} is forbidden (tier x)`) : null;
   }
   const role = agentRole(input.agent_type, env);
   if (tool === "Write" || tool === "Edit" || tool === "MultiEdit" || tool === "NotebookEdit") {
     const raw = String(ti.file_path ?? ti.notebook_path ?? "");
     if (!raw) return null;
-    const file = (0, import_node_path11.resolve)(cwd, raw);
+    const file = (0, import_node_path12.resolve)(cwd, raw);
     const secret = firstMatch(SECRET_PATHS, file);
     if (secret && !inside(project, file)) return deny(`writing ${secret.why} is forbidden (tier x)`);
     if (!inside(project, file)) return null;
@@ -9732,19 +9803,19 @@ function decide(input, env) {
       return deny("an authoring role drafts Artifacts under .aidw/ only; project files are written by the implementing roles after approval");
     }
     if (role === "reviewer") {
-      if ((0, import_node_path11.dirname)(file) === p.run && (VERDICT_FILE.test((0, import_node_path11.basename)(file)) || AUDIT_FILE.test((0, import_node_path11.basename)(file)))) return allow("reviewer verdict file");
+      if ((0, import_node_path12.dirname)(file) === p.run && (VERDICT_FILE.test((0, import_node_path12.basename)(file)) || AUDIT_FILE.test((0, import_node_path12.basename)(file)))) return allow("reviewer verdict file");
       return deny("the reviewer is read-only; report issues in the verdict instead of fixing them (it may write only .aidw/run/review-<task>.md or layer-review-<layer>.md)");
     }
-    const worktrees = (0, import_node_path11.join)(p.run, "worktrees");
+    const worktrees = (0, import_node_path12.join)(p.run, "worktrees");
     if (inside(worktrees, file)) {
-      const parts = (0, import_node_path11.relative)(worktrees, file).split(import_node_path11.sep);
+      const parts = (0, import_node_path12.relative)(worktrees, file).split(import_node_path12.sep);
       if (parts.length < 3) return deny("write inside a task's worktree (.aidw/run/worktrees/<change>/<task>/...)");
       if (parts[2] === AIDW_DIR) return deny("the worktree's .aidw/ is a stale copy; aidw state lives in the main checkout and is the orchestrator's");
       const st2 = gateState(p);
       return st2.open ? allow("analysis approved (task worktree)") : deny(closedReason(st2));
     }
-    if (role === "implementer" && (0, import_node_path11.dirname)(file) === p.run && REPORT_FILE.test((0, import_node_path11.basename)(file))) return allow("implementer note for the reviewer");
-    if (role === "implementer" && inside(p.aidw, file) && !inside((0, import_node_path11.join)(p.run, "shots"), file)) {
+    if (role === "implementer" && (0, import_node_path12.dirname)(file) === p.run && REPORT_FILE.test((0, import_node_path12.basename)(file))) return allow("implementer note for the reviewer");
+    if (role === "implementer" && inside(p.aidw, file) && !inside((0, import_node_path12.join)(p.run, "shots"), file)) {
       return deny("implementers do not write .aidw/; the orchestrator records progress and evidence");
     }
     const st = gateState(p);
@@ -9858,20 +9929,20 @@ function gitDirtyPaths(project) {
     return null;
   }
 }
-var baselineFile = (p) => (0, import_node_path12.join)(p.run, "baseline.json");
+var baselineFile = (p) => (0, import_node_path13.join)(p.run, "baseline.json");
 function recordBaseline(p, dirty = gitDirtyPaths(p.project)) {
   if (dirty === null) return;
-  (0, import_node_fs9.mkdirSync)(p.run, { recursive: true });
+  (0, import_node_fs10.mkdirSync)(p.run, { recursive: true });
   const previous = readBaseline(p);
   const merged = [.../* @__PURE__ */ new Set([...previous, ...dirty.filter((f) => !isAidw(f))])].sort();
-  (0, import_node_fs9.writeFileSync)(baselineFile(p), `${JSON.stringify({ paths: merged }, null, 2)}
+  (0, import_node_fs10.writeFileSync)(baselineFile(p), `${JSON.stringify({ paths: merged }, null, 2)}
 `);
 }
 function readBaseline(p) {
   const f = baselineFile(p);
-  if (!(0, import_node_fs9.existsSync)(f)) return [];
+  if (!(0, import_node_fs10.existsSync)(f)) return [];
   try {
-    const data = JSON.parse((0, import_node_fs9.readFileSync)(f, "utf8"));
+    const data = JSON.parse((0, import_node_fs10.readFileSync)(f, "utf8"));
     return Array.isArray(data.paths) ? data.paths.map(String) : [];
   } catch {
     return [];
@@ -9901,11 +9972,11 @@ function runBackstop(stdin, env, dirtyProvider = gitDirtyPaths) {
   if (!unexpected.length) return "";
   const key = (0, import_node_crypto4.createHash)("sha1").update(`${st.summary}
 ${unexpected.join("\n")}`).digest("hex");
-  const seen = (0, import_node_path12.join)(p.run, "backstop-reported");
+  const seen = (0, import_node_path13.join)(p.run, "backstop-reported");
   if (!input.stop_hook_active) {
-    if ((0, import_node_fs9.existsSync)(seen) && (0, import_node_fs9.readFileSync)(seen, "utf8") === key) return "";
-    (0, import_node_fs9.mkdirSync)(p.run, { recursive: true });
-    (0, import_node_fs9.writeFileSync)(seen, key);
+    if ((0, import_node_fs10.existsSync)(seen) && (0, import_node_fs10.readFileSync)(seen, "utf8") === key) return "";
+    (0, import_node_fs10.mkdirSync)(p.run, { recursive: true });
+    (0, import_node_fs10.writeFileSync)(seen, key);
   }
   const list6 = unexpected.slice(0, 20).map((f) => `  - ${f}`).join("\n");
   const more = unexpected.length > 20 ? `
@@ -9924,7 +9995,7 @@ var import_node_fs22 = require("node:fs");
 var import_node_path27 = require("node:path");
 
 // src/boundary.ts
-var import_node_path15 = require("node:path");
+var import_node_path16 = require("node:path");
 
 // src/dbpaths.ts
 var MIGRATION = /(^|\/)(migrations?|db\/migrate|drizzle|alembic\/versions|flyway|liquibase)(\/|$)|\.sql$/i;
@@ -9933,22 +10004,22 @@ var isDatabasePath = (glob) => MIGRATION.test(glob) || SCHEMA.test(glob);
 var touchesDatabase = (globs) => globs.some(isDatabasePath);
 
 // src/workflow.ts
-var import_node_fs11 = require("node:fs");
-var import_node_path14 = require("node:path");
+var import_node_fs12 = require("node:fs");
+var import_node_path15 = require("node:path");
 var import_yaml8 = __toESM(require_dist(), 1);
 
 // src/artifacts.ts
-var import_node_fs10 = require("node:fs");
-var import_node_path13 = require("node:path");
+var import_node_fs11 = require("node:fs");
+var import_node_path14 = require("node:path");
 var import_yaml7 = __toESM(require_dist(), 1);
 var ARTIFACT_VALIDATORS = ["aidw validate", "aidw analyze", "aidw plan", "none"];
 var NAME = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 var isRecord3 = (v) => !!v && typeof v === "object" && !Array.isArray(v);
-var artifactsFile = (root) => (0, import_node_path13.join)(root, "artifacts.yaml");
+var artifactsFile = (root) => (0, import_node_path14.join)(root, "artifacts.yaml");
 function loadArtifacts(root) {
   const file = artifactsFile(root);
-  if (!(0, import_node_fs10.existsSync)(file)) return null;
-  const data = import_yaml7.default.parse((0, import_node_fs10.readFileSync)(file, "utf8"));
+  if (!(0, import_node_fs11.existsSync)(file)) return null;
+  const data = import_yaml7.default.parse((0, import_node_fs11.readFileSync)(file, "utf8"));
   return isRecord3(data) ? data : {};
 }
 function checkArtifacts(root) {
@@ -9965,7 +10036,7 @@ function checkArtifacts(root) {
     d.error(af, "not found");
     return d;
   }
-  if (!(0, import_node_fs10.existsSync)((0, import_node_path13.join)(root, "roster.yaml"))) return d;
+  if (!(0, import_node_fs11.existsSync)((0, import_node_path14.join)(root, "roster.yaml"))) return d;
   const roster = loadRoster(root);
   const names = Object.keys(registry);
   if (names.length === 0) d.error(af, "the registry is empty");
@@ -9998,9 +10069,9 @@ function checkArtifacts(root) {
   const owned = (id) => names.filter((n) => registry[n]?.owner === id);
   for (const id of Object.keys(roster.roles)) {
     const file = `roles/${id}/role.md`;
-    const path = (0, import_node_path13.join)(roleDir(root, id), "role.md");
-    if (!(0, import_node_fs10.existsSync)(path)) continue;
-    const header2 = parseRoleText((0, import_node_fs10.readFileSync)(path, "utf8"))?.header;
+    const path = (0, import_node_path14.join)(roleDir(root, id), "role.md");
+    if (!(0, import_node_fs11.existsSync)(path)) continue;
+    const header2 = parseRoleText((0, import_node_fs11.readFileSync)(path, "utf8"))?.header;
     if (!header2) continue;
     const lists = { reads: [], writes: [] };
     for (const key of ["reads", "writes"]) {
@@ -10026,28 +10097,26 @@ function checkArtifacts(root) {
 }
 
 // src/workflow.ts
-var GATES = ["approval", "approval-auto", "scope-approval", "production-deploy"];
+var GATES = ["approval", "approval-auto", "production-deploy"];
 var PROJECT_KINDS = ["greenfield", "brownfield", "request"];
 var COMMAND_TRANSITIONS = [
   ["awaiting_approval", "approved"],
-  ["awaiting_scope_approval", "analyzing"],
-  // `aidw approve` approves the scope
   ["delivered", "archived"]
 ];
 var isRecord4 = (v) => !!v && typeof v === "object" && !Array.isArray(v);
 var strings = (v) => Array.isArray(v) ? v.map(String) : [];
 var KEBAB = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
-var workflowsDir = (root) => (0, import_node_path14.join)(root, "workflows");
+var workflowsDir = (root) => (0, import_node_path15.join)(root, "workflows");
 function workflowIds(root) {
   const dir = workflowsDir(root);
-  return (0, import_node_fs11.existsSync)(dir) ? (0, import_node_fs11.readdirSync)(dir).filter((n) => n.endsWith(".yaml")).map((n) => n.slice(0, -5)).sort() : [];
+  return (0, import_node_fs12.existsSync)(dir) ? (0, import_node_fs12.readdirSync)(dir).filter((n) => n.endsWith(".yaml")).map((n) => n.slice(0, -5)).sort() : [];
 }
 function loadWorkflow(root, id) {
-  const file = (0, import_node_path14.join)(workflowsDir(root), `${id}.yaml`);
-  if (!(0, import_node_fs11.existsSync)(file)) return null;
+  const file = (0, import_node_path15.join)(workflowsDir(root), `${id}.yaml`);
+  if (!(0, import_node_fs12.existsSync)(file)) return null;
   let data;
   try {
-    data = import_yaml8.default.parse((0, import_node_fs11.readFileSync)(file, "utf8"));
+    data = import_yaml8.default.parse((0, import_node_fs12.readFileSync)(file, "utf8"));
   } catch {
     return null;
   }
@@ -10071,7 +10140,7 @@ function loadWorkflow(root, id) {
     description: String(data.description ?? ""),
     applies_to: data.applies_to,
     existing: strings(data.existing),
-    scope_gate: data.scope_gate === true,
+    scope_round: data.scope_round === true,
     interrupts: strings(data.interrupts),
     machine: parseMachine(String(data.id ?? ""), data),
     decisions: (Array.isArray(data.decisions) ? data.decisions : []).filter(isRecord4).map(
@@ -10094,7 +10163,7 @@ function checkWorkflows(root) {
     d.error("workflows/", "no workflow files");
     return d;
   }
-  if (!(0, import_node_fs11.existsSync)((0, import_node_path14.join)(root, "roster.yaml")) || !(0, import_node_fs11.existsSync)((0, import_node_path14.join)(root, "artifacts.yaml"))) return d;
+  if (!(0, import_node_fs12.existsSync)((0, import_node_path15.join)(root, "roster.yaml")) || !(0, import_node_fs12.existsSync)((0, import_node_path15.join)(root, "artifacts.yaml"))) return d;
   let registry = null;
   try {
     registry = loadArtifacts(root);
@@ -10179,9 +10248,6 @@ function checkWorkflows(root) {
       if (x.options.length < 2 || new Set(x.options).size !== x.options.length || !x.options.every((o) => KEBAB.test(o))) d.error(file, `${where}: options must be at least two distinct kebab-case answers`);
       if (!w.stages.some((s) => s.id === x.stage)) d.error(file, `${where}: stage "${x.stage}" is not a stage of this workflow`);
     }
-    const scopeStages = w.stages.filter((s) => s.gate === "scope-approval");
-    if (scopeStages.length > 1) d.error(file, "at most one stage has gate: scope-approval");
-    if (w.scope_gate !== (scopeStages.length === 1)) d.error(file, "scope_gate: true and a stage with gate: scope-approval go together");
     if (approvals > 1) d.error(file, `at most one stage has gate: approval or approval-auto (found ${approvals})`);
     if (m) {
       if (approvals === 0 && m.approvalRequired.size) d.error(file, "approval_required lists states, but no stage has gate: approval or approval-auto");
@@ -10236,7 +10302,7 @@ function checkBoundary(d, file, at, s, workflows) {
 // src/boundary.ts
 function boundaryExceeded(p, id, b) {
   const change = loadChange(p, id);
-  const tasks = parseTasks(readText((0, import_node_path15.join)(change.dir, "tasks.yaml")) ?? "").tasks.filter((t) => t.origin === void 0 || t.origin === "plan");
+  const tasks = parseTasks(readText((0, import_node_path16.join)(change.dir, "tasks.yaml")) ?? "").tasks.filter((t) => t.origin === void 0 || t.origin === "plan");
   const out = [];
   if (tasks.length > b.max_tasks) out.push(`the plan has ${tasks.length} tasks (at most ${b.max_tasks})`);
   if (!b.migrations) {
@@ -10244,7 +10310,7 @@ function boundaryExceeded(p, id, b) {
     if (m.length) out.push(`${m.map((t) => t.id).join(", ")} change the database schema or a migration`);
   }
   if (!b.spec_changes) {
-    const specs = walkFiles((0, import_node_path15.join)(change.dir, "specs")).filter((f) => f.endsWith("spec.md"));
+    const specs = walkFiles((0, import_node_path16.join)(change.dir, "specs")).filter((f) => f.endsWith("spec.md"));
     if (specs.length) out.push(`it changes behavior written in a spec (${specs.length} delta spec file(s))`);
   }
   return out;
@@ -10252,59 +10318,6 @@ function boundaryExceeded(p, id, b) {
 function boundaryOf(pluginRoot2, workflow) {
   const w = loadWorkflow(pluginRoot2, workflow);
   return w?.stages.find((s) => s.gate === "approval-auto")?.boundary ?? null;
-}
-
-// src/scope.ts
-var import_node_crypto5 = require("node:crypto");
-var import_node_fs12 = require("node:fs");
-var import_node_path16 = require("node:path");
-var BRIEF_FILE = "brief.md";
-var BRIEF_SECTIONS = ["Vision", "Scope", "MVP", "Out of scope"];
-var PLACEHOLDER = "TODO(aidw)";
-var briefPath = (change) => (0, import_node_path16.join)(change.dir, BRIEF_FILE);
-var BRIEF_TEMPLATE = (title) => `# Product brief: ${title}
-
-## Vision
-
-${PLACEHOLDER}: who this is for, the problem, and what success looks like, in a few lines.
-
-## Scope
-
-${PLACEHOLDER}: the capabilities the product has, as a short list the user can approve or strike.
-
-## MVP
-
-${PLACEHOLDER}: the smallest cut that is worth building first, and why it is that cut.
-
-## Out of scope
-
-${PLACEHOLDER}: what is deliberately not built now ("None" only if true).
-`;
-var hasScopeGate = (change) => change.data.scope_gate === true;
-function checkBrief(change) {
-  const d = new Diags();
-  const file = `changes/${change.id}/${BRIEF_FILE}`;
-  if (!(0, import_node_fs12.existsSync)(briefPath(change))) {
-    d.error(file, "the product brief is missing");
-    return d;
-  }
-  const found = sections((0, import_node_fs12.readFileSync)(briefPath(change), "utf8"));
-  for (const name of BRIEF_SECTIONS) {
-    const s = found.find((x) => x.name.toLowerCase() === name.toLowerCase());
-    if (!s) d.error(file, `missing section "## ${name}"`);
-    else if (!s.body || s.body.includes(PLACEHOLDER)) d.error(file, `section "## ${name}" is empty or still a placeholder`, s.line);
-  }
-  return d;
-}
-function briefHash(change) {
-  return `sha256:${(0, import_node_crypto5.createHash)("sha256").update((0, import_node_fs12.readFileSync)(briefPath(change), "utf8").replace(/\r\n?/g, "\n")).digest("hex")}`;
-}
-function scopeGuard(change) {
-  if (!hasScopeGate(change)) return null;
-  const a = change.data.scope_approval;
-  if (!a || typeof a.hash !== "string") return "the scope is not approved yet: present the product brief (`aidw transition <id> awaiting_scope_approval`) and let the user approve it";
-  if (!(0, import_node_fs12.existsSync)(briefPath(change)) || briefHash(change) !== a.hash) return "the product brief changed after the scope was approved: ask the user to approve the scope again";
-  return null;
 }
 
 // src/deliver.ts
@@ -11628,14 +11641,6 @@ function transitionGuard(p, id, target) {
     const why = q ? installGuard(p, id, q.layers.flatMap((l) => [...l.setup, ...l.run])) : null;
     if (why) return why;
   }
-  if (target === "awaiting_scope_approval") {
-    const d = checkBrief(change);
-    if (d.errors.length) return `"awaiting_scope_approval" needs the product brief: ${d.errors[0].message}`;
-  }
-  if (target === "awaiting_approval") {
-    const why = scopeGuard(change);
-    if (why) return `"awaiting_approval" refused: ${why}`;
-  }
   if (!("deploying" in machineOf(p, change).transitions)) return null;
   if (target === "verifying") {
     const open = loadTasks(p, id).tasks.filter((t) => String(t.status ?? "pending") !== "done");
@@ -12158,7 +12163,7 @@ function newChange(p, id, opts) {
       "state: draft",
       `created_at: ${now3()}`,
       `skip_specs: ${opts.skipSpecs === true}`,
-      ...opts.scopeGate ? ["scope_gate: true", "scope_approval: null"] : [],
+      ...opts.scopeRound ? ["scope_round: true"] : [],
       "approval: null",
       "run:",
       "  paused: null",
@@ -12166,12 +12171,11 @@ function newChange(p, id, opts) {
     ].join("\n")
   );
   (0, import_node_fs22.writeFileSync)((0, import_node_path27.join)(dir, "intake.md"), INTAKE(title));
-  if (opts.scopeGate) (0, import_node_fs22.writeFileSync)((0, import_node_path27.join)(dir, BRIEF_FILE), BRIEF_TEMPLATE(title));
-  (0, import_node_fs22.writeFileSync)((0, import_node_path27.join)(dir, "analysis.md"), ANALYSIS(title, projectKind(p) === "brownfield"));
+  (0, import_node_fs22.writeFileSync)((0, import_node_path27.join)(dir, "analysis.md"), ANALYSIS(title, projectKind(p) === "brownfield", opts.scopeRound === true));
   recordBaseline(p);
   return dir;
 }
-var ANALYSIS = (title, brownfield = false) => `# Analysis: ${title}
+var ANALYSIS = (title, brownfield = false, scopeRound2 = false) => `# Analysis: ${title}
 
 ## Summary
 
@@ -12242,7 +12246,11 @@ ${PLACEHOLDER2}: what could go wrong and what was assumed.
 ## Appendix: discovery Q&A
 
 ${PLACEHOLDER2}: the grilling rounds, questions and answers.
-`;
+${scopeRound2 ? `
+### ${SCOPE_ROUND_HEADING}
+
+${PLACEHOLDER2}: the checked answer of the \`scope\` Decision Page (vision, scope, mvp, out), word for word.
+` : ""}`;
 function readinessCheck(p, id, asState) {
   const d = checkChange(p, id, asState ? { asState } : {});
   d.add(analyzeChange(p, id));
@@ -12251,16 +12259,6 @@ function readinessCheck(p, id, asState) {
 function approve(p, id, opts = {}) {
   const change = loadChange(p, id);
   let by = "user";
-  if (stateOf(change) === "awaiting_scope_approval") {
-    if (opts.auto) throw new OpError("the scope is always approved by the user");
-    const d2 = checkBrief(change);
-    if (d2.errors.length) throw new OpError(`the product brief of "${id}" is not ready for approval`, d2);
-    const hash2 = briefHash(change);
-    change.doc.set("scope_approval", change.doc.createNode({ hash: hash2, at: now3(), by: "user" }));
-    change.doc.set("state", "analyzing");
-    saveChange(change);
-    return { hash: hash2, files: [rel(p, (0, import_node_path27.join)(change.dir, BRIEF_FILE))], by, scope: true };
-  }
   if (opts.auto) {
     const workflow = typeof change.data.workflow === "string" ? change.data.workflow : "";
     const boundary = workflow ? boundaryOf(opts.auto.pluginRoot, workflow) : null;
@@ -13375,6 +13373,7 @@ function sizeOf(analysis) {
   const v = m[1].toLowerCase().replace(/[.,;]$/, "");
   return SIZES.includes(v) ? v : "invalid";
 }
+var scopeRoundOf = (change) => change.data.scope_round === true || change.data.scope_gate === true;
 function analyzeChange(p, id) {
   const d = new Diags();
   const change = loadChange(p, id);
@@ -13383,6 +13382,7 @@ function analyzeChange(p, id) {
   if (analysis === null) d.error(rel(p, analysisFile), "analysis.md is missing");
   else {
     checkAnalysisDoc(analysis, rel(p, analysisFile), d);
+    if (scopeRoundOf(change)) d.add(checkScopeRound(change, analysis, rel(p, analysisFile)));
     if (projectKind(p) === "brownfield") {
       const existing = sections(analysis).find((s) => s.name.toLowerCase() === "existing system");
       if (!existing) d.error(rel(p, analysisFile), 'brownfield project: missing section "## Existing system" (assessment of the current code)');
@@ -14551,7 +14551,7 @@ function recordTriage(p, id, taskId, text2) {
 
 // src/browser.ts
 var import_node_child_process7 = require("node:child_process");
-var import_node_crypto6 = require("node:crypto");
+var import_node_crypto5 = require("node:crypto");
 var import_node_fs30 = require("node:fs");
 var import_node_os = require("node:os");
 var import_node_path35 = require("node:path");
@@ -14569,9 +14569,9 @@ function browserEnv(p) {
   const r = readBrowser(p);
   return r ? { E2E_CDP_URL: r.url, E2E_CDP_PORT: String(r.port) } : {};
 }
-var profileDir = (p, home = (0, import_node_os.homedir)()) => (0, import_node_path35.join)(home, ".aidw-chrome", (0, import_node_crypto6.createHash)("sha1").update(p.project).digest("hex").slice(0, 10));
+var profileDir = (p, home = (0, import_node_os.homedir)()) => (0, import_node_path35.join)(home, ".aidw-chrome", (0, import_node_crypto5.createHash)("sha1").update(p.project).digest("hex").slice(0, 10));
 function usableProfile(p, home, tmp) {
-  for (const dir of [profileDir(p, home), (0, import_node_path35.join)(tmp, "aidw-chrome", (0, import_node_crypto6.createHash)("sha1").update(p.project).digest("hex").slice(0, 10))]) {
+  for (const dir of [profileDir(p, home), (0, import_node_path35.join)(tmp, "aidw-chrome", (0, import_node_crypto5.createHash)("sha1").update(p.project).digest("hex").slice(0, 10))]) {
     try {
       (0, import_node_fs30.mkdirSync)(dir, { recursive: true });
       return dir;
@@ -15679,7 +15679,7 @@ function ghCreate(p, plan, draft) {
 
 // src/runner.ts
 var import_node_child_process12 = require("node:child_process");
-var import_node_crypto7 = require("node:crypto");
+var import_node_crypto6 = require("node:crypto");
 var import_node_fs37 = require("node:fs");
 var import_node_path42 = require("node:path");
 var MINUTE = 6e4;
@@ -15738,7 +15738,7 @@ function fingerprint(p, id) {
     const parts = [String(c.data.state)];
     for (const f of ["tasks.yaml", "evidence/quality/summary.json", "evidence/converge.json", "evidence/deploy.json", "evidence/integration.json"]) {
       const file = (0, import_node_path42.join)(c.dir, f);
-      parts.push((0, import_node_fs37.existsSync)(file) ? (0, import_node_crypto7.createHash)("sha1").update((0, import_node_fs37.readFileSync)(file, "utf8").replace(ISO_TIME, "")).digest("hex").slice(0, 12) : "-");
+      parts.push((0, import_node_fs37.existsSync)(file) ? (0, import_node_crypto6.createHash)("sha1").update((0, import_node_fs37.readFileSync)(file, "utf8").replace(ISO_TIME, "")).digest("hex").slice(0, 12) : "-");
     }
     return parts.join("|");
   } catch {
@@ -16832,7 +16832,7 @@ ${r.errors.map((e) => `failed: ${e}
         const p = project();
         const id = need(rest[1], "change id");
         const wf = str(args.flags.workflow);
-        const dir = newChange(p, id, { title: str(args.flags.title), inputType: str(args.flags["input-type"]), ...wf ? { workflow: wf, workflows: workflowIds(pluginRoot(env)), skipSpecs: boundaryOf(pluginRoot(env), wf)?.spec_changes === false, scopeGate: loadWorkflow(pluginRoot(env), wf)?.scope_gate === true } : {} });
+        const dir = newChange(p, id, { title: str(args.flags.title), inputType: str(args.flags["input-type"]), scopeRound: loadWorkflow(pluginRoot(env), wf ?? defaultWorkflowId(p))?.scope_round === true, ...wf ? { workflow: wf, workflows: workflowIds(pluginRoot(env)), skipSpecs: boundaryOf(pluginRoot(env), wf)?.spec_changes === false } : {} });
         emit({ ok: true, id, dir: rel(p, dir) }, `created change ${id} at ${rel(p, dir)}
 `);
         return 0;
@@ -17053,18 +17053,11 @@ Ask the user about exactly these; do not guess an answer for them.
         const p = project();
         const id = resolveChangeId(p, rest[0]);
         const auto = args.flags.auto === true;
-        const { hash, files, by, scope } = approve(p, id, auto ? { auto: { pluginRoot: pluginRoot(env) } } : {});
-        if (scope) {
-          emit({ ok: true, id, hash, files, scope: true }, `scope approved ${id}
-  ${hash}
-  The change is back in analyzing: continue with the domain model, requirements and specs (step 3 of /aidw:start).
-`);
-          return 0;
-        }
+        const { hash, files, by } = approve(p, id, auto ? { auto: { pluginRoot: pluginRoot(env) } } : {});
         const { kept, reopened } = reconcileDoneTasks(p, id);
         emit(
           { ok: true, id, hash, files, kept, reopened },
-          `${scope ? "scope approved" : "approved"} ${id}${by === "user" ? "" : ` by ${by}`}
+          `approved ${id}${by === "user" ? "" : ` by ${by}`}
   ${hash}
   covers ${files.length} file(s)
 ${kept.length ? `  done work kept: ${kept.join(", ")}

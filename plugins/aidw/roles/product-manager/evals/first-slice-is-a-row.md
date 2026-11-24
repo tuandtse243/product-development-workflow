@@ -3,7 +3,7 @@ case: first-slice-is-a-row
 ---
 ## Input
 
-A recorded interview for a new product: clinic staff publish free slots, patients find a slot, book it, get a confirmation, and may cancel. The user wants a first version in use quickly. You are drafting the product brief and the requirements.
+A recorded interview for a new product: clinic staff publish free slots, patients find a slot, book it, get a confirmation, and may cancel. The user wants a first version in use quickly. You are drafting the requirements.
 
 ## Criteria
 

@@ -14,9 +14,12 @@ id: product
 description: Greenfield request to delivered software, with one approval gate after the plan.
 applies_to: greenfield
 existing: [project-config]
-# Approval Gate 1 (scope and MVP): the user approves the product brief before any requirement is written. A Change created
-# under this Workflow records scope_gate: true; `aidw transition <id> awaiting_approval` is refused until the scope is approved.
-scope_gate: true
+# Scope round (ADR-0011): the user settles vision, scope, MVP and what is out on a Decision Page (`kind: scope`) during the
+# discovery interview, before any requirement is written. The checked answer is recorded under `### Scope round` in the
+# discovery appendix of analysis.md. A Change created under this Workflow records `scope_round: true`, and
+# `aidw analyze` refuses its package without the round. Nothing is approved or frozen there:
+# the one Approval Gate stays after the plan.
+scope_round: true
 interrupts: [paused, escalated]
 
 # The Change state machine of this Workflow: from each state, the states `aidw transition` may move to. `approved` is reached by
@@ -24,8 +27,7 @@ interrupts: [paused, escalated]
 transitions:
   draft: [intake]
   intake: [analyzing]
-  analyzing: [awaiting_scope_approval, awaiting_approval]
-  awaiting_scope_approval: [analyzing]
+  analyzing: [awaiting_approval]
   awaiting_approval: [analyzing]
   approved: [executing]
   executing: [verifying, paused, escalated]
@@ -81,7 +83,7 @@ stages:
     writes: [intake]
 
   - id: discovery
-    title: Discovery interview, one conversation in stages (the job, the rules and edges, the users)
+    title: Discovery interview, one conversation in stages (the job and its scope round, the rules and edges, the users)
     states: [analyzing]
     roles: [product-manager, business-analyst, ux-research]
     reads: [intake]
@@ -101,19 +103,11 @@ stages:
     reads: [intake, analysis-discovery-qa]
     writes: [decision-ux-research-needed, user-journeys]
 
-  - id: scope
-    title: Product brief, approved by the user (Approval Gate 1)
-    states: [awaiting_scope_approval]
-    roles: [product-manager]
-    reads: [intake, analysis-discovery-qa]
-    writes: [product-brief]
-    gate: scope-approval
-
   - id: requirements
     title: Domain model and requirements (Product Manager), then delta specs (Business Analyst)
     states: [analyzing]
     roles: [product-manager, business-analyst]
-    reads: [intake, analysis-discovery-qa, product-brief]
+    reads: [intake, analysis-discovery-qa]
     writes: [domain-model, decisions-domain, requirements, delta-specs, analysis-scope, analysis-domain, analysis-specs]
 
   - id: design
