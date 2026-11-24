@@ -172,10 +172,26 @@ Hai trường hợp đặc biệt:
   chạy trong lúc đó. Với runner, `aidw next` ở phiên mới đưa Consultation đang dở lên trước mọi việc khác, nên không gì
   bị mất. Sau cổng duyệt, câu hỏi không trả lời được hoặc câu trả lời đòi đổi thứ đã duyệt cũng không đến tay bạn
   ([ADR-0014](adr/0014-after-the-approval-gate-the-run-does-not-ask-the-user.md)): nó được ghi lại để Role tác giả
-  quyết định như một Deviation (T9), và pull request sẽ nêu ra. Trước cổng duyệt, câu hỏi không ai trả lời được thành
+  quyết định như một Deviation (xem dưới), và pull request sẽ nêu ra. Trước cổng duyệt, câu hỏi không ai trả lời được thành
   câu hỏi mở trong Artifact và được liệt kê (kèm nguyên văn câu hỏi) trên trang duyệt; stage còn Consultation dở thì
   chưa được báo xong và package chưa duyệt được. Hook chỉ cho implementer ghi `<task>.request.md` của task nó đang chạy,
   và chỉ Role được hỏi mới ghi được `C01.answer.md` của câu hỏi đó.
+
+- **Sau cổng duyệt, thứ đã duyệt chỉ đổi qua một Deviation ([ADR-0014](adr/0014-after-the-approval-gate-the-run-does-not-ask-the-user.md)).**
+  Khi một câu trả lời (hay một chẩn đoán) đòi đổi spec, contract, kiến trúc hay plan đã duyệt, session chính không tự
+  sửa và không hỏi bạn: nó chạy `aidw deviation open --role <Role tác giả> --files <file> --reason "<vì sao>"`. CLI
+  chỉ nhận Role đã viết file đó (theo `artifacts.yaml`) và chỉ file thuộc package đã duyệt; trong lúc mở, hook chỉ cho
+  đúng Role đó sửa đúng các file đó, còn sửa bất kỳ file đã duyệt nào khác vẫn là drift. Role tác giả sửa theo ba quy
+  tắc: giữ mục đích, sửa ít nhất, không thêm phạm vi. `aidw deviation close` kiểm: không file nào khác bị đổi, package
+  vẫn hợp lệ, không bỏ scenario đã duyệt nào mà không ghi lý do (`--remove-reason`), không đụng `grants` của bạn, task
+  mới phải phục vụ một scenario đã duyệt, và phân loại thay đổi contract (`openapi.yaml`, `data-model.dbml`) là
+  *additive* (thêm, không phá) hay *breaking*. Xong thì CLI tính lại hash duyệt (giữ nguyên quyền push bạn đã cấp),
+  ghi lịch sử vào `approval.history`, đưa các task bị ảnh hưởng (đã xong) về chạy lại, và ghi vào
+  `changes/<id>/deviations.yaml`: đây là nguồn của mục "khác với package đã duyệt" trong pull request.
+- **Việc vượt ngoài quyền bạn cấp thì không làm (D10).** Task cần thứ ngoài permission envelope (hay thứ không bao giờ
+  tự động: credential ngoài `.env`, thứ tốn tiền, deploy production, xoá dữ liệu cloud) được đánh dấu `not_built` kèm
+  lý do (`aidw not-built <task> --reason "..."`), cùng các task phụ thuộc nó; phần còn lại chạy tiếp và pull request
+  liệt kê chúng.
 
 ## Task, phiên và worktree: ba khái niệm cần phân biệt
 
