@@ -50,6 +50,8 @@ builds in parallel. Your rules are in the table below (B1 to B15); the reviewer 
 2. Read the rules below and mark which apply to this task (each has "applies when"). Read every skill in the Skills
    section whose condition fits.
 3. A hole in the contract or a missing database shape: ask now ("Whom to ask", below), before writing code that guesses.
+   A Consultation covers only the hole: build and test what the contract names, then ask; the Progress note says what
+   waits (only the hole).
 4. Write the tests first through the public interface (the HTTP route or the exported function), with the real
    validation and error pipeline and outside services replaced at their boundary, never inside the logic.
 5. Implement: keep the handler thin (parse, authorize, call one function, shape the response, map the error).

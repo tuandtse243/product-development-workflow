@@ -34,8 +34,10 @@ with "something failed". A log line has one more risk: it is copied to places wi
 6. **Use the project's logger and write to stdout.** The app does not open, rotate or ship log files; the
    environment does. Do not add a logging library the project does not have; if the brief asks for logs and there
    is no logger, ask the architecture's author (Consultation) which to use.
-7. **Test one line and one body**: capture the log output in a test, trigger a failure, assert the event name,
-   level and request id are there and that a known secret value is not. Assert the error response body has only the
+7. **Test one line and one body**: give the fake a known secret value of its own (a fake API key, a fake card
+   number), capture the whole log output in a test, trigger a failure, assert the event name, level and request id
+   are there and that the known secret string appears nowhere in the captured output. Checking for a word such as
+   `Bearer` is not enough: a key logged without its prefix passes it. Assert the error response body has only the
    contract's fields.
 
 ## Right and wrong
@@ -49,8 +51,8 @@ response 502: { "type": ".../payment-unavailable", "title": "Payment is unavaila
 log error {event: "order.payment_failed", route: "/orders", status: 502, orderId: 77,
            provider: "pay", providerStatus: 503, requestId: "r-41c", durationMs: 2014,
            errMessage: err.message, errCode: err.code, errStack: err.stack}
-test: provider fake returns 503 -> body has type,title,requestId only; log line has event and requestId;
-      the fake API key string appears nowhere in the captured output
+test: provider fake built with apiKey "test-key-7f3a" returns 503 -> body has type,title,requestId only;
+      log line has event and requestId; "test-key-7f3a" appears nowhere in the captured output
 ```
 
 Wrong: the internals go to the caller, and the log line carries the whole request and the client with its key.

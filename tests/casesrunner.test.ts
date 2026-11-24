@@ -244,6 +244,7 @@ describe("the Role case runner", () => {
     const results = (root: string) => JSON.parse(readFileSync(join(root, "roles", "backend", "evals", "results.json"), "utf8"));
 
     it("is written into the Role's folder after a run of all its cases", () => {
+      const before = repoResults();
       const root = gitCopy();
       let out = "";
       const code = run(["eval", "backend", "--model", "sonnet"], { ...process.env, AIDW_PLUGIN_ROOT: root }, process.cwd(), { out: (s) => (out += s), err: (s) => (out += s), modelExec: () => fake(true) });
@@ -254,7 +255,7 @@ describe("the Role case runner", () => {
       expect(r.cases.map((c: { name: string }) => c.name).sort()).toEqual(["entity-is-not-a-response", "validates-authorizes-and-does-not-leak"]);
       expect(r.cases[0]).toMatchObject({ pass: true, runs: { total: 3, passed: 3, errors: 0 } });
       expect(out).toMatch(/wrote roles\/backend\/evals\/results\.json/);
-      expect(existsSync(join(plugin, "roles", "backend", "evals", "results.json"))).toBe(false); // tests never write the repo's
+      expect(repoResults()).toEqual(before); // tests never write the repo's
     });
 
     it("records a failed case with the criteria that failed", () => {
@@ -452,6 +453,12 @@ describe("the Role case runner", () => {
     }
   });
 });
+
+/** The repo's own backend result file, byte for byte (null when there is none): a test must leave it as it was. */
+function repoResults(): Buffer | null {
+  const f = join(plugin, "roles", "backend", "evals", "results.json");
+  return existsSync(f) ? readFileSync(f) : null;
+}
 
 /** `aidw eval` on a plugin copy; `seen` collects the model each Role's runner was made for. */
 function go(root: string, argv: string[], exec: (m?: string) => Exec, seen: (string | undefined)[] = []) {

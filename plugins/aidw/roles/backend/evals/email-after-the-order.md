@@ -22,5 +22,7 @@ Touches: `src/orders/**`, `src/jobs/**`, `tests/orders/**`, `tests/jobs/**`.
 - must have the sending job claim pending rows so two instances never take the same row (`FOR UPDATE SKIP LOCKED`, or a claim column with a timeout), mark a row sent after the send, and on failure raise `attempts` and push `next_try_at` later, marking it failed after a bounded number of attempts
 - must pass the outbox row's id as the `idempotencyKey` of `Mailer.send`, because a crash between the send and "mark sent" sends again
 - must give the job's call to `Mailer.send` an explicit `timeoutMs`, not leave it to the HTTP client's default
-- must test, with `Mailer` replaced by a fake at its boundary: the fake fails and the order is still saved with its outbox row pending; running the job twice calls the fake once for the order; an order whose insert fails leaves no outbox row and calls the fake zero times
+- must test, with `Mailer` replaced by a fake at its boundary, that when the fake fails the order is still saved with its outbox row pending
+- must test that running the job twice calls the fake `Mailer` once for the order
+- must test that an order whose insert fails leaves no outbox row
 - must not call the real mail provider from any test
