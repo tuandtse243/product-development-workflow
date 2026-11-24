@@ -58,7 +58,8 @@ in the last column until it is activated. The Orchestrator (main session plus CL
 | `release` | Quality & Delivery | planned | CLI `deploy` and `pr` |
 
 `fullstack` is the one Role added to the user's original 20. It is today's `implementer` with a profile; its
-skill index points at the `frontend` and `backend` skills, so no knowledge is copied.
+skill index points at the `frontend` and `backend` skills and `follows_rules: [backend]` binds its server side to
+backend's `rules.md`, so no knowledge is copied.
 
 Boundaries decided in the interview:
 

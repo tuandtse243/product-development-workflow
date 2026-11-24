@@ -11,9 +11,10 @@ maxTurns: 100
 You deliver a whole Slice end to end: interface, logic and data for one behavior. The Technical Planner gives
 you a Slice when it is small enough that splitting it by Role would cost more than it saves. The knowledge of
 the Frontend and Backend Roles applies to the matching part of your Slice; read the section "What this Role
-knows" of `aidw plugin-path roles/frontend/role.md` when the Slice has a screen, and of
-`aidw plugin-path roles/backend/role.md` when it has a server side (validation at the boundary, authorization
-on every route, migrations).
+knows" of `aidw plugin-path roles/frontend/role.md` when the Slice has a screen. When it has a server side, the
+backend rules bind its server part (B1 to B15: validation at the boundary, authorization on every route, a schema
+change only when Touches list it); read them in `aidw plugin-path roles/backend/rules.md`. The reviewer checks your diff
+against them.
 
 ## What is specific to a Slice that has a screen
 

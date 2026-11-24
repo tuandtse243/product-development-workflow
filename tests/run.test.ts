@@ -246,7 +246,9 @@ describe("briefs", () => {
     expect(review).toMatch(/`VERDICT: pass` or `VERDICT: fix`/);
     expect(review).toMatch(/addy\/code-review-and-quality\/SKILL\.md/);
     expect(review).not.toMatch(/test-driven-development/);
-    expect(review).not.toMatch(/Rules of the Role that built it/); // fullstack has no rules.md
+    // fullstack has no rules.md of its own; it follows backend's (follows_rules), so the review points at that one
+    expect(review).toContain("## Rules of the Role that built it (fullstack)");
+    expect(review).toMatch(/roles\/backend\/rules\.md`: rules of backend, one per row with an id\./);
   });
 
   it("the review brief points at the rules.md of the Role that built the task and asks for rule ids (R2)", () => {
@@ -271,7 +273,7 @@ describe("briefs", () => {
     expect(review).toMatch(/kept when the implementer asked instead of guessing/);
     // a Role that follows another's rules (follows_rules) gets both files in the review of its tasks
     const fsRole = join(pluginCopy, "roles", "fullstack", "role.md");
-    writeFileSync(fsRole, readFileSync(fsRole, "utf8").replace(/^access: (.*)$/m, "access: $1\nfollows_rules: [backend]"));
+    expect(readFileSync(fsRole, "utf8")).toMatch(/^follows_rules: \[backend\]$/m);
     writeFileSync(join(pluginCopy, "roles", "fullstack", "rules.md"), "- Keep the slice whole.\n");
     const fsRoot = executingProject();
     cli(fsRoot, "task", "start", "T01");

@@ -1,0 +1,27 @@
+Each rule is answered pass or fail on the diff of one task. A rule binds when its "applies when" holds; the reviewer
+cites the id in a finding (`1. B7: src/orders.ts: ...`). A rule whose right action is to ask is kept when you asked
+(a Consultation, see "Ask before you guess"); guessing breaks it. A script named in a rule is your measuring tool
+(`aidw plugin-path roles/backend/scripts/<name>.mjs`): its output is a worklist, never the proof.
+
+| id | rule | applies when | checked by |
+|---|---|---|---|
+| B1 | Every route, field name, status code and error type in the diff is one the brief's contract names; for a case the contract does not cover, ask its author (`api-designer`), do not guess one. | the task adds or changes a route, a request or response field, or an error | reviewer, CLI |
+| B2 | Every new or changed route checks on the server that the caller may act on that specific record, and one that takes a record id has three tests through the route: no caller identity, another user's record, the owner (`route-inventory` lists the routes and the tests that call them). | the diff adds or changes a route, server action or RPC method | script, reviewer |
+| B3 | The id that decides ownership or tenancy comes from the server-side session or token, never from the body, the query or a header the client sets. | a route reads or writes data that belongs to a user, team or tenant | reviewer |
+| B4 | Every request body, query and path parameter, and every webhook or message payload, passes a schema that rejects unknown fields and wrong types before any business code or query runs. | the diff adds or changes an entry point that takes input | reviewer |
+| B5 | A response is built from an explicit response shape that names its fields; a database row, entity or ORM model is never returned as it is. | a route returns data read from the database | reviewer |
+| B6 | Each error a scenario names has a test through the route that asserts the status and the contract's error body, and no response body contains a stack trace, SQL text, a file path or an internal id (`error-shape-probe` reads the captured responses). | the task adds or changes an error path of a route | script, reviewer |
+| B7 | A write that changes more than one row or table runs in one transaction, and no network call is made while that transaction is open. | the task writes more than one row or table in one operation | reviewer |
+| B8 | A rule that must hold under two requests at once ("at most one", "cannot go below zero") is enforced by the database (unique constraint, conditional update, lock or version), not by read-then-write in code, and a test fires two requests at once and asserts exactly one wins; when the constraint it needs does not exist, ask `database-architect`, do not guess or add it. | a scenario says "at most", "only one", "cannot ... twice" or "cannot go below", or the code reads a value and writes based on it | reviewer |
+| B9 | When a write must also send something (an email, an event, a job, a webhook), what is owed is recorded in the same transaction or sent after commit; a send is never the only record that it is owed, and a test makes the send fail and asserts the write is kept. | a write must also cause something outside the database | reviewer |
+| B10 | Every list a route returns has a test that asks for more than the maximum and gets at most the maximum, in an order that ends in a unique key. | the task adds or changes a route that returns a list | reviewer |
+| B11 | The number of queries a list route runs does not grow with the number of rows: a test asserts the count for 1 row and for N (`query-count` gives the two numbers). | the task adds or changes a route that returns a list or loads a relation for each item | script, reviewer |
+| B12 | Every outbound call (HTTP, queue, mail, storage) sets an explicit timeout and goes through an interface the tests replace with a fake; no test calls the real service (`leak-and-timeout-scan` lists calls with no timeout). | the diff adds or changes a call to a service outside the process | script, reviewer |
+| B13 | Every environment variable the diff reads is listed by name in `.env.example` and read in one validated config module, not inside a handler or service, and no server-only value reaches a response or the client (`env-names` compares the three). | the diff reads an environment variable | script, reviewer |
+| B14 | No log, trace or error-report line the diff adds carries a password, token, session id, authorization header, connection string, or a whole request body or user object (`leak-and-timeout-scan` flags candidates). | the diff adds or changes a log, trace or error-report call | script, reviewer |
+| B15 | The diff contains no migration or schema file unless the brief's Touches list it; when the work needs a table, column, constraint, index or key table that does not exist, ask `database-architect`, do not guess or write the migration. | the task's code needs a database shape the schema does not have, or the diff touches a database path | CLI, reviewer |
+
+Owned elsewhere and not repeated here: test first with the scenario id, Touches, weakened checks, secrets in files and
+added packages (`library/implement-a-task.md` and the checkpoint); what the API looks like, from names to status codes,
+error shape, list limits and idempotency keys (`library/skills/api-design-rules`). B6 and B10 are the evidence that
+those design rules hold.
