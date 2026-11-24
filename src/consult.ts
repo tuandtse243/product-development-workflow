@@ -534,7 +534,9 @@ export function consultNextText(p: Paths, id: string, c: Consultation): string {
  * without case where it protects (macOS and Windows take `c01.answer.md` for `C01.answer.md`); an allow needs the exact path.
  *   - `C<NN>.answer.md`: only the consulted Role (`to`) of that open Consultation
  *   - any other `C<NN>.*`: nobody (the CLI's copies)
- *   - an implementer: only `<task>.request.md` of a task running in that Change
+ *   - an implementer: only `<task>.request.md` of a task running in that Change (the hook names the Agent's Role, not its
+ *     task, so two implementers of one wave could each write the other's request; `aidw consult` still checks that the
+ *     Role runs that task, and a forged request of a run that already asked is refused)
  *   - an author: its request under the normal `.aidw/` rule (null)
  */
 export function consultWrite(p: Paths, file: string, agent: string, role: string | null): { allow: boolean; reason: string } | null {

@@ -26,7 +26,7 @@ import { defaultTaskRole, implementerOf } from "./roles.js";
 import { packsFor, packsOf } from "./stackpacks.js";
 import { OpError, transition } from "./ops.js";
 import { readText, rel, walkFiles, type Paths } from "./project.js";
-import { closeConflict, conflictPartners, ensureWorktree, recordConflict, updateConflict, removeSnapshot, snapshotBase, integrate, mergeWorktree, parallelConfig, pendingIntegration, planWave, removeWorktree, taskDir, type IntegrateResult } from "./parallel.js";
+import { planWaveBeside, closeConflict, conflictPartners, ensureWorktree, recordConflict, updateConflict, removeSnapshot, snapshotBase, integrate, mergeWorktree, parallelConfig, pendingIntegration, planWave, removeWorktree, taskDir, type IntegrateResult } from "./parallel.js";
 import { parseQuality, qualityFile, resetQualitySummary } from "./quality.js";
 import { selectSkills, skillPath, SKILLS_WITH_NOTES, touchesUi, isSecuritySensitive, type BriefKind } from "./skills.js";
 import { configEvidence, type ConfigEvidence } from "./configlock.js";
@@ -139,8 +139,36 @@ export type ConsultAction = {
 
 export type NextAction = TaskAction | ConsultAction;
 
-/** Work that can run beside a Consultation; an escalation or the end of the Change waits for it. */
-const RUNS_BESIDE: ReadonlySet<string> = new Set(["implement", "wave", "review", "resolve", "review-merge", "triage", "integrate"]);
+/**
+ * What may run beside tasks that wait for an answer (ADR-0013), or nothing. An asker on the main checkout (a sequential
+ * Change) holds it with its half-done work: nothing runs beside it, since a checkpoint, a commit or a new task there
+ * would take that work along. Askers in their own worktrees: work on tasks already started (a review, a conflict, an
+ * integration, a task that runs in its own worktree), and new tasks only as a wave that counts every running task as
+ * holding its slot, its touches and its browser. An escalation or the end of the Change waits.
+ */
+function besideAction(p: Paths, tf: TaskFile, waiting: Task[], rest: TaskAction): TaskAction | undefined {
+  if (waiting.some((t) => typeof t.worktree !== "string" || !t.worktree)) return undefined;
+  switch (rest.action) {
+    case "review":
+    case "resolve":
+    case "review-merge":
+    case "triage":
+    case "integrate":
+      return rest;
+    case "implement": {
+      const t = tf.tasks.find((x) => x.id === rest.task);
+      if (rest.reason !== "new") return t && typeof t.worktree === "string" && t.worktree ? rest : undefined;
+      break;
+    }
+    case "wave":
+      break;
+    default:
+      return undefined;
+  }
+  const busy = tf.tasks.filter((t) => statusOf(t) === "running");
+  const wave = planWaveBeside(tf.tasks, parallelConfig(p, tf.change).max, busy);
+  return wave.length ? { action: "wave", tasks: wave.map((t) => ({ task: t.id, title: String(t.title ?? "") })) } : undefined;
+}
 
 export function nextAction(p: Paths, id: string): NextAction {
   const tf = loadTasks(p, id);
@@ -149,7 +177,8 @@ export function nextAction(p: Paths, id: string): NextAction {
   // left out of the rest, which carries on meanwhile (ADR-0013).
   const pending = loadConsultations(tf.change).filter((c) => c.status !== "resumed");
   const c = pendingConsultation(tf.change);
-  const rest = taskAction(p, tf, new Set(pending.flatMap((x) => (x.task ? [x.task] : []))));
+  const waitingIds = new Set(pending.flatMap((x) => (x.task ? [x.task] : [])));
+  const rest = taskAction(p, tf, waitingIds);
   if (c) {
     const step = c.status !== "open" ? "resume" : existsSync(join(tf.change.dir, c.answer)) ? "record" : "answer";
     return {
@@ -162,7 +191,7 @@ export function nextAction(p: Paths, id: string): NextAction {
       ...(c.stage ? { stage: c.stage } : {}),
       status: c.status,
       brief: join(p.aidw, c.brief),
-      ...(RUNS_BESIDE.has(rest.action) ? { meanwhile: rest } : {}),
+      ...((m) => (m ? { meanwhile: m } : {}))(besideAction(p, tf, tf.tasks.filter((t) => waitingIds.has(t.id)), rest)),
     };
   }
   return rest;

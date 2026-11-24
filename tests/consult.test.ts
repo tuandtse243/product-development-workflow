@@ -337,6 +337,8 @@ describe("review follow-ups", () => {
 
   it("the rest of a Wave carries on while one of its tasks waits for an answer (next names both)", () => {
     const root = buildingProject();
+    // T01 runs in its own worktree (a wave task); T02 waits for its review
+    setTask(root, "T01", { worktree: `.aidw/run/worktrees/${ID}/T01` });
     setTask(root, "T02", { status: "review" });
     expect(asks(root).code).toBe(0);
     const n = cli(root, "next", "--json").json();
@@ -344,6 +346,17 @@ describe("review follow-ups", () => {
     expect(cli(root, "next").out).toMatch(/aidw consult answer C01.*Meanwhile, in the same message: review T02/);
     // nothing else to do: the waiting task is not offered as interrupted
     setTask(root, "T02", { status: "done" });
+    expect(cli(root, "next", "--json").json().meanwhile).toBeUndefined();
+    // a new task starts beside it only where the asker leaves room: here parallel.max is 1 (no git) and T01 holds it
+    setTask(root, "T02", { status: "pending" });
+    expect(cli(root, "next", "--json").json().meanwhile).toBeUndefined();
+  });
+
+  it("nothing runs beside an asker on the main checkout (a sequential Change)", () => {
+    const root = buildingProject();
+    setTask(root, "T02", { status: "review" });
+    expect(asks(root).code).toBe(0);
+    expect(cli(root, "next", "--json").json()).toMatchObject({ action: "consult", step: "answer" });
     expect(cli(root, "next", "--json").json().meanwhile).toBeUndefined();
   });
 
@@ -405,5 +418,34 @@ describe("review follow-ups", () => {
     expect(cli(root, "consult", "answer", "C01").code).toBe(0);
     const section = unansweredSection(loadChange(pathsFor(root), ID));
     expect(section?.points.join("\n")).toMatch(/C01.*product-manager asked research.*double booking/);
+  });
+});
+
+describe("beside a Consultation: wave slots and Bash forgery", () => {
+  it("a new wave task starts beside a paused asker only in a free slot, away from its touches", async () => {
+    const { planWaveBeside } = await import("../src/parallel.js");
+    const asker = { id: "T1", status: "running", touches: ["app/api/**"] };
+    const tasks = [asker, { id: "T2", status: "pending", touches: ["app/api/x.ts"] }, { id: "T3", status: "pending", touches: ["app/web/**"] }, { id: "T4", status: "pending", touches: ["lib/**"] }];
+    expect(planWaveBeside(tasks, 1, [asker]).map((t) => t.id)).toEqual([]);
+    expect(planWaveBeside(tasks, 2, [asker]).map((t) => t.id)).toEqual(["T3"]);
+    expect(planWaveBeside(tasks, 3, [asker]).map((t) => t.id)).toEqual(["T3", "T4"]);
+  });
+
+  it("aidw roster refuses consults naming a read-only Role", () => {
+    const root = mkdtempSync(join(tmpdir(), "aidw-consult-ro-"));
+    temps.push(root);
+    for (const f of ["roster.yaml", "tiers.yaml", "roles", "agents", "library"]) cpSync(join(plugin, f), join(root, f), { recursive: true });
+    const file = join(root, "roles", "backend", "role.md");
+    writeFileSync(file, readFileSync(file, "utf8").replace(/^consults:.*$/m, "consults: [code-reviewer]"));
+    expect(checkRoster(root).errors.map((e) => e.message).join("\n")).toMatch(/consults: "code-reviewer" is read-only/);
+  });
+
+  it("redirect forms and dd count as writes", async () => {
+    const { WRITE_COMMANDS, writeTargets, firstMatch } = await import("../src/policy.js");
+    for (const c of ["echo x 1> f", "echo x 2> f", "echo x 2>> f", "echo x &> f", "echo x &>> f", "echo x >| f", "echo x | dd of=f"]) {
+      expect([c, !!firstMatch(WRITE_COMMANDS, c)]).toEqual([c, true]);
+    }
+    for (const c of ["ls 2>/dev/null", "cmd 2>&1 | grep x", "a => b"]) expect([c, !!firstMatch(WRITE_COMMANDS, c)]).toEqual([c, false]);
+    expect(writeTargets("echo x >| .aidw/a.md")).toEqual([".aidw/a.md"]);
   });
 });

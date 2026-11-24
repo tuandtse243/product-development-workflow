@@ -302,6 +302,7 @@ export function checkRoster(root: string): Diags {
           if (c === id) d.error(file, `consults: a role does not consult itself ("${c}")`);
           else if (!(c in roster.roles)) d.error(file, `consults: "${c}" is not a role in roster.yaml`);
           else if (roster.roles[c]?.status !== "active") d.error(file, `consults: "${c}" is not an active role`);
+          else if (loadRole(root, c)?.access === "read-only") d.error(file, `consults: "${c}" is read-only, so it could never write its answer`);
         }
         if (new Set(h.consults).size !== h.consults.length) d.error(file, "consults lists a role twice");
       }

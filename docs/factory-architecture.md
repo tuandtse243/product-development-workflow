@@ -328,7 +328,13 @@ the original), a `brief:` outside `.aidw/run/briefs/<id>/`, a third question of 
 
 `aidw next` and `aidw stages` put an open Consultation (get the answer) or an answered one (resume the asker) before
 anything else, so a fresh session finds it. The other tasks of a Wave carry on meanwhile: `next` computes the rest of the
-Change without the tasks that wait for an answer and returns it as `meanwhile`, done in the same message. The depth rule
+Change without the tasks that wait for an answer and returns it as `meanwhile`, done in the same message. Only work that
+cannot touch the asker's half-done work runs beside it: nothing at all when the asker runs on the main checkout (a
+sequential Change); with askers in their own worktrees, reviews, conflicts, integration and tasks already running in
+their worktrees, and new tasks only as a wave in which every running task holds its slot of `parallel.max`, its touches
+and its browser (`planWaveBeside`). `aidw roster` refuses `consults:` naming a read-only Role, which could never write
+its answer; the hook knows an Agent's Role, not its task, so an implementer's request path is tied to a running task of
+its Change, and `aidw consult` checks the Role runs it. The depth rule
 is checked by Role, which holds with today's stage order (no Role answers while an Agent of it runs its own work). A later
 brief of the task lists every answered Consultation of it, so the answer survives a resumed Agent that was lost too.
 After the Approval Gate the run never asks the user ([ADR-0014](adr/0014-after-the-approval-gate-the-run-does-not-ask-the-user.md)):

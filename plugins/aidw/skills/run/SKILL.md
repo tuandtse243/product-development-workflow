@@ -189,7 +189,8 @@ A task is triaged once: if the extra attempt fails too, it escalates without ano
 
 **`consult`** (an Agent asked another Role, ADR-0013; `next` returns it first, `step` says which part is left, and
 `meanwhile` is what the rest of the Change does at the same time: the tasks that wait for an answer are left out of it).
-Do the step **and** the `meanwhile` action in one message (parallel calls), so the rest of the wave carries on.
+Do the step **and** the `meanwhile` action in one message (parallel calls), so the rest of the wave carries on. No
+`meanwhile` means nothing may run beside the asker (its work sits on the main checkout, or no slot is free): do only the step.
 The Agent wrote a request file and ended its turn with `CONSULT <path>`:
 1. `aidw consult <path> --change <id>`. It checks the request (the pair its Role declares, one level deep, at most 2 per
    Agent run, in the build only the authors of the contracts the task reads, one open question per run) and prints the

@@ -9283,6 +9283,7 @@ function checkRoster(root) {
           if (c === id) d.error(file, `consults: a role does not consult itself ("${c}")`);
           else if (!(c in roster.roles)) d.error(file, `consults: "${c}" is not a role in roster.yaml`);
           else if (roster.roles[c]?.status !== "active") d.error(file, `consults: "${c}" is not an active role`);
+          else if (loadRole(root, c)?.access === "read-only") d.error(file, `consults: "${c}" is read-only, so it could never write its answer`);
         }
         if (new Set(h.consults).size !== h.consults.length) d.error(file, "consults lists a role twice");
       }
@@ -9416,7 +9417,9 @@ var TIER2_COMMANDS = [
 ];
 var isTier2Resource = (s) => Object.prototype.hasOwnProperty.call(TIER2_RESOURCES, s);
 var WRITE_COMMANDS = [
-  { re: /(^|[^0-9&<>=-])>{1,2}\s*(?!&|\/dev\/|["']?(?:\$\{?TMPDIR\b|\/tmp\/|\/private\/tmp\/|\/var\/folders\/))[^\s&|;]/, why: "redirects output into a file" },
+  // any redirect form: `>`, `>>`, `1>`, `2>>`, `&>`, `&>>`, `>|` (clobber); `2>&1` and `/dev/` are not files
+  { re: /(^|[^<>=-])(?:\d*|&)>{1,2}\|?\s*(?!&|\/dev\/|["']?(?:\$\{?TMPDIR\b|\/tmp\/|\/private\/tmp\/|\/var\/folders\/))[^\s&|;]/, why: "redirects output into a file" },
+  { re: cmd(String.raw`dd\b[^|;&\n]*\bof=`), why: "writes files with dd" },
   { re: cmd(String.raw`tee\b`), why: "writes files with tee" },
   { re: /\|\s*tee\b/, why: "writes files with tee" },
   { re: cmd(String.raw`sed\s+(?:-[a-zA-Z]*i|--in-place)`), why: "edits files in place" },
@@ -9579,6 +9582,7 @@ function shellSegments(command) {
       flush();
       const two = c === ">" && command[i + 1] === ">";
       if (two) i++;
+      if (c === ">" && command[i + 1] === "|") i++;
       if (c === ">" && command[i + 1] === "&") {
         i++;
         while (/\d|-/.test(command[i + 1] ?? "")) i++;
@@ -12158,6 +12162,23 @@ function planWave(tasks, max) {
     if (mustRunAlone(t)) continue;
     if (wave.some((w) => touchesOverlap(list3(w.touches), list3(t.touches)))) continue;
     if (drivesBrowser(t) && wave.some(drivesBrowser)) continue;
+    wave.push(t);
+  }
+  return wave;
+}
+function planWaveBeside(tasks, max, busy) {
+  if (busy.some(mustRunAlone)) return [];
+  const room = max - busy.length;
+  if (room <= 0) return [];
+  const byId = new Map(tasks.map((t) => [t.id, t]));
+  const ready = tasks.filter((t) => statusOf2(t) === "pending" && list3(t.depends_on).every((d) => statusOf2(byId.get(d) ?? { id: d }) === "done"));
+  const wave = [];
+  for (const t of ready) {
+    if (wave.length >= room) break;
+    if (mustRunAlone(t)) continue;
+    const all2 = [...busy, ...wave];
+    if (all2.some((w) => touchesOverlap(list3(w.touches), list3(t.touches)))) continue;
+    if (drivesBrowser(t) && all2.some(drivesBrowser)) continue;
     wave.push(t);
   }
   return wave;
@@ -14988,13 +15009,36 @@ function requireExecuting(p, change) {
     throw new OpError(`approval drift in "${change.id}": escalate and re-approve before running tasks`);
   }
 }
-var RUNS_BESIDE = /* @__PURE__ */ new Set(["implement", "wave", "review", "resolve", "review-merge", "triage", "integrate"]);
+function besideAction(p, tf, waiting, rest) {
+  if (waiting.some((t) => typeof t.worktree !== "string" || !t.worktree)) return void 0;
+  switch (rest.action) {
+    case "review":
+    case "resolve":
+    case "review-merge":
+    case "triage":
+    case "integrate":
+      return rest;
+    case "implement": {
+      const t = tf.tasks.find((x) => x.id === rest.task);
+      if (rest.reason !== "new") return t && typeof t.worktree === "string" && t.worktree ? rest : void 0;
+      break;
+    }
+    case "wave":
+      break;
+    default:
+      return void 0;
+  }
+  const busy = tf.tasks.filter((t) => statusOf3(t) === "running");
+  const wave = planWaveBeside(tf.tasks, parallelConfig(p, tf.change).max, busy);
+  return wave.length ? { action: "wave", tasks: wave.map((t) => ({ task: t.id, title: String(t.title ?? "") })) } : void 0;
+}
 function nextAction(p, id) {
   const tf = loadTasks(p, id);
   requireExecuting(p, tf.change);
   const pending = loadConsultations(tf.change).filter((c2) => c2.status !== "resumed");
   const c = pendingConsultation(tf.change);
-  const rest = taskAction(p, tf, new Set(pending.flatMap((x) => x.task ? [x.task] : [])));
+  const waitingIds = new Set(pending.flatMap((x) => x.task ? [x.task] : []));
+  const rest = taskAction(p, tf, waitingIds);
   if (c) {
     const step = c.status !== "open" ? "resume" : (0, import_node_fs33.existsSync)((0, import_node_path38.join)(tf.change.dir, c.answer)) ? "record" : "answer";
     return {
@@ -15007,7 +15051,7 @@ function nextAction(p, id) {
       ...c.stage ? { stage: c.stage } : {},
       status: c.status,
       brief: (0, import_node_path38.join)(p.aidw, c.brief),
-      ...RUNS_BESIDE.has(rest.action) ? { meanwhile: rest } : {}
+      .../* @__PURE__ */ ((m) => m ? { meanwhile: m } : {})(besideAction(p, tf, tf.tasks.filter((t) => waitingIds.has(t.id)), rest))
     };
   }
   return rest;
