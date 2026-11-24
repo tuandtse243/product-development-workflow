@@ -229,6 +229,10 @@ Fastify, Hono.
 - T16 runs: decided 2026-11-24: C3 is shown per case (`aidw eval --without <all of the case's covers>`, 1 run) plus a
   bare baseline (`--bare`, 1 run); per-item ablation is a diagnostic only. Budget for this round: 100 model calls
   (level 1 60, per-case 20, bare 20); more needs the owner's word.
+- C3 amended 2026-11-24 after the T16 runs: on the deep tier the bare model passed 4 of 10 backend cases and the
+  rest failed only on details, also with their covers removed. There the bare and per-case runs are a diagnostic;
+  "a case fails without what it covers" is required on the tier a Role would be lowered to (C6) and at level 2
+  (T18), where tests, scripts and the CLI grade real behaviour.
 - T8: how the asking Agent is resumed in runner mode. Decided 2026-11-24: the asker writes its question and a
   progress note into the request file; the CLI always writes a resume brief (original brief + note + answer
   path), so a fresh Agent of the same Role is the guaranteed path; continuing the live Agent with SendMessage is
