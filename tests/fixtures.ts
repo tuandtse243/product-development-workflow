@@ -1,8 +1,9 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import YAML from "yaml";
 import { digestOf } from "../src/planreview.js";
+import { writeAgents } from "../src/roles.js";
 
 export const MAIN_SPEC = `# Booking
 
@@ -38,6 +39,25 @@ The system SHALL ${name.toLowerCase()}.${extra}
 - **WHEN** it is triggered
 - **THEN** it happens
 `;
+
+/**
+ * Puts the backend Role of a plugin copy back to its shape before the rules table, whatever backend holds today: no
+ * rules.md, no skills index, only its two original cases with no `covers:` or `expect:` and no result file, and
+ * fullstack without `follows_rules`. Tests of the rules table (T12) build their own table Role from this.
+ */
+export function bareBackend(root: string): void {
+  const dir = join(root, "roles", "backend");
+  rmSync(join(dir, "rules.md"), { force: true });
+  const role = join(dir, "role.md");
+  writeFileSync(role, readFileSync(role, "utf8").replace(/^skills:\n(?:[ \t]+-.*\n)*/m, ""));
+  const evals = join(dir, "evals");
+  const kept = ["entity-is-not-a-response.md", "validates-authorizes-and-does-not-leak.md"];
+  for (const f of readdirSync(evals)) if (!kept.includes(f)) rmSync(join(evals, f), { recursive: true, force: true });
+  for (const f of kept) writeFileSync(join(evals, f), readFileSync(join(evals, f), "utf8").replace(/^(covers|expect): .*\n/gm, ""));
+  const fullstack = join(root, "roles", "fullstack", "role.md");
+  if (existsSync(fullstack)) writeFileSync(fullstack, readFileSync(fullstack, "utf8").replace(/^follows_rules: .*\n/m, ""));
+  writeAgents(root);
+}
 
 export function tempProject(): string {
   return mkdtempSync(join(tmpdir(), "aidw-test-"));

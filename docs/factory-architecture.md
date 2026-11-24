@@ -57,8 +57,10 @@ in the last column until it is activated. The Orchestrator (main session plus CL
 | `documentation` | Quality & Delivery | planned | `deliver` skill |
 | `release` | Quality & Delivery | planned | CLI `deploy` and `pr` |
 
-`fullstack` is the one Role added to the user's original 20. It is today's `implementer` with a profile; its
-skill index points at the `frontend` and `backend` skills, so no knowledge is copied.
+`fullstack` is the one Role added to the user's original 20. It is today's `implementer` with a profile. Nothing is
+copied into it: `follows_rules: [backend]` binds its server side to backend's `rules.md`, its `skills:` index lists the
+two library skills backend lists, and its body points at backend's six own skills by path (an index entry names only a
+Role's own skill or a `library/` one) and at the frontend Role's section for a screen.
 
 Boundaries decided in the interview:
 

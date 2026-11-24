@@ -12,6 +12,10 @@ reads: [tasks, delta-specs, constitution, design-tokens]
 writes: []
 max_turns: 100
 includes: [library/implement-a-task.md]
+follows_rules: [backend]
+skills:
+  - library/external-api: when the task's server part calls a third-party service (payment, email, maps, an identity provider)
+  - library/resilient-integration: when the task's server part receives a webhook, or makes a write across a boundary that may be retried or may time out
 ---
 
 ## Responsibility
@@ -19,9 +23,37 @@ includes: [library/implement-a-task.md]
 You deliver a whole Slice end to end: interface, logic and data for one behavior. The Technical Planner gives
 you a Slice when it is small enough that splitting it by Role would cost more than it saves. The knowledge of
 the Frontend and Backend Roles applies to the matching part of your Slice; read the section "What this Role
-knows" of `aidw plugin-path roles/frontend/role.md` when the Slice has a screen, and of
-`aidw plugin-path roles/backend/role.md` when it has a server side (validation at the boundary, authorization
-on every route, migrations).
+knows" of `aidw plugin-path roles/frontend/role.md` when the Slice has a screen. When it has a server side, the
+backend rules bind its server part (B1 to B15: validation at the boundary, authorization on every route, a schema
+change only when Touches list it); read them in `aidw plugin-path roles/backend/rules.md`. The reviewer checks your diff
+against them.
+
+## What is specific to a Slice that has a server side
+
+Test the server part through its public interface (the HTTP route or the exported function), and replace outside
+services at their boundary, never inside the logic. Tooling comes from the project's stack pack
+(`aidw plugin-path stacks/<language>.md`) and the framework's from its framework pack when one exists; otherwise from the
+project's own code and `.aidw/constitution.md`.
+
+The backend Role's skills apply to the server part; read one when its condition holds (the command prints its path):
+
+- `endpoint-test-matrix`: when the task's server part adds or changes a route, a server action or an RPC method.
+  `aidw plugin-path roles/backend/skills/endpoint-test-matrix.md`
+- `transactions-and-races`: when the task's server part writes more than one row or table, reads a value and writes
+  based on it, or a scenario says at most, only one or cannot twice.
+  `aidw plugin-path roles/backend/skills/transactions-and-races.md`
+- `repeat-safe-writes`: when the task's server part must not act twice on a retry or a double submit (an
+  Idempotency-Key in the contract).
+  `aidw plugin-path roles/backend/skills/repeat-safe-writes.md`
+- `effects-after-commit`: when the task's server part must also cause something outside the database (an email, an
+  event, a queued job, a call to another service).
+  `aidw plugin-path roles/backend/skills/effects-after-commit.md`
+- `server-logs-and-errors`: when the task's server part adds an entry point or an error path in a project that has a
+  logger, or the brief asks for logs, a health check or a request id.
+  `aidw plugin-path roles/backend/skills/server-logs-and-errors.md`
+- `query-shape`: when the task's server part adds a query that returns a list, loads a relation, or sorts or filters by
+  a new column.
+  `aidw plugin-path roles/backend/skills/query-shape.md`
 
 ## What is specific to a Slice that has a screen
 
