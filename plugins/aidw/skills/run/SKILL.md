@@ -221,18 +221,22 @@ checkpoint it as usual; the gap is on record and the pull request will show it. 
    technical-planner). It prints the brief (the three rules: keep the purpose, smallest change, no new scope) and one
    `SPAWN` line per Role.
 2. Spawn each Agent on a `SPAWN` line with the printed prompt and nothing else. While it is open the hook lets each file be
-   edited by its author Role only, you included; an edit anywhere else in the package is still drift.
-3. When they reply: `aidw deviation close --change <id>`. Refused, it says why (another approved file drifted, the
-   package does not validate, an approved scenario is removed without a reason, the grants changed, a new task serves no
+   edited by its author Role only, never you (by Bash neither); an edit anywhere else in the package is still drift.
+3. When they reply: `aidw deviation close --change <id> --summary "<their one paragraph>"`. Refused, it says why
+   (another approved file drifted, a contract or scenario is half written, the grants or permissions changed, the
+   package does not validate, an approved scenario is removed without a reason, a new requirement, a new task serves no
    approved scenario): send the author back with that line. When the author removed an approved scenario and said why,
-   close with `--remove-reason "<its reason>"`. Closed, it prints the contract classification (additive or breaking),
-   the tasks that run again (done ones are back to pending) and, for a Consultation, the `aidw consult resume` to run.
+   add `--remove-reason "<scenario>=<its reason>; ..."`; when it says a new requirement is not new scope and why, add
+   `--scope-reason "<why>"`. "Task still in flight": finish that task's step (`meanwhile`), then close again. Closed,
+   it prints the contract classification (additive, breaking, prose or unclassified), the tasks that run again (done
+   ones are back to pending) and, for a Consultation, the `aidw consult resume` to run.
 4. Nothing needs to change after all, or the author cannot meet the rules: `aidw deviation abandon --change <id>` puts
    the files back.
 
 **Not built** (D10): an implementer that reports work outside what the user granted (the permission envelope in the
 brief, or anything never automatic: credentials outside `.env`, anything that costs money, production deploys, deleting
-cloud data) is not retried and not escalated: `aidw not-built <T> --change <id> --reason "<what it needs>"`. The task
+cloud data) is not retried and not escalated: `aidw not-built <T> --change <id> --reason "<what it needs>"`
+(`--cause environment` for a missing key or the network). The task
 and the tasks that depend on it are marked `not_built`; the rest carries on and the pull request lists them.
 
 **`escalate`**: see below.

@@ -182,15 +182,17 @@ Hai trường hợp đặc biệt:
   sửa và không hỏi bạn: nó chạy `aidw deviation open --role <Role tác giả> --files <file> --reason "<vì sao>"`. CLI
   chỉ nhận Role đã viết file đó (theo `artifacts.yaml`) và chỉ file thuộc package đã duyệt; trong lúc mở, hook chỉ cho
   đúng Role đó sửa đúng các file đó, còn sửa bất kỳ file đã duyệt nào khác vẫn là drift. Role tác giả sửa theo ba quy
-  tắc: giữ mục đích, sửa ít nhất, không thêm phạm vi. `aidw deviation close` kiểm: không file nào khác bị đổi, package
-  vẫn hợp lệ, không bỏ scenario đã duyệt nào mà không ghi lý do (`--remove-reason`), không đụng `grants` của bạn, task
-  mới phải phục vụ một scenario đã duyệt, và phân loại thay đổi contract (`openapi.yaml`, `data-model.dbml`) là
-  *additive* (thêm, không phá) hay *breaking*. Xong thì CLI tính lại hash duyệt (giữ nguyên quyền push bạn đã cấp),
+  tắc: giữ mục đích, sửa ít nhất, không thêm phạm vi. `aidw deviation close` kiểm: không file nào khác bị đổi, không
+  contract hay scenario nào đang viết dở, không đụng `grants` hay `permissions` của bạn, package vẫn hợp lệ, không bỏ
+  scenario đã duyệt nào mà không ghi lý do (`--remove-reason`), không thêm requirement mới nếu không ghi lý do
+  (`--scope-reason`), task mới phải phục vụ một scenario đã duyệt, task cần chạy lại không còn đang chạy dở, và phân
+  loại thay đổi contract (`openapi.yaml`, `data-model.dbml`) là *additive* (thêm, không phá) hay *breaking*. "Giữ mục
+  đích" và "sửa ít nhất" là phán đoán của Role tác giả và reviewer, CLI không kiểm được. Xong thì CLI tính lại hash duyệt (giữ nguyên quyền push bạn đã cấp),
   ghi lịch sử vào `approval.history`, đưa các task bị ảnh hưởng (đã xong) về chạy lại, và ghi vào
   `changes/<id>/deviations.yaml`: đây là nguồn của mục "khác với package đã duyệt" trong pull request.
 - **Việc vượt ngoài quyền bạn cấp thì không làm (D10).** Task cần thứ ngoài permission envelope (hay thứ không bao giờ
   tự động: credential ngoài `.env`, thứ tốn tiền, deploy production, xoá dữ liệu cloud) được đánh dấu `not_built` kèm
-  lý do (`aidw not-built <task> --reason "..."`), cùng các task phụ thuộc nó; phần còn lại chạy tiếp và pull request
+  lý do (`aidw not-built <task> --reason "..."`, `--cause environment` khi thiếu key hay mạng), cùng các task phụ thuộc nó; phần còn lại chạy tiếp và pull request
   liệt kê chúng.
 
 ## Task, phiên và worktree: ba khái niệm cần phân biệt
