@@ -238,6 +238,20 @@ describe("review layers in parallel (D13)", () => {
     expect(next.awaitingReviews.map((a: { layer: string }) => a.layer)).toEqual(["security", "a11y"]);
   });
 
+  it("keeps the single-reviewer output when only one review layer awaits", () => {
+    const root = project(Q().replace(/  - name: security\n    run: \["node check.js audit-ok"\]\n    review: security\n/, ""));
+    const r = cli(root, "verify", "--json").json();
+    expect(r.layers.map((l: { status: string }) => l.status)).toEqual(["pass", "review", "pass"]);
+    expect(r.awaitingReviews.map((a: { layer: string }) => a.layer)).toEqual(["ui-ux"]);
+    expect(r.waitingReviews).toEqual([]);
+    const out = cli(root, "verify").out;
+    expect(out).toMatch(/^REVIEW: layer "ui-ux" awaits its ui review: spawn aidw:ui-ux-designer with the brief \.aidw\/run\/briefs\/\S+ui-ux\.layer-review\.md, then `aidw layer-review ui-ux pass\|fix --notes-file <reply>`\n/);
+    expect(out).toMatch(/\n\n {2}agent {2}aidw:ui-ux-designer\n {2}brief {2}\S+\n {2}prompt Layer review brief: \S+\. Review the layer and reply with the verdict\.\n$/);
+    expect(out).not.toMatch(/layer {2}ui-ux|NEXT: spawn|next round/);
+    expect(cli(root, "layer-review", "ui-ux", "pass").code).toBe(0);
+    expect(cli(root, "verify", "--json").json()).toMatchObject({ ok: true, summary: "all quality layers pass" });
+  });
+
   it("honours parallel.max", () => {
     const root = project(Q("parallel:\n  max: 1\n"));
     const r = cli(root, "verify", "--json").json();

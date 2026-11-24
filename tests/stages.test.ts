@@ -2,7 +2,7 @@
  * D13: the CLI computes which analysis stages, and which review layers, may run at the same time, from the
  * Artifacts each one reads and writes, and offers them in one NEXT.
  */
-import { readFileSync } from "node:fs";
+import { cpSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
@@ -154,5 +154,66 @@ describe("the lead's skills explain the parallel group", () => {
     const t = read("skills/run/SKILL.md");
     expect(t).toMatch(/all in\s+one message\*\* \(parallel Agent calls, one per layer\)/);
     expect(t).toMatch(/Record every verdict of the group first/);
+  });
+});
+
+describe("aidw stages with a changed workflow (end to end)", () => {
+  const ID = "2026-11-24-notes";
+  const RESEARCH = "    writes: [decision-research-needed, research-note]\n";
+  const USER_RESEARCH = "    writes: [decision-ux-research-needed, user-journeys]\n";
+
+  /** A copy of the plugin whose product workflow is changed by `edit`, and a change under it past discovery. */
+  function project(edit: (yaml: string) => string): { root: string; run: (...argv: string[]) => ReturnType<typeof cli> } {
+    const root = tempProject();
+    const pr = join(root, "plugin");
+    cpSync(plugin, pr, { recursive: true, filter: (src) => !src.includes(`${join(plugin, "bin")}`) });
+    const f = join(pr, "workflows", "product.yaml");
+    const before = readFileSync(f, "utf8");
+    const after = edit(before);
+    expect(after).not.toBe(before);
+    writeFileSync(f, after);
+    const go = (...argv: string[]) => {
+      let out = "";
+      let err = "";
+      const code = run([...argv, "--root", root], { AIDW_PLUGIN_ROOT: pr }, root, { out: (s) => (out += s), err: (s) => (err += s) });
+      return { code, out, err, json: () => JSON.parse(out) };
+    };
+    go("init");
+    expect(go("change", "new", ID, "--title", "Notes", "--workflow", "product").code).toBe(0);
+    go("transition", ID, "intake");
+    go("transition", ID, "analyzing");
+    expect(go("stages", "--done", "discovery", "--change", ID).code).toBe(0);
+    return { root, run: go };
+  }
+
+  it("the unchanged copy offers research and user research together", () => {
+    const { run: go } = project((y) => y.replace("# screenshots the mocks", "# (copy) screenshots the mocks"));
+    expect(go("stages", ID, "--json").json().group.map((s: { id: string }) => s.id)).toEqual(["research", "user-research"]);
+  });
+
+  it("does not offer a stage with the one whose output it reads", () => {
+    const { run: go } = project((y) => y.replace("    reads: [intake, analysis-discovery-qa]\n" + RESEARCH, "    reads: [intake, analysis-discovery-qa, user-journeys]\n" + RESEARCH));
+    const j = go("stages", ID, "--json").json();
+    expect(j.group.map((s: { id: string }) => s.id)).toEqual(["research"]);
+    expect(j.ready.map((s: { id: string }) => s.id)).toEqual(["research"]);
+    expect(go("stages", ID).out).toMatch(/NEXT: stage research \(/);
+    expect(go("stages", "--done", "user-research", "--change", ID).err).toMatch(/stage "user-research" is not ready: it waits for research/);
+  });
+
+  it("does not offer two stages that write the same artifact together", () => {
+    const { run: go } = project((y) => y.replace(USER_RESEARCH, "    writes: [decision-ux-research-needed, user-journeys, research-note]\n"));
+    const j = go("stages", ID, "--json").json();
+    expect(j.group.map((s: { id: string }) => s.id)).toEqual(["research"]);
+    expect(go("stages", ID).out).not.toMatch(/in parallel/);
+  });
+
+  it("offers at most one browser-driving stage at a time", () => {
+    const { run: go } = project((y) => y.replace(RESEARCH, `${RESEARCH}    browser: true\n`).replace(USER_RESEARCH, `${USER_RESEARCH}    browser: true\n`));
+    const j = go("stages", ID, "--json").json();
+    expect(j.ready.map((s: { id: string }) => s.id)).toEqual(["research", "user-research"]);
+    expect(j.group.map((s: { id: string; browser?: boolean }) => [s.id, s.browser])).toEqual([["research", true]]);
+    expect(go("stages", ID).out).toMatch(/now +research\n {2}ready +user-research\nNEXT: stage research /);
+    // once it is reported back the other one is offered
+    expect(go("stages", "--done", "research", "--change", ID).out).toMatch(/NEXT: stage user-research /);
   });
 });
