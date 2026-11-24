@@ -7332,7 +7332,7 @@ module.exports = __toCommonJS(cli_exports);
 var import_node_fs47 = require("node:fs");
 var import_node_path52 = require("node:path");
 var import_node_url = require("node:url");
-var import_yaml24 = __toESM(require_dist(), 1);
+var import_yaml25 = __toESM(require_dist(), 1);
 
 // src/page.ts
 var import_node_crypto = require("node:crypto");
@@ -9240,6 +9240,52 @@ function loadRole(root, id) {
     rules: (0, import_node_fs9.existsSync)(rulesFile) ? read(rulesFile).trim() : ""
   };
 }
+var RULE_CHECKERS = ["reviewer", "script", "CLI"];
+var RULES_HEADER = ["id", "rule", "applies when", "checked by"];
+var RULE_ID = /^[A-Z]+[0-9]+$/;
+function cells(line) {
+  const inner = line.trim().replace(/^\|/, "").replace(/(?<!\\)\|$/, "");
+  return inner.split(/(?<!\\)\|/).map((c) => c.trim().replace(/\\\|/g, "|"));
+}
+function parseRulesTable(text2) {
+  const lines = text2.split("\n");
+  const start = lines.findIndex((l) => /^\s*\|\s*id\s*\|/i.test(l));
+  if (start < 0) return { table: false, rules: [], problems: [] };
+  const problems = [];
+  const header2 = cells(lines[start]).map((c) => c.toLowerCase());
+  if (header2.join("|") !== RULES_HEADER.join("|")) problems.push(`the header must be | ${RULES_HEADER.join(" | ")} |`);
+  if (!/^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$/.test(lines[start + 1] ?? "")) problems.push("the header must be followed by a | --- | separator row");
+  const rules = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const line of lines.slice(start + 2)) {
+    if (!line.trim().startsWith("|")) break;
+    const c = cells(line);
+    const id = c[0] ?? "";
+    const label2 = id || "a row";
+    if (c.length !== RULES_HEADER.length) {
+      problems.push(`${label2}: a row has ${c.length} cells, expected ${RULES_HEADER.length}`);
+      continue;
+    }
+    const [, rule, appliesWhen, checker] = c;
+    if (!RULE_ID.test(id)) problems.push(`id "${id}" must be capital letters then a number (B1, FE12)`);
+    else if (seen.has(id)) problems.push(`id "${id}" is used twice`);
+    seen.add(id);
+    if (!rule) problems.push(`${label2}: the rule is empty`);
+    if (!appliesWhen) problems.push(`${label2}: "applies when" is empty`);
+    const checkedBy = checker ? checker.split(/\s*,\s*/) : [];
+    if (!checkedBy.length) problems.push(`${label2}: "checked by" is empty`);
+    for (const k of checkedBy) if (!RULE_CHECKERS.includes(k)) problems.push(`${label2}: checked by "${k}" is not one of ${RULE_CHECKERS.join(", ")}`);
+    rules.push({ id, rule, appliesWhen, checkedBy });
+  }
+  if (!rules.length && !problems.length) problems.push("the table has no rules");
+  return { table: true, rules, problems };
+}
+function loadRuleTable(root, id) {
+  const file = (0, import_node_path11.join)(roleDir(root, id), "rules.md");
+  if (!(0, import_node_fs9.existsSync)(file)) return null;
+  const t = parseRulesTable(read(file));
+  return t.table ? t.rules : null;
+}
 function skillIndex(raw) {
   if (!Array.isArray(raw)) return [];
   return raw.flatMap((e) => isRecord3(e) ? Object.entries(e).map(([name, when]) => ({ name, when: String(when) })) : []);
@@ -9396,6 +9442,8 @@ function checkRoster(root) {
         if (new Set(h.consults).size !== h.consults.length) d.error(file, "consults lists a role twice");
       }
     }
+    const rulesPath = (0, import_node_path11.join)(roleDir(root, id), "rules.md");
+    if ((0, import_node_fs9.existsSync)(rulesPath)) for (const problem of parseRulesTable(read(rulesPath)).problems) d.error(`roles/${id}/rules.md`, problem);
     for (const k of ["department", "status", "carried_by"]) if (k in h) d.error(file, `"${k}" belongs in roster.yaml, not in the profile`);
   }
   for (const id of ids) {
@@ -17325,6 +17373,13 @@ ${req.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`;
     const diff = base2 ? `${inWorktree ? `in the worktree \`${taskRoot}\`: ` : ""}\`git diff ${base2}\` plus untracked files (\`git status --porcelain\`)` : "the files matching Touches (no base commit was recorded)";
     const outside = lastCheckpoint?.outside_touches ?? [];
     const design = lastCheckpoint?.design;
+    const builder = implementerOf(pluginHome, typeof t.role === "string" ? t.role : void 0) ?? defaultTaskRole();
+    const builderRules = (0, import_node_path42.join)(pluginHome, "roles", builder, "rules.md");
+    const ruleTable = (0, import_node_fs37.existsSync)(builderRules) ? loadRuleTable(pluginHome, builder) : null;
+    const exampleId = ruleTable?.[0]?.id;
+    const rulesSection = (0, import_node_fs37.existsSync)(builderRules) ? h(`Rules of the Role that built it (${builder})`, [
+      exampleId ? `- \`${builderRules}\`: the rules the implementer had to follow, one per row. Judge the diff against every rule whose "applies when" fits this task (a rule checked by the CLI is already proven by the checkpoint; one checked by a script: read its output in the implementer notes, if any). A broken rule is a blocking issue: cite its id (for example \`${exampleId}\`) in the finding.` : `- \`${builderRules}\`: the rules the implementer had to follow. A broken rule is a blocking issue.`
+    ]) : [];
     body = [
       "You are an independent reviewer in a fresh context. You did not write this code. You may read files and run read-only commands (tests included); you cannot edit anything.",
       "",
@@ -17346,6 +17401,7 @@ ${req.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`;
       ...design?.screenshots.length ? [`- Screenshots (open each with Read): ${design.screenshots.map((f) => `\`${(0, import_node_path42.join)(p.project, f)}\``).join(", ")}`] : [],
       ...design?.hardcoded_colors.length ? [`- Color literals that are not tokens, in changed files: ${design.hardcoded_colors.map((f) => `\`${f}\``).join(", ")}. Each needs a reason or becomes a token.`] : [],
       "",
+      ...rulesSection,
       "## Checklist",
       "",
       "1. Every scenario is implemented as the spec says, and its test really asserts the THEN outcome (not a placeholder, not mocked away).",
@@ -17362,6 +17418,7 @@ ${req.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`;
       "Your verdict starts with exactly one line: `VERDICT: pass` or `VERDICT: fix`.",
       "For `fix`, follow with numbered blocking issues: file, problem, expected fix. Only blocking issues justify `fix`;",
       "put anything else under `Non-blocking:`. Be concrete: the implementer will get your notes verbatim.",
+      ...exampleId ? [`When a finding breaks a rule of the ${builder} Role, name the rule id first, e.g. \`1. ${exampleId}: <file>: <problem>; <expected fix>\`.`] : [],
       `**Write the whole verdict to \`${(0, import_node_path42.join)(p.run, `review-${taskId}.md`)}\` with the Write tool** (the only file you may write), then reply with just its first line, \`VERDICT: pass\` or \`VERDICT: fix\`. The orchestrator reads the file; keeping your reply short saves its context.`,
       "",
       ...shared
@@ -18054,8 +18111,11 @@ async function runShotsWorker(req) {
 }
 
 // src/evals.ts
+var import_node_crypto8 = require("node:crypto");
 var import_node_fs40 = require("node:fs");
 var import_node_path45 = require("node:path");
+var import_yaml22 = __toESM(require_dist(), 1);
+var CASE_KEYS = ["case", "covers", "expect"];
 function loadEvalCases(root, id) {
   const d = new Diags();
   const dir = (0, import_node_path45.join)(roleDir(root, id), "evals");
@@ -18064,14 +18124,29 @@ function loadEvalCases(root, id) {
   for (const f of (0, import_node_fs40.readdirSync)(dir).filter((n) => n.endsWith(".md")).sort()) {
     const file = `roles/${id}/evals/${f}`;
     const text2 = (0, import_node_fs40.readFileSync)((0, import_node_path45.join)(dir, f), "utf8");
-    const head = /^---\ncase: ([a-z0-9-]+)\n---\n/.exec(text2);
-    if (!head) {
+    const fm = /^---\n([\s\S]*?)\n---\n/.exec(text2);
+    let head = null;
+    try {
+      const v = fm ? import_yaml22.default.parse(fm[1] ?? "") : null;
+      head = v && typeof v === "object" && !Array.isArray(v) ? v : null;
+    } catch {
+      head = null;
+    }
+    const name = head?.case;
+    if (!head || typeof name !== "string" || !/^[a-z0-9-]+$/.test(name)) {
       d.error(file, "a case starts with a front matter `case: <name>` (kebab-case)");
       continue;
     }
-    if (head[1] !== f.slice(0, -3)) d.error(file, `case "${head[1]}" must equal the file name "${f.slice(0, -3)}"`);
-    const section2 = (name) => {
-      const m = new RegExp(`^## ${name}\\n([\\s\\S]*?)(?=^## |$(?![\\s\\S]))`, "m").exec(text2);
+    if (name !== f.slice(0, -3)) d.error(file, `case "${name}" must equal the file name "${f.slice(0, -3)}"`);
+    for (const k of Object.keys(head)) if (!CASE_KEYS.includes(k)) d.error(file, `unknown key "${k}" in the front matter (${CASE_KEYS.join(", ")})`);
+    let covers = [];
+    if (head.covers !== void 0) {
+      if (!Array.isArray(head.covers) || !head.covers.every((c) => typeof c === "string" && c.trim())) d.error(file, "covers must be a list of rule ids and skill names, e.g. [B7, effects-after-commit]");
+      else covers = head.covers;
+    }
+    if (head.expect !== void 0 && head.expect !== "ask") d.error(file, 'expect must be "ask" (or left out: the answer is the deliverable)');
+    const section2 = (title) => {
+      const m = new RegExp(`^## ${title}\\n([\\s\\S]*?)(?=^## |$(?![\\s\\S]))`, "m").exec(text2);
       return m ? m[1].trim() : null;
     };
     const input = section2("Input");
@@ -18082,9 +18157,61 @@ function loadEvalCases(root, id) {
     const bad = bullets.filter((l) => !/^- must( not)? \S/.test(l));
     for (const l of bad) d.error(file, `criterion "${l.slice(0, 50)}" must be a bullet starting "- must" or "- must not"`);
     if (criteria !== null && !bullets.length) d.error(file, '"## Criteria" has no bullets');
-    cases.push({ name: head[1], file, input: input ?? "", criteria: bullets.filter((l) => /^- must( not)? \S/.test(l)).map((l) => l.slice(2)) });
+    cases.push({
+      name,
+      file,
+      input: input ?? "",
+      criteria: bullets.filter((l) => /^- must( not)? \S/.test(l)).map((l) => l.slice(2)),
+      covers,
+      ...head.expect === "ask" ? { expect: "ask" } : {}
+    });
   }
   return { cases, diags: d };
+}
+var resultsFile = (root, id) => (0, import_node_path45.join)(roleDir(root, id), "evals", "results.json");
+function roleDigest(root, id) {
+  const dir = roleDir(root, id);
+  const files = [];
+  const walk = (rel2) => {
+    const abs = (0, import_node_path45.join)(dir, rel2);
+    if (!(0, import_node_fs40.existsSync)(abs)) return;
+    if ((0, import_node_fs40.statSync)(abs).isDirectory()) for (const n of (0, import_node_fs40.readdirSync)(abs).sort()) walk(`${rel2}/${n}`);
+    else files.push(rel2);
+  };
+  for (const f of ["role.md", "rules.md", "skills", "references", "scripts"]) walk(f);
+  const evals = (0, import_node_path45.join)(dir, "evals");
+  if ((0, import_node_fs40.existsSync)(evals)) for (const n of (0, import_node_fs40.readdirSync)(evals).filter((x) => x.endsWith(".md")).sort()) files.push(`evals/${n}`);
+  const h = (0, import_node_crypto8.createHash)("sha256");
+  for (const f of files.sort()) h.update(`${f}\0`).update((0, import_node_fs40.readFileSync)((0, import_node_path45.join)(dir, f))).update("\0");
+  return `sha256:${h.digest("hex")}`;
+}
+function checkCoverage(root, id, cases, d) {
+  const table = loadRuleTable(root, id);
+  const skills = (loadRole(root, id)?.skills ?? []).map((s) => s.name);
+  const known = /* @__PURE__ */ new Set([...(table ?? []).map((r) => r.id), ...skills]);
+  for (const c of cases) for (const x of c.covers) if (!known.has(x)) d.error(c.file, `covers "${x}" is not a rule id or a skill of ${id}`);
+  if (!table) return;
+  const covered = new Set(cases.flatMap((c) => c.covers));
+  for (const r of table) if (!covered.has(r.id)) d.error(`roles/${id}/evals`, `rule ${r.id} has no case (add it to a case's covers:)`);
+  for (const s of skills) if (!covered.has(s)) d.error(`roles/${id}/evals`, `skill ${s} has no case (add it to a case's covers:)`);
+  const rf = `roles/${id}/evals/results.json`;
+  const file = resultsFile(root, id);
+  if (!(0, import_node_fs40.existsSync)(file)) {
+    d.warn(rf, `missing: run \`aidw eval ${id}\` and commit the file`);
+    return;
+  }
+  let rec;
+  try {
+    rec = JSON.parse((0, import_node_fs40.readFileSync)(file, "utf8"));
+  } catch {
+    d.warn(rf, `not readable: run \`aidw eval ${id}\` again`);
+    return;
+  }
+  if (rec.digest !== roleDigest(root, id)) d.warn(rf, `older than the Role's content (it changed after the run of ${rec.date}): run \`aidw eval ${id}\` again`);
+  else {
+    const failed = Array.isArray(rec.cases) ? rec.cases.filter((c) => !c.pass).map((c) => c.name) : [];
+    if (failed.length) d.warn(rf, `the last run did not pass ${failed.length} case(s): ${failed.join(", ")}`);
+  }
 }
 function checkEvals(root) {
   const d = new Diags();
@@ -18095,6 +18222,7 @@ function checkEvals(root) {
     const r = loadEvalCases(root, id);
     d.add(r.diags);
     if (e?.status === "active" && r.cases.length === 0) d.error(`roles/${id}/evals`, "an active Role ships at least one eval case (roles/<id>/evals/<case>.md)");
+    checkCoverage(root, id, r.cases, d);
   }
   return d;
 }
@@ -18177,16 +18305,18 @@ function answerPrompt(c) {
     "the command, and put the full content of each file you write inline: the test code, the changes, the configuration or the",
     "review verdict, exactly as you would hand them over. Nothing can be run here, so for a command say what you expect it to print.",
     "## Reply: the exact message you send back when you are done, in the format your role asks for.",
-    "The brief above is complete and nothing is blocked: do not stop to ask a question or to report a missing input.",
+    // A case that expects a question (`expect: ask`) tests whether the Role asks: telling it not to would decide the case.
+    ...c.expect === "ask" ? [] : ["The brief above is complete and nothing is blocked: do not stop to ask a question or to report a missing input."],
     "Do not summarize and do not leave parts out."
   ].join("\n");
 }
 var MIN_ANSWER = 300;
 function runCase(root, id, c, exec) {
   const system = roleSystem(root, id);
+  const short = (a) => c.expect !== "ask" && a.trim().length < MIN_ANSWER;
   let answer = exec(answerPrompt(c), system);
-  if (answer.trim().length < MIN_ANSWER) answer = exec(answerPrompt(c), system);
-  if (answer.trim().length < MIN_ANSWER) throw new Error(`no deliverable (the model replied: ${answer.trim().replace(/\s+/g, " ").slice(0, 160)})`);
+  if (short(answer)) answer = exec(answerPrompt(c), system);
+  if (short(answer)) throw new Error(`no deliverable (the model replied: ${answer.trim().replace(/\s+/g, " ").slice(0, 160)})`);
   const criteria = parseGrade(exec(buildGradePrompt(c, answer)), c.criteria);
   return { role: id, name: c.name, pass: criteria.every((x) => x.pass), criteria, answer };
 }
@@ -18232,6 +18362,27 @@ function runCases(root, role, caseName, exec, onCase, runs = 1) {
   }
   if (caseName && !out.length) throw new Error(`no case "${caseName}"${role ? ` for ${role}` : ""}`);
   return out;
+}
+function writeResults(root, id, results, meta) {
+  const record = {
+    role: id,
+    date: (meta.date ?? /* @__PURE__ */ new Date()).toISOString(),
+    model: meta.model ?? null,
+    tier: loadRole(root, id)?.tier ?? "",
+    runs: meta.runs,
+    digest: roleDigest(root, id),
+    cases: results.filter((r) => r.role === id).map((r) => ({
+      name: r.name,
+      pass: r.pass,
+      runs: r.runs ?? { total: 1, passed: r.pass ? 1 : 0, errors: r.error ? 1 : 0 },
+      failed: r.criteria.filter((x) => !x.pass).map((x) => x.criterion),
+      ...r.error ? { error: r.error } : {}
+    }))
+  };
+  const file = resultsFile(root, id);
+  (0, import_node_fs41.writeFileSync)(file, `${JSON.stringify(record, null, 2)}
+`);
+  return file;
 }
 function printResults(rs, showAnswers = false) {
   const lines = [];
@@ -18645,7 +18796,7 @@ ${bad ? `${bad} problem(s) to fix before the run` : warn ? `no blocking problem,
 var import_node_child_process11 = require("node:child_process");
 var import_node_fs44 = require("node:fs");
 var import_node_path49 = require("node:path");
-var import_yaml22 = __toESM(require_dist(), 1);
+var import_yaml23 = __toESM(require_dist(), 1);
 var MIGRATION2 = /(^|\/)(migrations?|prisma\/migrations|supabase\/migrations|db\/migrate)\//i;
 var DEP_FILES = /(^|\/)(package\.json|pnpm-lock\.yaml|package-lock\.json|yarn\.lock|requirements\.txt|pyproject\.toml|go\.mod|Cargo\.toml)$/;
 function mergeDanger(p, id, tasks, base2, head) {
@@ -18672,7 +18823,7 @@ function loadAny(p, id) {
     const dir = (0, import_node_path49.join)(p.archive, id);
     const file = (0, import_node_path49.join)(dir, "change.yaml");
     if (!(e instanceof ChangeError) || !(0, import_node_fs44.existsSync)(file)) throw e;
-    const doc = import_yaml22.default.parseDocument((0, import_node_fs44.readFileSync)(file, "utf8"));
+    const doc = import_yaml23.default.parseDocument((0, import_node_fs44.readFileSync)(file, "utf8"));
     return { id, dir, file, doc, data: doc.toJS() ?? {} };
   }
 }
@@ -18848,10 +18999,10 @@ function ghCreate(p, plan, draft) {
 
 // src/runner.ts
 var import_node_child_process12 = require("node:child_process");
-var import_node_crypto8 = require("node:crypto");
+var import_node_crypto9 = require("node:crypto");
 var import_node_fs45 = require("node:fs");
 var import_node_path50 = require("node:path");
-var import_yaml23 = __toESM(require_dist(), 1);
+var import_yaml24 = __toESM(require_dist(), 1);
 var MINUTE = 6e4;
 var BACKOFF_MINUTES = [5, 10, 20, 40, 60];
 var LIMIT_TEXT = /rate[ _-]?limit|usage limit|quota|overloaded|\b429\b|\b529\b|limit (?:will )?reset/i;
@@ -18899,7 +19050,7 @@ function prOf(p, id) {
     const file = (0, import_node_path50.join)(dir, "change.yaml");
     if (!(0, import_node_fs45.existsSync)(file)) continue;
     try {
-      const pr = import_yaml23.default.parse((0, import_node_fs45.readFileSync)(file, "utf8"))?.run?.pr;
+      const pr = import_yaml24.default.parse((0, import_node_fs45.readFileSync)(file, "utf8"))?.run?.pr;
       return pr && typeof pr === "object" ? { url: typeof pr.url === "string" && pr.url ? pr.url : null, draft: pr.draft === true } : null;
     } catch {
       return null;
@@ -18937,7 +19088,7 @@ function fingerprint(p, id) {
     const parts = [String(c.data.state), String(c.data.approval?.hash ?? "-")];
     for (const f of ["tasks.yaml", "evidence/quality/summary.json", "evidence/converge.json", "evidence/deploy.json", "evidence/integration.json", "consultations.yaml", "deviations.yaml"]) {
       const file = (0, import_node_path50.join)(c.dir, f);
-      parts.push((0, import_node_fs45.existsSync)(file) ? (0, import_node_crypto8.createHash)("sha1").update((0, import_node_fs45.readFileSync)(file, "utf8").replace(ISO_TIME, "")).digest("hex").slice(0, 12) : "-");
+      parts.push((0, import_node_fs45.existsSync)(file) ? (0, import_node_crypto9.createHash)("sha1").update((0, import_node_fs45.readFileSync)(file, "utf8").replace(ISO_TIME, "")).digest("hex").slice(0, 12) : "-");
     }
     return parts.join("|");
   } catch {
@@ -19579,11 +19730,14 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
   eval [<role>] [--case <name>] [--model <m>] [--runs <n>] [--answers]
                                          run a Role's cases with claude -p (no tools) and grade each answer against its
                                          criteria; without a Role, every active Role. Costs tokens; exits 1 when a case fails.
-                                         --runs <n> runs each case n times (1-10): a case that passes only some runs is FLAKY
+                                         --runs <n> runs each case n times (1-10, default 3): a case passes only when every run
+                                         passes; one that passes only some runs is FLAKY and not passed
                                          --answers also prints each answer, to see why a case failed
-  roster [--write]                       the factory's Roles; checks roster.yaml, role profiles, artifacts.yaml (one owner
-                                         per artifact, reads/writes of each Role), workflows/*.yaml and the generated agent files
-                                         (--write regenerates agents/ from roles/)
+                                         without --case, writes roles/<id>/evals/results.json (commit it with the Role's change)
+  roster [--write]                       the factory's Roles; checks roster.yaml, role profiles, rules.md tables, artifacts.yaml
+                                         (one owner per artifact, reads/writes of each Role), workflows/*.yaml, the cases (a Role
+                                         whose rules.md is a table covers every rule and skill), and the generated agent files;
+                                         warns when such a Role's results.json is missing or stale (--write regenerates agents/)
 
 Execution (state executing; add --change <id> when several changes are active):
   next                                   what the orchestrator does next (implement | review | triage | upstream | complete ...);
@@ -20296,7 +20450,7 @@ ${lines.length ? `${lines.join("\n")}
       }
       case "eval": {
         const root = pluginRoot(env);
-        const runs = args.flags.runs === void 0 ? 1 : Number(args.flags.runs);
+        const runs = args.flags.runs === void 0 ? 3 : Number(args.flags.runs);
         if (!Number.isInteger(runs) || runs < 1 || runs > 10) throw new OpError("--runs takes a whole number from 1 to 10");
         let results;
         try {
@@ -20306,7 +20460,12 @@ ${lines.length ? `${lines.join("\n")}
           throw new OpError(e.message);
         }
         const ok = results.every((r) => r.pass);
-        emit({ ok, results }, printResults(results, args.flags.answers === true));
+        const model = str(args.flags.model);
+        const written = [];
+        if (str(args.flags.case)) io.err("  no result file written: --case runs only part of a Role's cases\n");
+        else for (const id of [...new Set(results.map((r) => r.role))]) written.push((0, import_node_path52.relative)(root, writeResults(root, id, results, { runs, ...model ? { model } : {} })));
+        emit({ ok, results, written }, printResults(results, args.flags.answers === true) + written.map((f) => `wrote ${f}
+`).join(""));
         return ok ? 0 : 1;
       }
       case "roster": {
@@ -20675,7 +20834,7 @@ Fix the file and render again.`);
         };
         const save = (name, data) => {
           (0, import_node_fs47.mkdirSync)(pagesDir(p), { recursive: true });
-          (0, import_node_fs47.writeFileSync)(pageDataFile(p, name), typeof data === "string" ? data : (0, import_yaml24.stringify)(data));
+          (0, import_node_fs47.writeFileSync)(pageDataFile(p, name), typeof data === "string" ? data : (0, import_yaml25.stringify)(data));
         };
         const show = (name) => {
           const page = load2(name);

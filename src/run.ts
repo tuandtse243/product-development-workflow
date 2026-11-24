@@ -22,7 +22,7 @@ import { header as commitHeader, scopeOf, taskCommitMessage } from "./commit.js"
 import { changedSince, git, headCommit, isGitRepo, junkMessage, stagedJunk } from "./git.js";
 import { matchesAny } from "./glob.js";
 import { detectProject } from "./detect.js";
-import { defaultTaskRole, implementerOf } from "./roles.js";
+import { defaultTaskRole, implementerOf, loadRuleTable } from "./roles.js";
 import { packsFor, packsOf } from "./stackpacks.js";
 import { OpError, transition } from "./ops.js";
 import { readText, rel, walkFiles, type Paths } from "./project.js";
@@ -1515,6 +1515,18 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
       : "the files matching Touches (no base commit was recorded)";
     const outside = lastCheckpoint?.outside_touches ?? [];
     const design = lastCheckpoint?.design;
+    // Plan R2: the reviewer judges the task against the rules of the Role that built it, and names the rule a finding breaks.
+    const builder = implementerOf(pluginHome, typeof t.role === "string" ? t.role : undefined) ?? defaultTaskRole();
+    const builderRules = join(pluginHome, "roles", builder, "rules.md");
+    const ruleTable = existsSync(builderRules) ? loadRuleTable(pluginHome, builder) : null;
+    const exampleId = ruleTable?.[0]?.id;
+    const rulesSection = existsSync(builderRules)
+      ? h(`Rules of the Role that built it (${builder})`, [
+          exampleId
+            ? `- \`${builderRules}\`: the rules the implementer had to follow, one per row. Judge the diff against every rule whose "applies when" fits this task (a rule checked by the CLI is already proven by the checkpoint; one checked by a script: read its output in the implementer notes, if any). A broken rule is a blocking issue: cite its id (for example \`${exampleId}\`) in the finding.`
+            : `- \`${builderRules}\`: the rules the implementer had to follow. A broken rule is a blocking issue.`,
+        ])
+      : [];
     body = [
       "You are an independent reviewer in a fresh context. You did not write this code. You may read files and run read-only commands (tests included); you cannot edit anything.",
       "",
@@ -1546,6 +1558,7 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
       ...(design?.screenshots.length ? [`- Screenshots (open each with Read): ${design.screenshots.map((f) => `\`${join(p.project, f)}\``).join(", ")}`] : []),
       ...(design?.hardcoded_colors.length ? [`- Color literals that are not tokens, in changed files: ${design.hardcoded_colors.map((f) => `\`${f}\``).join(", ")}. Each needs a reason or becomes a token.`] : []),
       "",
+      ...rulesSection,
       "## Checklist",
       "",
       "1. Every scenario is implemented as the spec says, and its test really asserts the THEN outcome (not a placeholder, not mocked away).",
@@ -1564,6 +1577,7 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
       "Your verdict starts with exactly one line: `VERDICT: pass` or `VERDICT: fix`.",
       "For `fix`, follow with numbered blocking issues: file, problem, expected fix. Only blocking issues justify `fix`;",
       "put anything else under `Non-blocking:`. Be concrete: the implementer will get your notes verbatim.",
+      ...(exampleId ? [`When a finding breaks a rule of the ${builder} Role, name the rule id first, e.g. \`1. ${exampleId}: <file>: <problem>; <expected fix>\`.`] : []),
       `**Write the whole verdict to \`${join(p.run, `review-${taskId}.md`)}\` with the Write tool** (the only file you may write), then reply with just its first line, \`VERDICT: pass\` or \`VERDICT: fix\`. The orchestrator reads the file; keeping your reply short saves its context.`,
       "",
       ...shared,
