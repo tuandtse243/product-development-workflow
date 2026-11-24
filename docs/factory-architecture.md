@@ -444,6 +444,10 @@ it, directly or not, and has not started or failed, gets the same with the cause
 tasks. The same holds after the tasks: a quality layer out of fix rounds is recorded `not_built` in the quality summary
 and verify goes on with the next layers; an integration out of fix rounds is closed as not built; a converge gap whose
 task was not built, or whose converge task did not close it, is listed under `not_built` and the converge passes.
+A task not built after it ran on the main checkout leaves nothing behind for the next task's commit: what it left
+uncommitted outside `.aidw/` is put back as HEAD has it, files it created are removed (paths already dirty when it first
+started, `start_dirty`, are kept), and the list is recorded in `not_built.discarded`. No Agent writes `change.yaml` (the
+state and the approval record with `agent_run_cap`): the gate denies it, by Write, Edit or the shell.
 Everything not built ends up in the pull request (a draft), never in a question.
 
 **Agent runs and the cap** (plan D10, `src/agentruns.ts`). The CLI counts an Agent run when it prints its `SPAWN` line:

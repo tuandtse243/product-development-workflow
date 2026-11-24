@@ -204,15 +204,55 @@ export function markNotBuilt(p: Paths, tf: TaskFile, taskId: string, reason: str
     const t = tf.tasks[i];
     if (!t || marked.includes(tid) || (tid !== taskId && OPEN_WORK.has(statusOf(t)))) continue;
     if (typeof t.worktree === "string" && t.worktree) removeWorktree(p, t.worktree, typeof t.branch === "string" ? t.branch : undefined);
+    // its half-done work on the main checkout must not ride along in the next task's commit
+    const gone = tid === taskId ? discardWork(p, tf, t) : { files: [] as string[] };
+    const text = gone.files.length
+      ? `${why}; its uncommitted work on the main checkout was discarded: ${gone.files.slice(0, 20).join(", ")}${gone.files.length > 20 ? ` and ${gone.files.length - 20} more` : ""}`
+      : gone.skipped
+        ? `${why}; ${gone.skipped}`
+        : why;
     for (const f of ["worktree", "branch"]) setField(tf, i, f, null);
     setField(tf, i, "status", "not_built");
-    setField(tf, i, "not_built", { cause: kind, reason: why.slice(0, 500), at: now() });
-    setField(tf, i, "notes", why.slice(0, 500));
+    setField(tf, i, "not_built", { cause: kind, reason: text.slice(0, 1000), at: now(), ...(gone.files.length ? { discarded: gone.files } : {}) });
+    setField(tf, i, "notes", text.slice(0, 500));
     marked.push(tid);
     for (const d of tf.tasks) if (list(d.depends_on).includes(tid)) queue.push([d.id, `depends on ${tid}, which is not built`, "dependency"]);
   }
   if (marked.length) saveTasks(tf);
   return marked;
+}
+
+/** Lists of paths from a NUL-separated git output. */
+const zList = (out: string): string[] => out.split("\0").filter(Boolean);
+
+/** Paths that differ from HEAD on the main checkout (changed, deleted, staged or untracked), outside .aidw/. */
+function dirtyPaths(p: Paths): string[] {
+  const changed = git(p.project, ["diff", "--name-only", "-z", "HEAD", "--", ".", ":(exclude).aidw"]);
+  const untracked = git(p.project, ["ls-files", "--others", "--exclude-standard", "-z", "--", ".", ":(exclude).aidw"]);
+  return [...new Set([...zList(changed.out), ...zList(untracked.out)])].sort();
+}
+
+/**
+ * A task that ran on the main checkout and is now not built (ADR-0014): what it left uncommitted is put back as HEAD
+ * has it (tracked files) or removed (files it created), so the next task's commit does not carry it. Paths that were
+ * already dirty when the task first started (`start_dirty`) and everything under .aidw/ are left alone. Nothing is
+ * touched while another task works on the main checkout.
+ */
+function discardWork(p: Paths, tf: TaskFile, t: Task): { files: string[]; skipped?: string } {
+  if ((typeof t.worktree === "string" && t.worktree) || typeof t.base !== "string" || !isGitRepo(p.project)) return { files: [] };
+  if (!["running", "failed", "review", "conflict"].includes(statusOf(t))) return { files: [] };
+  const busy = tf.tasks.find((x) => x.id !== t.id && ["running", "review"].includes(statusOf(x)) && !(typeof x.worktree === "string" && x.worktree));
+  if (busy) return { files: [], skipped: `its uncommitted work was left on the main checkout because ${busy.id} works there too` };
+  const keep = new Set(list(t.start_dirty));
+  const files = dirtyPaths(p).filter((f) => !keep.has(f));
+  for (const f of files) {
+    if (git(p.project, ["cat-file", "-e", `HEAD:${f}`]).ok) git(p.project, ["checkout", "HEAD", "--", f]);
+    else {
+      git(p.project, ["rm", "-q", "--cached", "--ignore-unmatch", "--", f]);
+      rmSync(join(p.project, f), { force: true });
+    }
+  }
+  return { files };
 }
 
 /**
@@ -492,6 +532,8 @@ export function startTask(p: Paths, id: string, taskId: string, opts: { worktree
     setField(tf, i, "worktree", wt.dir);
     setField(tf, i, "branch", wt.branch);
   }
+  // what was already uncommitted when the task first started on the main checkout is not its work (see discardWork)
+  if (!worktree && status === "pending" && t.start_dirty === undefined && isGitRepo(p.project) && base) setField(tf, i, "start_dirty", dirtyPaths(p).slice(0, 2000));
   setField(tf, i, "status", "running");
   setField(tf, i, "attempts", attempt);
   // ADR-0013: a Consultation budget belongs to one Agent run; a new attempt (a granted retry too) is a new run.
@@ -932,7 +974,7 @@ export interface ReviewResult {
 function dropToSequential(p: Paths, tf: TaskFile, i: number, why: string): void {
   const t = tf.tasks[i] as Task;
   removeWorktree(p, typeof t.worktree === "string" ? t.worktree : undefined, typeof t.branch === "string" ? t.branch : undefined);
-  for (const f of ["worktree", "branch", "base", "started_at", "conflict"]) setField(tf, i, f, null);
+  for (const f of ["worktree", "branch", "base", "started_at", "conflict", "start_dirty"]) setField(tf, i, f, null);
   setField(tf, i, "status", "pending");
   setField(tf, i, "attempts", 0);
   setField(tf, i, "sequential", true);
@@ -1055,7 +1097,7 @@ export function recordReview(
   return { task: taskId, verdict, status: "done", commit: headCommit(p.project) };
 }
 
-const RESET_FIELDS = ["worktree", "branch", "base", "started_at", "finished_at", "merged_at", "plan_sha", "evidence", "sequential", "conflict", "upstream", "not_built"];
+const RESET_FIELDS = ["worktree", "branch", "base", "started_at", "finished_at", "merged_at", "plan_sha", "evidence", "sequential", "conflict", "upstream", "not_built", "start_dirty"];
 
 function resetTask(tf: TaskFile, i: number, note: string): void {
   for (const f of RESET_FIELDS) setField(tf, i, f, null);

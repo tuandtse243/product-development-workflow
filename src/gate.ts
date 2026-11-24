@@ -210,6 +210,8 @@ const PLAN_REVIEW_RECORD = "plan-review.yaml";
 
 /** The CLI's record of Consultations (ADR-0013): no Agent writes it. */
 const CONSULT_RECORD = "consultations.yaml";
+/** A plain read of a file: no redirect, pipe, chaining, substitution or in-place edit. */
+const CHANGE_YAML_READ = /^\s*(?:cat|head|tail|less|grep|rg|wc|ls|stat|diff|file)\s[^>|;&`$()\n]*$/i;
 
 /** An audit reviewer's answer: .aidw/run/audit-<lens>.md. */
 const AUDIT_FILE = /^audit-[a-z0-9-]+\.md$/;
@@ -285,6 +287,10 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
       }
       if (same(basename(file), CONSULT_RECORD) && same(dirname(dirname(file)), p.changes)) {
         return deny("consultations.yaml is the CLI's record of Consultations; only `aidw consult` writes it");
+      }
+      // the state, the approval record and the Agent-run cap fixed in it are the CLI's and the lead's (D10)
+      if (same(basename(file), "change.yaml") && same(dirname(dirname(file)), p.changes)) {
+        return deny("change.yaml holds the Change's state and its approval record (with the Agent-run cap); only the aidw CLI and the lead write it");
       }
       if (same(basename(file), "agent-runs.json") && same(basename(dirname(file)), "evidence") && same(dirname(dirname(dirname(file))), p.changes)) {
         return deny("evidence/agent-runs.json is the CLI's count of Agent runs against the cap (D10); no Agent writes it");
@@ -362,6 +368,10 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
     if (!AIDW_COMMAND.test(cmd) || SHELL_CHAINING.test(cmd)) {
       const devWrite = deviationBashWrite(p, cmd, gateState(p).frozen);
       if (devWrite) return deny(devWrite);
+    }
+    // D10: no Agent rewrites change.yaml (state, approval record, Agent-run cap) through the shell; reading it is fine
+    if (input.agent_type && /change\.yaml/i.test(cmd) && !CHANGE_YAML_READ.test(cmd)) {
+      return deny("change.yaml holds the Change's state and its approval record (with the Agent-run cap); only the aidw CLI and the lead write it");
     }
     if (role && AIDW_STATE_COMMAND.test(cmd)) {
       return deny(`the ${role} does not change aidw state (no self-verification); report back to the orchestrator`);

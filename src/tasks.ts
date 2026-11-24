@@ -44,6 +44,8 @@ export const RUNTIME_FIELDS = [
   "upstream",
   // T10: checks of the task the machine refused in a row; the second makes it not built (environment)
   "blocked_runs",
+  // T10: paths already uncommitted when the task first started on the main checkout (kept if it is not built)
+  "start_dirty",
 ] as const;
 
 export const DEFAULT_MAX_ATTEMPTS = 3;

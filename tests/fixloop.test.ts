@@ -3,7 +3,8 @@
  * caused it, at most three rounds; then it and its dependants are not built and the rest carries on. Agent runs are
  * counted per Change, and at the cap no new task starts and the Change moves on.
  */
-import { readFileSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import YAML from "yaml";
 import { describe, expect, it } from "vitest";
@@ -424,5 +425,42 @@ describe("after review: the cap, the seam and the fallbacks", () => {
     expect(recordBlocked(pathsFor(root), ID, "T04", "environment: `pnpm test` was refused by the machine (EPERM)")).toBeNull();
     expect(recordBlocked(pathsFor(root), ID, "T04", "environment: `pnpm test` was refused by the machine (EPERM)")).toEqual(["T04"]);
     expect(task(root, "T04").not_built).toMatchObject({ cause: "environment", reason: expect.stringMatching(/refused a check twice.*EPERM/) });
+  });
+});
+
+describe("after re-review: change.yaml and a not-built task's work on the main checkout", () => {
+  it("denies every Agent writing change.yaml, by any spelling and through the shell; reading stays allowed", async () => {
+    const { decide } = await import("../src/gate.js");
+    const root = project();
+    const c = `.aidw/changes/${ID}`;
+    const ask = (tool_name: string, tool_input: Record<string, unknown>, agent_type = "aidw:technical-planner") =>
+      decide({ hook_event_name: "PreToolUse", tool_name, tool_input, cwd: root, agent_type }, {} as NodeJS.ProcessEnv)?.decision;
+    expect(ask("Edit", { file_path: join(root, c, "Change.YAML") })).toBe("deny");
+    expect(ask("Write", { file_path: join(root, c, "change.yaml") }, "aidw:fullstack")).toBe("deny");
+    expect(ask("Bash", { command: `sed -i '' 's/agent_run_cap: 24/agent_run_cap: 999/' ${c}/change.yaml` })).toBe("deny");
+    expect(ask("Bash", { command: `echo x > ${c}/CHANGE.yaml` })).toBe("deny");
+    expect(ask("Bash", { command: `cat ${c}/change.yaml` })).not.toBe("deny");
+  });
+
+  it("puts back tracked edits and removes created files of a task not built on the main checkout, keeping what was dirty before", () => {
+    const root = executingProject({ git: true, tasks: TASKS, quality: QUALITY_YAML });
+    const g = (...a: string[]) => execFileSync("git", a, { cwd: root, encoding: "utf8" });
+    write(root, "lib/calendar/existing.ts", "export const v = 1;\n");
+    g("add", "-A");
+    g("commit", "-qm", "existing");
+    write(root, "notes-of-the-user.md", "mine\n");
+    finish(root, "T04"); // T04's commit takes the file along (git add -A)
+    write(root, "notes-of-the-user.md", "mine, still uncommitted\n"); // dirty before T01 starts: not its work
+    expect(cli(root, "task", "start", "T01").code).toBe(0);
+    write(root, "lib/calendar/existing.ts", "export const v = 2; // half done\n"); // tracked, changed
+    write(root, "lib/calendar/half.ts", "export const half = 1;\n"); // untracked, created
+    const r = cli(root, "not-built", "T01", "--cause", "environment", "--reason", "no calendar API key in .env");
+    expect(r.code, r.err).toBe(0);
+    expect(readFileSync(join(root, "lib/calendar/existing.ts"), "utf8")).toBe("export const v = 1;\n");
+    expect(existsSync(join(root, "lib/calendar/half.ts"))).toBe(false);
+    expect(readFileSync(join(root, "notes-of-the-user.md"), "utf8")).toBe("mine, still uncommitted\n");
+    const nb = task(root, "T01").not_built as { reason: string; discarded: string[] };
+    expect(nb.discarded.sort()).toEqual(["lib/calendar/existing.ts", "lib/calendar/half.ts"]);
+    expect(nb.reason).toMatch(/uncommitted work on the main checkout was discarded: .*half\.ts/);
   });
 });

@@ -108,7 +108,8 @@ export function plannedAgentRuns(change: Change): { tasks: number; reviewLayers:
   const tasks = plannedTaskCount(change);
   let reviewLayers = 0;
   try {
-    const data = YAML.parse(readFileSync(join(change.dir, "quality.yaml"), "utf8")) as { layers?: unknown } | null;
+    // the approved text: a Deviation that has quality.yaml open does not move the count meanwhile
+    const data = YAML.parse(approvedText(change, join(change.dir, "quality.yaml")) ?? "") as { layers?: unknown } | null;
     if (Array.isArray(data?.layers)) reviewLayers = data.layers.filter((l) => isGrantMap(l) && typeof l.review === "string" && l.review).length;
   } catch {
     reviewLayers = 0;
@@ -198,7 +199,7 @@ export function boundPush(p: Paths, change: Change): PushBinding | null {
 
 const plannedTaskCount = (change: Change): number => {
   try {
-    return parseTasks(readFileSync(join(change.dir, "tasks.yaml"), "utf8")).tasks.filter((t) => !t.origin).length;
+    return parseTasks(approvedText(change, join(change.dir, "tasks.yaml")) ?? "").tasks.filter((t) => !t.origin).length;
   } catch {
     return 0;
   }

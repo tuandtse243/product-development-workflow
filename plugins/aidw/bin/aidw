@@ -8593,7 +8593,9 @@ var RUNTIME_FIELDS = [
   // T10: the upstream round of a task after Triage: { cause, role, round, phase, at, deviation?, files? }
   "upstream",
   // T10: checks of the task the machine refused in a row; the second makes it not built (environment)
-  "blocked_runs"
+  "blocked_runs",
+  // T10: paths already uncommitted when the task first started on the main checkout (kept if it is not built)
+  "start_dirty"
 ];
 var DEFAULT_MAX_ATTEMPTS = 3;
 var ADDED_ORIGINS = ["converge", "quality", "integration"];
@@ -9810,7 +9812,7 @@ function plannedAgentRuns(change) {
   const tasks = plannedTaskCount(change);
   let reviewLayers = 0;
   try {
-    const data = import_yaml7.default.parse((0, import_node_fs11.readFileSync)((0, import_node_path13.join)(change.dir, "quality.yaml"), "utf8"));
+    const data = import_yaml7.default.parse(approvedText(change, (0, import_node_path13.join)(change.dir, "quality.yaml")) ?? "");
     if (Array.isArray(data?.layers)) reviewLayers = data.layers.filter((l) => isGrantMap(l) && typeof l.review === "string" && l.review).length;
   } catch {
     reviewLayers = 0;
@@ -9866,7 +9868,7 @@ function boundPush(p, change) {
 }
 var plannedTaskCount = (change) => {
   try {
-    return parseTasks((0, import_node_fs11.readFileSync)((0, import_node_path13.join)(change.dir, "tasks.yaml"), "utf8")).tasks.filter((t) => !t.origin).length;
+    return parseTasks(approvedText(change, (0, import_node_path13.join)(change.dir, "tasks.yaml")) ?? "").tasks.filter((t) => !t.origin).length;
   } catch {
     return 0;
   }
@@ -11111,6 +11113,7 @@ var VERDICT_FILE = /^(?:layer-)?review-[A-Za-z0-9._-]+\.md$/;
 var PLAN_REVIEW_FILE = /^review-plan-[A-Za-z0-9._-]+\.md$/i;
 var PLAN_REVIEW_RECORD = "plan-review.yaml";
 var CONSULT_RECORD2 = "consultations.yaml";
+var CHANGE_YAML_READ = /^\s*(?:cat|head|tail|less|grep|rg|wc|ls|stat|diff|file)\s[^>|;&`$()\n]*$/i;
 var AUDIT_FILE = /^audit-[a-z0-9-]+\.md$/;
 function agentRole(agentType, env = process.env) {
   const name = (agentType ?? "").split(":").pop() ?? "";
@@ -11167,6 +11170,9 @@ function decide(input, env) {
       }
       if (same((0, import_node_path20.basename)(file), CONSULT_RECORD2) && same((0, import_node_path20.dirname)((0, import_node_path20.dirname)(file)), p.changes)) {
         return deny("consultations.yaml is the CLI's record of Consultations; only `aidw consult` writes it");
+      }
+      if (same((0, import_node_path20.basename)(file), "change.yaml") && same((0, import_node_path20.dirname)((0, import_node_path20.dirname)(file)), p.changes)) {
+        return deny("change.yaml holds the Change's state and its approval record (with the Agent-run cap); only the aidw CLI and the lead write it");
       }
       if (same((0, import_node_path20.basename)(file), "agent-runs.json") && same((0, import_node_path20.basename)((0, import_node_path20.dirname)(file)), "evidence") && same((0, import_node_path20.dirname)((0, import_node_path20.dirname)((0, import_node_path20.dirname)(file))), p.changes)) {
         return deny("evidence/agent-runs.json is the CLI's count of Agent runs against the cap (D10); no Agent writes it");
@@ -11232,6 +11238,9 @@ function decide(input, env) {
     if (!AIDW_COMMAND.test(cmd2) || SHELL_CHAINING.test(cmd2)) {
       const devWrite = deviationBashWrite(p, cmd2, gateState(p).frozen);
       if (devWrite) return deny(devWrite);
+    }
+    if (input.agent_type && /change\.yaml/i.test(cmd2) && !CHANGE_YAML_READ.test(cmd2)) {
+      return deny("change.yaml holds the Change's state and its approval record (with the Agent-run cap); only the aidw CLI and the lead write it");
     }
     if (role && AIDW_STATE_COMMAND.test(cmd2)) {
       return deny(`the ${role} does not change aidw state (no self-verification); report back to the orchestrator`);
@@ -16008,15 +16017,39 @@ function markNotBuilt(p, tf, taskId, reason, cause) {
     const t = tf.tasks[i];
     if (!t || marked.includes(tid) || tid !== taskId && OPEN_WORK.has(statusOf4(t))) continue;
     if (typeof t.worktree === "string" && t.worktree) removeWorktree(p, t.worktree, typeof t.branch === "string" ? t.branch : void 0);
+    const gone = tid === taskId ? discardWork(p, tf, t) : { files: [] };
+    const text2 = gone.files.length ? `${why}; its uncommitted work on the main checkout was discarded: ${gone.files.slice(0, 20).join(", ")}${gone.files.length > 20 ? ` and ${gone.files.length - 20} more` : ""}` : gone.skipped ? `${why}; ${gone.skipped}` : why;
     for (const f of ["worktree", "branch"]) setField2(tf, i, f, null);
     setField2(tf, i, "status", "not_built");
-    setField2(tf, i, "not_built", { cause: kind, reason: why.slice(0, 500), at: now7() });
-    setField2(tf, i, "notes", why.slice(0, 500));
+    setField2(tf, i, "not_built", { cause: kind, reason: text2.slice(0, 1e3), at: now7(), ...gone.files.length ? { discarded: gone.files } : {} });
+    setField2(tf, i, "notes", text2.slice(0, 500));
     marked.push(tid);
     for (const d of tf.tasks) if (list6(d.depends_on).includes(tid)) queue.push([d.id, `depends on ${tid}, which is not built`, "dependency"]);
   }
   if (marked.length) saveTasks(tf);
   return marked;
+}
+var zList = (out) => out.split("\0").filter(Boolean);
+function dirtyPaths(p) {
+  const changed = git(p.project, ["diff", "--name-only", "-z", "HEAD", "--", ".", ":(exclude).aidw"]);
+  const untracked = git(p.project, ["ls-files", "--others", "--exclude-standard", "-z", "--", ".", ":(exclude).aidw"]);
+  return [.../* @__PURE__ */ new Set([...zList(changed.out), ...zList(untracked.out)])].sort();
+}
+function discardWork(p, tf, t) {
+  if (typeof t.worktree === "string" && t.worktree || typeof t.base !== "string" || !isGitRepo(p.project)) return { files: [] };
+  if (!["running", "failed", "review", "conflict"].includes(statusOf4(t))) return { files: [] };
+  const busy = tf.tasks.find((x) => x.id !== t.id && ["running", "review"].includes(statusOf4(x)) && !(typeof x.worktree === "string" && x.worktree));
+  if (busy) return { files: [], skipped: `its uncommitted work was left on the main checkout because ${busy.id} works there too` };
+  const keep = new Set(list6(t.start_dirty));
+  const files = dirtyPaths(p).filter((f) => !keep.has(f));
+  for (const f of files) {
+    if (git(p.project, ["cat-file", "-e", `HEAD:${f}`]).ok) git(p.project, ["checkout", "HEAD", "--", f]);
+    else {
+      git(p.project, ["rm", "-q", "--cached", "--ignore-unmatch", "--", f]);
+      (0, import_node_fs36.rmSync)((0, import_node_path41.join)(p.project, f), { force: true });
+    }
+  }
+  return { files };
 }
 function settleChange(p, id) {
   let tf = loadTasks(p, id);
@@ -16194,6 +16227,7 @@ ${r.tail}`);
     setField2(tf, i, "worktree", wt.dir);
     setField2(tf, i, "branch", wt.branch);
   }
+  if (!worktree && status === "pending" && t.start_dirty === void 0 && isGitRepo(p.project) && base2) setField2(tf, i, "start_dirty", dirtyPaths(p).slice(0, 2e3));
   setField2(tf, i, "status", "running");
   setField2(tf, i, "attempts", attempt2);
   setField2(tf, i, "runs", resumed ? Math.max(Number.isInteger(t.runs) ? Number(t.runs) : attemptsOf(t), 1) : (Number.isInteger(t.runs) ? Number(t.runs) : attemptsOf(t)) + 1);
@@ -16462,7 +16496,7 @@ function recordBlocked(p, id, taskId, why) {
 function dropToSequential(p, tf, i, why) {
   const t = tf.tasks[i];
   removeWorktree(p, typeof t.worktree === "string" ? t.worktree : void 0, typeof t.branch === "string" ? t.branch : void 0);
-  for (const f of ["worktree", "branch", "base", "started_at", "conflict"]) setField2(tf, i, f, null);
+  for (const f of ["worktree", "branch", "base", "started_at", "conflict", "start_dirty"]) setField2(tf, i, f, null);
   setField2(tf, i, "status", "pending");
   setField2(tf, i, "attempts", 0);
   setField2(tf, i, "sequential", true);
@@ -16561,7 +16595,7 @@ function recordReview(p, id, taskId, verdict, notes, opts = {}) {
   }
   return { task: taskId, verdict, status: "done", commit: headCommit(p.project) };
 }
-var RESET_FIELDS = ["worktree", "branch", "base", "started_at", "finished_at", "merged_at", "plan_sha", "evidence", "sequential", "conflict", "upstream", "not_built"];
+var RESET_FIELDS = ["worktree", "branch", "base", "started_at", "finished_at", "merged_at", "plan_sha", "evidence", "sequential", "conflict", "upstream", "not_built", "start_dirty"];
 function resetTask(tf, i, note) {
   for (const f of RESET_FIELDS) setField2(tf, i, f, null);
   setField2(tf, i, "status", "pending");
