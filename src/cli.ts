@@ -1136,7 +1136,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           const gateId = first.page.layout === "gate" && first.page.change ? resolveChangeId(p, first.page.change) : null;
           const lead = (id: string): PageSection[] => {
             const c = loadChange(p, id);
-            return [openFindingsSection(c, workflowOfChange(p, c, pluginRoot(env)))].filter((x): x is PageSection => x !== null);
+            return [openFindingsSection(p, c, workflowOfChange(p, c, pluginRoot(env)))].filter((x): x is PageSection => x !== null);
           };
           const r = gateId ? parsePage(name, source, gateExtras(gateId), lead(gateId)) : first;
           if (r.problems.length) throw new OpError(`the data of page "${name}" (${rel(p, pageDataFile(p, name))}) has ${r.problems.length} problem(s):\n${r.problems.map((x) => `  - ${x}`).join("\n")}\nFix the file and render again.`);
@@ -1239,12 +1239,6 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         }
         const r = recordPlanReview(p, id, pluginRoot(env));
         const findings = r.round.findings.map((f, i) => `  ${i + 1}. [item ${f.item}] ${f.target}: ${f.text} -> ${r.fixers[i]}\n`).join("");
-        let unreported = "";
-        try {
-          if (r.outcome !== "fix") recordStageDone(p, id, r.stage, pluginRoot(env));
-        } catch (e) {
-          unreported = `stage ${r.stage} is not marked done (${(e as Error).message}); the gate needs only the recorded verdict\n`;
-        }
         const head =
           r.outcome === "pass"
             ? `plan review round ${r.round.round}: pass\n`
@@ -1255,7 +1249,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           r.outcome === "fix"
             ? `NEXT: give each finding to the Role named after it (spawn it again with its findings; do it yourself for what you wrote), run \`aidw analyze ${id}\` until it is clean, then \`aidw plan-review ${id} --brief\` and spawn aidw:code-reviewer again\n`
             : `NEXT: \`aidw transition ${id} awaiting_approval\`, then present the gate page\n`;
-        emit({ ok: true, change: id, round: r.round.round, verdict: r.round.verdict, outcome: r.outcome, findings: r.round.findings.map((f, i) => ({ ...f, fixer: r.fixers[i] })) }, head + unreported + next);
+        emit({ ok: true, change: id, round: r.round.round, verdict: r.round.verdict, outcome: r.outcome, findings: r.round.findings.map((f, i) => ({ ...f, fixer: r.fixers[i] })) }, head + next);
         return 0;
       }
 
@@ -1308,7 +1302,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const p = project();
         const id = need(rest[0], "change id");
         const to = need(rest[1], "target state");
-        const r = transition(p, id, to, { reason: str(args.flags.reason) });
+        const r = transition(p, id, to, { reason: str(args.flags.reason), pluginRoot: pluginRoot(env) });
         emit({ ok: true, id, ...r }, `${id}: ${r.from} -> ${r.to}${r.commit ? ` (committed .aidw/ ${r.commit.slice(0, 8)})` : ""}\n${(r.notes ?? []).map((n) => `  ${n}\n`).join("")}`);
         return 0;
       }

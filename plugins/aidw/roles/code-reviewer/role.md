@@ -5,7 +5,7 @@ mode: worker
 tier: standard
 access: read-only
 tools: [Read, Grep, Glob, Bash, Write]
-reads: [delta-specs, tasks, constitution, requirements, analysis-scope, architecture, test-plan, quality]
+reads: [delta-specs, tasks, constitution, requirements, analysis-scope, architecture, decisions-architecture, data-model-notes, api-contract-notes, test-plan, quality]
 writes: [task-review, audit-code-quality, plan-review]
 skills:
   - task-review: for every task review, before you judge - the two passes (spec, then code) and the silent-failure checklist

@@ -182,6 +182,18 @@ export function doneStages(w: Workflow, change: Change, p?: Paths, registry: Rec
   if (p && state === "analyzing" && !existsSync(stagesFile(change))) for (const id of writtenStages(p, change, stages, registry)) done.add(id);
   const lastGate = stages.reduce((n, s, i) => (s.gate !== undefined && done.has(s.id) ? i : n), -1);
   if (lastGate > 0) for (const s of stages.slice(0, lastGate)) done.add(s.id);
+  // the review before the gate (D4) is done exactly while its recorded review counts (a changed plan reopens it)
+  const review = stages.find((s) => s.writes.includes(PLAN_REVIEW));
+  if (p && review && state === "analyzing") {
+    let open: string | null;
+    try {
+      open = planReviewBlocker(p, change, w);
+    } catch (e) {
+      open = (e as Error).message;
+    }
+    if (open) done.delete(review.id);
+    else done.add(review.id);
+  }
   return done;
 }
 

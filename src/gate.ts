@@ -120,6 +120,11 @@ const REPORT_FILE = /^report-[A-Za-z0-9._-]+\.md$/;
 /** The only file a reviewer may write: its verdict, in .aidw/run/. */
 const VERDICT_FILE = /^(?:layer-)?review-[A-Za-z0-9._-]+\.md$/;
 
+/** The plan review's verdict (D4): only the code-reviewer writes it. */
+const PLAN_REVIEW_FILE = /^review-plan-[A-Za-z0-9._-]+\.md$/;
+/** The CLI's record of the plan review's rounds: no Agent writes it. */
+const PLAN_REVIEW_RECORD = "plan-review.yaml";
+
 /** An audit reviewer's answer: .aidw/run/audit-<lens>.md. */
 const AUDIT_FILE = /^audit-[a-z0-9-]+\.md$/;
 
@@ -184,6 +189,16 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
     if (secret && !inside(project, file)) return deny(`writing ${secret.why} is forbidden (tier x)`);
     if (!inside(project, file)) return null; // outside the project: normal permission rules apply
 
+    // D4: an author of the package must not forge the review of it, and no Agent writes the CLI's record of rounds
+    if (input.agent_type) {
+      const name = input.agent_type.split(":").pop() ?? "";
+      if (inside(p.changes, file) && basename(file) === PLAN_REVIEW_RECORD && dirname(dirname(file)) === p.changes) {
+        return deny("plan-review.yaml is the CLI's record of the plan review; only `aidw plan-review` writes it");
+      }
+      if (dirname(file) === p.run && PLAN_REVIEW_FILE.test(basename(file)) && name !== "code-reviewer") {
+        return deny("the plan review's verdict is written only by the code-reviewer that the orchestrator spawned with its brief");
+      }
+    }
     if (role === "author" && !inside(p.aidw, file)) {
       return deny("an authoring role drafts Artifacts under .aidw/ only; project files are written by the implementing roles after approval");
     }

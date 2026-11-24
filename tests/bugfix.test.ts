@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import YAML from "yaml";
 import { describe, expect, it } from "vitest";
@@ -60,6 +60,19 @@ describe("the bugfix workflow", () => {
 });
 
 describe("aidw approve --auto", () => {
+  it("leaves the decision to the user when the plan review ended with findings still open", () => {
+    const root = atGate();
+    const findings = [{ item: 4, target: "T01", text: "a retry queue no scenario needs -> drop it" }];
+    const rounds = [1, 2, 3].map((round) => ({ round, cycle: 1, verdict: "fix", digest: "sha256:x", at: "2026-11-24T00:00:00.000Z", findings }));
+    write(root, `.aidw/changes/${ID}/plan-review.yaml`, YAML.stringify({ cycle: 1, briefed: 3, rounds }));
+    rmSync(join(root, ".aidw/run", `review-plan-${ID}.md`));
+    const r = cli(root, "approve", ID, "--auto");
+    expect(r.code).toBe(1);
+    expect(r.err).toMatch(/the plan review ended with 1 finding\(s\) still open: the user decides/);
+    expect(change(root).state).toBe("awaiting_approval");
+    expect(cli(root, "approve", ID).code).toBe(0);
+  });
+
   it("approves a small fix itself, and keeps the hash and the drift protection", () => {
     const root = atGate({ tasks: task(1) + task(2) + task(3) });
     const r = cli(root, "approve", ID, "--auto");

@@ -8,20 +8,23 @@
  *   fix, rounds left        the authoring Roles fix the findings, then the reviewer runs again (at most 2 fix rounds)
  *   fix, no rounds left     the stage is done and the findings are carried to the top of the gate Decision Page
  *
- * `aidw transition <id> awaiting_approval` is refused until then (planReviewBlocker).
+ * Every round needs its own brief (`briefed` in the record). A finished review counts while the plan it graded is
+ * unchanged; a changed plan starts a new cycle of rounds with its own cap. `aidw transition <id> awaiting_approval` is
+ * refused until then (planReviewBlocker).
  */
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import YAML from "yaml";
 import { analyzeChange, idsAfterChange } from "./analyze.js";
+import { loadArtifacts, type ArtifactEntry } from "./artifacts.js";
 import { loadChange, stateOf, type Change } from "./change.js";
 import { checkChange } from "./check.js";
 import { workflowOfChange } from "./decisions.js";
 import { OpError } from "./diag.js";
 import type { PageSection } from "./page.js";
-import { readText, rel, type Paths } from "./project.js";
-import { parseTasks } from "./tasks.js";
+import { readText, rel, walkFiles, type Paths } from "./project.js";
+import { canonicalTasks, parseTasks } from "./tasks.js";
 import type { Stage, Workflow } from "./workflow.js";
 
 /** The Artifact the review stage writes: the stage that writes it is the review stage of its Workflow. */
@@ -49,10 +52,15 @@ export interface Finding {
 }
 
 export interface Round {
+  /** within its cycle: 1 to MAX_REVIEWS */
   round: number;
+  /** the review cycle: a new one starts when the plan changed after a finished review (absent = 1) */
+  cycle?: number;
   verdict: "pass" | "fix";
   /** of the verdict file as recorded: an edit after recording keeps the gate closed */
   digest: string;
+  /** planDigest of what was reviewed (absent on records made before it existed: then it is not compared) */
+  plan?: string;
   at: string;
   findings: Finding[];
 }
@@ -74,7 +82,7 @@ const NON_BLOCKING = /^\s*(?:#+\s*)?non-blocking\b/i;
 export function parsePlanReview(text: string): { verdict: "pass" | "fix" | null; findings: Finding[]; problems: string[] } {
   const lines = text.replace(/\r\n/g, "\n").split("\n");
   const first = lines.findIndex((l) => l.trim() !== "");
-  const m = first < 0 ? null : /^\W*VERDICT:\s*(pass|fix)\b/i.exec(lines[first] as string);
+  const m = first < 0 ? null : /^\W*VERDICT:\s*(pass|fix)\W*$/i.exec(lines[first] as string);
   const verdict = m ? ((m[1] as string).toLowerCase() as "pass" | "fix") : null;
   const problems: string[] = [];
   if (!verdict) problems.push("the first line must be `VERDICT: pass` or `VERDICT: fix`");
@@ -97,29 +105,77 @@ export function parsePlanReview(text: string): { verdict: "pass" | "fix" | null;
   return { verdict, findings, problems };
 }
 
-/** The rounds recorded so far (empty when none, or when the file is broken). */
-export function readRounds(change: Change): Round[] {
-  const text = readText(roundsFile(change));
-  if (text === null) return [];
-  try {
-    const data = YAML.parse(text) as { rounds?: unknown } | null;
-    return Array.isArray(data?.rounds) ? (data.rounds as Round[]) : [];
-  } catch {
-    return [];
-  }
+/**
+ * The CLI's record of the review: the rounds of every cycle, the current cycle (a new one starts when the plan changed
+ * after a finished review) and the round the last brief was written for. Only the CLI writes it (the gate hook denies
+ * every Agent), and it is read strictly: a record that cannot be read is an error, never "no rounds".
+ */
+export interface ReviewRecord {
+  cycle: number;
+  briefed: number;
+  rounds: Round[];
 }
+
+const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+
+export function readRecord(p: Paths, change: Change): ReviewRecord {
+  const file = roundsFile(change);
+  const text = readText(file);
+  if (text === null) return { cycle: 1, briefed: 0, rounds: [] };
+  let data: unknown;
+  try {
+    data = YAML.parse(text);
+  } catch (e) {
+    throw new OpError(`${rel(p, file)} cannot be read (${(e as Error).message.split("\n")[0]}): it is written only by \`aidw plan-review\`; restore it from git`);
+  }
+  const ok = isRecord(data) && Array.isArray(data.rounds) && data.rounds.every((r) => isRecord(r) && typeof r.round === "number" && (r.verdict === "pass" || r.verdict === "fix") && typeof r.digest === "string" && Array.isArray(r.findings));
+  if (!ok) throw new OpError(`${rel(p, file)} cannot be read (no list of rounds with round, verdict, digest and findings): it is written only by \`aidw plan-review\`; restore it from git`);
+  const rec = data as { cycle?: unknown; briefed?: unknown; rounds: Round[] };
+  const cycle = typeof rec.cycle === "number" ? rec.cycle : 1;
+  const current = rec.rounds.filter((r) => (r.cycle ?? 1) === cycle);
+  return { cycle, briefed: typeof rec.briefed === "number" ? rec.briefed : current.length, rounds: rec.rounds };
+}
+
+/** The rounds of the current cycle. */
+export const currentRounds = (rec: ReviewRecord): Round[] => rec.rounds.filter((r) => (r.cycle ?? 1) === rec.cycle);
+
+const writeRecord = (change: Change, rec: ReviewRecord) => writeFileSync(roundsFile(change), YAML.stringify(rec));
+
+/**
+ * A digest of what the review graded: the plan, the specs, the architecture, the constitution, the contracts and the
+ * test plan (not analysis.md, whose summary the lead writes around the review). A finished review counts only while
+ * this is unchanged.
+ */
+export function planDigest(p: Paths, change: Change): string {
+  const files = [
+    join(change.dir, "tasks.yaml"),
+    ...walkFiles(join(change.dir, "specs")).sort(),
+    join(p.architecture, "overview.md"),
+    p.constitution,
+    join(change.dir, "data-model.md"),
+    join(change.dir, "api-contract.md"),
+    join(change.dir, "test-plan.md"),
+  ];
+  const parts = files.map((f) => {
+    const t = readText(f);
+    return `${rel(p, f)}\n${t === null ? "-" : digestOf(f.endsWith("tasks.yaml") ? canonicalTasks(t) : t)}`;
+  });
+  return digestOf(parts.join("\n"));
+}
+
+const planChanged = (p: Paths, change: Change, r: Round) => r.plan !== undefined && r.plan !== planDigest(p, change);
 
 const how = (id: string) => `run \`aidw plan-review ${id} --brief\`, spawn aidw:code-reviewer with the brief, then record its verdict with \`aidw plan-review ${id}\``;
 
 /**
  * Why the Change may not go to the Approval Gate yet because of the plan review, or null. Null too when its Workflow
- * has no review stage.
+ * has no review stage. Throws when the record cannot be read.
  */
 export function planReviewBlocker(p: Paths, change: Change, w: Workflow): string | null {
   const s = reviewStage(w);
   if (!s) return null;
   const file = verdictFile(p, change.id);
-  const rounds = readRounds(change);
+  const rounds = currentRounds(readRecord(p, change));
   const last = rounds.at(-1);
   if (!last) {
     return existsSync(file)
@@ -127,33 +183,59 @@ export function planReviewBlocker(p: Paths, change: Change, w: Workflow): string
       : `the independent review of architecture and plan (stage ${s.id}): ${how(change.id)}`;
   }
   if (rounds.length > MAX_REVIEWS) return `at most ${MAX_FIX_ROUNDS} fix rounds of the plan review (${MAX_REVIEWS} reviews); ${rounds.length} are recorded`;
+  // .aidw/run/ is not committed: in a fresh clone the file is gone and the recorded round stands on its own
   const text = readText(file);
-  if (text === null) return `the plan review's verdict file ${rel(p, file)}, which is missing (round ${last.round} was recorded from it): spawn the reviewer again, ${how(change.id)}`;
-  if (digestOf(text) !== last.digest) return `a recorded plan review: the verdict file changed after round ${last.round} was recorded; record it with \`aidw plan-review ${change.id}\``;
+  if (text !== null && digestOf(text) !== last.digest) return `a recorded plan review: the verdict file changed after round ${last.round} was recorded; record it with \`aidw plan-review ${change.id}\``;
   if (outcomeOf(last) === "fix") return `the plan review to finish: fix round ${last.round} of ${MAX_FIX_ROUNDS} is open. The authoring Roles fix its ${last.findings.length} finding(s), then the reviewer runs again (${how(change.id)})`;
+  if (planChanged(p, change, last)) return `a review of the revised plan: the plan changed since the review (round ${last.round}); ${how(change.id)}`;
   return null;
 }
 
-/** The Role that fixes what a finding names (a hint for the lead). */
-export function fixerOf(f: Finding, tasks: ReadonlySet<string>): string {
-  if (tasks.has(f.target)) return "technical-planner";
-  if (f.target === "test-plan" || f.target === "quality") return "qa";
-  if ((AREAS as readonly string[]).includes(f.target)) return "software-architect";
-  return f.item === 2 ? "business-analyst" : "technical-planner";
+/** The findings carried to the gate by the current cycle (empty when it passed or is not finished). */
+export function carriedFindings(p: Paths, change: Change): Finding[] {
+  const last = currentRounds(readRecord(p, change)).at(-1);
+  return last && outcomeOf(last) === "carried" ? last.findings : [];
+}
+
+/** The Artifact a finding asks to change. */
+function artifactOf(f: Finding, tasks: ReadonlySet<string>): string {
+  if (tasks.has(f.target)) return "tasks";
+  if (f.target === "contracts") return "decision-data-model-needed"; // the Role that decides the contracts
+  if ((AREAS as readonly string[]).includes(f.target)) return f.target;
+  return f.item === 2 ? "delta-specs" : "tasks"; // a scenario out of scope, or a scenario no task delivers
+}
+
+/**
+ * The Role that fixes what a finding names: the owner of the Artifact it asks to change, when a stage of this Workflow
+ * has that Role write it; otherwise the lead (a bugfix spawns no architect, for one).
+ */
+export function fixerOf(f: Finding, tasks: ReadonlySet<string>, w: Workflow, registry: Record<string, ArtifactEntry> | null): string {
+  const a = artifactOf(f, tasks);
+  const owner = registry?.[a]?.owner;
+  return owner && w.stages.some((s) => s.writes.includes(a) && s.roles.includes(owner)) ? owner : "the lead";
 }
 
 const taskIds = (change: Change): Set<string> => new Set(parseTasks(readText(join(change.dir, "tasks.yaml")) ?? "").tasks.map((t) => String(t.id)));
 
-function load(p: Paths, id: string, pluginRoot: string): { change: Change; stage: Stage; rounds: Round[] } {
+/** The change, its review stage and record, and the rounds of the cycle a brief or a verdict belongs to. */
+function load(p: Paths, id: string, pluginRoot: string, mode: "brief" | "record"): { change: Change; w: Workflow; stage: Stage; rec: ReviewRecord; rounds: Round[] } {
   const change = loadChange(p, id);
   const w = workflowOfChange(p, change, pluginRoot);
   const stage = reviewStage(w);
   if (!stage) throw new OpError(`the "${w.id}" workflow has no review of architecture and plan`);
   if (stateOf(change) !== "analyzing") throw new OpError(`the plan review runs while the change is analyzing; "${id}" is "${String(change.data.state)}"`);
-  const rounds = readRounds(change);
+  const rec = readRecord(p, change);
+  let rounds = currentRounds(rec);
   const last = rounds.at(-1);
-  if (last && outcomeOf(last) !== "fix") throw new OpError(`the plan review is finished (round ${last.round}: ${outcomeOf(last) === "pass" ? "pass" : "findings carried to the gate"}); continue with \`aidw transition ${id} awaiting_approval\``);
-  return { change, stage, rounds };
+  if (last && outcomeOf(last) !== "fix") {
+    if (!planChanged(p, change, last)) throw new OpError(`the plan review is finished (round ${last.round}: ${outcomeOf(last) === "pass" ? "pass" : "findings carried to the gate"}); continue with \`aidw transition ${id} awaiting_approval\``);
+    if (mode === "record") throw new OpError(`the plan changed since the review (round ${last.round}): start a new review with \`aidw plan-review ${id} --brief\``);
+    // a new cycle for the revised plan, with its own cap
+    rec.cycle += 1;
+    rec.briefed = 0;
+    rounds = [];
+  }
+  return { change, w, stage, rec, rounds };
 }
 
 export interface Recorded {
@@ -164,15 +246,14 @@ export interface Recorded {
   fixers: string[];
 }
 
-/** Records the reviewer's verdict as the next round. A verdict in the wrong shape is refused and not counted. */
+/** Records the reviewer's verdict as the round its brief was written for. A verdict in the wrong shape is refused and not counted. */
 export function recordPlanReview(p: Paths, id: string, pluginRoot: string): Recorded {
-  const { change, stage, rounds } = load(p, id, pluginRoot);
+  const { change, w, stage, rec, rounds } = load(p, id, pluginRoot, "record");
+  const n = rounds.length + 1;
+  if (rec.briefed !== n) throw new OpError(`round ${n} has no brief yet: run \`aidw plan-review ${id} --brief\` first, then spawn the reviewer with it`);
   const file = verdictFile(p, id);
   const text = readText(file);
   if (text === null) throw new OpError(`no verdict at ${rel(p, file)}: ${how(id)}`);
-  const last = rounds.at(-1);
-  const digest = digestOf(text);
-  if (last && last.digest === digest) throw new OpError(`this verdict was already recorded as round ${last.round}: after the fixes, ${how(id)}`);
   const parsed = parsePlanReview(text);
   const tasks = taskIds(change);
   const { ids } = idsAfterChange(p, id);
@@ -183,22 +264,29 @@ export function recordPlanReview(p: Paths, id: string, pluginRoot: string): Reco
   if (parsed.problems.length || !parsed.verdict) {
     throw new OpError(`the plan review's verdict (${rel(p, file)}) is not in the right shape; the round is not counted:\n${parsed.problems.map((x) => `  - ${x}`).join("\n")}\nSpawn the reviewer once more with the same brief.`);
   }
-  const round: Round = { round: rounds.length + 1, verdict: parsed.verdict, digest, at: new Date().toISOString(), findings: parsed.findings };
-  writeFileSync(roundsFile(change), YAML.stringify({ rounds: [...rounds, round] }));
-  return { round, outcome: outcomeOf(round), stage: stage.id, fixers: round.findings.map((f) => fixerOf(f, tasks)) };
+  const round: Round = { round: n, cycle: rec.cycle, verdict: parsed.verdict, digest: digestOf(text), plan: planDigest(p, change), at: new Date().toISOString(), findings: parsed.findings };
+  writeRecord(change, { ...rec, rounds: [...rec.rounds, round] });
+  let registry: Record<string, ArtifactEntry> | null = null;
+  try {
+    registry = loadArtifacts(pluginRoot);
+  } catch {
+    registry = null;
+  }
+  return { round, outcome: outcomeOf(round), stage: stage.id, fixers: round.findings.map((f) => fixerOf(f, tasks, w, registry)) };
 }
 
 /** The packet of the reviewer: read-only, the fixed list, what to read, what is still open from the last round. */
 export function buildPlanReviewBrief(p: Paths, id: string, pluginRoot: string): { path: string; text: string; round: number } {
-  const { change, rounds } = load(p, id, pluginRoot);
+  const { change, rec, rounds } = load(p, id, pluginRoot, "brief");
   const d = checkChange(p, id, { asState: "awaiting_approval" });
   d.add(analyzeChange(p, id));
   if (d.errors.length) throw new OpError("the CLI's own checks come first: fix what `aidw analyze` reports, then write the brief", d);
   const out = verdictFile(p, id);
   const left = readText(out);
-  if (left !== null && !rounds.some((r) => r.digest === digestOf(left))) throw new OpError(`the verdict at ${rel(p, out)} is not recorded yet: run \`aidw plan-review ${id}\` first`);
+  if (left !== null && !rec.rounds.some((r) => r.digest === digestOf(left))) throw new OpError(`the verdict at ${rel(p, out)} is not recorded yet: run \`aidw plan-review ${id}\` first`);
   rmSync(out, { force: true });
   const round = rounds.length + 1;
+  writeRecord(change, { ...rec, briefed: round });
   const last = rounds.at(-1);
   const at = (f: string) => (existsSync(f) ? `- \`${rel(p, f)}\`` : null);
   const c = (f: string) => join(change.dir, f);
@@ -271,15 +359,15 @@ export function buildPlanReviewBrief(p: Paths, id: string, pluginRoot: string): 
 }
 
 /** The section the CLI puts at the top of the gate Decision Page when findings were carried; null otherwise. */
-export function openFindingsSection(change: Change, w: Workflow): PageSection | null {
+export function openFindingsSection(p: Paths, change: Change, w: Workflow): PageSection | null {
   if (!reviewStage(w)) return null;
-  const last = readRounds(change).at(-1);
-  if (!last || outcomeOf(last) !== "carried") return null;
+  const open = carriedFindings(p, change);
+  if (!open.length) return null;
   return {
     id: "open-findings",
     title: "Open findings of the independent review",
     body: `The code-reviewer graded the architecture and the plan against a fixed list; after ${MAX_FIX_ROUNDS} rounds of fixes these are still open. Approve with them, or mark this section for a change.`,
-    points: last.findings.map((f) => `**item ${f.item}** (${CHECKLIST[f.item - 1] ?? "?"}) \`${f.target}\`: ${f.text}`),
+    points: open.map((f) => `**item ${f.item}** (${CHECKLIST[f.item - 1] ?? "?"}) \`${f.target}\`: ${f.text}`),
     html: "",
   };
 }

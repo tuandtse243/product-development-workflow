@@ -61,8 +61,10 @@ Non-blocking:
 `;
 const PASS = "VERDICT: pass\n\nNon-blocking:\n- the plan could name the timezone helper\n";
 
-/** The reviewer writes its verdict; the CLI records it. */
+/** The lead writes the brief, the reviewer writes its verdict, the CLI records it. */
 function review(root: string, text: string) {
+  const b = cli(root, "plan-review", ID, "--brief");
+  expect(b.code, b.err).toBe(0);
   write(root, `.aidw/run/review-plan-${ID}.md`, text);
   return cli(root, "plan-review", ID);
 }
@@ -86,6 +88,8 @@ describe("parsePlanReview: the verdict file", () => {
     expect(problems("VERDICT: fix\n\nNon-blocking:\n- small things\n")).toMatch(/a `fix` verdict lists at least one finding/);
     expect(problems("VERDICT: pass\n1. [item 2] T01: extra export button -> drop it\n")).toMatch(/a `pass` verdict lists no findings/);
     expect(problems("VERDICT: fix\n1. [item 5] T01: x -> y\n")).toMatch(/item 5 is not on the list \(1 to 4\)/);
+    expect(parsePlanReview("VERDICT: pass-ish\n").verdict).toBeNull();
+    expect(parsePlanReview("**VERDICT: pass**\n").verdict).toBe("pass");
     expect(problems("VERDICT: fix\n1. T01 is too big\n")).toMatch(/line 2: a finding reads "N\. \[item 1-4\] <task id \| scenario id \| area>: <problem> -> <expected fix>"/);
   });
 
@@ -155,7 +159,7 @@ describe("the Approval Gate waits for the plan review", () => {
     const r = review(root, "VERDICT: fix\n1. [item 2] T09: an export task -> drop it\n");
     expect(r.code).toBe(1);
     expect(r.err).toMatch(/finding 1 names "T09", which is not a task, a requirement or scenario of this change, or an area/);
-    expect(existsSync(join(root, ".aidw/changes", ID, "plan-review.yaml"))).toBe(false);
+    expect(rounds(root)).toEqual([]);
   });
 
   it("a fix verdict allows at most 2 fix rounds, then the Change proceeds with the findings carried to the top of the gate page", () => {
@@ -168,8 +172,8 @@ describe("the Approval Gate waits for the plan review", () => {
     const refused = cli(root, "transition", ID, "awaiting_approval");
     expect(refused.code).toBe(1);
     expect(refused.err).toMatch(/fix round 1 of 2 is open/);
-    // the same verdict again is not a new round
-    expect(cli(root, "plan-review", ID).err).toMatch(/this verdict was already recorded as round 1/);
+    // recording again without a new brief is not a new round
+    expect(cli(root, "plan-review", ID).err).toMatch(/round 2 has no brief yet: run `aidw plan-review 2026-11-24-booking --brief` first/);
     // an edited verdict that was not recorded keeps the gate closed
     expect(review(root, FIX(2)).out).toMatch(/fix round 2 of 2/);
     write(root, `.aidw/run/review-plan-${ID}.md`, PASS);
@@ -185,7 +189,8 @@ describe("the Approval Gate waits for the plan review", () => {
     expect(text).toContain("round 2: the booking page adds a client-side slot cache");
     expect(existsSync(verdictPath(root))).toBe(false);
     // the third review is the last: what is still open is carried
-    const last = review(root, FIX(3));
+    write(root, `.aidw/run/review-plan-${ID}.md`, FIX(3));
+    const last = cli(root, "plan-review", ID);
     expect(last.code, last.err).toBe(0);
     expect(last.out).toMatch(/plan review round 3: fix; the 2 fix rounds are used up: 2 finding\(s\) stay open and go to the top of the gate page/);
     expect(rounds(root).map((x) => x.verdict)).toEqual(["fix", "fix", "fix"]);
@@ -221,15 +226,46 @@ describe("the Approval Gate waits for the plan review", () => {
       decide({ hook_event_name: "PreToolUse", tool_name: "Write", tool_input: { file_path: file, content: "x" }, cwd: root, agent_type: "aidw:code-reviewer" } as HookInput, {})?.decision ?? "none";
     expect(write(verdictPath(root))).toBe("allow");
     expect(write(join(root, ".aidw/changes", ID, "tasks.yaml"))).toBe("deny");
+    expect(write(join(root, ".aidw/changes", ID, "plan-review.yaml"))).toBe("deny");
     expect(AIDW_STATE_COMMAND.test(`aidw plan-review ${ID}`)).toBe(true);
     expect(AIDW_STATE_COMMAND.test(`aidw plan-review ${ID} --brief`)).toBe(true);
   });
 
-  it("refuses the gate when the recorded verdict file is gone", () => {
+  it("a fresh clone has no .aidw/run/: a final round recorded in plan-review.yaml is enough for the gate", () => {
     const root = drafted();
-    expect(review(root, PASS).out).toMatch(/stage plan-review is not marked done \(.*waits for discovery\); the gate needs only the recorded verdict/);
+    expect(review(root, PASS).code).toBe(0);
+    // the stage counts as done by its recorded review, so aidw stages does not ask for it again
+    expect(cli(root, "stages", ID).out).toMatch(/done +plan-review/);
     rmSync(verdictPath(root));
-    expect(cli(root, "transition", ID, "awaiting_approval").err).toMatch(/the plan review's verdict file .* is missing/);
+    const t = cli(root, "transition", ID, "awaiting_approval");
+    expect(t.code, t.err).toBe(0);
+  });
+
+  it("records round 2 even when its text is round 1's word for word (unfixed findings are repeated as written)", () => {
+    const root = drafted();
+    expect(review(root, FIX(1)).code).toBe(0);
+    const again = review(root, FIX(1));
+    expect(again.code, again.err).toBe(0);
+    expect(again.out).toMatch(/plan review round 2: fix/);
+    expect(rounds(root).map((x) => x.round)).toEqual([1, 2]);
+  });
+
+  it("refuses a record of rounds it cannot read instead of reading it as no rounds", () => {
+    const root = drafted();
+    expect(review(root, PASS).code).toBe(0);
+    write(root, `.aidw/changes/${ID}/plan-review.yaml`, "rounds: [\n  - {broken");
+    const t = cli(root, "transition", ID, "awaiting_approval");
+    expect(t.code).toBe(1);
+    expect(t.err).toMatch(/plan-review\.yaml cannot be read/);
+  });
+
+  it("routes each finding to the Role whose stage writes what it names, or to the lead", () => {
+    const root = drafted();
+    const r = review(root, `VERDICT: fix\n1. [item 3] architecture: a second store -> one store\n2. [item 1] T01: x -> y\n3. [item 1] test-plan: no case for the refusal -> add one\n`);
+    expect(r.code, r.err).toBe(0);
+    expect(r.out).toMatch(/\[item 3\] architecture: .* -> software-architect/);
+    expect(r.out).toMatch(/\[item 1\] T01: .* -> technical-planner/);
+    expect(r.out).toMatch(/\[item 1\] test-plan: .* -> qa/);
   });
 });
 

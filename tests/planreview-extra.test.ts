@@ -37,6 +37,12 @@ function drafted(): string {
   return root;
 }
 
+/** The lead writes the brief of the next round (it clears the last verdict); the reviewer then writes its verdict. */
+function briefed(root: string): void {
+  const b = cli(root, "plan-review", ID, "--brief");
+  expect(b.code, b.err).toBe(0);
+}
+
 const FIX = (n: number) => `VERDICT: fix\n1. [item 4] T02: round ${n}: a slot cache nobody needs -> drop it\n`;
 const PASS = "VERDICT: pass\n";
 
@@ -67,8 +73,10 @@ describe("the gate counts recorded rounds", () => {
 
   it("a pass on the second review ends the stage after one fix round", () => {
     const root = drafted();
+    briefed(root);
     write(root, verdict, FIX(1));
     expect(cli(root, "plan-review", ID).out).toMatch(/fix round 1 of 2/);
+    briefed(root);
     write(root, verdict, PASS);
     const r = cli(root, "plan-review", ID);
     expect(r.code, r.err).toBe(0);
@@ -78,25 +86,54 @@ describe("the gate counts recorded rounds", () => {
 });
 
 describe("the user sends the package back from the gate", () => {
-  it("the recorded review still counts: back to analyzing, revise, and the gate opens again without a new review", () => {
+  it("an unchanged plan keeps its review: back to analyzing and to the gate again without a new review", () => {
     const root = drafted();
+    briefed(root);
     write(root, verdict, PASS);
     expect(cli(root, "plan-review", ID).code).toBe(0);
     expect(cli(root, "transition", ID, "awaiting_approval").code).toBe(0);
     expect(cli(root, "transition", ID, "analyzing").code).toBe(0);
-    // the user asked for a change; the planner revises the plan
-    const c = `.aidw/changes/${ID}`;
-    write(root, `${c}/tasks.yaml`, TASKS_YAML.replace("status: pending", "status: pending\n    notes: revised after the gate"));
-    // no second review: the stage is finished and recording again is refused
+    // the user asked for a change to the summary only: the reviewed plan is untouched
+    write(root, `.aidw/changes/${ID}/analysis.md`, ANALYSIS_MD.replace("Clinic booking app.", "Clinic booking app for one clinic."));
     expect(cli(root, "plan-review", ID).err).toMatch(/the plan review is finished \(round 1: pass\)/);
     const t = cli(root, "transition", ID, "awaiting_approval");
     expect(t.code, t.err).toBe(0);
-    expect((YAML.parse(readFileSync(join(root, roundsYaml), "utf8")) as { rounds: unknown[] }).rounds).toHaveLength(1);
+  });
+
+  it("a changed plan needs a new review: the gate is refused and a new cycle of rounds runs", () => {
+    const root = drafted();
+    for (const n of [1, 2, 3]) {
+      briefed(root);
+      write(root, verdict, FIX(n));
+      expect(cli(root, "plan-review", ID).code, `round ${n}`).toBe(0);
+    }
+    expect(cli(root, "transition", ID, "awaiting_approval").code).toBe(0);
+    expect(cli(root, "transition", ID, "analyzing").code).toBe(0);
+    // the planner revises the plan after the gate
+    write(root, `.aidw/changes/${ID}/tasks.yaml`, TASKS_YAML.replace("title: Booking page", "title: Booking page with reschedule"));
+    const refused = cli(root, "transition", ID, "awaiting_approval");
+    expect(refused.code).toBe(1);
+    expect(refused.err).toMatch(/the plan changed since the review \(round 3\)/);
+    // a new cycle: round 1 again, with its own cap
+    briefed(root);
+    write(root, verdict, PASS);
+    const r = cli(root, "plan-review", ID);
+    expect(r.code, r.err).toBe(0);
+    expect(r.out).toMatch(/plan review round 1: pass/);
+    const data = YAML.parse(readFileSync(join(root, roundsYaml), "utf8")) as { cycle: number; rounds: { cycle?: number }[] };
+    expect(data.cycle).toBe(2);
+    expect(data.rounds).toHaveLength(4);
+    expect(cli(root, "transition", ID, "awaiting_approval").code).toBe(0);
+    // the open findings of the first cycle are not shown for the reviewed plan
+    write(root, ".aidw/run/pages/gate.yaml", `layout: gate\ntitle: Approve\nchange: ${ID}\nsections:\n  - id: scope\n    title: Scope\n    body: Booking.\n`);
+    expect(cli(root, "page", "render", "gate").code).toBe(0);
+    expect(readFileSync(join(root, ".aidw/run/pages/gate.html"), "utf8")).not.toMatch(/data-sec="open-findings"/);
   });
 
   it("carried findings still head the gate page after the round trip", () => {
     const root = drafted();
     for (const n of [1, 2, 3]) {
+      briefed(root);
       write(root, verdict, FIX(n));
       expect(cli(root, "plan-review", ID).code, `round ${n}`).toBe(0);
     }
@@ -126,6 +163,7 @@ describe("verdict shape corners", () => {
 
   it("a shape refusal does not use up a round: the corrected verdict is round 1", () => {
     const root = drafted();
+    briefed(root);
     write(root, verdict, "VERDICT: fix\n");
     expect(cli(root, "plan-review", ID).code).toBe(1);
     write(root, verdict, FIX(1));
@@ -134,6 +172,7 @@ describe("verdict shape corners", () => {
 
   it("is only recorded while the change is analyzing", () => {
     const root = drafted();
+    briefed(root);
     write(root, verdict, PASS);
     expect(cli(root, "plan-review", ID).code).toBe(0);
     expect(cli(root, "transition", ID, "awaiting_approval").code).toBe(0);
