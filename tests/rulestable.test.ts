@@ -5,6 +5,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
 import { checkEvals, loadEvalCases, roleDigest } from "../src/evals.js";
 import { checkRoster, loadRuleTable, parseRulesTable, writeAgents } from "../src/roles.js";
+import { bareBackend } from "./fixtures.js";
 
 const plugin = join(__dirname, "..", "plugins", "aidw");
 const temps: string[] = [];
@@ -14,6 +15,7 @@ function copy(): string {
   const root = mkdtempSync(join(tmpdir(), "aidw-rules-"));
   temps.push(root);
   cpSync(plugin, root, { recursive: true, filter: (src) => !src.startsWith(join(plugin, "bin")) });
+  bareBackend(root);
   return root;
 }
 
@@ -65,7 +67,7 @@ describe("rules.md as a table (R2)", () => {
     const prose = readFileSync(join(plugin, "roles", "code-reviewer", "rules.md"), "utf8");
     expect(parseRulesTable(prose)).toEqual({ table: false, rules: [], problems: [] });
     expect(loadRuleTable(plugin, "code-reviewer")).toBeNull();
-    expect(loadRuleTable(plugin, "backend")).toBeNull(); // no rules.md at all
+    expect(loadRuleTable(plugin, "frontend")).toBeNull(); // no rules.md at all
   });
 
   it("reports a duplicate id, an empty field, a bad id, an unknown checker and a bad header", () => {
@@ -102,8 +104,10 @@ describe("cases cover rules and skills (C1)", () => {
     const cases = loadEvalCases(root, "backend").cases;
     expect(cases.find((c) => c.name === "entity-is-not-a-response")).toMatchObject({ covers: ["B1", "effects-after-commit"] });
     expect(cases.find((c) => c.name === "validates-authorizes-and-does-not-leak")).toMatchObject({ covers: ["B2"], expect: "ask" });
-    expect(loadEvalCases(plugin, "backend").cases[0]).toMatchObject({ covers: [] });
-    expect(loadEvalCases(plugin, "backend").cases[0]?.expect).toBeUndefined();
+    // a case with neither key (a Role still in prose) covers nothing and expects a deliverable
+    expect(loadEvalCases(plugin, "database").cases[0]).toMatchObject({ covers: [] });
+    expect(loadEvalCases(plugin, "database").cases[0]?.expect).toBeUndefined();
+    expect(loadEvalCases(plugin, "backend").cases.find((c) => c.name === "contract-has-a-hole")).toMatchObject({ covers: ["B1"], expect: "ask" });
   });
 
   it("rejects a bad expect, a covers that is not a list and an unknown key", () => {
@@ -158,7 +162,11 @@ describe("cases cover rules and skills (C1)", () => {
     expect(out).toMatch(/rule B2 has no case/);
     out = "";
     expect(run(["roster"], { AIDW_PLUGIN_ROOT: plugin }, process.cwd(), { out: (s) => (out += s), err: (s) => (out += s) }), out).toBe(0);
-    expect(out).not.toMatch(/results\.json/); // no Role is in table format yet: no staleness warning
+    expect(out).toMatch(/OK: 0 error\(s\)/);
+    // A result file that is missing, stale or records a case not passed is the Role's C6 status, a warning for whoever
+    // changes the Role, not a unit-test failure. Any other warning is.
+    const warns = out.split("\n").filter((l) => l.startsWith("WARN"));
+    expect(warns.filter((l) => !/roles\/[a-z-]+\/evals\/results\.json/.test(l))).toEqual([]);
   });
 });
 

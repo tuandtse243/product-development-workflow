@@ -6,6 +6,7 @@ import { run } from "../src/cli.js";
 import { type Exec } from "../src/evalrun.js";
 import { checkEvals, roleDigest } from "../src/evals.js";
 import { parseRulesTable, writeAgents } from "../src/roles.js";
+import { bareBackend } from "./fixtures.js";
 
 /** Gaps found probing T12, fixed after the review: the rules table, covers, the digest and the result file. Every test works on a temp copy of the plugin. */
 const plugin = join(__dirname, "..", "plugins", "aidw");
@@ -16,6 +17,7 @@ function copy(): string {
   const root = mkdtempSync(join(tmpdir(), "aidw-rules-probe-"));
   temps.push(root);
   cpSync(plugin, root, { recursive: true, filter: (src) => !src.startsWith(join(plugin, "bin")) });
+  bareBackend(root);
   return root;
 }
 

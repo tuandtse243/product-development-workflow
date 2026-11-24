@@ -7,6 +7,7 @@ import { run } from "../src/cli.js";
 import { type Exec } from "../src/evalrun.js";
 import { checkEvals, roleDigest } from "../src/evals.js";
 import { parseRulesTable, writeAgents } from "../src/roles.js";
+import { bareBackend } from "./fixtures.js";
 
 /** Edge cases of T12: the rules table, covers, the digest and the result file. Every test works on a temp copy of the plugin. */
 const plugin = join(__dirname, "..", "plugins", "aidw");
@@ -17,6 +18,7 @@ function copy(): string {
   const root = mkdtempSync(join(tmpdir(), "aidw-rules-probe-"));
   temps.push(root);
   cpSync(plugin, root, { recursive: true, filter: (src) => !src.startsWith(join(plugin, "bin")) });
+  bareBackend(root);
   return root;
 }
 
@@ -162,6 +164,8 @@ describe("roleDigest stability (C6)", () => {
 
 describe("FLAKY through aidw eval (C2, C6)", () => {
   it("exits 1 and records the case as not passed with 2 of 3 runs", () => {
+    const repoFile = join(plugin, "roles", "backend", "evals", "results.json");
+    const before = existsSync(repoFile) ? readFileSync(repoFile) : null;
     const root = copy();
     execFileSync("git", ["init", "-q"], { cwd: root }); // a source checkout: only there is the result file written
     let grade = 0;
@@ -179,7 +183,7 @@ describe("FLAKY through aidw eval (C2, C6)", () => {
     const r = JSON.parse(readFileSync(join(root, "roles", "backend", "evals", "results.json"), "utf8"));
     expect(r.runs).toBe(3);
     for (const c of r.cases) expect(c).toMatchObject({ pass: false, runs: { total: 3, passed: 2, errors: 0 } });
-    expect(existsSync(join(plugin, "roles", "backend", "evals", "results.json"))).toBe(false);
+    expect(existsSync(repoFile) ? readFileSync(repoFile) : null).toEqual(before); // the repo's own file is untouched
     // and roster then warns that the last run did not pass
     let ro = "";
     tableRole(root);

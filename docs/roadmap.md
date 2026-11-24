@@ -167,6 +167,8 @@ aidw becomes a software factory with a Roster of Roles, Workflows as data and de
     framework is adding one file.
   - [x] Two more packs for the other frameworks `aidw detect` reports as a full-stack framework: `stacks/nuxt.md` and
     `stacks/sveltekit.md`. Astro and React Router / Remix are detected but have no pack yet.
+  - [x] Server packs `stacks/express.md`, `fastify.md` and `hono.md` (`detected_as: server`): `aidw detect` reports these
+    libraries as the `server`; their pack loads for `backend` and `fullstack` only when no framework pack matches.
   - [x] Python: `aidw detect` reads `pyproject.toml` (PEP 621, Poetry, dependency groups), `requirements*.txt` and `Pipfile`
     (`src/pydetect.ts`, no TOML library), names the tool (uv, Poetry, Pipenv, pip), reports the stack (Django, FastAPI, Flask,
     SQLAlchemy, pytest, ruff, mypy...) and proposes the `code` and `unit` layers (`uv run ruff check .`, `uv run pytest`). A
@@ -237,7 +239,8 @@ are in `library/vendored-skill-notes.md`; a brief that loads one of these Skills
   covered by the authored `schema-evolution` Skill (wave 4, `database-architect`), which the `database` Role also loads.
 - [x] Vendored, `devops`: docker `docker-project-foundations`, `docker-build-strategies`, `docker-compose-patterns`;
   Sentry `gha-security-review` (the review of a task that changes a workflow).
-- [x] Authored, `integration`: `resilient-integration`, webhooks, idempotency, retries and timeouts.
+- [x] Authored, shared by `integration` and `backend` in `library/skills/`: `resilient-integration` (webhooks,
+  idempotency, retries and timeouts) and `external-api` (an outside service behind an interface, with a fake).
 - [x] Authored, shared: `aidw/api-design-rules` in `library/skills/` (error shape, lists, repeated writes, compatibility).
 - [ ] Not done: Addy `source-driven-development` (its core step needs web access the Agents do not have); obra
   `writing-good-tests` (no such Skill upstream: the material is a file inside its TDD Skill, which overlaps Addy's);

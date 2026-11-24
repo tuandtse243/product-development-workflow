@@ -9,7 +9,7 @@ import { run } from "../src/cli.js";
 import { decide, type HookInput } from "../src/gate.js";
 import { globToRegExp, matchesAny } from "../src/glob.js";
 import { findScenarioTests } from "../src/run.js";
-import { selectSkills, skillPath } from "../src/skills.js";
+import { selectSkills, skillPath, SKILLS_WITH_NOTES } from "../src/skills.js";
 import { ANALYSIS_MD, TOKENS_YAML, MAIN_SPEC, QUALITY_YAML, REQ, tempProject, write, planReviewed } from "./fixtures.js";
 
 const ID = "2026-11-08-booking";
@@ -246,7 +246,9 @@ describe("briefs", () => {
     expect(review).toMatch(/`VERDICT: pass` or `VERDICT: fix`/);
     expect(review).toMatch(/addy\/code-review-and-quality\/SKILL\.md/);
     expect(review).not.toMatch(/test-driven-development/);
-    expect(review).not.toMatch(/Rules of the Role that built it/); // fullstack has no rules.md
+    // fullstack has no rules.md of its own; it follows backend's (follows_rules), so the review points at that one
+    expect(review).toContain("## Rules of the Role that built it (fullstack)");
+    expect(review).toMatch(/roles\/backend\/rules\.md`: rules of backend, one per row with an id\./);
   });
 
   it("the review brief points at the rules.md of the Role that built the task and asks for rule ids (R2)", () => {
@@ -271,7 +273,7 @@ describe("briefs", () => {
     expect(review).toMatch(/kept when the implementer asked instead of guessing/);
     // a Role that follows another's rules (follows_rules) gets both files in the review of its tasks
     const fsRole = join(pluginCopy, "roles", "fullstack", "role.md");
-    writeFileSync(fsRole, readFileSync(fsRole, "utf8").replace(/^access: (.*)$/m, "access: $1\nfollows_rules: [backend]"));
+    expect(readFileSync(fsRole, "utf8")).toMatch(/^follows_rules: \[backend\]$/m);
     writeFileSync(join(pluginCopy, "roles", "fullstack", "rules.md"), "- Keep the slice whole.\n");
     const fsRoot = executingProject();
     cli(fsRoot, "task", "start", "T01");
@@ -286,6 +288,14 @@ describe("briefs", () => {
     let out = "";
     run(["brief", "T01", "--root", root], { AIDW_PLUGIN_ROOT: pluginCopy }, root, { out: (s) => (out += s), err: () => {} });
     expect(readFileSync(out.trim(), "utf8")).not.toMatch(/Rules of the Role that built it/);
+    // ...but the implement brief of a Role that follows another's rules points at those: they are not in its profile
+    let fsImpl = "";
+    run(["brief", "T01", "--root", fsRoot], { AIDW_PLUGIN_ROOT: pluginCopy }, fsRoot, { out: (s) => (fsImpl += s), err: () => {} });
+    const fsBrief = readFileSync(fsImpl.trim(), "utf8");
+    expect(fsBrief).toContain("## Rules of the Roles yours follows");
+    expect(fsBrief).toContain(`\`${rules}\`: rules of backend, one per row with an id.`);
+    expect(fsBrief).not.toContain(`\`${join(pluginCopy, "roles", "fullstack", "rules.md")}\``); // its own are in its profile
+    expect(readFileSync(out.trim(), "utf8")).not.toMatch(/Rules of the Roles yours follows/); // backend follows no one
     // a rules.md in prose is pointed at, without asking for ids
     writeFileSync(rules, "- Never return an entity.\n");
     const prose = brief({ AIDW_PLUGIN_ROOT: pluginCopy });
@@ -421,6 +431,52 @@ describe("skill selection by Role", () => {
   });
 });
 
+describe("secret-serialization signal", () => {
+  const S = "sentry/secret-serialization";
+  const pick = (t: Record<string, unknown>, kind: "implement" | "review" = "implement") =>
+    selectSkills({ id: "T", title: "x", role: "backend", type: "feat", verify: ["pnpm vitest"], touches: ["src/orders/**"], ...t } as never, kind);
+  const has = (t: Record<string, unknown>, kind: "implement" | "review" = "implement") => pick(t, kind).some((s) => s.id === S);
+
+  it("loads when a credential goes onto a config or client object", () => {
+    expect(has({ title: "Add the Stripe secret key to the config" })).toBe(true);
+    expect(has({ title: "Read the mail API key", touches: ["src/config/**", ".env.example"] })).toBe(true);
+    expect(has({ title: "Read the OpenAI key from the environment" })).toBe(true);
+    expect(has({ title: "Rotate the database connection string" })).toBe(true);
+    expect(has({ title: "Stripe payment adapter", touches: ["src/adapters/stripe.ts", ".env.example"] })).toBe(true);
+    expect(has({ title: "Payments API client with credentials" })).toBe(false); // no config module, no env
+  });
+
+  it("loads when the task works on a sink that serializes whole objects", () => {
+    expect(has({ title: "Structured logging for the order routes" })).toBe(true);
+    expect(has({ touches: ["src/telemetry/**"] })).toBe(true);
+    expect(has({ title: "Send errors to Sentry" })).toBe(true);
+    expect(has({ title: "x", scenarios: ["ops/tracing/span-per-request"] })).toBe(true);
+    expect(has({ title: "Log failed webhook deliveries" })).toBe(true);
+  });
+
+  it("stays narrow: a credential word alone, a plain route, or a non-server Role does not load it", () => {
+    expect(has({ title: "Reset a forgotten password" })).toBe(false);
+    expect(has({ title: "Refresh the session token" })).toBe(false);
+    expect(has({ title: "List orders", touches: ["src/api/orders/**"] })).toBe(false);
+    expect(has({ title: "Log in page" })).toBe(false);
+    expect(has({ title: "DRF serializers for orders", touches: ["app/orders/serializers.py"] })).toBe(false);
+    expect(has({ title: "Show the audit logs to admins" })).toBe(false);
+    expect(has({ title: "Stripe payment adapter", touches: ["src/adapters/stripe.ts"] })).toBe(false);
+    expect(has({ role: "frontend", title: "Structured logging for the order routes" })).toBe(false);
+    expect(has({ role: "database", title: "Store the API key in config" })).toBe(false);
+  });
+
+  it("loads for fullstack and role-less tasks, in implement and review briefs, with notes and the reading rule", () => {
+    expect(has({ role: "fullstack", title: "Send errors to Sentry" })).toBe(true);
+    expect(has({ role: undefined, title: "Send errors to Sentry" })).toBe(true);
+    expect(has({ title: "Send errors to Sentry" }, "review")).toBe(true);
+    expect(has({ title: "List orders" }, "review")).toBe(false);
+    const s = pick({ title: "Send errors to Sentry" }).find((x) => x.id === S);
+    expect(s?.reason).toMatch(/only the reference for the project's language/);
+    expect(SKILLS_WITH_NOTES.has(S)).toBe(true);
+  });
+});
+
 describe("selected skills resolve", () => {
   const vendor = join(__dirname, "..", "plugins", "aidw", "library", "vendor");
   const base = { id: "T", title: "x", role: "fullstack", type: "feat", verify: ["pnpm vitest"], touches: ["lib/x/**"] };
@@ -445,6 +501,8 @@ describe("selected skills resolve", () => {
     ["quality origin", { origin: "quality" }, "implement"],
     ["review fix", {}, "implement", { reviewFix: true }],
     ["review kind", { risk: "high" }, "review"],
+    ["secret serialization", { role: "backend", title: "Add the Stripe secret key to the config" }, "implement"],
+    ["secret serialization review", { role: "backend", touches: ["src/telemetry/**"] }, "review"],
   ];
 
   it.each(cases)("every skill picked for a %s task has a SKILL.md", (_name, t, kind, opts) => {

@@ -57,8 +57,10 @@ in the last column until it is activated. The Orchestrator (main session plus CL
 | `documentation` | Quality & Delivery | planned | `deliver` skill |
 | `release` | Quality & Delivery | planned | CLI `deploy` and `pr` |
 
-`fullstack` is the one Role added to the user's original 20. It is today's `implementer` with a profile; its
-skill index points at the `frontend` and `backend` skills, so no knowledge is copied.
+`fullstack` is the one Role added to the user's original 20. It is today's `implementer` with a profile. Nothing is
+copied into it: `follows_rules: [backend]` binds its server side to backend's `rules.md`, its `skills:` index lists the
+two library skills backend lists, and its body points at backend's six own skills by path (an index entry names only a
+Role's own skill or a `library/` one) and at the frontend Role's section for a screen.
 
 Boundaries decided in the interview:
 
@@ -157,6 +159,21 @@ generated agent files are up to date.
   a profile (name, description, tools, model from the tier map, body from `role.md` followed by `rules.md`).
   An interactive Role gets one too: it is the worker Agent that drafts or reviews for that Role. Generated files carry a "do not
   edit" header and a test fails when they are out of date.
+- **Role scripts.** `roles/<id>/scripts/` holds the Role's measuring tools (plan R1): dependency-free Node ESM
+  (`.mjs`, built-ins only, Node 20 or later), called by path through `aidw plugin-path roles/<id>/scripts/<name>.mjs`.
+  Each documents its usage at the top of the file and prints it with `--help`, writes JSON by default (`--text` for
+  a short table) and is advisory: a finding never makes it exit non-zero, only a usage or read error does (exit 2).
+  Pass/fail checks stay in the CLI. A file starting with `_` is a helper the scripts share, not a tool. The tests
+  live under `tests/` (fixture trees in temp dirs, the script run with `node <path>`). The backend Role has five:
+  `route-inventory` (routes, the tests that call each, the B2 access cases those tests assert), `env-names` (names
+  read against `.env.example`, never a value), `error-shape-probe` (error bodies against the declared error shape,
+  statically and on responses the tests captured), `query-count` (statements for 1 row and N rows; also a module a
+  test imports) and `leak-and-timeout-scan` (outbound calls with no timeout, log calls carrying secrets or whole
+  objects). `route-inventory`, `env-names`, `error-shape-probe` (its static probe) and `leak-and-timeout-scan` take
+  `--base <ref>` to look only at what a diff adds; `query-count` reads logs and takes no `--base`. Every JSON output
+  starts with `tool` and `schemaVersion: 1`; a directory scan lists under `skipped` what it did not read (`public/`
+  and `static/` output, minified or bundled files, files over 512 KB, unreadable files). `query-count --run`
+  executes a command, so a read-only reviewer does not use it.
 
 ## 4. Knowledge loading
 
@@ -178,7 +195,34 @@ Shared skills (test-first, debugging, git workflow, the vendored Pocock and Addy
 tooling questions (install, format, lint, test). A framework pack answers how to build with that framework
 (structure, conventions, common mistakes). Roles stay stack-neutral: `frontend` on a Next.js project loads
 `node` plus `nextjs`; `backend` on a NestJS project loads `node` plus `nestjs`. Next.js and NestJS are the
-first framework packs.
+first framework packs. Express, Fastify and Hono are HTTP libraries that `aidw detect` reports as the `server`, not
+the `framework`: their packs say `detected_as: server` and load only when no framework pack matches, so a NestJS
+project that also lists `express` gets `nestjs` alone. Selection has limits: a Next.js app with a separate Express
+server in the same `package.json` gets `nextjs` only, and `aidw detect` keeps only the first server dependency it finds.
+
+**What a backend task receives (audit, 2026-11-24, plan T17).** Read from a real implement brief (`aidw brief`) for a
+task with `role: backend`, Touches `src/bookings/**`, an API contract, a data model and Express in `package.json`, and
+from the generated `agents/backend.md`:
+
+| Piece | Where it reaches the Agent |
+|---|---|
+| Responsibility, procedure, Done when, ask rule, rules for every implementing Role | agent file (`role.md` body + `library/implement-a-task.md`) |
+| The Role's own `rules.md` | agent file (`## Rules`, generated); the review brief points at the same file |
+| Rules of a Role it follows (`follows_rules`, fullstack follows backend) | review brief; **was missing** from the implement brief |
+| The Role's skill index, incl. `library/external-api`, `library/resilient-integration` | agent file, one `aidw plugin-path` command each; the Agent decides (R3) |
+| `references/`, `lessons.md` | named in `role.md`, read on demand |
+| Scenarios, requirement text, Decisions to honor, Touches, Verify, envelope, finished dependencies | brief |
+| Constitution, domain model, architecture, data model, API contract and OpenAPI, test plan, ADRs | brief, "Read first", each only when the file exists |
+| Consultation rule (who may be asked: the authors of this task's contracts that the Role `consults`) | brief |
+| Skills picked by signal (`incremental-implementation`, `test-driven-development`, `verification-before-completion`, `api-and-interface-design`, `aidw/api-design-rules`; `aidw/schema-evolution` when Touches hit the data layer) | brief |
+| Framework pack of the project (`stacks/express.md`...) | brief, implement only; **was missing** from the review brief |
+| Language pack (`stacks/node.md`, `stacks/python.md`) | **was missing**: the agent file says `stacks/<language>.md` and left the Agent to guess the language |
+
+Fixed in `src/run.ts`: both briefs point at the language pack `aidw detect` reports and at the framework pack of the
+building Role (the reviewer judges by the conventions the implementer followed), and the implement brief lists the
+`rules.md` of the Roles the building Role follows (its own stays in the agent file only, as T12 decided). Not
+changed, by design: the library skills are not picked by signal (the Agent loads them from its index, and level 2
+cases check that from the tool log, C4); `references/` and `lessons.md` are not pointed at from the brief.
 
 ## 5. Rules
 
@@ -669,9 +713,21 @@ In the user's project, `.aidw/` keeps its current shape and gains `roles/<id>/` 
   `expect: ask` for a case whose right answer is a question (a hole in the contract: ask, do not guess). For an
   `expect: ask` case the runner drops the "do not stop to ask" line from the prompt and grades a short answer instead
   of calling it no deliverable; an empty reply or a refusal is still an ERROR.
-- **A case fails without what it covers (plan C3).** `aidw eval <role> --without <rule-id|skill>` takes that rule row
-  or skill out of the instructions and runs only the cases covering it; each must fail, and one that still passes is
-  printed as STILL PASSES (exit 1): rewrite or drop it. Such a run never writes the result file.
+- **A case fails without what it covers (plan C3).** `aidw eval <role> --without <id>[,<id>...]` takes those rule rows
+  and skills out of the instructions and runs only the cases covering any of them (with `--case`, that case: pass all
+  of its `covers` to test the case as a whole, since a rule and the skill that serves it say the same thing twice); each
+  must fail, and one that still passes is printed as STILL PASSES (exit 1): rewrite or drop it. `aidw eval <role>
+  --bare` is the baseline: the cases are answered with none of the Role's instructions, only the shared procedures it
+  includes (`library/implement-a-task.md`, so the protocol for asking does not decide a case), and a case that passes is
+  printed as PASSES BARE (exit 1). Both print every criterion's verdict, so a run is read per criterion, and never write
+  the result file.
+- **What C3 showed on the deep tier (owner decision 2026-11-24).** The first backend run (one run each, the claude
+  CLI's default model) passed 4 of its 10 cases bare, with only `library/implement-a-task.md`, and the other 6 failed
+  only on details (one missing test, one field of a log line), mostly the same ones with and without their covers; a
+  rule and the skill that serves it are also restated in role.md, which `--without` never removes. On the deep tier the
+  bare and `--without` runs are therefore a diagnostic, not a gate. "Fails without what it covers" is required on the
+  tier a Role would be lowered to (before `tiers.yaml` maps it to a cheaper model) and at level 2 (C4, task T18), where
+  a real task with tools gives the Role's knowledge room to matter.
 - **Coverage (level 0, no tokens; plan C1).** For a Role whose `rules.md` is a table, `aidw roster` fails when a rule
   id or a skill of the Role has no case covering it. A `covers:` entry that names neither a rule id nor a skill of
   the Role fails for every Role. Roles still in prose are not held to coverage.

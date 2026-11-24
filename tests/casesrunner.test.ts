@@ -7,6 +7,7 @@ import { run } from "../src/cli.js";
 import { answerPrompt, buildGradePrompt, parseGrade, printResults, roleSystem, runCases, type Exec } from "../src/evalrun.js";
 import { loadEvalCases, roleDigest } from "../src/evals.js";
 import { writeAgents } from "../src/roles.js";
+import { bareBackend } from "./fixtures.js";
 
 const plugin = join(__dirname, "..", "plugins", "aidw");
 const env = { ...process.env, CLAUDE_PLUGIN_ROOT: plugin };
@@ -23,6 +24,7 @@ function copy(): string {
   const root = mkdtempSync(join(tmpdir(), "aidw-cases-"));
   temps.push(root);
   cpSync(plugin, root, { recursive: true, filter: (src) => !src.startsWith(join(plugin, "bin")) });
+  bareBackend(root);
   return root;
 }
 
@@ -47,7 +49,7 @@ describe("the Role case runner", () => {
     expect(s).toContain("### Skill: expand-contract");
     expect(s).toContain("### Skill: prisma-migration");
     expect(s).not.toMatch(/^name: expand-contract/m); // the skill's front matter is dropped
-    expect(roleSystem(plugin, "fullstack")).not.toContain("Your skills, in full"); // a Role with no skills
+    expect(roleSystem(plugin, "frontend")).not.toContain("Your skills, in full"); // a Role with no skills
   });
 
   it("passes a case when every criterion passes, and fails it otherwise", () => {
@@ -242,6 +244,7 @@ describe("the Role case runner", () => {
     const results = (root: string) => JSON.parse(readFileSync(join(root, "roles", "backend", "evals", "results.json"), "utf8"));
 
     it("is written into the Role's folder after a run of all its cases", () => {
+      const before = repoResults();
       const root = gitCopy();
       let out = "";
       const code = run(["eval", "backend", "--model", "sonnet"], { ...process.env, AIDW_PLUGIN_ROOT: root }, process.cwd(), { out: (s) => (out += s), err: (s) => (out += s), modelExec: () => fake(true) });
@@ -252,7 +255,7 @@ describe("the Role case runner", () => {
       expect(r.cases.map((c: { name: string }) => c.name).sort()).toEqual(["entity-is-not-a-response", "validates-authorizes-and-does-not-leak"]);
       expect(r.cases[0]).toMatchObject({ pass: true, runs: { total: 3, passed: 3, errors: 0 } });
       expect(out).toMatch(/wrote roles\/backend\/evals\/results\.json/);
-      expect(existsSync(join(plugin, "roles", "backend", "evals", "results.json"))).toBe(false); // tests never write the repo's
+      expect(repoResults()).toEqual(before); // tests never write the repo's
     });
 
     it("records a failed case with the criteria that failed", () => {
@@ -367,7 +370,67 @@ describe("the Role case runner", () => {
     it("refuses an id the Role does not have, and a run with no Role", () => {
       const root = ablatable();
       expect(go(root, ["eval", "backend", "--without", "B9"], () => fake(true)).out).toMatch(/--without: "B9" is not a rule id or a skill of backend/);
+      expect(go(root, ["eval", "backend", "--without", "B1,B9"], () => fake(true)).out).toMatch(/--without: "B9" is not a rule id or a skill of backend/);
       expect(go(root, ["eval", "--without", "B1"], () => fake(true)).out).toMatch(/--without needs a Role/);
+    });
+
+    it("takes a list: drops every item and runs the cases covering any of them", () => {
+      const root = ablatable();
+      const s = roleSystem(root, "backend", ["B1", "effects-after-commit"]);
+      expect(s).not.toContain("RULE-ONE-TEXT");
+      expect(s).not.toContain("SKILL-BODY-TEXT");
+      expect(s).toContain("RULE-TWO-TEXT");
+      expect(roleSystem(root, "backend", "B1, B2")).not.toMatch(/RULE-(ONE|TWO)-TEXT/);
+      const prompts: string[] = [];
+      const r = go(root, ["eval", "backend", "--without", "B1,B2", "--runs", "1"], () => (p, system) => (system && prompts.push(system), fake(false)(p, system)));
+      expect(r.code, r.out).toBe(0);
+      expect(r.out).toMatch(/without B1,B2: 2\/2 case\(s\) failed, as they should/);
+      expect(prompts.every((x) => !x.includes("RULE-ONE-TEXT") && !x.includes("RULE-TWO-TEXT"))).toBe(true);
+      expect(existsSync(join(root, "roles", "backend", "evals", "results.json"))).toBe(false);
+    });
+
+    it("with --case runs only that case, and prints every criterion's verdict", () => {
+      const root = ablatable();
+      let grade = 0;
+      // the first criterion fails, the others pass
+      const half: Exec = (p, system) => {
+        if (system) return "ANSWER " + "x".repeat(400);
+        const n = (p.match(/^\d+\. /gm) ?? []).length;
+        grade++;
+        return JSON.stringify(Array.from({ length: n }, (_, i) => ({ n: i + 1, pass: i > 0, reason: "why" })));
+      };
+      const r = go(root, ["eval", "backend", "--without", "B1,effects-after-commit", "--case", "entity-is-not-a-response", "--runs", "2"], () => half);
+      expect(grade).toBe(2);
+      expect(r.out).toMatch(/FAIL {2}backend\/entity-is-not-a-response \(0\/2 runs\)/);
+      expect(r.out).not.toMatch(/validates-authorizes/);
+      expect(r.out).toMatch(/^ {6}FAIL .*\n {11}failed in 2 of 2 graded runs: why$/m);
+      expect(r.out).toMatch(/^ {6}ok {3}\S/m);
+    });
+  });
+
+  describe("the bare baseline (C3, --bare)", () => {
+    it("answers with only the shared procedures the Role includes, never its own text", () => {
+      const root = gitCopy();
+      const prompts: string[] = [];
+      const r = go(root, ["eval", "backend", "--bare", "--runs", "1"], () => (p, system) => (system && prompts.push(system), fake(false)(p, system)));
+      expect(r.code, r.out).toBe(0);
+      expect(r.out).toMatch(/bare \(no Role instructions\): \d+\/\d+ case\(s\) failed, as they should/);
+      expect(prompts.length).toBeGreaterThan(0);
+      const shared = readFileSync(join(root, "library", "implement-a-task.md"), "utf8").trim();
+      const role = readFileSync(join(root, "roles", "backend", "role.md"), "utf8");
+      const own = /## Responsibility\n\n(.+)/.exec(role)?.[1] ?? "no-such-text";
+      expect(prompts.every((x) => x === shared)).toBe(true);
+      expect(prompts.every((x) => !x.includes(own))).toBe(true);
+      expect(existsSync(join(root, "roles", "backend", "evals", "results.json"))).toBe(false);
+    });
+
+    it("flags a case the bare model passes, and needs a Role", () => {
+      const root = gitCopy();
+      const r = go(root, ["eval", "backend", "--bare", "--runs", "1", "--case", "entity-is-not-a-response"], () => fake(true));
+      expect(r.code).toBe(1);
+      expect(r.out).toMatch(/PASSES BARE backend\/entity-is-not-a-response: the model passes it with no Role; rewrite or drop it \(C3\)/);
+      expect(go(root, ["eval", "--bare"], () => fake(true)).out).toMatch(/--bare needs a Role/);
+      expect(go(root, ["eval", "backend", "--bare", "--without", "B1"], () => fake(true)).out).toMatch(/--bare and --without do not go together/);
     });
   });
 
@@ -390,6 +453,12 @@ describe("the Role case runner", () => {
     }
   });
 });
+
+/** The repo's own backend result file, byte for byte (null when there is none): a test must leave it as it was. */
+function repoResults(): Buffer | null {
+  const f = join(plugin, "roles", "backend", "evals", "results.json");
+  return existsSync(f) ? readFileSync(f) : null;
+}
 
 /** `aidw eval` on a plugin copy; `seen` collects the model each Role's runner was made for. */
 function go(root: string, argv: string[], exec: (m?: string) => Exec, seen: (string | undefined)[] = []) {
