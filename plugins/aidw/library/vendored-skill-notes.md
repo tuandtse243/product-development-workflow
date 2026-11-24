@@ -72,6 +72,27 @@ evaluates the input (the `script:` of `actions/github-script`); and under `issue
 A new project has no production data. Take data volume and hot paths from the scale the spec states, not from
 "verified row counts"; report a problem that the stated scale makes real.
 
+## sentry/secret-serialization
+
+Written as a reviewer's skill for Sentry's Warden. Read `SKILL.md` and only the reference for the project's
+language; ignore `SPEC.md` and `SOURCES.md`. `security-review` in its Boundary is not available: direct leaks are
+backend rule B14 and the security Role's review.
+
+- **Implementing Role**: you file no findings. Fix a holder or a sink inside your Touches; a sink outside them is a
+  Consultation or a line in your report naming the file. Write the regression test it describes (serialize with the
+  sink's own serializer, assert the secret is absent) even though the skill calls a missing test "not a finding".
+- **Config objects**: keep one validated config module (rule B13), but never pass the whole config or a client
+  object to a logger, a span, an error context or a response, and do not keep secrets on objects that travel.
+- **Reviewer**: its severity words map to the verdict file's shape. Report a sink outside the diff only when the
+  diff connects to it.
+
+Statements to check before relying on them (read-through 2026-11-24):
+
+- pino, winston's `json` format and the Sentry JavaScript normaliser probably honour `toJSON`, so a `toJSON`
+  allowlist is partial only against `console.log` and `util.inspect`.
+- `enumerable: false` is visible to `util.inspect` with `showHidden: true`.
+- Fastify response schemas drop unlisted properties and count as a filtered sink.
+
 ## fastapi/fastapi
 
 Never run `fastapi deploy` and do not suggest FastAPI Cloud. Type-check with Pyright, not ty. The skill assumes a

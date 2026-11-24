@@ -10556,12 +10556,35 @@ var WORKFLOW_TOUCH = /(^|\/)\.github\/(workflows|actions)(\/|$)/;
 var PYTHON_PROJECT_TOUCH = /(^|\/)(pyproject\.toml|uv\.lock)$/;
 var MOTION_HINT = /\b(animat\w*|transitions?|motion|easing|gestures?|drag|swipe)\b/i;
 var OBSERVABILITY_HINT = /\b(logging|logs?|metrics?|tracing|traces?|telemetry|observability|monitoring|alerts?|health ?checks?)\b/i;
+var SINK_WORDS = /\b(logging|loggers?|log(ged)? (to|with|the|failed|errors?)|logs (failed|errors?)|structured logs?|tracing|spans?|telemetry|opentelemetry|otel|instrumentation|error (reporting|tracking|context)|sentry|redact\w*)\b/i;
+var SINK_TOUCH = /(^|\/)(logging|loggers?|telemetry|tracing|instrumentation|observability|sentry)(\/|\.|$)/i;
+var CREDENTIAL_WORDS = /\b(secrets?|api ?keys?|apikeys?|credentials?|access ?keys?|private ?keys?|signing ?keys?|client ?secrets?|tokens?|passwords?)\b/i;
+var SELF_HELD_CREDENTIAL = /\b(dsn|connection ?strings?)\b/i;
+var ENV_WORDS = /\b(env|environment)\b/i;
+var HOLDER_WORDS = /\b(config|configuration)\b/i;
+var CONFIG_TOUCH = /(^|\/)(config|settings)(\/|\.\w+$)/i;
+var ENV_EXAMPLE_TOUCH = /(^|\/)\.env\.example$/;
+var ADAPTER_TOUCH = /(^|\/)(adapters?|clients?|integrations?|providers?|gateways?)(\/|[.-])/i;
 var list2 = (v) => Array.isArray(v) ? v.map(String) : [];
 function isSecuritySensitive(t) {
   if (t.risk === "high") return true;
   const text2 = [t.title ?? "", ...list2(t.touches), ...list2(t.specs), ...list2(t.scenarios)].join(" ").replace(/[/_.-]/g, " ");
   return SECURITY_HINT.test(text2);
 }
+function handlesSecretSerialization(t) {
+  const role = String(t.role ?? "");
+  if (role && role !== "backend" && role !== "fullstack") return false;
+  const touches = list2(t.touches);
+  const text2 = [t.title ?? "", ...list2(t.scenarios)].join(" ").replace(/[/_.-]/g, " ").replace(/\blog in\b/gi, "");
+  if (SINK_WORDS.test(text2) || touches.some((g) => SINK_TOUCH.test(g))) return true;
+  if (SELF_HELD_CREDENTIAL.test(text2)) return true;
+  const credential = CREDENTIAL_WORDS.test(text2);
+  if (credential && (HOLDER_WORDS.test(text2) || touches.some((g) => CONFIG_TOUCH.test(g)))) return true;
+  if ((credential || /\bkeys?\b/i.test(text2)) && ENV_WORDS.test(text2)) return true;
+  return touches.some((g) => ENV_EXAMPLE_TOUCH.test(g)) && touches.some((g) => ADAPTER_TOUCH.test(g));
+}
+var SECRET_SERIALIZATION = "sentry/secret-serialization";
+var SECRET_SERIALIZATION_READ = "read its SKILL.md and only the reference for the project's language (references/python.md or references/javascript-typescript.md); skip SPEC.md and SOURCES.md";
 function touchesApi(t) {
   return list2(t.touches).some((g) => API_TOUCH.test(g));
 }
@@ -10579,6 +10602,7 @@ var SKILLS_WITH_NOTES = /* @__PURE__ */ new Set([
   "docker/docker-compose-patterns",
   "sentry/gha-security-review",
   "sentry/django-perf-review",
+  "sentry/secret-serialization",
   "fastapi/fastapi",
   "svelte/svelte-core-bestpractices",
   "vue/vue-best-practices",
@@ -10598,6 +10622,7 @@ function selectSkills(t, kind, opts = {}) {
     add("code-review-and-quality", "every review");
     if (isSecuritySensitive(t)) add("security-and-hardening", "security-sensitive task (risk or auth/payment/permissions)");
     if (touches.some((g) => WORKFLOW_TOUCH.test(g))) add("sentry/gha-security-review", "the task changes a GitHub Actions workflow");
+    if (handlesSecretSerialization(t)) add(SECRET_SERIALIZATION, `a credential on a config or client object, or a sink that serializes whole objects: check holder and sink; ${SECRET_SERIALIZATION_READ}`);
     return picks;
   }
   add("incremental-implementation", "core: every implementation task");
@@ -10621,6 +10646,7 @@ function selectSkills(t, kind, opts = {}) {
     add("docker/docker-build-strategies", "touches a Dockerfile");
   }
   if (touches.some((g) => COMPOSE_TOUCH.test(g))) add("docker/docker-compose-patterns", "touches a compose file");
+  if (handlesSecretSerialization(t)) add(SECRET_SERIALIZATION, `a credential on a config or client object, or a sink that serializes whole objects: keep the secret out of logs, traces and error reports; ${SECRET_SERIALIZATION_READ}`);
   if (OBSERVABILITY_HINT.test([t.title ?? "", ...list2(t.scenarios)].join(" ").replace(/[/_.-]/g, " "))) add("observability-and-instrumentation", "the task is about logs, metrics or traces");
   if (touches.some((g) => PYTHON_PROJECT_TOUCH.test(g))) {
     add("astral/uv", "the task sets up or changes the Python project file");
