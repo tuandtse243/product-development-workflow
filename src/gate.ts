@@ -404,6 +404,8 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
     }
     // T11: archive may push the archive commit under the push grant, which is the Orchestrator's alone (ADR-0012)
     if (input.agent_type && ARCHIVE_COMMAND.test(cmd)) return ask("`aidw archive` can push the Change Branch; only the lead runs it unasked");
+    // archiving a draft as it is (or without its pull request) is the user's decision
+    if (ARCHIVE_COMMAND.test(cmd) && /(?:^|\s)--force(?:[\s=]|$)/.test(cmd)) return ask("`aidw archive --force` archives a Change as it is (a draft, or without its pull request): only you decide that");
     if (CAP_COMMAND.test(cmd)) {
       return ask("raising the cap on Agent runs is the user's decision (D5); it is recorded in the approval record");
     }

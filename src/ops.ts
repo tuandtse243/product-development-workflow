@@ -626,7 +626,14 @@ export function archiveChange(
   // D12: a draft stays open so /aidw:resume can finish it; archiving it anyway is the user's call
   const builds = "deploying" in machineOf(p, change).transitions;
   const draft = builds ? draftReason(p, change) : null;
+  // archiving a draft as it is, or before the granted pull request opened, is the user's call: never an unattended one
+  if (opts.force && env.AIDW_RUNNER === "1") throw new OpError("`aidw archive --force` is the user's decision: an unattended session never archives a Change as it is");
   if (draft && !opts.force) throw new OpError(`change "${id}" ends in a draft pull request (${draft}): /aidw:resume ${id} finishes it; archive it as it is with \`aidw archive ${id} --force\``);
+  // with the push granted, the pull request opens before the archive (D12): after it, the grant no longer covers the Change
+  const opened = (change.data.run as { pr?: { url?: unknown } } | undefined)?.pr?.url;
+  if (builds && !opts.force && boundPush(p, change) && !(typeof opened === "string" && opened)) {
+    throw new OpError(`the pull request of "${id}" is not open yet: run \`aidw pr ${id} --create\` first (granted at the Approval Gate; after the archive it asks), or archive without it with \`aidw archive ${id} --force\``);
+  }
   const d = checkChange(p, id);
   if (d.errors.length) throw new OpError(`change "${id}" has validation errors; nothing was archived`, d);
   // A Workflow that never deploys (audit) has no delivery package.

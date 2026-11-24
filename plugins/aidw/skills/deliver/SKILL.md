@@ -101,8 +101,9 @@ width; add mobile for the most important one):
       the body file.
 4. **Ready**: `aidw archive <id>`: merges the delta specs into `.aidw/specs/`, moves the change to `.aidw/archive/` and
    commits `.aidw/` (when the pull request was opened with the grant, it pushes that commit to it too). It refuses an
-   incomplete package. **Draft**: do not archive (`aidw archive` refuses a draft; only the user archives one as it is,
-   with `--force`). The Change stays `delivered` so `/aidw:resume <id>` can finish it after the user acted on "Needed
+   incomplete package, and, with the push granted, a Change whose pull request is not open yet. **Draft**: do not
+   archive (`aidw archive` refuses a draft; only the user archives one as it is, with `--force`, which asks them and is
+   refused unattended). The Change stays `delivered` so `/aidw:resume <id>` can finish it after the user acted on "Needed
    from the user to finish", and update the same pull request. **Ready but not opened** (the push not granted, under
    `AIDW_RUNNER=1`): do not archive either; the user opens the pull request, then archives.
 5. Report to the user: the pull request (its link, ready or draft, or where its body is and the `NEXT:` line), the

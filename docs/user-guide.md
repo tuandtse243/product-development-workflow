@@ -71,7 +71,7 @@ Các lệnh CLI hữu ích khi bạn tự gõ `aidw` (xem mục 2 để đưa n�
 | `aidw plan-review [<id>] [--brief]` | review độc lập kiến trúc và kế hoạch trước cổng duyệt: `--brief` viết brief cho code-reviewer; không có thì ghi verdict của nó thành một vòng (tối đa 2 vòng sửa) |
 | `aidw pr [<id>] [--create]` | sau bàn giao: viết nội dung PR vào `.aidw/run/pr-<id>.md`, cho biết ready hay draft và quyền push; `--create` commit gói bàn giao, push nhánh và mở PR bằng `gh` (draft nếu còn thiếu), hoặc cập nhật PR đã mở (body, đánh dấu ready). Hỏi bạn trước, trừ khi bạn đã cấp quyền push ở cổng duyệt |
 | `aidw cap <id> --raise <n>` | run dừng vì chạm trần Agent run: nâng trần thêm `n` lượt (luôn hỏi bạn, chỉ bạn quyết; phiên không người trông không chạy được; ghi vào `approval.history` và băm lại: trần nằm trong hash của gói, sửa tay `change.yaml` là drift), rồi `/aidw:resume` |
-| `aidw archive <id> [--force]` | archive change đã bàn giao. Change kết thúc bằng PR draft thì bị từ chối (để `/aidw:resume` hoàn tất); `--force` archive nguyên trạng |
+| `aidw archive <id> [--force]` | archive change đã bàn giao. Change kết thúc bằng PR draft, hoặc đã cấp quyền push mà PR chưa mở, thì bị từ chối (để `/aidw:resume` hoàn tất hoặc mở PR trước); `--force` archive nguyên trạng: luôn hỏi bạn và phiên không người trông không chạy được |
 | `aidw task retry <T>` | cho một task `escalated`, `failed` hoặc `not_built` một lượt thử mới; task `not_built` quay lại cùng các task bị bỏ vì phụ thuộc nó |
 
 **Trang quyết định (Decision Page).** Khi cần bạn chọn, aidw không in một khối chữ dài vào terminal nữa. Nó in một link
@@ -148,8 +148,8 @@ Sơ đồ: mở [`diagrams/lifecycle.html`](diagrams/lifecycle.html) trong trìn
    commit cùng gói bàn giao, để người review PR trên máy khác vẫn thấy (bản gốc ở `.aidw/run/` không được commit);
    file secrets (`.env*`), build output và dòng trông như key bị bỏ ra, và PR ghi rõ. Finding review và câu hỏi chưa ai
    trả lời mà bạn đã duyệt ở cổng nằm ở mục "Approved with open points" sau ba mục trên, không làm PR thành draft.
-   aidw chỉ sửa PR mà `gh` xác nhận là PR đang mở của Change Branch vào đúng base (không tin URL ghi trong
-   `change.yaml`), chỉ push khi HEAD đang ở Change Branch và remote vẫn là remote đã chốt lúc duyệt, và không push nếu
+   aidw chỉ sửa PR mà `gh` xác nhận là PR đang mở từ Change Branch của chính repo (không phải nhánh cùng tên của một
+   fork) vào đúng base (không tin URL ghi trong `change.yaml`; kiểm URL theo repo chỉ áp dụng cho remote GitHub), chỉ push khi HEAD đang ở Change Branch và remote vẫn là remote đã chốt lúc duyệt, và không push nếu
    gói bàn giao chứa file secrets hay key.
 6. **Paused, not built và Escalated.** Hết quota thì change tự về *paused* và tự chạy lại. Sau cổng duyệt run không
    hỏi bạn ([ADR-0014](adr/0014-after-the-approval-gate-the-run-does-not-ask-the-user.md)): việc không làm được thì bị

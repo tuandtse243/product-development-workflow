@@ -76,10 +76,13 @@ grants:
   README.md, .env.example and .gitignore, refused when it would add a secrets file, build output or a credential, and
   nothing is pushed when the bookkeeping since the base holds one); pushes the branch; then opens the pull request, or
   edits the one open for that branch against that base (`gh pr edit --body-file`, `gh pr ready [--undo]`), confirmed
-  with `gh pr view` / `gh pr list`, never just the URL change.yaml records. Under the runner without the grant it
+  with `gh pr view` / `gh pr list` (open, head a branch of the repository itself and not a fork's of the same name,
+  base the bound base; the URL must also name the bound repository when the remote is on GitHub), never just the URL
+  change.yaml records. Under the runner without the grant it
   refuses instead of pushing. `aidw archive` pushes its own commit to the Change Branch only when a pull request was
   opened and the gate's rule allows that push at that moment (binding, branch and the commit's content checked again);
-  any Agent that runs `aidw archive` is asked (an aidw Role is denied).
+  any Agent that runs `aidw archive` is asked (an aidw Role is denied). `aidw archive --force` (a draft as it is, or a
+  Change whose granted pull request never opened) always asks the lead and is refused in an unattended session.
 - **Envelope.** `envelope: true` adds any free resource of a provider the project already uses, and migrations that
   change data on local and dev databases when they are reversible and were tried on seed data first. A pattern cannot
   tell "free" apart, so the gate does not enforce it: it is written into every task brief and the gate page, and work

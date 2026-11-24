@@ -43,7 +43,7 @@ if (a[0] === "pr" && a[1] === "create") {
 }
 if (a[0] === "pr" && (a[1] === "list" || a[1] === "view")) {
   if (!fs.existsSync(open)) { if (a[1] === "view") { process.stderr.write("no pull requests found"); process.exit(1); } console.log("[]"); process.exit(0); }
-  const pr = { url: "${PR_URL}", number: 7, isDraft: true, state: "OPEN", headRefName: "aidw/app", baseRefName: "main" };
+  const pr = { url: "${PR_URL}", number: 7, isDraft: true, state: "OPEN", headRefName: "aidw/app", baseRefName: "main", isCrossRepository: false, headRepositoryOwner: { login: "acme" } };
   console.log(JSON.stringify(a[1] === "list" ? [pr] : pr));
 }
 `;
@@ -374,7 +374,9 @@ describe("the archive pushes its own commit only under the grant", () => {
     approved();
     finished();
     packaged();
-    const a = cli(["archive", ID]);
+    // T11 re-review: without its pull request the archive is refused; the user may still force it
+    expect(cli(["archive", ID]).code).toBe(1);
+    const a = cli(["archive", ID, "--force"]);
     expect(a.code, a.err).toBe(0);
     expect(a.out).not.toMatch(/pushed/);
     expect(git(bare, "for-each-ref", "--format=%(refname)")).toBe("");

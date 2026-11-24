@@ -503,13 +503,17 @@ build output, and any text with a line that looks like a credential (a patch as 
 writes `<T>.left-out.txt`; the pull request says what was left out and that it stays only on the machine.
 
 Hardening (review of T11). Which pull request `--create` edits is never taken from change.yaml alone, which the lead
-may write: the recorded URL must point at the bound remote's GitHub repository and `gh pr view` must show it open,
-from the Change Branch, against the base; otherwise the open one for the branch is looked up (`gh pr list --head
---base --state open`), else a new one is created. HEAD must be the Change Branch (for `--create` and `aidw archive`);
+may write: the recorded URL must point at the bound remote's GitHub repository (this slug check applies only to a
+GitHub remote; for another host the URL only has to be a pull request URL) and `gh pr view` must show it open, from
+the Change Branch of the repository itself (`isCrossRepository` false, the head owner the remote's owner: a fork can
+use the same branch name), against the base; otherwise the open one for the branch is looked up (`gh pr list --head
+--base --state open`, same checks), else a new one is created. HEAD must be the Change Branch (for `--create` and `aidw archive`);
 the push binding is checked again right before every push and `gh` call; the delivery commit runs the junk and secret
 checks of a task commit, and nothing is pushed when the bookkeeping since the base holds a secrets file, build output
-or a credential. `aidw archive` refuses a draft (computed again, not read from `run.pr`) unless `--force`, and any
-Agent that runs it is asked. Readiness uses the current code: a layer or converge result counts only when HEAD
+or a credential. `aidw archive` refuses a draft (computed again, not read from `run.pr`), and, with the push granted,
+a Change whose pull request was never opened, unless `--force`; `--force` is the user's: the gate asks the lead for
+it and an unattended session refuses it. Any Agent that runs `aidw archive` is asked. The last deploy must have run on
+the current code too (its `head`, bookkeeping-only differences allowed). Readiness uses the current code: a layer or converge result counts only when HEAD
 differs from where it ran by bookkeeping alone (`.aidw/`, README.md, .env.example, .gitignore). The plan-review
 findings carried to the gate and the questions no Role could answer before it were approved knowingly: they go
 under *Approved with open points* after the three sections, so a ready pull request needs "Nothing."; a question

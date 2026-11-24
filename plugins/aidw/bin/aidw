@@ -11284,6 +11284,7 @@ function decide(input, env) {
       );
     }
     if (input.agent_type && ARCHIVE_COMMAND.test(cmd2)) return ask("`aidw archive` can push the Change Branch; only the lead runs it unasked");
+    if (ARCHIVE_COMMAND.test(cmd2) && /(?:^|\s)--force(?:[\s=]|$)/.test(cmd2)) return ask("`aidw archive --force` archives a Change as it is (a draft, or without its pull request): only you decide that");
     if (CAP_COMMAND.test(cmd2)) {
       return ask("raising the cap on Agent runs is the user's decision (D5); it is recorded in the approval record");
     }
@@ -12007,6 +12008,7 @@ function prReadiness(p, change, tasks) {
   const d = lastDeploy(change);
   if (!d) why.push("the deploy did not run");
   else if (!d.ok) why.push("the deploy failed");
+  else if (!freshNow(p, d, tasks)) why.push("the deploy ran on older code");
   const q = unsettled(change);
   if (q.length) why.push(`questions after the gate no Deviation settled: ${q.map((c) => c.id).join(", ")}`);
   return { ready: why.length === 0, why };
@@ -14109,7 +14111,12 @@ function archiveChange(p, id, env = process.env, opts = {}) {
   }
   const builds = "deploying" in machineOf(p, change).transitions;
   const draft = builds ? draftReason(p, change) : null;
+  if (opts.force && env.AIDW_RUNNER === "1") throw new OpError("`aidw archive --force` is the user's decision: an unattended session never archives a Change as it is");
   if (draft && !opts.force) throw new OpError(`change "${id}" ends in a draft pull request (${draft}): /aidw:resume ${id} finishes it; archive it as it is with \`aidw archive ${id} --force\``);
+  const opened = change.data.run?.pr?.url;
+  if (builds && !opts.force && boundPush(p, change) && !(typeof opened === "string" && opened)) {
+    throw new OpError(`the pull request of "${id}" is not open yet: run \`aidw pr ${id} --create\` first (granted at the Approval Gate; after the archive it asks), or archive without it with \`aidw archive ${id} --force\``);
+  }
   const d = checkChange(p, id);
   if (d.errors.length) throw new OpError(`change "${id}" has validation errors; nothing was archived`, d);
   const delivery = builds ? checkDelivery(p, id) : new Diags();
@@ -18807,13 +18814,16 @@ function ghJson(p, args) {
 }
 function existingPr(p, plan) {
   const urlOk = (u) => typeof u === "string" && (plan.repo ? new RegExp(`^https://github\\.com/${escapeRe(plan.repo)}/pull/\\d+$`) : /^https:\/\/\S+\/pull\/\d+$/).test(u);
+  const owner = plan.repo ? plan.repo.split("/")[0] : null;
+  const ours = (v) => !!v && v.headRefName === plan.head && v.baseRefName === plan.base && v.state === "OPEN" && v.isCrossRepository === false && (owner === null || v.headRepositoryOwner?.login === owner);
+  const fields = "url,headRefName,baseRefName,state,isDraft,isCrossRepository,headRepositoryOwner";
   const rec = plan.record;
   if (rec?.url && urlOk(rec.url)) {
-    const v = ghJson(p, ["pr", "view", rec.url, "--json", "headRefName,baseRefName,state,isDraft"]);
-    if (v && v.headRefName === plan.head && v.baseRefName === plan.base && v.state === "OPEN") return { url: rec.url, draft: rec.draft };
+    const v = ghJson(p, ["pr", "view", rec.url, "--json", fields]);
+    if (ours(v)) return { url: rec.url, draft: rec.draft };
   }
-  const list9 = ghJson(p, ["pr", "list", "--head", plan.head, "--base", plan.base, "--state", "open", "--json", "url,isDraft", ...plan.repo ? ["--repo", plan.repo] : []]);
-  const hit = Array.isArray(list9) ? list9.find((x) => urlOk(x?.url)) : void 0;
+  const list9 = ghJson(p, ["pr", "list", "--head", plan.head, "--base", plan.base, "--state", "open", "--json", fields, ...plan.repo ? ["--repo", plan.repo] : []]);
+  const hit = Array.isArray(list9) ? list9.find((x) => urlOk(x?.url) && ours(x)) : void 0;
   return hit ? { url: hit.url, draft: hit.isDraft === true } : null;
 }
 function pushedProblem(p, plan) {

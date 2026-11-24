@@ -105,6 +105,7 @@ export function prReadiness(p: Paths, change: Change, tasks: Task[]): Readiness 
   const d = lastDeploy(change);
   if (!d) why.push("the deploy did not run");
   else if (!d.ok) why.push("the deploy failed");
+  else if (!freshNow(p, d, tasks)) why.push("the deploy ran on older code");
   const q = unsettled(change);
   if (q.length) why.push(`questions after the gate no Deviation settled: ${q.map((c) => c.id).join(", ")}`);
   return { ready: why.length === 0, why };

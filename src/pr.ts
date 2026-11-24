@@ -251,13 +251,19 @@ function ghJson(p: Paths, args: string[]): unknown {
 /** The open pull request of the Change Branch against its base, checked with gh; null when there is none. */
 function existingPr(p: Paths, plan: PrPlan): { url: string; draft: boolean } | null {
   const urlOk = (u: unknown): u is string => typeof u === "string" && (plan.repo ? new RegExp(`^https://github\\.com/${escapeRe(plan.repo)}/pull/\\d+$`) : /^https:\/\/\S+\/pull\/\d+$/).test(u);
+  // a fork's pull request can use the same branch name: the head must be a branch of the repository itself
+  const owner = plan.repo ? plan.repo.split("/")[0] : null;
+  type Pr = { url?: unknown; isDraft?: unknown; headRefName?: unknown; baseRefName?: unknown; state?: unknown; isCrossRepository?: unknown; headRepositoryOwner?: { login?: unknown } | null };
+  const ours = (v: Pr | null | undefined): boolean =>
+    !!v && v.headRefName === plan.head && v.baseRefName === plan.base && v.state === "OPEN" && v.isCrossRepository === false && (owner === null || v.headRepositoryOwner?.login === owner);
+  const fields = "url,headRefName,baseRefName,state,isDraft,isCrossRepository,headRepositoryOwner";
   const rec = plan.record;
   if (rec?.url && urlOk(rec.url)) {
-    const v = ghJson(p, ["pr", "view", rec.url, "--json", "headRefName,baseRefName,state,isDraft"]) as { headRefName?: unknown; baseRefName?: unknown; state?: unknown } | null;
-    if (v && v.headRefName === plan.head && v.baseRefName === plan.base && v.state === "OPEN") return { url: rec.url, draft: rec.draft };
+    const v = ghJson(p, ["pr", "view", rec.url, "--json", fields]) as Pr | null;
+    if (ours(v)) return { url: rec.url, draft: rec.draft };
   }
-  const list = ghJson(p, ["pr", "list", "--head", plan.head, "--base", plan.base, "--state", "open", "--json", "url,isDraft", ...(plan.repo ? ["--repo", plan.repo] : [])]);
-  const hit = Array.isArray(list) ? (list as { url?: unknown; isDraft?: unknown }[]).find((x) => urlOk(x?.url)) : undefined;
+  const list = ghJson(p, ["pr", "list", "--head", plan.head, "--base", plan.base, "--state", "open", "--json", fields, ...(plan.repo ? ["--repo", plan.repo] : [])]);
+  const hit = Array.isArray(list) ? (list as Pr[]).find((x) => urlOk(x?.url) && ours(x)) : undefined;
   return hit ? { url: hit.url as string, draft: hit.isDraft === true } : null;
 }
 

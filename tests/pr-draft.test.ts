@@ -34,7 +34,7 @@ const fs = require("fs");
 const a = process.argv.slice(2);
 fs.appendFileSync(process.env.FAKE_GH_LOG, JSON.stringify(a) + "\\n");
 const open = process.env.FAKE_GH_LOG + ".open";
-const pr = { url: "${PR_URL}", number: 7, isDraft: true, state: "OPEN", headRefName: "aidw/app", baseRefName: "main" };
+const pr = { url: "${PR_URL}", number: 7, isDraft: true, state: "OPEN", headRefName: "aidw/app", baseRefName: "main", isCrossRepository: false, headRepositoryOwner: { login: "acme" } };
 if (a[0] === "pr" && a[1] === "create") { fs.writeFileSync(open, "1"); console.log("${PR_URL}"); }
 if (a[0] === "pr" && a[1] === "view") {
   if (!fs.existsSync(open) || a[2] !== "${PR_URL}") { process.stderr.write("no pull requests found"); process.exit(1); }
@@ -590,6 +590,24 @@ describe("review fixes: the run's own refusals and the ready rule", () => {
     const r = JSON.parse(cli(["pr", ID, "--json"]).out) as { ready: boolean; why: string[] };
     expect(r.ready).toBe(false);
     expect(r.why.join("; ")).toMatch(/older code/);
+  });
+
+  it("a deploy that ran on older code is not ready (T11 re-review)", () => {
+    approved();
+    finished();
+    const head = git(root, "rev-parse", "HEAD");
+    write(root, "app/api/bookings/late.ts", "export {};\n");
+    git(root, "add", "app");
+    git(root, "commit", "-q", "-m", "feat(booking): late change");
+    const now = git(root, "rev-parse", "HEAD");
+    // every layer and converge ran again on the new code; the deploy did not
+    const at = new Date().toISOString();
+    json("evidence/quality/summary.json", { layers: Object.fromEntries(["code", "unit", "e2e"].map((n) => [n, { status: "pass", at, head: now, runs: [] }])) });
+    json("evidence/converge.json", { runs: [{ at, head: now, mode: "presence", ok: true, scenarios: { [SCENARIO]: { status: "pass", where: ["t.test.ts:1"] } }, added: [], not_built: [] }] });
+    json("evidence/deploy.json", { runs: [{ at, target: "preview", ok: true, skipped: false, url: "https://x.vercel.app", head, runs: [], smoke: [] }] });
+    const r = JSON.parse(cli(["pr", ID, "--json"]).out) as { ready: boolean; why: string[] };
+    expect(r.ready).toBe(false);
+    expect(r.why).toEqual(["the deploy ran on older code"]);
   });
 
   it("reads --base as a value and shows the pull request in aidw status", () => {
