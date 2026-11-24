@@ -342,7 +342,8 @@ where the build runs from the number of tasks; do not choose yourself:
 
 - `NEXT: build here: ...` (3 tasks or fewer): follow `$(aidw plugin-path skills/run/SKILL.md)` for `<id>` now.
 - `NEXT: start the runner: <command>` (more than 3): run exactly that command, with the sandbox disabled, as step 6 of
-  the approve skill says; tell the user how to follow and stop it, then stop.
+  the approve skill says (the runner start asks the user when aidw is loaded from a folder); tell the user how to follow
+  and stop it, then stop.
 
 ## Bugfix
 

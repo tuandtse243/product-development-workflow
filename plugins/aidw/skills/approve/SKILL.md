@@ -39,10 +39,12 @@ The user has asked to approve. This is the single human gate of the workflow (Q2
    from the number of tasks (more than 3 go to the runner; plan D2):
    - `NEXT: build here: ...`: follow `$(aidw plugin-path skills/run/SKILL.md)` for `<id>` now, from its step 0 (the
      user does not type `/aidw:run`).
-   - `NEXT: start the runner: <command>`: run exactly that command with the Bash tool and the sandbox disabled
-     (`dangerouslyDisableSandbox: true`): the runner starts Claude Code sessions, which need the network and the login
-     that the sandbox withholds. The gate allows exactly this command from the main session of an approved change; any
-     other form asks or is denied. It returns at once and loops in the background: one fresh session per task or wave
+   - `NEXT: start the runner: <command>`: run exactly that command, character for character, with the Bash tool and the
+     sandbox disabled (`dangerouslyDisableSandbox: true`): the runner starts Claude Code sessions, which need the network
+     and the login that the sandbox withholds. The gate allows only that exact string, from the main session, for an
+     approved change, and only when aidw is installed; any other form asks or is denied. **The runner start asks the user
+     when aidw is loaded from a folder** (the `NEXT:` line says so): tell them in one line that the prompt is the runner
+     start and that confirming it starts the build. It returns at once and loops in the background: one fresh session per task or wave
      (about half the tokens per task of an in-session run: trial-3A 0.82M, trial-3C 0.40M), auto permission mode so
      nothing asks after the gate (ADR-0014), no MCP servers, waits out usage limits, runs `aidw doctor` before the first
      session, and stops by itself when it needs the user. Tell the user in three lines how to follow it (`tail -f

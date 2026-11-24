@@ -249,12 +249,10 @@ A task is triaged once: if the extra attempt fails too, it escalates without ano
 ## Unattended runs (usage limits)
 
 If the user wants the run to survive usage or rate limits without them, the runner does it. The main session of an
-approved change may start it in the background, with the sandbox disabled (the gate allows exactly this form; a
-foreground `aidw run` inside a session is denied):
-
-```
-aidw run <id> --detach --permission-mode auto -- --plugin-dir <plugin dir if not installed>
-```
+approved change may start it in the background, with the sandbox disabled. Use the exact command `aidw approve` printed
+(`<plugin>/bin/aidw run <id> --detach --permission-mode auto`, plus `-- --plugin-dir <plugin>` when aidw is loaded from a
+folder): the gate allows only that string, and only for an installed plugin; the runner start asks the user when aidw is
+loaded from a folder, and a foreground `aidw run` inside a session is denied.
 
 The user can also run it in their own terminal, without `--detach`.
 

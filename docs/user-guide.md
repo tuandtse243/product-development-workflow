@@ -272,15 +272,17 @@ theo số task còn lại (ngưỡng cố định là 3), không phải Claude:
 | Số task | `NEXT:` | Việc phiên Claude Code làm |
 |---|---|---|
 | tối đa 3 | `build here: follow the /aidw:run steps` | build ngay trong phiên, như `/aidw:run` |
-| hơn 3 | `start the runner: aidw run <id> --detach --permission-mode auto` | tự chạy đúng lệnh đó (ngoài sandbox, vì runner mở các phiên Claude Code cần mạng và đăng nhập), báo bạn cách theo dõi rồi dừng |
+| hơn 3 | `start the runner: <plugin>/bin/aidw run <id> --detach --permission-mode auto` | tự chạy đúng lệnh đó (ngoài sandbox, vì runner mở các phiên Claude Code cần mạng và đăng nhập), báo bạn cách theo dõi rồi dừng |
 
-Gate chỉ cho phép không hỏi đúng dạng lệnh đó: chính CLI của plugin (`aidw` hoặc `<plugin>/bin/aidw`), từ phiên chính
-(không phải subagent, không phải phiên do runner mở), cho đúng change được nêu tên khi change đó đã được duyệt, và sau `--`
-chỉ được có `--plugin-dir` trỏ tới chính thư mục plugin aidw (CLI tự thêm khi plugin được nạp từ thư mục thay vì cài đặt).
-Lệnh này chạy ngoài sandbox mà không có hộp thoại nào khác, nên mọi dạng khác (một file `aidw` khác, plugin khác,
-`--claude`, permission mode khác, tham số khác gửi cho `claude`, xuống dòng hay cú pháp shell) đều hỏi bạn; `aidw run`
-chạy nổi trong phiên hoặc trước khi duyệt thì bị chặn. Runner chạy mọi phiên ở chế độ `auto`: sau cổng duyệt không còn gì
-hỏi bạn ([ADR-0014](adr/0014-after-the-approval-gate-the-run-does-not-ask-the-user.md)); việc vượt ngoài quyền đã cấp kết thúc
+Lệnh này chạy ngoài sandbox, và một lệnh gate cho phép thì không hiện thêm hộp thoại nào, nên gate chỉ cho phép không hỏi
+khi **chuỗi lệnh trùng từng ký tự** với lệnh `aidw approve` vừa in cho đúng change đó (đường dẫn tuyệt đối
+`<plugin>/bin/aidw`, không phải `aidw` trần vì PATH có thể bị cài file giả), từ phiên chính (không phải subagent, không phải
+phiên do runner mở), khi change đó đã được duyệt, **và** plugin aidw được cài đặt (nằm trong một thư mục `.claude/plugins/`,
+ngoài project). Khi aidw được nạp từ một thư mục (`--plugin-dir`, ví dụ lúc phát triển plugin), lệnh bật runner **hỏi bạn**:
+bạn bấm đồng ý ở hộp thoại thì build bắt đầu; dòng `NEXT:` có ghi điều này. Mọi chuỗi khác có `--detach` cho change đã duyệt
+cũng hỏi; `aidw run` chạy nổi trong phiên, trước khi duyệt hay cho change chưa duyệt thì bị chặn.
+
+Runner chạy mọi phiên ở chế độ `auto`: sau cổng duyệt không còn gì hỏi bạn ([ADR-0014](adr/0014-after-the-approval-gate-the-run-does-not-ask-the-user.md)); việc vượt ngoài quyền đã cấp kết thúc
 bằng escalation chứ không chờ bạn.
 
 Theo dõi: `tail -f .aidw/run/runner.log`; xem trạng thái: `aidw run --status`; dừng: `aidw run --stop` (rồi `/aidw:resume`
