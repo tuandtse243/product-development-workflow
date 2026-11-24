@@ -130,8 +130,11 @@ Sơ đồ: mở [`diagrams/lifecycle.html`](diagrams/lifecycle.html) trong trìn
    mọi scenario của change đều có test chạy xanh.
 5. **Delivered.** Deploy preview, chạy smoke check, tạo gói bàn giao rồi archive: spec của change được gộp vào
    `.aidw/specs/`.
-6. **Paused và Escalated.** Hết quota thì change tự về *paused* và tự chạy lại. Task hết lượt thử hoặc cần quyết
-   định của bạn thì *escalated*: bạn xử lý rồi `/aidw:resume`.
+6. **Paused, not built và Escalated.** Hết quota thì change tự về *paused* và tự chạy lại. Sau cổng duyệt run không
+   hỏi bạn ([ADR-0014](adr/0014-after-the-approval-gate-the-run-does-not-ask-the-user.md)): việc không làm được thì bị
+   đánh dấu *not built* (kèm lý do) và phần còn lại chạy tiếp; pull request liệt kê chúng. *Escalated* chỉ còn cho
+   những gì không bao giờ tự động (credential ngoài `.env` của project, thứ tốn tiền, deploy production, xoá dữ liệu
+   cloud) hoặc một blocker không Role nào trả lời được: bạn xử lý rồi `/aidw:resume`.
 
 ## 5. Bên trong một task
 
@@ -144,7 +147,7 @@ Xem [`diagrams/task-loop.html`](diagrams/task-loop.html). Tóm tắt:
 4. **Reviewer** (subagent mới, chỉ đọc) xem diff, chạy thử, mở từng ảnh chụp. Nó ghi verdict vào
    `.aidw/run/review-T03.md` và chỉ trả lại một dòng `VERDICT: pass` hoặc `VERDICT: fix`.
 5. `aidw verdict T03` đọc file đó. `pass` thì task được commit. `fix` thì ghi chú của reviewer đi vào brief của
-   lần thử kế tiếp (tối đa 3 lần, sau đó escalate).
+   lần thử kế tiếp (tối đa 3 lần, sau đó tới bước Triage bên dưới).
 
 Hai trường hợp đặc biệt:
 
@@ -206,17 +209,33 @@ Vòng đời của một task (cột `status`):
 pending -> running -> review -> done
               ^          |
               |          v
-              +------- failed ----(sau 3 lần thử)----> escalated
+              +------- failed ----(sau 3 lần thử)----> Triage
+                                                         |
+           implementation: thêm 1 lần thử  <-------------+
+           plan / spec / architecture: Role tác giả sửa Artifact, chạy lại (tối đa 3 vòng)
+           environment, hết 3 vòng, hoặc chạm trần Agent run ----> not_built
 ```
 
 - `running`: có implementer đang làm. Nếu phiên chết giữa chừng, task kẹt ở `running`; `aidw next` gọi nó là *interrupted* và phiên sau làm tiếp từ phần code đã có.
 - `review`: checkpoint đã xanh, đang chờ reviewer độc lập.
-- `failed`: checkpoint đỏ hoặc reviewer đòi sửa. Ghi chú lỗi đi vào brief của lần thử kế tiếp. Tối đa 3 lần (`max_attempts`), sau đó `escalated`: cần bạn quyết định.
+- `failed`: checkpoint đỏ hoặc reviewer đòi sửa. Ghi chú lỗi đi vào brief của lần thử kế tiếp. Tối đa 3 lần (`max_attempts`), sau đó một Agent độc lập (Software Architect) chẩn đoán nguyên nhân (Triage), và CLI tự định tuyến, không hỏi bạn:
+  - `implementation`: thêm một lần thử với chẩn đoán trong brief; vẫn hỏng thì `not_built`.
+  - `plan`, `spec`, `architecture`: task quay về Role đã viết Artifact đó (technical-planner cho plan, chủ của spec và architecture theo `artifacts.yaml`). Role đó sửa Artifact qua một **Deviation** (được CLI kiểm và ghi lại; `aidw brief <T> --for upstream` in lệnh mở Deviation), rồi task chạy lại. Tối đa 3 vòng; sau đó `not_built`.
+  - `environment` (thiếu key, mạng): `not_built` ngay, lý do ghi rõ bạn cần sửa gì để hoàn tất sau.
+- `not_built`: run không làm được task này (lý do ở `not_built: { cause, reason }`). Mọi task phụ thuộc vào nó (trực tiếp hay gián tiếp) cũng `not_built`; các task độc lập chạy tiếp. Change vẫn đi tiếp tới verify và giao hàng; pull request liệt kê những gì chưa làm và vì sao.
 - `done`: đã review xong và **đã commit**: một task, một commit, dạng `type(capability): title`.
 
 Có bốn nguồn gốc (`origin`): `plan` (bạn đã duyệt), `converge` (thêm test cho scenario còn thiếu), `quality` (sửa một lớp chất lượng bị fail) và `integration` (sửa chỗ code của các task song song không khớp nhau). Ba loại sau do aidw thêm, nên không làm hash duyệt bị lệch.
 
 Cần sửa task đã xong: `aidw task reopen T02 [--revert]`. Sửa kế hoạch sau khi duyệt: duyệt lại, task không đổi giữ nguyên.
+
+**Trần Agent run.** Ở cổng duyệt bạn đặt trần số lần chạy Agent cho change (`grants.agent_runs` trong `quality.yaml`,
+mặc định 3 lần số task trong kế hoạch). CLI đếm mỗi Agent mà nó in dòng `SPAWN` (implementer, reviewer, triage, Role
+tác giả, integration, Role được hỏi, reviewer của lớp chất lượng), mỗi lần một lần, ghi ở
+`.aidw/changes/<id>/evidence/agent-runs.json`. Chạm trần thì không task mới nào bắt đầu: task chưa chạy hoặc đang
+`failed` thành `not_built` (lý do: trần), việc đang chạy làm nốt, lớp chất lượng fail hay khoảng trống converge không
+còn được thêm task sửa. Change đi tiếp tới verify và giao hàng một cách êm, không dừng chờ bạn. Kế hoạch nhỏ có nhiều
+lớp review (ui, security, performance) chạm mặc định khá sớm: nâng trần ở cổng duyệt nếu cần.
 
 ### Phiên
 
@@ -323,7 +342,7 @@ bạn bấm đồng ý ở hộp thoại thì build bắt đầu; dòng `NEXT:` 
 cũng hỏi; `aidw run` chạy nổi trong phiên, trước khi duyệt hay cho change chưa duyệt thì bị chặn.
 
 Runner chạy mọi phiên ở chế độ `auto`: sau cổng duyệt không còn gì hỏi bạn ([ADR-0014](adr/0014-after-the-approval-gate-the-run-does-not-ask-the-user.md)); việc vượt ngoài quyền đã cấp kết thúc
-bằng escalation chứ không chờ bạn.
+bằng *not built* chứ không chờ bạn; runner chạy tiếp tới pull request.
 
 Theo dõi: `tail -f .aidw/run/runner.log`; xem trạng thái: `aidw run --status`; dừng: `aidw run --stop` (rồi `/aidw:resume`
 để làm tiếp trong phiên). Nếu phiên không bật được runner (bạn từ chối hộp thoại, đã có runner khác chạy), tự gõ:
@@ -341,8 +360,9 @@ aidw run <id> --permission-mode auto -- --plugin-dir /đường/dẫn/plugins/ai
 - Nó mở `claude -p "/aidw:resume <id>"`, chờ phiên đó xong, rồi mở phiên mới, cho tới khi change được archive. Cách các phiên nối tiếp nhau và vì sao không xung đột: xem mục "Task, phiên và worktree" ở trên.
 - **Rẻ hơn khoảng bốn lần** so với `/aidw:run` trong Claude Code: mỗi phiên bắt đầu khoảng 55K token thay vì một phiên phình tới 300K. Nó cũng bỏ các MCP server khỏi phiên (thêm `--keep-mcp` để giữ).
 - Hết quota: chờ tới giờ reset trong thông báo lỗi, không có thì chờ 5, 10, 20, 40, 60 phút.
-- Dừng khi escalated, hoặc hai phiên liền không tiến triển. Log ở `.aidw/run/runner.log`.
-- Nó không hỏi bạn được giữa chừng: câu hỏi cần bạn trả lời thành một escalation. Xử lý xong thì chạy lại đúng lệnh trên; nó tiếp tục từ chỗ dừng.
+- Task `not_built`, lớp chất lượng hết vòng sửa, hay chạm trần Agent run không làm nó dừng: change đi tiếp tới giao hàng.
+- Dừng khi escalated (chỉ còn những gì không bao giờ tự động), hoặc hai phiên liền không tiến triển. Log ở `.aidw/run/runner.log`.
+- Nó không hỏi bạn được giữa chừng. Xử lý xong một escalation thì chạy lại đúng lệnh trên; nó tiếp tục từ chỗ dừng.
 - Nếu muốn tạm dừng: Ctrl+C. Chạy lại lệnh sau là tiếp tục. Không mất gì.
 
 Dùng `/aidw:run` tương tác trong Claude Code vẫn được (với kế hoạch tối đa 3 task, `start` và `approve` tự làm vậy), dành cho việc ngắn hoặc khi bạn muốn xem từng bước. Hãy gõ `/clear` trước (cuộc trò chuyện phân tích dài, mỗi lượt sau đều đọc lại toàn bộ).
@@ -406,7 +426,8 @@ hành vi, thay vì chia theo tầng.
 | Không ghi được code, báo "Analysis is not approved yet" | chưa `/aidw:approve` | duyệt, hoặc xem `/aidw:status` |
 | Báo "approval drift" | gói đã duyệt bị sửa | `escalated`, quay lại `analyzing`, duyệt lại |
 | `aidw: command not found` | bin chưa vào PATH | dùng đường dẫn đầy đủ `plugins/aidw/bin/aidw` |
-| Change `escalated` | task hết lượt thử, lớp chất lượng fail mãi, cần quyết định | đọc lý do ở `/aidw:status`, xử lý, `/aidw:resume` |
+| Change `escalated` | blocker không Role nào trả lời được, hoặc việc không bao giờ tự động | đọc lý do ở `/aidw:status`, xử lý, `/aidw:resume` |
+| Task `not_built` | Triage: environment; hết 3 vòng sửa ngược; hoặc chạm trần Agent run | đọc `not_built.reason` ở `/aidw:status`; pull request liệt kê nó |
 | `aidw run` dừng `no_progress` | hai session liền không đổi gì | đọc `.aidw/run/runner.log`, chạy `/aidw:status` |
 | `aidw run` dừng `needs_user` ngay phiên đầu hoặc trước deploy | `aidw doctor` có FAIL (chưa đăng nhập Vercel, project chưa có deployment nào nên lần deploy đầu là Production, Chrome CDP đóng) | làm theo dòng in ra rồi chạy lại đúng lệnh |
 | `vercel ... has no deployments yet` / doctor `vercel deployments` FAIL | project Vercel mới: deployment đầu tiên luôn là Production, không tạo được preview | chạy `aidw first-deploy --yes` trong terminal của bạn (deploy công khai một lần), rồi `aidw deploy`; hoặc đặt deploy target `none` |

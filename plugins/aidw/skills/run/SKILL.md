@@ -101,7 +101,7 @@ aidw next --change <id> --json
 
 **`implement <T>`** (reason `new`, `retry` or `interrupted`):
 1. `aidw task start <T> --change <id>`. It prints the brief path and the exact prompt to use. If it fails
-   because attempts are exhausted, go to *Escalate*.
+   because attempts are exhausted (Triage comes next) or the Agent-run cap is reached, run `aidw next` and follow it.
 2. Spawn the Agent named on the `SPAWN` line of `task start` (Agent tool, `subagent_type: "<that name>"`: `aidw:fullstack`,
    `aidw:frontend` or `aidw:backend`, from the task's `role`) with the printed
    prompt (`Task brief: <path>. Read it and implement the task.`). Wait for it.
@@ -173,19 +173,39 @@ continue at the reviewer. A `fix` verdict on the merge drops the task too: no re
 commands and the `code` layer on the merged code.
 - `PASS`: loop.
 - `FAIL` with a fix task `Inn`: loop; `next` returns it before anything else (it runs on the main checkout).
-- Fix rounds exhausted: the change is `escalated`; tell the user (section 2, step 2) and stop.
+- `NOT BUILT`: its fix rounds are exhausted (or the Agent-run cap is reached). The wave stays merged and the quality
+  layers judge it; the pull request lists it. Follow the printed `NEXT:`. Nobody is asked (ADR-0014).
 
-**`triage <T>`** (the task used all its attempts): an independent diagnosis comes before the user hears about it.
+**After the Approval Gate the run never asks the user** (ADR-0014). What cannot be built is marked **not built**
+(status `not_built`, with `not_built: { cause, reason }` in tasks.yaml), so is every task that depends on it, and the rest carries
+on; the pull request lists it. Only what is never automatic (credentials outside the project's `.env`, anything that
+costs money, production deploys, deleting cloud data) still goes to the user, through the gate's own question.
+
+**`triage <T>`** (the task used all its attempts): an independent diagnosis decides what follows.
 1. `aidw brief <T> --for triage --change <id>`. It prints the brief path and the `SPAWN` line.
 2. Spawn the Agent named there (`aidw:software-architect`) with the printed prompt and nothing else. It reads the
    evidence of every attempt and writes `.aidw/run/triage-<T>.md` (first line `CAUSE: ...`).
-3. `aidw triage <T> --change <id>` records it and applies the rule of the cause:
-   - `implementation`: one further attempt with the diagnosis in its brief. Follow the printed `NEXT:`.
-   - `environment`: the task is escalated; the output names what the user must fix.
-   - `plan`, `spec`, `architecture`: the task is escalated; the approved package would change. Do not retry.
-   Escalated: go to *Escalate* and give the user the diagnosis (`.aidw/run/triage-<T>.md`) with its cause.
-4. No clear `CAUSE:` line: spawn it once more; still unclear, escalate with the task's own notes.
-A task is triaged once: if the extra attempt fails too, it escalates without another triage.
+3. `aidw triage <T> --change <id>` records it and applies the rule of the cause; follow the printed `NEXT:`:
+   - `implementation`: one further attempt with the diagnosis in its brief. If that fails too, the task is not built.
+   - `plan`, `spec`, `architecture`: an upstream round (below): the Role that wrote that Artifact fixes it and the task
+     runs again, at most 3 rounds; after that the task is not built.
+   - `environment`: not built at once (a key, the network: nothing inside fixes it). The output names what the user
+     must fix to finish it later; tell the user in one line and carry on.
+4. No clear `CAUSE:` line: spawn it once more; still unclear, record it as `CAUSE: environment` with the task's own
+   notes (`aidw triage <T> --notes-file <file>`), so the task is not built and the run carries on.
+
+**`upstream <T>`** (Triage found the cause in the plan, the spec or the architecture; round N of 3):
+1. `aidw brief <T> --for upstream --change <id>`. It writes the author's brief and prints three lines: the Deviation
+   to open, the `SPAWN` line of the author Role (`aidw:technical-planner` for the plan, the owner of the specs or of
+   the architecture in artifacts.yaml for the others), and what to run after.
+2. Open the Deviation exactly as printed (`aidw deviation open <id> --role <author> --files ... --reason "..."`, with
+   the reason in one line from the diagnosis): the approved Artifact changes only through it.
+3. Spawn the author with the printed prompt and nothing else. It changes its Artifact (keep the purpose, smallest
+   change, no new scope) and replies `FIXED: ...` or `CANNOT FIX: <why>`.
+4. `FIXED`: `aidw deviation close --change <id>` (the CLI checks the change and records the Deviation), then
+   `aidw upstream <T> --change <id>`: the task runs again with a fresh attempt budget (`NEXT: implement <T>
+   (retry)`). `CANNOT FIX`: `aidw upstream <T> --cannot "<its reason>" --change <id>`: the task and its dependants are
+   not built. Never fix the Artifact yourself and never ask the user.
 
 **`consult`** (an Agent asked another Role, ADR-0013; `next` returns it first, `step` says which part is left, and
 `meanwhile` is what the rest of the Change does at the same time: the tasks that wait for an answer are left out of it).
@@ -211,20 +231,26 @@ checkpoint it as usual; the gap is on record and the pull request will show it. 
 
 **`escalate`**: see below.
 
-**`complete`**: go to *Finish*.
+**`complete`**: every task is done or not built (the line lists those not built). Go to section 3 (verify): the
+Change moves on with them listed; never stop for them.
+
+**The Agent-run cap** (set at the gate, `grants.agent_runs` in quality.yaml; default 3 per planned task): the CLI
+counts every Agent it prints a `SPAWN` line for. At the cap no new task starts: `aidw next` marks every task that has
+not started, or failed, not built with the cap as the reason, while work already running (an implementer, a review, a
+merge conflict, a Consultation) finishes. A failing layer or a converge gap then gets no fix task either. The run goes
+on to verify and delivery and ends cleanly.
 
 ## 2. Escalate
 
-1. `aidw transition <id> escalated --reason "<short reason>"`.
-2. Tell the user what is blocked and why (task, attempts, the triage diagnosis in `.aidw/run/triage-<T>.md` when there is
-   one, else the last checkpoint failure or review notes from `.aidw/changes/<id>/evidence/<T>.json`), and the options:
-   - fix the cause yourself or give the missing decision, then `/aidw:resume`;
-   - change scope: `aidw transition <id> analyzing`, revise the Analysis, approve again.
+Only for what the CLI cannot mark not built: a blocker an implementer reports that no Role can answer, a check the
+machine refused twice, a state the CLI itself reports as `escalate`. A Triage cause, a layer out of fix rounds, a
+converge gap and the Agent-run cap never escalate (ADR-0014).
 
-   When the task was triaged with the cause `plan`, `spec` or `architecture`, the decision is the user's and has
-   alternatives: run `aidw page triage <T> --change <id> --lang <en|vi>` and give them its link with two lines (what
-   stopped, what the page asks) instead of listing the options in the chat. Under `AIDW_RUNNER=1` nobody is there to
-   open a page: skip it; `/aidw:resume` shows it when the user is back.
+1. `aidw transition <id> escalated --reason "<short reason>"`.
+2. Tell the user what is blocked and why (task, attempts, the last checkpoint failure or review notes from
+   `.aidw/changes/<id>/evidence/<T>.json`), and the options:
+   - fix the cause yourself, then `/aidw:resume`;
+   - change scope: `aidw transition <id> analyzing`, revise the Analysis, approve again.
 3. Stop.
 
 ## 3. Verify (quality layers)
@@ -248,16 +274,17 @@ checkpoint it as usual; the gap is on record and the pull request will show it. 
         `pass` or `fix`, keeping the non-blocking remarks for the quality report and the handoff. No clear
         verdict: spawn a fresh reviewer once more; still unclear, record `fix` with
         `aidw layer-review <layer> fix --notes-file <file>`.
-     3. Record every verdict of the group first, also after one of them was `fix`: the `pass` verdicts first, then the
-        `fix` ones. If a `fix` verdict escalates the change (its fix rounds are exhausted), record no more verdicts: the
-        others stay in `.aidw/run/layer-review-<layer>.md`, name them to the user with the escalation, and after
-        `/aidw:resume` `aidw verify` offers those layers again. All `pass` -> run `aidw verify` again for
-        the remaining layers. A `fix` -> a fix task `Qnn` was added with the reviewer's notes; return to the loop
-        (section 1), then come back here. Fix rounds exhausted -> the change
-        is `escalated`: tell the user and stop.
-   - Fix rounds exhausted: the change is already `escalated`. Tell the user (section 2, step 2) and stop.
+     3. Record every verdict of the group first, also after one of them was `fix`: the `pass` verdicts first, then the `fix`
+        ones. All `pass` -> run `aidw verify` again for the remaining layers. A `fix` -> a fix task `Qnn` was added
+        with the reviewer's notes; return to the loop (section 1), then come back here. A `fix` whose fix rounds are
+        exhausted (or at the Agent-run cap) -> that layer is marked **not built**: record the group's other verdicts
+        all the same, then carry on (`aidw verify` again, or the loop when another verdict added a fix task). Nobody
+        is told to decide; the pull request is a draft that lists the layer.
+   - A layer that failed past its fix rounds (or at the cap) is marked not built and verify goes on with the next
+     layers in the same call (`NOT BUILT <layer>` in the output). Carry on as the result says.
 3. Do not edit quality.yaml, skip a layer or weaken a test to get green: the package is frozen and the gate
-   denies it. If a layer cannot pass for a reason outside the code (missing Docker, missing login), escalate.
+   denies it. A layer that cannot pass for a reason outside the code (missing Docker, missing login) runs out of fix
+   rounds and is marked not built; say in one line what the user must provide to finish it.
 
 ## 4. Converge
 
@@ -267,7 +294,8 @@ checkpoint it as usual; the gap is on record and the pull request will show it. 
    - `PASS`: go to section 5.
    - `GAPS` with converge tasks `Cnn` added: the change is back in `executing`. Return to the loop (section 1);
      after the tasks, verify (section 3) and converge again.
-   - A scenario still without a passing test after its converge task: the change is `escalated`. Tell the user.
+   - `PASS` with `not built:` scenarios: their task was not built, their converge task did not close the gap, or the
+     Agent-run cap was reached. Nobody is asked: go to section 5; the pull request lists them.
 
 ## 5. Deploy and deliver
 
