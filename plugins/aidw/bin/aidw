@@ -13622,7 +13622,7 @@ function findScenarioTests(project, ids) {
   }
   return found;
 }
-var SERVER_ROLES = /* @__PURE__ */ new Set(["backend", "database", "devops", "backend-engineer", "database-engineer"]);
+var SERVER_ROLES = /* @__PURE__ */ new Set(["backend", "database", "devops"]);
 var buildsScreens = (t) => touchesUi(t) && !(typeof t.role === "string" && SERVER_ROLES.has(t.role));
 function designEvidence(p, id, t, changed, since) {
   if (!buildsScreens(t)) return null;

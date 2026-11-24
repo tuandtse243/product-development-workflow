@@ -229,6 +229,13 @@ describe("aidw workflow", () => {
 });
 
 describe("bundled bin", () => {
+  it("resolves the authored schema-evolution Skill", () => {
+    // execFileSync throws on a non-zero exit
+    const out = execFileSync(resolve("plugins/aidw/bin/aidw"), ["vendor-path", "aidw/schema-evolution"], { cwd: tempProject(), encoding: "utf8" }).trim();
+    expect(out).toBe(resolve("plugins/aidw/library/skills/schema-evolution/SKILL.md"));
+    expect(existsSync(out)).toBe(true);
+  });
+
   it("runs as a standalone executable", () => {
     const bin = resolve("plugins/aidw/bin/aidw");
     const root = tempProject();

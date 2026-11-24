@@ -173,6 +173,13 @@ describe("checkpoint and briefs for UI tasks", () => {
     expect(r.json().design).toBeUndefined();
   });
 
+  it("counts only real Role ids as server-side", () => {
+    // `backend-engineer` is no Role in the Roster: its UI task is judged like any other
+    const old = executing("backend-engineer");
+    cli(old, "task", "start", "T01");
+    expect(readFileSync(cli(old, "brief", "T01").out.trim(), "utf8")).toMatch(/Screenshots/);
+  });
+
   it("fails without the tokens in the code or without a fresh screenshot", () => {
     cli(root, "task", "start", "T01");
     write(root, "app/globals.css", ":root { --surface: #faf5ec; }\n");
