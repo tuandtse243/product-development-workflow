@@ -15546,18 +15546,19 @@ function frameworkPacks(root) {
     const h = head;
     const strs = (v) => Array.isArray(v) ? v.map(String) : [];
     if (typeof h?.framework === "string" && Array.isArray(h.roles)) {
-      out.push({ id: name.slice(0, -3), framework: h.framework, roles: h.roles.map(String), file: (0, import_node_path39.join)(dir, name), skills: strs(h.skills), reviewSkills: strs(h.review_skills) });
+      out.push({ id: name.slice(0, -3), framework: h.framework, roles: h.roles.map(String), file: (0, import_node_path39.join)(dir, name), skills: strs(h.skills), reviewSkills: strs(h.review_skills), detectedAs: typeof h.detected_as === "string" ? h.detected_as : "framework" });
     }
   }
   return out;
 }
 function packsOf(root, stack) {
-  const found = stack.framework ?? "";
-  return frameworkPacks(root).filter((p) => found.toLowerCase().startsWith(p.framework.toLowerCase()));
+  const all2 = frameworkPacks(root);
+  const hit = (p) => (stack[p.detectedAs] ?? "").toLowerCase().startsWith(p.framework.toLowerCase());
+  const frameworks = all2.filter((p) => p.detectedAs === "framework" && hit(p));
+  return frameworks.length ? frameworks : all2.filter((p) => p.detectedAs !== "framework" && hit(p));
 }
 function packsFor(root, stack, role) {
-  const found = stack.framework ?? "";
-  return frameworkPacks(root).filter((p) => p.roles.includes(role) && found.toLowerCase().startsWith(p.framework.toLowerCase()));
+  return packsOf(root, stack).filter((p) => p.roles.includes(role));
 }
 
 // src/configlock.ts

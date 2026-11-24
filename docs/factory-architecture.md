@@ -178,7 +178,9 @@ Shared skills (test-first, debugging, git workflow, the vendored Pocock and Addy
 tooling questions (install, format, lint, test). A framework pack answers how to build with that framework
 (structure, conventions, common mistakes). Roles stay stack-neutral: `frontend` on a Next.js project loads
 `node` plus `nextjs`; `backend` on a NestJS project loads `node` plus `nestjs`. Next.js and NestJS are the
-first framework packs.
+first framework packs. Express, Fastify and Hono are HTTP libraries that `aidw detect` reports as the `server`, not
+the `framework`: their packs say `detected_as: server` and load only when no framework pack matches, so a NestJS
+project that also lists `express` gets `nestjs` alone.
 
 ## 5. Rules
 

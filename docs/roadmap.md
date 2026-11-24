@@ -167,6 +167,8 @@ aidw becomes a software factory with a Roster of Roles, Workflows as data and de
     framework is adding one file.
   - [x] Two more packs for the other frameworks `aidw detect` reports as a full-stack framework: `stacks/nuxt.md` and
     `stacks/sveltekit.md`. Astro and React Router / Remix are detected but have no pack yet.
+  - [x] Server packs `stacks/express.md`, `fastify.md` and `hono.md` (`detected_as: server`): `aidw detect` reports these
+    libraries as the `server`; their pack loads for `backend` and `fullstack` only when no framework pack matches.
   - [x] Python: `aidw detect` reads `pyproject.toml` (PEP 621, Poetry, dependency groups), `requirements*.txt` and `Pipfile`
     (`src/pydetect.ts`, no TOML library), names the tool (uv, Poetry, Pipenv, pip), reports the stack (Django, FastAPI, Flask,
     SQLAlchemy, pytest, ruff, mypy...) and proposes the `code` and `unit` layers (`uv run ruff check .`, `uv run pytest`). A
