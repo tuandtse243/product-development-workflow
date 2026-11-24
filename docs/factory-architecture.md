@@ -167,7 +167,11 @@ generated agent files are up to date.
   read against `.env.example`, never a value), `error-shape-probe` (error bodies against the declared error shape,
   statically and on responses the tests captured), `query-count` (statements for 1 row and N rows; also a module a
   test imports) and `leak-and-timeout-scan` (outbound calls with no timeout, log calls carrying secrets or whole
-  objects). `--base <ref>` limits the scans to what a diff adds.
+  objects). `route-inventory`, `env-names`, `error-shape-probe` (its static probe) and `leak-and-timeout-scan` take
+  `--base <ref>` to look only at what a diff adds; `query-count` reads logs and takes no `--base`. Every JSON output
+  starts with `tool` and `schemaVersion: 1`; a directory scan lists under `skipped` what it did not read (`public/`
+  and `static/` output, minified or bundled files, files over 512 KB, unreadable files). `query-count --run`
+  executes a command, so a read-only reviewer does not use it.
 
 ## 4. Knowledge loading
 
