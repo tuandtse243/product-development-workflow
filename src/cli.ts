@@ -54,6 +54,7 @@ import { doctor, doctorText, drivesBrowser } from "./doctor.js";
 import { createPr, planPr } from "./pr.js";
 import { grantsSection } from "./grants.js";
 import { planAdvice, planShape, planSummary } from "./plan.js";
+import { buildRoute, installedOutside, tasksLeft } from "./buildroute.js";
 import { detachRun, runLoop, runnerPid, stopRunner } from "./runner.js";
 import { deliver } from "./deliver.js";
 import { deploy, parseQuality, qualityFile, recordLayerReview, verify } from "./quality.js";
@@ -1240,9 +1241,12 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const auto = args.flags.auto === true;
         const { hash, files, by } = approve(p, id, auto ? { auto: { pluginRoot: pluginRoot(env) } } : {});
         const { kept, reopened } = reconcileDoneTasks(p, id);
+        // D2: the CLI, not the session, decides where the build runs.
+        const root = pluginRoot(env);
+        const route = buildRoute(id, tasksLeft(p, id), join(root, "bin", "aidw"), installedOutside(root, p.project) ? undefined : root);
         emit(
-          { ok: true, id, hash, files, kept, reopened },
-          `approved ${id}${by === "user" ? "" : ` by ${by}`}\n  ${hash}\n  covers ${files.length} file(s)\n${kept.length ? `  done work kept: ${kept.join(", ")}\n` : ""}${reopened.length ? `  edited tasks run again: ${reopened.join(", ")}\n` : ""}  cheapest build (about a quarter of the tokens): in your own terminal, ${join(pluginRoot(env), "bin", "aidw")} run ${id} --permission-mode auto\n`,
+          { ok: true, id, hash, files, kept, reopened, route },
+          `approved ${id}${by === "user" ? "" : ` by ${by}`}\n  ${hash}\n  covers ${files.length} file(s)\n${kept.length ? `  done work kept: ${kept.join(", ")}\n` : ""}${reopened.length ? `  edited tasks run again: ${reopened.join(", ")}\n` : ""}${route.next}\n`,
         );
         return 0;
       }

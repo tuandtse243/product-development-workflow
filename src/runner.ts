@@ -1,7 +1,8 @@
 /**
  * `aidw run`: the headless auto-resume runner (slice S9, blueprint section 13 level 2, decision D-30).
  *
- * The user starts it in their own terminal (never inside a Claude Code session; the gate denies that). It
+ * The user starts it in their own terminal, or the main session of an approved change starts it with `--detach` when
+ * `aidw approve` routes the build to it (plan D2, src/buildroute.ts; the gate denies every other start). It
  * loops `claude -p "/aidw:resume <id>" --permission-mode <mode>` until the change is archived, needs the
  * user (escalated, before approval, tier-3 question), or stops making progress. When a session ends on a
  * usage or rate limit (the StopFailure hook paused the change, or the output says so), it waits until the

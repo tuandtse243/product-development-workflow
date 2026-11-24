@@ -1,6 +1,6 @@
 ---
 name: start
-description: Start an aidw change from an idea, PRD, Upwork job description, client request or existing codebase, and run the whole Analysis up to the single approval gate. Use when the user runs /aidw:start.
+description: Start an aidw change from an idea, PRD, Upwork job description, client request or existing codebase, run the whole Analysis up to the single approval gate, and after the user approves carry on into the build. Use when the user runs /aidw:start.
 disable-model-invocation: true
 argument-hint: "<idea text | path to PRD/JD | 'this codebase'>"
 ---
@@ -12,7 +12,9 @@ The `aidw` CLI ships with this plugin as `${CLAUDE_PLUGIN_ROOT}/bin/aidw`. If a 
 
 You are running the **Analysis** of an Analysis-gated autonomous workflow. Everything you produce here is
 reviewed by the user **once**, at the approval gate. After approval the workflow builds autonomously, so
-the Analysis must be complete, consistent and honest about risks.
+the Analysis must be complete, consistent and honest about risks. This one command carries the Change all the way:
+when the user approves at the gate, you approve and start the build yourself (step 10); the user does not type
+`/aidw:approve` or `/aidw:run`.
 
 Input: `$ARGUMENTS` (an idea, a path to a PRD/JD, pasted client text, or "this codebase").
 
@@ -24,7 +26,8 @@ Input: `$ARGUMENTS` (an idea, a path to a PRD/JD, pasted client text, or "this c
   scaffold, install packages or create source files. Read the codebase freely.
 - All state changes go through the `aidw` CLI (on PATH while the plugin is enabled). Never hand-edit `state:`
   or `approval:` in `change.yaml`.
-- **Never run `aidw approve`.** Approval is the user's decision and happens through `/aidw:approve`.
+- **Run `aidw approve` only in step 10**, after the user approved the gate page in this session. Approval is the
+  user's decision: the gate turns the command into a permission prompt that the user confirms.
 - Finding *facts* is your job: explore the repo or docs yourself (use an Explore subagent for wide searches).
   *Decisions* belong to the user: put them to the user and wait.
 - **Questions go on a Decision Page, not into the chat.** Read `$(aidw plugin-path library/decision-pages.md)` once, now. Every
@@ -51,7 +54,7 @@ you, says which may run at the same time: `aidw stages <id>` lists them as `done
 - A stage that its Decision Point skips (`none`), or that you did yourself, is still done: report it.
 - When a stage's work is done (its Agent replied and its open decisions are settled), report it on its own:
   `aidw stages --done <stage> --change <id>`. The output prints the next `NEXT:`. A gate stage is never reported: it is
-  passed by `/aidw:approve`.
+  passed by the approval in step 10 (or `/aidw:approve`).
 
 The CLI already leaves out a stage that reads another's output or writes the same Artifact, a second browser user (the
 `design` stage screenshots its mocks), and anything past `parallel.max`. Stages that write the same file (two sections
@@ -320,9 +323,27 @@ user can check:
 4. Present the package as a gate page (`layout: gate`, name `gate`, `change: <id>`): one section each for the summary
    and scope, the key decisions, the stack, the design (tokens as swatches in its `html` slot when there is UI), quality
    and deploy, requested permissions, and risks and assumptions. The CLI adds the Decision Points and the plan size. Name
-   `.aidw/changes/<id>/analysis.md` in the intro. Tell the user the link and that `/aidw:approve` approves.
-5. **Stop.** Do not start building. When the user pastes the page's answer, check it: every section agreed means they
-   approve with `/aidw:approve`; a section marked for a change is revised as under "Revising".
+   `.aidw/changes/<id>/analysis.md` in the intro. Tell the user the link, and that once they agree to every section
+   (or type `/aidw:approve`) the build starts by itself.
+5. **Stop and wait for the answer.** Do not start building before it. When the user pastes the page's answer, check it:
+   every section agreed (or the user says they approve) goes on to step 10; a section marked for a change is revised as
+   under "Revising".
+
+## 10. Approve and build (same session)
+
+Only when the user, **in this session**, answered the gate page agreeing to every section, or said "approve" (or typed
+`/aidw:approve`). Anything else (a section marked for a change, a question, silence) is not an approval: never run
+`aidw approve` on your own reading of the package.
+
+Follow steps 2 to 6 of `$(aidw plugin-path skills/approve/SKILL.md)`, as if the user had typed `/aidw:approve <id>`:
+validate and analyze, confirm the push grant when `quality.yaml` has one, `aidw approve <id>` (the user confirms its
+permission prompt; if they decline, stop and do not retry), then follow the `NEXT:` line it prints. The CLI decides
+where the build runs from the number of tasks; do not choose yourself:
+
+- `NEXT: build here: ...` (3 tasks or fewer): follow `$(aidw plugin-path skills/run/SKILL.md)` for `<id>` now.
+- `NEXT: start the runner: <command>` (more than 3): run exactly that command, with the sandbox disabled, as step 6 of
+  the approve skill says (the runner start asks the user when aidw is loaded from a folder); tell the user how to follow
+  and stop it, then stop.
 
 ## Bugfix
 
@@ -348,7 +369,7 @@ There is **no approval gate** while the fix stays small. After `aidw transition 
 `aidw approve <id> --auto` instead of stopping:
 
 - It approves itself (`approved by aidw (bugfix boundary)`; hash and drift protection apply as ever). Tell the user in
-  one line what will be fixed, then continue with `/aidw:run`. A production deploy still asks.
+  one line what will be fixed, then follow its `NEXT:` line as in step 10 (a fix of at most 3 tasks is built here). A production deploy still asks.
 - It refuses when the plan has more than 3 tasks, adds a migration or needs a delta spec. The change is now a `feature`
   change: present the package as in step 9 and stop for `/aidw:approve`.
 

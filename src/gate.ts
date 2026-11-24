@@ -32,6 +32,7 @@ import {
   maskQuotedAngles,
   RUNNER_COMMAND,
 } from "./policy.js";
+import { installedOutside, runnerCommand } from "./buildroute.js";
 import { pushGrantReason, taskBranchPush } from "./grants.js";
 import { grantedResources } from "./quality.js";
 import { machineOf } from "./machine.js";
@@ -88,6 +89,17 @@ export function gateState(p: Paths): GateState {
   }
   st.summary = parts.length ? parts.join(", ") : "no changes";
   return st;
+}
+
+/** Whether a Change has a valid approval and is in a state that builds: the runner allowance of D2 is per Change. */
+function approvedForBuild(p: Paths, id: string): boolean {
+  try {
+    const c = loadChange(p, id);
+    const state = stateOf(c);
+    return !!state && OPEN_STATES.has(state) && approvalStatus(p, c).status === "valid";
+  } catch {
+    return false;
+  }
 }
 
 function inside(parent: string, child: string): boolean {
@@ -243,7 +255,29 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
       return deny(`the ${role} does not change aidw state (no self-verification); report back to the orchestrator`);
     }
     if (RUNNER_COMMAND.test(cmd)) {
-      return deny("`aidw run` starts Claude Code headless in a loop; the user runs it in their own terminal, not inside a session");
+      // D2: after approval the main session starts the detached runner itself; its sessions run in auto mode (ADR-0014).
+      // An allow here also skips the prompt for running it outside the sandbox, so only the exact command the CLI
+      // prints for an approved Change is allowed, and only for an installed plugin outside the project.
+      if (!input.agent_type && env.AIDW_RUNNER !== "1") {
+        const root = pluginRoot(env);
+        const silent = installedOutside(root, p.project);
+        const approved = listChangeIds(p).filter((id) => approvedForBuild(p, id));
+        if (silent && approved.some((id) => cmd.trim() === runnerCommand(id, join(root, "bin", "aidw")))) {
+          return allow("the change is approved: the detached runner builds it (`aidw approve` printed this exact command)");
+        }
+        // A start that names no approved Change is denied, not asked: the allowance is per Change.
+        const names = cmd.trim().split(/[ \t]+/);
+        if (approved.some((id) => names.includes(id)) && /(?:^|\s)--detach(?:\s|$)/.test(cmd)) {
+          return ask(
+            silent
+              ? "this starts the runner, outside the sandbox, with other words than the command `aidw approve` printed; it needs your confirmation"
+              : "this starts the runner outside the sandbox, and aidw is loaded from a folder rather than installed; it needs your confirmation",
+          );
+        }
+      }
+      return deny(
+        "`aidw run` starts Claude Code headless in a loop: only the main session of an approved change starts it, in the background (`aidw run <id> --detach --permission-mode auto`); otherwise the user runs it in their own terminal",
+      );
     }
     if (APPROVE_COMMAND.test(cmd)) {
       return ask("approving the Analysis package is the user's decision. Approve only if you (the user) reviewed analysis.md.");
