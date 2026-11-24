@@ -7,8 +7,10 @@ import { typeProblem } from "./commit.js";
  * pending -> running -> review -> done        (implement, checkpoint, independent review)
  *              ^   \-> failed --/             (checkpoint or review asked for fixes; retried)
  *              \------ escalated              (attempts exhausted; needs the user)
+ * review -> conflict -> review -> done           (a wave task whose merge conflicts: integration resolves it, T7)
+ *              \-> pending (sequential)      (the resolution failed: dropped, reruns on the latest code)
  */
-export const TASK_STATUSES = ["pending", "running", "review", "done", "failed", "blocked", "escalated"] as const;
+export const TASK_STATUSES = ["pending", "running", "review", "done", "failed", "blocked", "escalated", "conflict"] as const;
 
 /** Fields the orchestrator updates during execution; excluded from the approval hash. */
 export const RUNTIME_FIELDS = [
@@ -28,6 +30,8 @@ export const RUNTIME_FIELDS = [
   "plan_sha",
   // the one triage of a task that ran out of attempts: { cause, at }
   "triage",
+  // T7: an open merge conflict of a wave task, resolved by the integration Role: { with, files, at, phase, onto?, resolution? }
+  "conflict",
 ] as const;
 
 export const DEFAULT_MAX_ATTEMPTS = 3;

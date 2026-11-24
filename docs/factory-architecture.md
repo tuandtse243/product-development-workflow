@@ -233,7 +233,8 @@ parallel, at every level, from what each one reads and writes (`src/stages.ts`):
 command an Agent is denied. Recorded in `changes/<id>/stages.yaml`, outside the approved package.
 - *Reviewers.* `aidw verify` no longer stops at the first review layer: it runs every layer, and each review layer
   whose commands pass waits for its reviewer. The waiting reviewers are offered together.
-- *Tasks.* Waves, as before (section 9 and `src/parallel.ts`): disjoint `touches`, `depends_on` done.
+- *Tasks.* Waves, as before (section 9 and `src/parallel.ts`): disjoint `touches`, `depends_on` done. A merge
+  conflict between two tasks of a Wave goes to the `integration` Role (D11, below).
 
 From what is ready, one group is offered in one `NEXT:`: greedily, in Workflow or layer order, leaving out a piece
 that conflicts with one already in, a second piece of **browser-driving** work (the project has one test browser: a
@@ -281,6 +282,24 @@ does not stop it from writing these files, as it does not stop it from writing a
 ("Open findings of the independent review", added by the CLI before the authored sections), so the user approves with
 them or asks for a change. The stage is never reported with `aidw stages --done`: it counts as done exactly while the
 recorded review counts.
+
+**A Wave's merge conflict (D11).** When a task's merge into the Change Branch conflicts, its work is kept: the task
+goes to status `conflict` and the CLI drives four steps (`src/conflict.ts`), each printing the next, so the main
+session and the runner follow the same path:
+
+| Step | Command | What the CLI does |
+|---|---|---|
+| detect | `aidw verdict <task>` (pass) | aborts the merge, names the task(s) already merged that changed the files (their `Task:` footers), records the conflict in `changes/<id>/conflicts.yaml` |
+| brief | `aidw brief <task> --for conflict` | merges the Change Branch into the task's worktree, stops at the markers, briefs `integration` with both tasks, the files and both branches |
+| resolve | `aidw resolve <task>` | commits the merge in the worktree; against both sides of it (the task's commit and the Change Branch) refuses conflict markers in any changed file, junk, and what a checkpoint's guards refuse (tamper, check configuration, secrets, packages); runs both tasks' checks again (verify, a test per scenario); evidence `evidence/merge-<task>.json`. A check the machine refused leaves the conflict open |
+| review | `aidw brief <task> --for merge-review`, `aidw verdict <task>` | a `code-reviewer` judges only the resolution; pass merges the task as usual |
+
+When the merge is started the files and the tasks on the other side are found again (the Change Branch may have moved),
+and a binary file in the conflict falls back at once: no marker can show both sides. Any failure (markers left, a
+guard or a check fails, a `fix` verdict, a second conflict) falls back to the old behaviour: the
+branch is dropped and the task reruns sequentially on the latest code. `conflicts.yaml` keeps every conflict with its
+outcome (`open`, `resolved` once the final merge is committed, `dropped`) and reason; the `technical-planner` reads it when it plans, so the files go
+into the `touches` of both tasks (or the tasks are chained) and they stop running side by side.
 
 **Triage.** When a task runs out of attempts, a fresh `software-architect` Agent classifies the cause from the
 evidence. It writes only its answer (`.aidw/run/triage-<task>.md`): the gate keeps the approved package and the

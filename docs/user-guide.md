@@ -225,7 +225,14 @@ Vòng đời trong một wave:
 3. Reviewer pass: aidw commit trong worktree, rồi **merge vào nhánh change** (`--no-ff`), từng task một, cùng với trạng thái `.aidw/`. Worktree và nhánh `.T02` bị xóa. Kết quả: nhánh change có một commit cho mỗi task, y như chạy tuần tự.
 4. Sau cả wave, `aidw integrate` chạy lệnh verify của các task trong wave và lớp `code` trên **code đã gộp**. Nếu hai task không khớp nhau, nó thêm một task sửa (`origin: integration`) và dừng wave kế tiếp cho tới khi xong.
 
-**Xung đột.** Nếu lúc merge hai task sửa cùng một chỗ: aidw hủy merge, xóa nhánh của task đó, đánh `sequential` và chạy lại nó một mình trên code mới nhất. Không có ai phải giải quyết conflict bằng tay, và không mất công việc của task kia. Cách phòng tốt nhất là `touches` thật hẹp (cho nên `aidw plan` và `analyze` cảnh báo).
+**Xung đột.** Nếu lúc merge hai task sửa cùng một chỗ, aidw không bỏ công việc ngay mà giao conflict cho role `integration`:
+
+1. `aidw review`/`aidw verdict` báo `merge conflict ...: the integration Role resolves it`; task chuyển sang trạng thái `conflict`, worktree của nó được giữ, và conflict được ghi vào `.aidw/changes/<id>/conflicts.yaml` (task nào, đụng với task nào, file nào).
+2. `aidw brief <task> --for conflict` merge nhánh change vào worktree của task (agent không được tự merge) và viết brief cho `aidw:integration`: cả hai task (id, tên, scenario, touches, verify), các file conflict và cả hai nhánh.
+3. Agent gộp hai phía trong các file conflict, chạy verify của cả hai task, không commit. `aidw resolve <task>` commit merge trong worktree, kiểm so với cả hai phía (không còn dấu conflict ở file nào, không có rác, và các guard của checkpoint: xóa hay tắt test, đổi cấu hình kiểm tra, khóa bí mật, package), rồi chạy lại kiểm tra của **cả hai task** (verify và test cho từng scenario) trên code đã gộp. Nếu máy từ chối một lệnh (sandbox, proxy) thì conflict vẫn mở và chỉ cần chạy lại `aidw resolve`. File nhị phân trong conflict thì không gộp được bằng tay: task bị bỏ ngay từ bước brief.
+4. Một reviewer độc lập (`aidw brief <task> --for merge-review`, `aidw:code-reviewer`) xem riêng phần gộp; `aidw verdict <task>` pass thì task được merge vào nhánh change như bình thường.
+
+Hỏng ở bất kỳ bước nào (còn dấu conflict, kiểm tra fail, reviewer trả `fix`, merge lại vẫn conflict): aidw làm như trước đây, tức xóa nhánh của task, đánh `sequential` và chạy lại nó một mình trên code mới nhất. Kết quả (`resolved` hay `dropped`, kèm lý do) cũng ghi vào `conflicts.yaml`; Technical Planner đọc file này lần sau khi lập kế hoạch để sửa `touches`. Cách phòng tốt nhất vẫn là `touches` thật hẹp (cho nên `aidw plan` và `analyze` cảnh báo).
 
 ### Gộp lại: một change chạy ra sao
 

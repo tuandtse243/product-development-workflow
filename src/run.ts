@@ -26,7 +26,7 @@ import { defaultTaskRole, implementerOf } from "./roles.js";
 import { packsFor, packsOf } from "./stackpacks.js";
 import { OpError, transition } from "./ops.js";
 import { readText, rel, walkFiles, type Paths } from "./project.js";
-import { ensureWorktree, removeSnapshot, snapshotBase, integrate, mergeWorktree, parallelConfig, pendingIntegration, planWave, removeWorktree, taskDir, type IntegrateResult } from "./parallel.js";
+import { closeConflict, conflictPartners, ensureWorktree, recordConflict, updateConflict, removeSnapshot, snapshotBase, integrate, mergeWorktree, parallelConfig, pendingIntegration, planWave, removeWorktree, taskDir, type IntegrateResult } from "./parallel.js";
 import { parseQuality, qualityFile, resetQualitySummary } from "./quality.js";
 import { selectSkills, skillPath, SKILLS_WITH_NOTES, touchesUi, isSecuritySensitive, type BriefKind } from "./skills.js";
 import { configEvidence, type ConfigEvidence } from "./configlock.js";
@@ -74,7 +74,7 @@ function indexOf(tf: TaskFile, taskId: string): number {
   return i;
 }
 
-function setField(tf: TaskFile, i: number, key: string, value: unknown): void {
+export function setField(tf: TaskFile, i: number, key: string, value: unknown): void {
   if (value === undefined || value === null) tf.doc.deleteIn(["tasks", i, key]);
   else tf.doc.setIn(["tasks", i, key], value);
 }
@@ -87,7 +87,7 @@ const maxAttemptsOf = (t: Task) =>
   (typeof t.triage === "object" && t.triage !== null && (t.triage as { cause?: unknown }).cause === "implementation" ? 1 : 0);
 
 /** Tasks only run while the change is executing with a valid approval. */
-function requireExecuting(p: Paths, change: Change): void {
+export function requireExecuting(p: Paths, change: Change): void {
   const state = stateOf(change);
   if (state !== "executing") {
     const hint =
@@ -110,6 +110,8 @@ export type NextAction =
   | { action: "wave"; tasks: { task: string; title: string }[] }
   | { action: "integrate"; tasks: string[] }
   | { action: "review"; task: string; title: string }
+  | { action: "resolve"; task: string; title: string; with: string[]; files: string[] }
+  | { action: "review-merge"; task: string; title: string; with: string[] }
   | { action: "triage"; task: string; title: string; reason: string }
   | { action: "escalate"; task?: string; reason: string }
   | { action: "complete"; done: number };
@@ -123,6 +125,13 @@ export function nextAction(p: Paths, id: string): NextAction {
   // Unfinished work first, in file order: a review or an interrupted task resumes before anything new.
   for (const t of tf.tasks) if (statusOf(t) === "review") return { action: "review", task: t.id, title: title(t) };
   for (const t of tf.tasks) if (statusOf(t) === "running") return { action: "implement", task: t.id, title: title(t), reason: "interrupted" };
+  // T7: a wave task whose merge conflicted waits for the integration Role, then for the review of the merge.
+  for (const t of tf.tasks) {
+    if (statusOf(t) !== "conflict") continue;
+    const c = isRecord(t.conflict) ? t.conflict : {};
+    if (c.phase === "review") return { action: "review-merge", task: t.id, title: title(t), with: list(c.with) };
+    return { action: "resolve", task: t.id, title: title(t), with: list(c.with), files: list(c.files) };
+  }
   for (const t of tf.tasks) {
     if (statusOf(t) === "escalated") return { action: "escalate", task: t.id, reason: `task ${t.id} is escalated: ${String(t.notes ?? "needs the user")}` };
   }
@@ -240,7 +249,7 @@ export function retryTask(p: Paths, id: string, taskId: string): { task: string 
 // ---------------------------------------------------------------- evidence
 
 const SKIP_DIRS = new Set(["node_modules", ".git", ".aidw", ".next", ".nuxt", ".svelte-kit", ".turbo", ".vercel", "dist", "build", "out", "coverage", "playwright-report", "test-results"]);
-const TEST_FILE = /(^|\/)(__tests__|tests?|e2e|specs?)\/|\.(test|spec|e2e)\.[a-z0-9]+$/i;
+export const TEST_FILE = /(^|\/)(__tests__|tests?|e2e|specs?)\/|\.(test|spec|e2e)\.[a-z0-9]+$/i;
 const MAX_TEST_FILE = 1024 * 1024;
 
 function walkProject(dir: string, root: string, out: string[]): void {
@@ -601,8 +610,30 @@ export interface ReviewResult {
   status: string;
   commit: string | null;
   warning?: string;
-  /** wave task whose merge conflicted: dropped and back to pending, to rerun sequentially */
+  /** wave task whose merge conflicted: status `conflict` (the integration Role resolves it) or, when that failed, dropped and pending */
   conflict?: string;
+}
+
+/**
+ * Today's fallback for a wave task whose merge cannot be made (blueprint 9.2): drop its branch and rerun it sequentially
+ * on the latest code. Closes its conflict record as dropped, with the reason, for the Technical Planner.
+ */
+function dropToSequential(p: Paths, tf: TaskFile, i: number, why: string): void {
+  const t = tf.tasks[i] as Task;
+  removeWorktree(p, typeof t.worktree === "string" ? t.worktree : undefined, typeof t.branch === "string" ? t.branch : undefined);
+  for (const f of ["worktree", "branch", "base", "started_at", "conflict"]) setField(tf, i, f, null);
+  setField(tf, i, "status", "pending");
+  setField(tf, i, "attempts", 0);
+  setField(tf, i, "sequential", true);
+  setField(tf, i, "notes", `${why}; dropped, reruns sequentially on the latest code`.slice(0, 500));
+  saveTasks(tf);
+  closeConflict(tf.change, t.id, "dropped", why);
+}
+
+/** The fallback for src/conflict.ts: the integration Role's resolution failed a check. */
+export function dropConflictTask(p: Paths, id: string, taskId: string, why: string): void {
+  const tf = loadTasks(p, id);
+  dropToSequential(p, tf, indexOf(tf, taskId), why);
 }
 
 export function recordReview(
@@ -617,11 +648,32 @@ export function recordReview(
   requireExecuting(p, tf.change);
   const i = indexOf(tf, taskId);
   const t = tf.tasks[i] as Task;
-  if (statusOf(t) !== "review") throw new OpError(`task ${taskId} is "${statusOf(t)}"; only a checkpointed task (review) can be reviewed`);
+  // T7: the verdict on a merge the integration Role resolved (src/conflict.ts)
+  const mergeReview = statusOf(t) === "conflict" && isRecord(t.conflict) && t.conflict.phase === "review";
+  if (statusOf(t) !== "review" && !mergeReview) throw new OpError(`task ${taskId} is "${statusOf(t)}"; only a checkpointed task (review) can be reviewed`);
 
   const ev = readEvidence(tf.change, t);
   ev.reviews.push({ attempt: attemptsOf(t), at: now(), verdict, notes: notes.trim() });
   writeEvidence(tf.change, ev);
+
+  if (mergeReview) {
+    if (verdict === "fix") {
+      const why = "the review of the merge the integration Role resolved asked for fixes";
+      dropToSequential(p, tf, i, why);
+      return { task: taskId, verdict, status: "pending", commit: null, conflict: why };
+    }
+    // What was checked and reviewed is the merge commit: the worktree must still be exactly that, or nothing is merged.
+    const wtDir = taskDir(p, t);
+    const head = git(wtDir, ["rev-parse", "HEAD"]).out;
+    const dirty = git(wtDir, ["status", "--porcelain", "--", ".", ":(exclude).aidw"]).out;
+    const resolution = String((t.conflict as Record<string, unknown>).resolution ?? "");
+    if (head !== resolution || dirty) {
+      const why = head !== resolution ? "the worktree moved past the reviewed merge commit" : `the worktree has changes after the reviewed merge commit (${dirty.split("\n").map((l) => l.slice(3)).join(", ")})`;
+      dropToSequential(p, tf, i, why);
+      return { task: taskId, verdict, status: "pending", commit: null, conflict: why };
+    }
+    setField(tf, i, "conflict", { ...(t.conflict as Record<string, unknown>), phase: "merged" });
+  }
 
   if (verdict === "fix") {
     const exhausted = attemptsOf(t) >= maxAttemptsOf(t);
@@ -636,19 +688,25 @@ export function recordReview(
   if (inWorktree) {
     const m = mergeWorktree(p, t, msg);
     if (!m.ok) {
-      // Blueprint 9.2: drop the branch and rerun the task sequentially on the latest code.
-      removeWorktree(p, String(t.worktree), String(t.branch ?? ""));
-      for (const f of ["worktree", "branch", "base", "started_at"]) setField(tf, i, f, null);
-      setField(tf, i, "status", "pending");
-      setField(tf, i, "attempts", 0);
-      setField(tf, i, "sequential", true);
-      setField(tf, i, "notes", `merge conflict after review (${m.conflict}); dropped, reruns sequentially on the latest code`.slice(0, 500));
+      if (isRecord(t.conflict)) {
+        // It conflicts again after the integration Role resolved it: today's fallback.
+        dropToSequential(p, tf, i, `merge conflict again after integration resolved it (${m.conflict})`);
+        return { task: taskId, verdict, status: "pending", commit: null, conflict: m.conflict };
+      }
+      // D11: the work is kept and the integration Role resolves the conflict with the task(s) already merged.
+      const partners = conflictPartners(p, taskId, typeof t.base === "string" ? t.base : null, m.files);
+      setField(tf, i, "status", "conflict");
+      setField(tf, i, "conflict", { with: partners, files: m.files, at: now(), phase: "open" });
+      setField(tf, i, "notes", `merge conflict${partners.length ? ` with ${partners.join(", ")}` : ""} in ${m.files.join(", ") || m.conflict}: the integration Role resolves it`.slice(0, 500));
       saveTasks(tf);
-      return { task: taskId, verdict, status: "pending", commit: null, conflict: m.conflict };
+      recordConflict(tf.change, { task: taskId, with: partners, files: m.files });
+      return { task: taskId, verdict, status: "conflict", commit: null, conflict: m.conflict };
     }
     setField(tf, i, "merged_at", now());
     setField(tf, i, "worktree", null);
     setField(tf, i, "branch", null);
+    // Written before the commit so it is part of it; reopened below when the commit fails.
+    if (mergeReview) closeConflict(tf.change, taskId, "resolved");
   }
   setField(tf, i, "status", "done");
   setField(tf, i, "plan_sha", planSha(t));
@@ -672,7 +730,12 @@ export function recordReview(
       setField(tf, i, "branch", t.branch);
       setField(tf, i, "merged_at", null);
     }
-    setField(tf, i, "status", "review");
+    setField(tf, i, "status", mergeReview ? "conflict" : "review");
+    if (mergeReview) {
+      // the merge review is recorded again once the commit can be made
+      setField(tf, i, "conflict", t.conflict);
+      updateConflict(tf.change, taskId, { outcome: "open" });
+    }
     setField(tf, i, "finished_at", null);
     saveTasks(tf);
     throw new OpError(`task ${taskId} passed review but the commit failed: ${commit.err || commit.out}`);
@@ -680,7 +743,7 @@ export function recordReview(
   return { task: taskId, verdict, status: "done", commit: headCommit(p.project) };
 }
 
-const RESET_FIELDS = ["worktree", "branch", "base", "started_at", "finished_at", "merged_at", "plan_sha", "evidence", "sequential"];
+const RESET_FIELDS = ["worktree", "branch", "base", "started_at", "finished_at", "merged_at", "plan_sha", "evidence", "sequential", "conflict"];
 
 function resetTask(tf: TaskFile, i: number, note: string): void {
   for (const f of RESET_FIELDS) setField(tf, i, f, null);

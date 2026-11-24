@@ -6311,15 +6311,15 @@ var require_parser = __commonJS({
     var node_process = require("process");
     var cst = require_cst();
     var lexer = require_lexer();
-    function includesToken(list6, type) {
-      for (let i = 0; i < list6.length; ++i)
-        if (list6[i].type === type)
+    function includesToken(list7, type) {
+      for (let i = 0; i < list7.length; ++i)
+        if (list7[i].type === type)
           return true;
       return false;
     }
-    function findNonEmptyIndex(list6) {
-      for (let i = 0; i < list6.length; ++i) {
-        switch (list6[i].type) {
+    function findNonEmptyIndex(list7) {
+      for (let i = 0; i < list7.length; ++i) {
+        switch (list7[i].type) {
           case "space":
           case "comment":
           case "newline":
@@ -7329,10 +7329,10 @@ __export(cli_exports, {
   run: () => run
 });
 module.exports = __toCommonJS(cli_exports);
-var import_node_fs41 = require("node:fs");
-var import_node_path46 = require("node:path");
+var import_node_fs42 = require("node:fs");
+var import_node_path47 = require("node:path");
 var import_node_url = require("node:url");
-var import_yaml18 = __toESM(require_dist(), 1);
+var import_yaml19 = __toESM(require_dist(), 1);
 
 // src/page.ts
 var import_node_crypto = require("node:crypto");
@@ -8352,7 +8352,7 @@ function coverageReport(c, min) {
 var import_node_child_process6 = require("node:child_process");
 var import_node_fs32 = require("node:fs");
 var import_node_path37 = require("node:path");
-var import_yaml16 = __toESM(require_dist(), 1);
+var import_yaml17 = __toESM(require_dist(), 1);
 
 // src/analyze.ts
 var import_node_fs29 = require("node:fs");
@@ -8566,7 +8566,7 @@ ${footer}`;
 var HEADER_RE = new RegExp(`^(${COMMIT_TYPES.join("|")})(\\([a-z0-9]+(?:-[a-z0-9]+)*\\))?!?: \\S.*$`);
 
 // src/tasks.ts
-var TASK_STATUSES = ["pending", "running", "review", "done", "failed", "blocked", "escalated"];
+var TASK_STATUSES = ["pending", "running", "review", "done", "failed", "blocked", "escalated", "conflict"];
 var RUNTIME_FIELDS = [
   "status",
   "attempts",
@@ -8583,7 +8583,9 @@ var RUNTIME_FIELDS = [
   // re-approval keeps done work: the plan the task was finished against
   "plan_sha",
   // the one triage of a task that ran out of attempts: { cause, at }
-  "triage"
+  "triage",
+  // T7: an open merge conflict of a wave task, resolved by the integration Role: { with, files, at, phase, onto?, resolution? }
+  "conflict"
 ];
 var DEFAULT_MAX_ATTEMPTS = 3;
 var ADDED_ORIGINS = ["converge", "quality", "integration"];
@@ -8594,9 +8596,9 @@ function parseTasks(text2) {
   } catch (e) {
     return { tasks: [], error: `not valid YAML: ${e.message}` };
   }
-  const list6 = data?.tasks;
-  if (!Array.isArray(list6)) return { tasks: [], error: 'expected a top-level "tasks:" list' };
-  return { tasks: list6 };
+  const list7 = data?.tasks;
+  if (!Array.isArray(list7)) return { tasks: [], error: 'expected a top-level "tasks:" list' };
+  return { tasks: list7 };
 }
 var isStrList = (v) => Array.isArray(v) && v.every((x) => typeof x === "string");
 function validateTasksText(text2, file) {
@@ -9083,7 +9085,7 @@ function loadAgents() {
   }
   return { implement: `aidw:${implement}`, taskReview: `aidw:${review}`, triage: `aidw:${triage}`, layerReview: { ui: `aidw:${ui}`, security: `aidw:${security}`, performance: `aidw:${performance}` } };
 }
-var oneOf = (list6, v) => typeof v === "string" && list6.includes(v);
+var oneOf = (list7, v) => typeof v === "string" && list7.includes(v);
 var rosterFile = (root) => (0, import_node_path10.join)(root, "roster.yaml");
 var roleDir = (root, id) => (0, import_node_path10.join)(root, "roles", id);
 var read = (file) => (0, import_node_fs8.readFileSync)(file, "utf8");
@@ -9252,8 +9254,8 @@ function checkRoster(root) {
     if (h.max_turns !== void 0 && !(Number.isInteger(h.max_turns) && Number(h.max_turns) > 0)) d.error(file, "max_turns must be a positive integer");
     if (!parsed.body) d.error(file, "the profile has no text after its header");
     if (h.skills !== void 0) {
-      const list6 = Array.isArray(h.skills) ? h.skills : null;
-      if (!list6 || !list6.every((e) => isRecord2(e) && Object.keys(e).length === 1 && typeof Object.values(e)[0] === "string")) {
+      const list7 = Array.isArray(h.skills) ? h.skills : null;
+      if (!list7 || !list7.every((e) => isRecord2(e) && Object.keys(e).length === 1 && typeof Object.values(e)[0] === "string")) {
         d.error(file, 'skills must be a list of one-entry mappings: "- <skill-name>: <when to load it>"');
       } else {
         for (const s of skillIndex(h.skills)) {
@@ -9330,7 +9332,7 @@ function rosterTable(root) {
 
 // src/quality.ts
 var import_node_path32 = require("node:path");
-var import_yaml14 = __toESM(require_dist(), 1);
+var import_yaml15 = __toESM(require_dist(), 1);
 
 // src/backstop.ts
 var import_node_child_process2 = require("node:child_process");
@@ -9428,7 +9430,7 @@ var APPROVE_COMMAND = /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+approve\b/
 var RUNNER_COMMAND = /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+run\b(?![^;&|]*\s--(?:status|stop)\b)/;
 var AIDW_COMMAND = /^\s*["']?(?:[^\s;&|"']*\/)?aidw["']?\s/;
 var SHELL_CHAINING = /[;&|`<>]|\$\(/;
-var AIDW_STATE_COMMAND = /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+(?:task|checkpoint|review|layer-review|verify|integrate|converge|deploy|first-deploy|deliver|transition|approve|archive|merge|init|change|brief|plan-review|pr|stages(?=[^;&|]*--done))\b/;
+var AIDW_STATE_COMMAND = /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+(?:task|checkpoint|review|layer-review|verify|integrate|resolve|converge|deploy|first-deploy|deliver|transition|approve|archive|merge|init|change|brief|plan-review|pr|stages(?=[^;&|]*--done))\b/;
 
 // src/buildroute.ts
 var import_node_fs9 = require("node:fs");
@@ -10064,11 +10066,11 @@ ${unexpected.join("\n")}`).digest("hex");
     (0, import_node_fs11.mkdirSync)(p.run, { recursive: true });
     (0, import_node_fs11.writeFileSync)(seen, key);
   }
-  const list6 = unexpected.slice(0, 20).map((f) => `  - ${f}`).join("\n");
+  const list7 = unexpected.slice(0, 20).map((f) => `  - ${f}`).join("\n");
   const more = unexpected.length > 20 ? `
   ... and ${unexpected.length - 20} more` : "";
   const reason = `AIDW backstop: ${closedReason(st)} Yet these files outside ${AIDW_DIR}/ changed and are not explained by an aidw step:
-${list6}${more}
+${list7}${more}
 Do not delete or revert anything yourself: some of these may be the user's own edits. Tell the user which of these you created or modified in this session and ask how to proceed. While the gate is closed, write only inside .aidw/.`;
   if (input.stop_hook_active) {
     return JSON.stringify({ systemMessage: reason });
@@ -10565,14 +10567,14 @@ function parseTokens(text2, file, d) {
     d.error(file, `invalid YAML: ${e.message}`);
     return [];
   }
-  const list6 = data?.tokens;
-  if (!Array.isArray(list6) || list6.length === 0) {
+  const list7 = data?.tokens;
+  if (!Array.isArray(list7) || list7.length === 0) {
     d.error(file, "must contain a non-empty `tokens:` list");
     return [];
   }
   const out = [];
   const seen = /* @__PURE__ */ new Set();
-  list6.forEach((raw, i) => {
+  list7.forEach((raw, i) => {
     const t = raw ?? {};
     const where = `tokens[${i}]`;
     const name = typeof t.name === "string" ? t.name.trim() : "";
@@ -11444,6 +11446,7 @@ function installGuard(p, id, layerCommands, env = process.env, run2 = runner) {
 var import_node_child_process4 = require("node:child_process");
 var import_node_fs20 = require("node:fs");
 var import_node_path25 = require("node:path");
+var import_yaml11 = __toESM(require_dist(), 1);
 
 // src/secrets.ts
 var RULES = [
@@ -11622,9 +11625,48 @@ function mergeWorktree(p, t, message) {
   }
   const m = git(p.project, ["merge", "--no-ff", "--no-commit", "-q", branch]);
   if (m.ok) return { ok: true };
+  const files = git(p.project, ["diff", "--name-only", "--diff-filter=U"]).out.split("\n").filter(Boolean);
   git(p.project, ["merge", "--abort"]);
-  const files = git(p.project, ["diff", "--name-only", "--diff-filter=U"]).out;
-  return { ok: false, conflict: (m.out || m.err || files).split("\n").slice(0, 8).join("; ") };
+  return { ok: false, conflict: (m.out || m.err || files.join("\n")).split("\n").slice(0, 8).join("; "), files };
+}
+function conflictPartners(p, taskId, base2, files) {
+  if (!base2 || !files.length) return [];
+  const log = git(p.project, ["log", "--format=%B", `${base2}..HEAD`, "--", ...files]);
+  if (!log.ok) return [];
+  const ids = [...log.out.matchAll(/^Task: (\S+)$/gm)].map((m) => m[1]);
+  return [...new Set(ids)].filter((x) => x !== taskId);
+}
+var conflictsFile = (change) => (0, import_node_path25.join)(change.dir, "conflicts.yaml");
+var CONFLICTS_HEADER = "# Merge conflicts between tasks of a Wave (written by aidw). Each names the tasks whose work met in the same\n# files. The Technical Planner reads it when it plans: list those files in the touches of every task that\n# changes them, or chain the tasks with depends_on, so they never run side by side again.\n";
+function readConflicts(change) {
+  const text2 = readText(conflictsFile(change));
+  if (text2 === null) return [];
+  try {
+    const data = import_yaml11.default.parse(text2);
+    return Array.isArray(data?.conflicts) ? data.conflicts : [];
+  } catch {
+    return [];
+  }
+}
+function writeConflicts(change, records) {
+  (0, import_node_fs20.writeFileSync)(conflictsFile(change), `${CONFLICTS_HEADER}${import_yaml11.default.stringify({ conflicts: records })}`);
+}
+function recordConflict(change, entry) {
+  writeConflicts(change, [...readConflicts(change), { at: now2(), ...entry, outcome: "open" }]);
+}
+function updateConflict(change, taskId, patch) {
+  const records = readConflicts(change);
+  const last = records.map((r) => r.task).lastIndexOf(taskId);
+  if (last < 0) return;
+  records[last] = { ...records[last], ...patch };
+  writeConflicts(change, records);
+}
+function closeConflict(change, taskId, outcome, reason) {
+  const records = readConflicts(change);
+  const last = records.map((r) => r.task).lastIndexOf(taskId);
+  if (last < 0) return;
+  records[last] = { ...records[last], outcome, ...reason ? { reason: reason.slice(0, 300) } : {} };
+  writeConflicts(change, records);
 }
 var integrationFile = (change) => (0, import_node_path25.join)(change.dir, "evidence", "integration.json");
 function integrationRuns(change) {
@@ -12109,13 +12151,13 @@ function detectProject(dir) {
 }
 
 // src/ops.ts
-var import_yaml12 = __toESM(require_dist(), 1);
+var import_yaml13 = __toESM(require_dist(), 1);
 
 // src/planreview.ts
 var import_node_crypto5 = require("node:crypto");
 var import_node_fs23 = require("node:fs");
 var import_node_path28 = require("node:path");
-var import_yaml11 = __toESM(require_dist(), 1);
+var import_yaml12 = __toESM(require_dist(), 1);
 var PLAN_REVIEW = "plan-review";
 var MAX_FIX_ROUNDS = 2;
 var MAX_REVIEWS = MAX_FIX_ROUNDS + 1;
@@ -12167,7 +12209,7 @@ function readRecord(p, change) {
   if (text2 === null) return { cycle: 1, briefed: 0, rounds: [] };
   let data;
   try {
-    data = import_yaml11.default.parse(text2);
+    data = import_yaml12.default.parse(text2);
   } catch (e) {
     throw new OpError(`${rel(p, file)} cannot be read (${e.message.split("\n")[0]}): it is written only by \`aidw plan-review\`; restore it from git`);
   }
@@ -12184,7 +12226,7 @@ function readRecord(p, change) {
   };
 }
 var currentRounds = (rec) => rec.rounds.filter((r) => (r.cycle ?? 1) === rec.cycle);
-var writeRecord2 = (change, rec) => (0, import_node_fs23.writeFileSync)(roundsFile(change), import_yaml11.default.stringify(rec));
+var writeRecord2 = (change, rec) => (0, import_node_fs23.writeFileSync)(roundsFile(change), import_yaml12.default.stringify(rec));
 function planDigest(p, change) {
   const c = (f) => (0, import_node_path28.join)(change.dir, f);
   const files = [
@@ -12418,7 +12460,7 @@ function projectYaml(name, det) {
 kind: ${det.kind} # greenfield | brownfield (aidw detect)
 `);
   if (det.kind === "greenfield") return base2;
-  const doc = import_yaml12.default.parseDocument(base2);
+  const doc = import_yaml13.default.parseDocument(base2);
   doc.setIn(["stack", "source"], "client");
   doc.setIn(["stack", "items"], doc.createNode(det.stack));
   doc.setIn(["stack", "reason"], "existing project: aidw keeps the stack it finds and does not migrate it (Q9)");
@@ -12732,8 +12774,8 @@ function hookCwd(stdin, fallback) {
 function offBranchNote(cwd, env) {
   const dir = findProject({ cwd, env });
   if (!dir || !isGitRepo(dir) || !headCommit(dir)) return null;
-  const list6 = git(dir, ["branch", "--no-merged", "HEAD", "--format=%(refname:short)", "--list", "aidw/*"]);
-  const open = list6.ok ? list6.out.split("\n").filter((b) => b && !b.includes(".")) : [];
+  const list7 = git(dir, ["branch", "--no-merged", "HEAD", "--format=%(refname:short)", "--list", "aidw/*"]);
+  const open = list7.ok ? list7.out.split("\n").filter((b) => b && !b.includes(".")) : [];
   const current = git(dir, ["branch", "--show-current"]).out;
   if (!open.length || open.includes(current)) return null;
   return `AIDW: HEAD is on ${current || "a detached commit"}, but unmerged change branch(es) ${open.join(", ")} hold newer aidw state. Before /aidw:run, /aidw:resume or /aidw:status, run \`git switch ${open[0]}\` (or merge it).`;
@@ -12828,12 +12870,12 @@ function projectStatus(p, only) {
       let tasks = null;
       if (tasksText !== null) {
         const byStatus = {};
-        const list6 = parseTasks(tasksText).tasks;
-        for (const t of list6) {
+        const list7 = parseTasks(tasksText).tasks;
+        for (const t of list7) {
           const s = String(t?.status ?? "pending");
           byStatus[s] = (byStatus[s] ?? 0) + 1;
         }
-        tasks = { total: list6.length, done: byStatus.done ?? 0, byStatus };
+        tasks = { total: list7.length, done: byStatus.done ?? 0, byStatus };
       }
       const paused = c.data.run?.paused ?? null;
       return {
@@ -13026,7 +13068,7 @@ function buildLayerBrief(p, id, layer, runs, vendorDir) {
 // src/stages.ts
 var import_node_fs26 = require("node:fs");
 var import_node_path31 = require("node:path");
-var import_yaml13 = __toESM(require_dist(), 1);
+var import_yaml14 = __toESM(require_dist(), 1);
 var overlaps = (a, b) => a.some((x) => b.includes(x));
 var conflicts = (a, b) => overlaps(a.reads, b.writes) || overlaps(b.reads, a.writes) || overlaps(a.writes, b.writes);
 var byName = (a) => a;
@@ -13073,7 +13115,7 @@ function recordedDone(change) {
   const f = stagesFile(change);
   if (!(0, import_node_fs26.existsSync)(f)) return [];
   try {
-    const data = import_yaml13.default.parse((0, import_node_fs26.readFileSync)(f, "utf8"));
+    const data = import_yaml14.default.parse((0, import_node_fs26.readFileSync)(f, "utf8"));
     return Array.isArray(data?.done) ? data.done.map(String) : [];
   } catch {
     return [];
@@ -13174,7 +13216,7 @@ function recordStageDone(p, id, stageId, pluginRoot2) {
   const open = s.writes.includes(PLAN_REVIEW) ? planReviewBlocker(p, change, w) : null;
   if (open) throw new OpError(`stage "${stageId}" is done when its verdict is recorded (\`aidw plan-review ${id}\`); it still needs ${open}`);
   const all2 = [...recordedDone(change), stageId];
-  (0, import_node_fs26.writeFileSync)(stagesFile(change), import_yaml13.default.stringify({ done: all2 }));
+  (0, import_node_fs26.writeFileSync)(stagesFile(change), import_yaml14.default.stringify({ done: all2 }));
 }
 var label = (s) => `${s.id} (${s.title})`;
 function stagesNext(v) {
@@ -13203,7 +13245,7 @@ function parseQuality(text2, file) {
   const d = new Diags();
   let data;
   try {
-    data = import_yaml14.default.parse(text2) ?? {};
+    data = import_yaml15.default.parse(text2) ?? {};
   } catch (e) {
     d.error(file, `not valid YAML: ${e.message}`);
     return { config: null, diags: d };
@@ -13471,10 +13513,10 @@ function verify(p, id, opts = {}) {
       result.tests = tests;
       if (missing.length) result.missing_reports = missing;
       if (missing.length && ok) {
-        const list6 = missing.join(", ");
+        const list7 = missing.join(", ");
         ok = false;
         result.status = "fail";
-        result.runs = [...runs, { command: `(declared report ${list6})`, ms: 0, exit: 1, timedOut: false, tail: `the command passed but wrote no JUnit report ${list6}: configure the test runner's JUnit reporter (Playwright: reporter [["list"], ["junit", { outputFile: process.env.PLAYWRIGHT_JUNIT_OUTPUT_NAME ?? "<file>" }]]; Vitest: --reporter=junit --outputFile.junit=<file>)` }];
+        result.runs = [...runs, { command: `(declared report ${list7})`, ms: 0, exit: 1, timedOut: false, tail: `the command passed but wrote no JUnit report ${list7}: configure the test runner's JUnit reporter (Playwright: reporter [["list"], ["junit", { outputFile: process.env.PLAYWRIGHT_JUNIT_OUTPUT_NAME ?? "<file>" }]]; Vitest: --reporter=junit --outputFile.junit=<file>)` }];
       }
     }
     if (ok && layer.review) {
@@ -14087,7 +14129,7 @@ function uiScenarioAdvice(p, id, tasks, d, tf) {
 // src/stackpacks.ts
 var import_node_fs30 = require("node:fs");
 var import_node_path35 = require("node:path");
-var import_yaml15 = __toESM(require_dist(), 1);
+var import_yaml16 = __toESM(require_dist(), 1);
 function frameworkPacks(root) {
   const dir = (0, import_node_path35.join)(root, "stacks");
   if (!(0, import_node_fs30.existsSync)(dir)) return [];
@@ -14097,7 +14139,7 @@ function frameworkPacks(root) {
     if (!m) continue;
     let head;
     try {
-      head = import_yaml15.default.parse(m[1]);
+      head = import_yaml16.default.parse(m[1]);
     } catch {
       continue;
     }
@@ -14251,7 +14293,7 @@ function packageEvidence(dir, base2, changed, opts = {}) {
   const added = addedPackages(dir, base2, changed);
   if (!added.length) return null;
   const minDays = minReleaseAgeDays(env);
-  const now6 = opts.now ?? Date.now();
+  const now7 = opts.now ?? Date.now();
   const ev = { checked: [], blocked: [], unproven: [] };
   let down = 0;
   for (const a of added) {
@@ -14271,7 +14313,7 @@ function packageEvidence(dir, base2, changed, opts = {}) {
       ev.blocked.push({ name: a.name, version: a.version, problem: "not-found", detail: "this version is not known to the public registry index: the name may be invented, or the version is hours old" });
       continue;
     }
-    const age = r.publishedAt ? (now6 - Date.parse(r.publishedAt)) / 864e5 : Number.POSITIVE_INFINITY;
+    const age = r.publishedAt ? (now7 - Date.parse(r.publishedAt)) / 864e5 : Number.POSITIVE_INFINITY;
     if (age < minDays) ev.blocked.push({ name: a.name, version: a.version, problem: "too-new", detail: `published ${age.toFixed(1)} days ago; the minimum is ${minDays}` });
     if (r.advisories?.length) ev.blocked.push({ name: a.name, version: a.version, problem: "vulnerable", detail: `known advisories: ${r.advisories.slice(0, 4).join(", ")}${r.advisories.length > 4 ? `, and ${r.advisories.length - 4} more` : ""}` });
   }
@@ -14291,7 +14333,7 @@ function loadTasks(p, id) {
   if (text2 === null) throw new OpError(`change "${id}" has no tasks.yaml`);
   const d = validateTasksText(text2, rel(p, file));
   if (d.errors.length) throw new OpError(`tasks.yaml of "${id}" is invalid`, d);
-  return { change, file, doc: import_yaml16.default.parseDocument(text2), tasks: parseTasks(text2).tasks };
+  return { change, file, doc: import_yaml17.default.parseDocument(text2), tasks: parseTasks(text2).tasks };
 }
 function saveTasksDoc(tf) {
   saveTasks(tf);
@@ -14330,6 +14372,12 @@ function nextAction(p, id) {
   const title = (t) => String(t.title ?? "");
   for (const t of tf.tasks) if (statusOf3(t) === "review") return { action: "review", task: t.id, title: title(t) };
   for (const t of tf.tasks) if (statusOf3(t) === "running") return { action: "implement", task: t.id, title: title(t), reason: "interrupted" };
+  for (const t of tf.tasks) {
+    if (statusOf3(t) !== "conflict") continue;
+    const c = isRecord6(t.conflict) ? t.conflict : {};
+    if (c.phase === "review") return { action: "review-merge", task: t.id, title: title(t), with: list5(c.with) };
+    return { action: "resolve", task: t.id, title: title(t), with: list5(c.with), files: list5(c.files) };
+  }
   for (const t of tf.tasks) {
     if (statusOf3(t) === "escalated") return { action: "escalate", task: t.id, reason: `task ${t.id} is escalated: ${String(t.notes ?? "needs the user")}` };
   }
@@ -14640,15 +14688,48 @@ function checkpoint(p, id, taskId, opts = {}) {
   saveTasks(tf);
   return { ...record, task: taskId, status: ok ? "review" : "failed", problems, evidence: rel(p, (0, import_node_path37.join)(tf.change.dir, evidenceRel(taskId))) };
 }
+function dropToSequential(p, tf, i, why) {
+  const t = tf.tasks[i];
+  removeWorktree(p, typeof t.worktree === "string" ? t.worktree : void 0, typeof t.branch === "string" ? t.branch : void 0);
+  for (const f of ["worktree", "branch", "base", "started_at", "conflict"]) setField(tf, i, f, null);
+  setField(tf, i, "status", "pending");
+  setField(tf, i, "attempts", 0);
+  setField(tf, i, "sequential", true);
+  setField(tf, i, "notes", `${why}; dropped, reruns sequentially on the latest code`.slice(0, 500));
+  saveTasks(tf);
+  closeConflict(tf.change, t.id, "dropped", why);
+}
+function dropConflictTask(p, id, taskId, why) {
+  const tf = loadTasks(p, id);
+  dropToSequential(p, tf, indexOf(tf, taskId), why);
+}
 function recordReview(p, id, taskId, verdict, notes, opts = {}) {
   const tf = loadTasks(p, id);
   requireExecuting(p, tf.change);
   const i = indexOf(tf, taskId);
   const t = tf.tasks[i];
-  if (statusOf3(t) !== "review") throw new OpError(`task ${taskId} is "${statusOf3(t)}"; only a checkpointed task (review) can be reviewed`);
+  const mergeReview = statusOf3(t) === "conflict" && isRecord6(t.conflict) && t.conflict.phase === "review";
+  if (statusOf3(t) !== "review" && !mergeReview) throw new OpError(`task ${taskId} is "${statusOf3(t)}"; only a checkpointed task (review) can be reviewed`);
   const ev = readEvidence2(tf.change, t);
   ev.reviews.push({ attempt: attemptsOf(t), at: now5(), verdict, notes: notes.trim() });
   writeEvidence(tf.change, ev);
+  if (mergeReview) {
+    if (verdict === "fix") {
+      const why = "the review of the merge the integration Role resolved asked for fixes";
+      dropToSequential(p, tf, i, why);
+      return { task: taskId, verdict, status: "pending", commit: null, conflict: why };
+    }
+    const wtDir = taskDir(p, t);
+    const head = git(wtDir, ["rev-parse", "HEAD"]).out;
+    const dirty = git(wtDir, ["status", "--porcelain", "--", ".", ":(exclude).aidw"]).out;
+    const resolution = String(t.conflict.resolution ?? "");
+    if (head !== resolution || dirty) {
+      const why = head !== resolution ? "the worktree moved past the reviewed merge commit" : `the worktree has changes after the reviewed merge commit (${dirty.split("\n").map((l) => l.slice(3)).join(", ")})`;
+      dropToSequential(p, tf, i, why);
+      return { task: taskId, verdict, status: "pending", commit: null, conflict: why };
+    }
+    setField(tf, i, "conflict", { ...t.conflict, phase: "merged" });
+  }
   if (verdict === "fix") {
     const exhausted = attemptsOf(t) >= maxAttemptsOf(t);
     setField(tf, i, "status", exhausted ? "escalated" : "failed");
@@ -14661,18 +14742,22 @@ function recordReview(p, id, taskId, verdict, notes, opts = {}) {
   if (inWorktree) {
     const m = mergeWorktree(p, t, msg);
     if (!m.ok) {
-      removeWorktree(p, String(t.worktree), String(t.branch ?? ""));
-      for (const f of ["worktree", "branch", "base", "started_at"]) setField(tf, i, f, null);
-      setField(tf, i, "status", "pending");
-      setField(tf, i, "attempts", 0);
-      setField(tf, i, "sequential", true);
-      setField(tf, i, "notes", `merge conflict after review (${m.conflict}); dropped, reruns sequentially on the latest code`.slice(0, 500));
+      if (isRecord6(t.conflict)) {
+        dropToSequential(p, tf, i, `merge conflict again after integration resolved it (${m.conflict})`);
+        return { task: taskId, verdict, status: "pending", commit: null, conflict: m.conflict };
+      }
+      const partners = conflictPartners(p, taskId, typeof t.base === "string" ? t.base : null, m.files);
+      setField(tf, i, "status", "conflict");
+      setField(tf, i, "conflict", { with: partners, files: m.files, at: now5(), phase: "open" });
+      setField(tf, i, "notes", `merge conflict${partners.length ? ` with ${partners.join(", ")}` : ""} in ${m.files.join(", ") || m.conflict}: the integration Role resolves it`.slice(0, 500));
       saveTasks(tf);
-      return { task: taskId, verdict, status: "pending", commit: null, conflict: m.conflict };
+      recordConflict(tf.change, { task: taskId, with: partners, files: m.files });
+      return { task: taskId, verdict, status: "conflict", commit: null, conflict: m.conflict };
     }
     setField(tf, i, "merged_at", now5());
     setField(tf, i, "worktree", null);
     setField(tf, i, "branch", null);
+    if (mergeReview) closeConflict(tf.change, taskId, "resolved");
   }
   setField(tf, i, "status", "done");
   setField(tf, i, "plan_sha", planSha(t));
@@ -14694,14 +14779,18 @@ function recordReview(p, id, taskId, verdict, notes, opts = {}) {
       setField(tf, i, "branch", t.branch);
       setField(tf, i, "merged_at", null);
     }
-    setField(tf, i, "status", "review");
+    setField(tf, i, "status", mergeReview ? "conflict" : "review");
+    if (mergeReview) {
+      setField(tf, i, "conflict", t.conflict);
+      updateConflict(tf.change, taskId, { outcome: "open" });
+    }
     setField(tf, i, "finished_at", null);
     saveTasks(tf);
     throw new OpError(`task ${taskId} passed review but the commit failed: ${commit.err || commit.out}`);
   }
   return { task: taskId, verdict, status: "done", commit: headCommit(p.project) };
 }
-var RESET_FIELDS = ["worktree", "branch", "base", "started_at", "finished_at", "merged_at", "plan_sha", "evidence", "sequential"];
+var RESET_FIELDS = ["worktree", "branch", "base", "started_at", "finished_at", "merged_at", "plan_sha", "evidence", "sequential", "conflict"];
 function resetTask(tf, i, note) {
   for (const f of RESET_FIELDS) setField(tf, i, f, null);
   setField(tf, i, "status", "pending");
@@ -16134,7 +16223,7 @@ ${bad ? `${bad} problem(s) to fix before the run` : warn ? `no blocking problem,
 var import_node_child_process11 = require("node:child_process");
 var import_node_fs39 = require("node:fs");
 var import_node_path44 = require("node:path");
-var import_yaml17 = __toESM(require_dist(), 1);
+var import_yaml18 = __toESM(require_dist(), 1);
 var MIGRATION2 = /(^|\/)(migrations?|prisma\/migrations|supabase\/migrations|db\/migrate)\//i;
 var DEP_FILES = /(^|\/)(package\.json|pnpm-lock\.yaml|package-lock\.json|yarn\.lock|requirements\.txt|pyproject\.toml|go\.mod|Cargo\.toml)$/;
 function mergeDanger(p, id, tasks, base2, head) {
@@ -16161,7 +16250,7 @@ function loadAny(p, id) {
     const dir = (0, import_node_path44.join)(p.archive, id);
     const file = (0, import_node_path44.join)(dir, "change.yaml");
     if (!(e instanceof ChangeError) || !(0, import_node_fs39.existsSync)(file)) throw e;
-    const doc = import_yaml17.default.parseDocument((0, import_node_fs39.readFileSync)(file, "utf8"));
+    const doc = import_yaml18.default.parseDocument((0, import_node_fs39.readFileSync)(file, "utf8"));
     return { id, dir, file, doc, data: doc.toJS() ?? {} };
   }
 }
@@ -16245,7 +16334,7 @@ var sleepSync = (ms) => {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 };
 var UNIT = { ms: 1, s: 1e3, sec: 1e3, second: 1e3, seconds: 1e3, m: MINUTE, min: MINUTE, minute: MINUTE, minutes: MINUTE, h: 60 * MINUTE, hour: 60 * MINUTE, hours: 60 * MINUTE };
-function waitMs(reason, attempt2, now6 = /* @__PURE__ */ new Date()) {
+function waitMs(reason, attempt2, now7 = /* @__PURE__ */ new Date()) {
   const margin = MINUTE;
   const rel2 = /(?:retry[- ]after|try again in|again in|resets? in|wait)\D{0,4}(\d+(?:\.\d+)?)\s*(ms|s|sec|seconds?|m|min|minutes?|h|hours?)\b/i.exec(reason);
   if (rel2) {
@@ -16254,7 +16343,7 @@ function waitMs(reason, attempt2, now6 = /* @__PURE__ */ new Date()) {
   }
   const epoch = /reset\w*\D{0,20}(1\d{9})\b/i.exec(reason);
   if (epoch) {
-    const ms = Number(epoch[1]) * 1e3 - now6.getTime();
+    const ms = Number(epoch[1]) * 1e3 - now7.getTime();
     if (ms > 0) return { ms: ms + margin, why: `the limit resets at ${new Date(Number(epoch[1]) * 1e3).toISOString()}` };
   }
   const clock = /resets?\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/i.exec(reason);
@@ -16265,10 +16354,10 @@ function waitMs(reason, attempt2, now6 = /* @__PURE__ */ new Date()) {
     if (ap === "pm" && h < 12) h += 12;
     if (ap === "am" && h === 12) h = 0;
     if (h < 24 && m < 60) {
-      const at = new Date(now6);
+      const at = new Date(now7);
       at.setHours(h, m, 0, 0);
-      if (at.getTime() <= now6.getTime()) at.setDate(at.getDate() + 1);
-      return { ms: at.getTime() - now6.getTime() + margin, why: `the limit resets at ${at.toLocaleTimeString()}` };
+      if (at.getTime() <= now7.getTime()) at.setDate(at.getDate() + 1);
+      return { ms: at.getTime() - now7.getTime() + margin, why: `the limit resets at ${at.toLocaleTimeString()}` };
     }
   }
   const minutes = BACKOFF_MINUTES[Math.min(attempt2, BACKOFF_MINUTES.length - 1)];
@@ -16306,13 +16395,13 @@ function runLoop(p, id, opts = {}) {
   const sleep2 = opts.sleep ?? sleepSync;
   const log = opts.log ?? (() => {
   });
-  const now6 = opts.now ?? (() => /* @__PURE__ */ new Date());
+  const now7 = opts.now ?? (() => /* @__PURE__ */ new Date());
   const env = opts.env ?? process.env;
   const logFile = (0, import_node_path45.join)(p.run, "runner.log");
   (0, import_node_fs40.mkdirSync)(p.run, { recursive: true });
   const record = (line) => {
     log(line);
-    (0, import_node_fs40.appendFileSync)(logFile, `${now6().toISOString()} ${line}
+    (0, import_node_fs40.appendFileSync)(logFile, `${now7().toISOString()} ${line}
 `);
   };
   let runs = 0;
@@ -16337,7 +16426,7 @@ function runLoop(p, id, opts = {}) {
     if (!DRIVABLE.has(state)) return result("needs_user", state, `state "${state}" needs you (approval or analysis); the runner continues only approved work`);
     if (state === "paused") {
       const reason = String(change.data.run?.paused?.reason ?? "");
-      const w = waitMs(reason, backoff++, now6());
+      const w = waitMs(reason, backoff++, now7());
       waits++;
       record(`paused (${reason || "no reason"}): waiting ${Math.round(w.ms / MINUTE)} min, ${w.why}`);
       sleep2(w.ms);
@@ -16372,7 +16461,7 @@ ${tail.replace(/^/gm, "  | ")}` : ""}`);
     }
     const after = loadChangeState(p, id);
     if (after !== "paused" && r.status !== 0 && LIMIT_TEXT.test(output)) {
-      const w = waitMs(output, backoff++, now6());
+      const w = waitMs(output, backoff++, now7());
       waits++;
       record(`limit in the output: waiting ${Math.round(w.ms / MINUTE)} min, ${w.why}`);
       sleep2(w.ms);
@@ -16470,11 +16559,287 @@ The command will be: ${command}` };
 Hint: ${hint}` : ""}` };
 }
 
+// src/conflict.ts
+var import_node_fs41 = require("node:fs");
+var import_node_path46 = require("node:path");
+var list6 = (v) => Array.isArray(v) ? v.map(String) : [];
+var now6 = () => (/* @__PURE__ */ new Date()).toISOString();
+var MARKER = /^(?:<{7}|>{7}|\|{7})(?: |$)/m;
+var TOOLING_TYPES2 = /* @__PURE__ */ new Set(["build", "ci", "chore"]);
+var ENV_FILE2 = /(^|\/)\.env(?:\.(?!example$)[\w.-]+)?$/;
+function openConflict(p, id, taskId, phase) {
+  const tf = loadTasks(p, id);
+  requireExecuting(p, tf.change);
+  const i = tf.tasks.findIndex((x) => x.id === taskId);
+  const t = tf.tasks[i];
+  if (!t) throw new OpError(`task "${taskId}" not found in ${id}/tasks.yaml`);
+  const c = t.conflict && typeof t.conflict === "object" && !Array.isArray(t.conflict) ? t.conflict : null;
+  if (t.status !== "conflict" || !c) throw new OpError(`task ${taskId} is "${String(t.status ?? "pending")}"; it has no open merge conflict`);
+  if (c.phase !== phase) {
+    throw new OpError(
+      phase === "open" ? `the conflict of ${taskId} is already resolved and waits for the review of the merge: \`aidw brief ${taskId} --for merge-review\`` : `the conflict of ${taskId} is not resolved yet: \`aidw brief ${taskId} --for conflict\`, then \`aidw resolve ${taskId}\``
+    );
+  }
+  const dir = taskDir(p, t);
+  if (dir === p.project || !(0, import_node_fs41.existsSync)(dir)) throw new OpError(`task ${taskId} has no worktree to resolve the conflict in (${String(t.worktree)})`);
+  const partners = list6(c.with).map((x) => tf.tasks.find((y) => y.id === x) ?? { id: x });
+  return { tf, i, t, c, dir, partners };
+}
+var mergeInProgress = (dir) => git(dir, ["rev-parse", "-q", "--verify", "MERGE_HEAD"]).ok;
+function taskLines(t) {
+  return [
+    `### ${t.id}: ${String(t.title ?? "")}`,
+    "",
+    `- Role: ${String(t.role ?? "?")}`,
+    `- Scenarios: ${list6(t.scenarios).length ? list6(t.scenarios).map((s) => `\`${s}\``).join(", ") : "(none: verified by its verify commands only)"}`,
+    `- Touches: ${list6(t.touches).map((g) => `\`${g}\``).join(", ") || "(none)"}`,
+    `- Verify: ${list6(t.verify).map((v) => `\`${v}\``).join(", ") || "(none)"}`,
+    ""
+  ];
+}
+function writeBrief(p, id, name, text2) {
+  const dir = (0, import_node_path46.join)(p.run, "briefs", id);
+  (0, import_node_fs41.mkdirSync)(dir, { recursive: true });
+  const path = (0, import_node_path46.join)(dir, name);
+  (0, import_node_fs41.writeFileSync)(path, text2.replace(/\n{3,}/g, "\n\n"));
+  return path;
+}
+function buildConflictBrief(p, id, taskId) {
+  let o = openConflict(p, id, taskId, "open");
+  const changeBranch = git(p.project, ["branch", "--show-current"]).out || "HEAD";
+  let onto = typeof o.c.onto === "string" ? o.c.onto : null;
+  if (!onto) {
+    const tip = git(o.dir, ["rev-parse", "HEAD"]).out;
+    if (mergeInProgress(o.dir)) {
+      onto = git(o.dir, ["rev-parse", "MERGE_HEAD"]).out;
+    } else {
+      onto = headCommit(p.project);
+      if (!onto) throw new OpError("the Change Branch has no commit to merge");
+      const m = git(o.dir, ["merge", "--no-ff", "--no-commit", "-q", onto]);
+      if (!m.ok && !mergeInProgress(o.dir)) {
+        const why = `the Change Branch could not be merged into the worktree of ${taskId} (${(m.err || m.out).split("\n")[0]})`;
+        dropConflictTask(p, id, taskId, why);
+        throw new OpError(`${why}; ${taskId} was dropped and reruns sequentially on the latest code`);
+      }
+    }
+    const unmerged = git(o.dir, ["diff", "--name-only", "--diff-filter=U"]).out.split("\n").filter(Boolean);
+    const conflictFiles = unmerged.length ? unmerged : list6(o.c.files);
+    const partners2 = conflictPartners(p, taskId, typeof o.t.base === "string" ? o.t.base : null, conflictFiles);
+    const from = onto;
+    const binary = conflictFiles.filter((f) => /^-\t-\t/.test(git(o.dir, ["diff", "--numstat", from, "HEAD", "--", f]).out));
+    setField(o.tf, o.i, "conflict", { ...o.c, with: partners2, files: conflictFiles, onto, tip, branch: changeBranch });
+    saveTasksDoc(o.tf);
+    updateConflict(o.tf.change, taskId, { with: partners2, files: conflictFiles });
+    if (binary.length) {
+      const why = `binary file in the conflict (${binary.join(", ")}): no marker shows both sides`;
+      dropConflictTask(p, id, taskId, why);
+      throw new OpError(`${why}; ${taskId} was dropped and reruns sequentially on the latest code`);
+    }
+    o = openConflict(p, id, taskId, "open");
+  }
+  const { t, c, dir, partners } = o;
+  const files = list6(c.files);
+  const branch = String(t.branch ?? "");
+  const text2 = [
+    `# Conflict brief: ${taskId} - ${String(t.title ?? "")}`,
+    "",
+    `Change \`${id}\` \xB7 a merge conflict between tasks of one Wave`,
+    "",
+    "You are the integration Role in a fresh context. You did not write either side. Two tasks ran side by side, each in its",
+    "own **Task Worktree**; both passed their checks and their reviews, but their work meets in the same files, so the second",
+    "merge into the **Change Branch** conflicts. Resolve the conflict so that **both** tasks' behaviour holds. This is not a split-Slice task: follow this brief.",
+    "",
+    "## The tasks",
+    "",
+    `- **${taskId}** is the task being merged, built on branch \`${branch}\` in the worktree below.`,
+    partners.length ? `- ${partners.map((x) => `**${x.id}**`).join(", ")} ${partners.length > 1 ? "are" : "is"} already merged into the Change Branch \`${changeBranch}\` (commit \`${onto.slice(0, 12)}\`).` : `- The other side is the Change Branch \`${changeBranch}\` (commit \`${onto.slice(0, 12)}\`): no task commit changed these files.`,
+    "",
+    ...taskLines(t),
+    ...partners.flatMap(taskLines),
+    "## Conflicting files",
+    "",
+    ...files.map((f) => `- \`${f}\``),
+    "",
+    "## Where",
+    "",
+    `aidw merged \`${changeBranch}\` (\`${onto.slice(0, 12)}\`) into \`${branch}\` in the Task Worktree \`${dir}\` and stopped at the conflicts. \`cd\` there and work only there; never edit the main checkout \`${p.project}\` nor the worktree's own \`.aidw/\`. \`git diff\` shows the conflicting hunks; \`git log --oneline ${onto.slice(0, 12)} -5\` and \`git log --oneline HEAD -5\` show each side's commits.`,
+    "",
+    "## Rules",
+    "",
+    "- Remove every conflict marker. Keep what each task added: combine both sides, do not pick one and drop the other.",
+    "- Change only what the conflict needs, in the conflicting files (and a test that must follow them). Do not redesign either task.",
+    "- Do not run `git add`, `git commit`, `git merge --abort` or any other git write: aidw commits the merge after its checks.",
+    "- Do not delete, skip or weaken a test of either task to get green.",
+    "- Run the verify commands of both tasks above in the worktree and make them pass.",
+    "",
+    "## Done when",
+    "",
+    `No conflict marker is left, both tasks' verify commands pass in the worktree, and every scenario of both still has its test. aidw then runs both tasks' checks again (\`aidw resolve ${taskId}\`) and an independent reviewer reviews the merge; if any of that fails, ${taskId}'s work is dropped and it is built again on the latest code.`,
+    "Reply in at most 5 lines: each file and how the two sides were combined. If the two tasks cannot both hold (they contradict each other), say so and leave the markers: that is a plan problem.",
+    ""
+  ].join("\n");
+  return { path: writeBrief(p, id, `${taskId}.conflict.md`, text2), text: text2 };
+}
+function resolveConflict(p, id, taskId, opts = {}) {
+  const o = openConflict(p, id, taskId, "open");
+  const { tf, t, c, dir, partners } = o;
+  const onto = typeof c.onto === "string" ? c.onto : null;
+  if (!onto) throw new OpError(`the merge of ${taskId} was not started: run \`aidw brief ${taskId} --for conflict\` and spawn the integration Role first`);
+  const files = list6(c.files);
+  const withIds = partners.map((x) => x.id);
+  const base2 = { ok: false, task: taskId, with: withIds, files, resolution: null, checks: [] };
+  const evidenceFile = (0, import_node_path46.join)(tf.change.dir, "evidence", `merge-${taskId}.json`);
+  const record = (r) => {
+    (0, import_node_fs41.mkdirSync)((0, import_node_path46.join)(tf.change.dir, "evidence"), { recursive: true });
+    (0, import_node_fs41.writeFileSync)(evidenceFile, `${JSON.stringify({ at: now6(), onto, ...r }, null, 2)}
+`);
+    return { ...r, evidence: rel(p, evidenceFile) };
+  };
+  const fail = (reason, r = base2) => {
+    const out = record({ ...r, ok: false, reason });
+    dropConflictTask(p, id, taskId, `merge conflict not resolved: ${reason}`);
+    return out;
+  };
+  if (mergeInProgress(dir)) {
+    const add = git(dir, ["add", "-A", "--", ".", ":(exclude).aidw"]);
+    if (!add.ok) return fail(`git add in the worktree failed: ${add.err}`);
+    const junk2 = stagedJunk(dir);
+    if (junk2.length) return fail(junkMessage(junk2));
+    const leaked = stagedSecrets(dir);
+    if (leaked.length) return fail(secretsMessage(leaked));
+    const left = git(dir, ["diff", "--name-only", "--diff-filter=U"]).out;
+    if (left) return fail(`files are still unmerged: ${left.split("\n").join(", ")}`);
+    const commit = git(dir, ["commit", "-q", "--no-edit"]);
+    if (!commit.ok) return fail(`the merge commit failed: ${(commit.err || commit.out).split("\n")[0]}`);
+  } else if (!git(dir, ["merge-base", "--is-ancestor", onto, "HEAD"]).ok) {
+    return fail("the merge of the Change Branch is no longer in the worktree (was it aborted?)");
+  } else {
+    const dirty = git(dir, ["status", "--porcelain", "--", ".", ":(exclude).aidw"]).out;
+    if (dirty) return fail(`the worktree has changes that are not in the merge commit: ${dirty.split("\n").map((l) => l.slice(3)).join(", ")}`);
+  }
+  const resolution = headCommit(dir);
+  if (!resolution) return fail("the worktree has no commit");
+  const taskSide = typeof c.tip === "string" && c.tip ? c.tip : git(dir, ["rev-parse", `${resolution}^1`]).out || onto;
+  const sides = [.../* @__PURE__ */ new Set([taskSide, onto])];
+  const changedBy = new Map(sides.map((side) => [side, git(dir, ["diff", "--name-only", side, resolution]).out.split("\n").filter(Boolean)]));
+  const touched = [...new Set([...changedBy.values()].flat())];
+  const marked = touched.filter((f) => {
+    const file = (0, import_node_path46.join)(dir, f);
+    if (!(0, import_node_fs41.existsSync)(file)) return false;
+    const text2 = (0, import_node_fs41.readFileSync)(file);
+    return !text2.includes(0) && MARKER.test(text2.toString("utf8"));
+  });
+  if (marked.length) return fail(`conflict markers are left in ${marked.join(", ")}`);
+  const junk = touched.filter((f) => isGeneratedPath(f) || ENV_FILE2.test(f));
+  if (junk.length) return fail(junkMessage(junk));
+  const isTooling = (x) => typeof x.type === "string" && TOOLING_TYPES2.has(x.type);
+  const ownChanges = isTooling(t) && typeof t.base === "string" ? git(dir, ["diff", "--name-only", t.base, taskSide]).out.split("\n") : [];
+  const toolingPartners = new Set(partners.filter(isTooling).map((x) => x.id));
+  const exempt = (f) => {
+    if (files.includes(f) || ownChanges.includes(f)) return true;
+    if (!toolingPartners.size) return false;
+    const log = git(dir, ["log", "--format=%B", `${taskSide}..${onto}`, "--", f]).out;
+    return [...log.matchAll(/^Task: (\S+)$/gm)].some((m) => toolingPartners.has(m[1]));
+  };
+  const guards = sides.map((side) => {
+    const changed = changedBy.get(side) ?? [];
+    const tamper = tamperEvidence(dir, side, changed, { isTest: (f) => TEST_FILE.test(f), removesTests: false });
+    const raw = configEvidence(dir, side, changed, "feat");
+    const config = raw ? { locked: raw.locked.filter((f) => !exempt(f)), watched: [...raw.watched, ...raw.locked.filter(exempt)] } : null;
+    const secrets = secretsInChanges(dir, side, changed) ?? [];
+    const packages = packageEvidence(dir, side, changed);
+    const problems = [
+      ...tamperProblems(tamper),
+      ...config?.locked.length ? [`check configuration changed: ${config.locked.join(", ")}`] : [],
+      ...secrets.length ? [secretsProblem(secrets)] : [],
+      ...packageProblems(packages)
+    ];
+    return { side, changed, problems, ...tamper ? { tamper } : {}, ...config ? { config } : {}, ...secrets.length ? { secrets } : {}, ...packages ? { packages } : {} };
+  });
+  const guarded = { ...base2, resolution, guards };
+  const problem = guards.flatMap((x) => x.problems)[0];
+  if (problem) return fail(problem, guarded);
+  const runner2 = opts.runner ?? retryingShellRunner;
+  const checks = [t, ...partners].map((x) => {
+    const found = findScenarioTests(dir, list6(x.scenarios));
+    const missing = Object.entries(found).filter(([, where]) => where.length === 0).map(([s]) => s);
+    const runs = [];
+    for (const command of list6(x.verify)) {
+      const started = Date.now();
+      const r = runner2(command, dir, opts.timeoutMs ?? 30 * 60 * 1e3);
+      runs.push({ command, ms: Date.now() - started, ...r });
+      if (r.exit !== 0) break;
+    }
+    return { task: x.id, missing_scenarios: missing, runs, ok: missing.length === 0 && runs.every((r) => r.exit === 0) };
+  });
+  const refused = checks.flatMap((x) => x.runs).find((r) => r.exit !== 0 && !r.timedOut && ENVIRONMENT_FAILURE.test(r.tail));
+  if (refused) {
+    const why = `environment: \`${refused.command}\` was refused by the machine (${ENVIRONMENT_FAILURE.exec(refused.tail)?.[0]}), not by the code`;
+    return record({ ...guarded, checks, ok: false, blocked: true, reason: why });
+  }
+  const result = { ...guarded, checks };
+  const bad = checks.find((x) => !x.ok);
+  if (bad) {
+    const failed = bad.runs.find((r) => r.exit !== 0);
+    const why = failed ? `${bad.task}: \`${failed.command}\`${failed.timedOut ? " timed out" : ` exited ${failed.exit}`} on the resolved code` : `${bad.task}: no test names scenario ${bad.missing_scenarios.join(", ")} on the resolved code`;
+    return fail(why, result);
+  }
+  const configFiles = [...new Set(guards.flatMap((x) => [...x.config?.locked ?? [], ...x.config?.watched ?? []]))];
+  setField(tf, o.i, "conflict", { ...c, phase: "review", resolution, ...configFiles.length ? { config: configFiles } : {} });
+  setField(tf, o.i, "notes", `merge conflict resolved by integration (${resolution?.slice(0, 8)}); both tasks' checks pass; the merge waits for its review`);
+  saveTasksDoc(tf);
+  return { ...record({ ...result, ok: true }) };
+}
+function buildMergeReviewBrief(p, id, taskId) {
+  const { t, c, dir, partners, tf } = openConflict(p, id, taskId, "review");
+  const onto = String(c.onto ?? "");
+  const resolution = String(c.resolution ?? "HEAD");
+  const files = list6(c.files);
+  const verdictFile2 = (0, import_node_path46.join)(p.run, `review-${taskId}.md`);
+  (0, import_node_fs41.rmSync)(verdictFile2, { force: true });
+  const text2 = [
+    `# Merge review brief: ${taskId} - ${String(t.title ?? "")}`,
+    "",
+    `Change \`${id}\` \xB7 the review of a merge conflict the integration Role resolved`,
+    "",
+    "You are an independent reviewer in a fresh context. You wrote neither task nor the resolution. You may read files and run read-only commands (tests included); you cannot edit anything.",
+    "",
+    `Two tasks of one Wave changed the same files. ${taskId} was reviewed and passed on its own; its merge into the change branch conflicted with ${partners.length ? partners.map((x) => x.id).join(", ") : "the change branch"}. The integration Role resolved it, and aidw ran the checks of both tasks again on the result: they pass. Judge only the resolution.`,
+    "",
+    "## The tasks",
+    "",
+    ...taskLines(t),
+    ...partners.flatMap(taskLines),
+    "## What to review",
+    "",
+    `- Work in the worktree \`${dir}\`; the resolution is the merge commit \`${resolution}\`.`,
+    `- \`git show --cc ${resolution}\`: the hunks where the resolution differs from both sides.`,
+    `- \`git diff ${onto.slice(0, 12)} ${resolution} -- ${files.join(" ")}\`: the conflicting files against the change branch.`,
+    `- Conflicting files: ${files.map((f) => `\`${f}\``).join(", ")}.`,
+    ...list6(c.config).length ? [`- Configuration of the checks this merge changes against one side: ${list6(c.config).map((f) => `\`${f}\``).join(", ")}. Read the diff of each: a lowered threshold, a removed rule or a narrower include that neither task made is a \`fix\`.`] : [],
+    `- Checks of both tasks on the resolved code: \`${rel(p, (0, import_node_path46.join)(tf.change.dir, "evidence", `merge-${taskId}.json`))}\`; ${taskId}'s own evidence: \`${rel(p, (0, import_node_path46.join)(tf.change.dir, evidenceRel(taskId)))}\`.`,
+    "",
+    "## Checklist",
+    "",
+    "1. Each conflicting file keeps what **both** tasks added: nothing of either side was dropped or silently rewritten.",
+    "2. The resolution changes nothing beyond what the conflict needs.",
+    "3. No test of either task was deleted, skipped or weakened, and every scenario of both still has a test that asserts its THEN outcome.",
+    "",
+    "## Verdict",
+    "",
+    "Your verdict starts with exactly one line: `VERDICT: pass` or `VERDICT: fix`.",
+    "For `fix`, follow with numbered blocking issues: file, problem. A `fix` drops the resolution and the task is built again on the latest code, so use it only for a real loss or breakage.",
+    `**Write the whole verdict to \`${verdictFile2}\` with the Write tool** (the only file you may write), then reply with just its first line.`,
+    ""
+  ].join("\n");
+  return { path: writeBrief(p, id, `${taskId}.merge-review.md`, text2), text: text2 };
+}
+
 // src/cli.ts
 function reviewLine(r, verdict, notes) {
   return `${r.task}: review ${r.verdict} -> ${r.status}${r.commit ? ` (commit ${r.commit.slice(0, 8)})` : ""}${r.warning ? `
   warning: ${r.warning}` : ""}${r.conflict ? `
-  merge conflict (${r.conflict}): the task reruns sequentially` : ""}${verdict === "pass" && !notes.trim() ? "\n  note: no reviewer reply recorded; pass it with --notes-file so its non-blocking remarks reach the handoff" : ""}
+  merge conflict (${r.conflict}): ${r.status === "conflict" ? "the integration Role resolves it" : "the task reruns sequentially"}` : ""}${verdict === "pass" && !notes.trim() ? "\n  note: no reviewer reply recorded; pass it with --notes-file so its non-blocking remarks reach the handoff" : ""}
 `;
 }
 function compactNote(cwd, env) {
@@ -16501,16 +16866,16 @@ function compactNote(cwd, env) {
 function changeTasks(p) {
   const out = [];
   for (const base2 of [p.changes, p.archive]) {
-    if (!(0, import_node_fs41.existsSync)(base2)) continue;
-    for (const d of (0, import_node_fs41.readdirSync)(base2)) {
-      const text2 = readText((0, import_node_path46.join)(base2, d, "tasks.yaml"));
+    if (!(0, import_node_fs42.existsSync)(base2)) continue;
+    for (const d of (0, import_node_fs42.readdirSync)(base2)) {
+      const text2 = readText((0, import_node_path47.join)(base2, d, "tasks.yaml"));
       if (text2 !== null) out.push(parseTasks(text2).tasks);
     }
   }
   return out;
 }
 function nextText(n) {
-  return n.action === "implement" ? `implement ${n.task} (${n.reason}): ${n.title}${n.reason === "interrupted" ? " (if an implementer you spawned for it has not reported yet, it is still running: wait for it, do not spawn another)" : ""}` : n.action === "review" ? `review ${n.task}: ${n.title}` : n.action === "triage" ? `triage ${n.task} (${n.reason}): \`aidw brief ${n.task} --for triage\`, spawn ${AGENTS.triage} with the brief, then \`aidw triage ${n.task}\`` : n.action === "escalate" ? `escalate: ${n.reason}` : n.action === "wave" ? `wave of ${n.tasks.length}: ${n.tasks.map((x) => `${x.task} (${x.title})`).join(", ")}` : n.action === "integrate" ? `integrate ${n.tasks.join(", ")}: run \`aidw integrate\` on the merged code` : `complete: all ${n.done} task(s) done`;
+  return n.action === "implement" ? `implement ${n.task} (${n.reason}): ${n.title}${n.reason === "interrupted" ? " (if an implementer you spawned for it has not reported yet, it is still running: wait for it, do not spawn another)" : ""}` : n.action === "review" ? `review ${n.task}: ${n.title}` : n.action === "resolve" ? `resolve the merge conflict of ${n.task} with ${n.with.join(", ") || "the change branch"} (${n.files.join(", ")}): \`aidw brief ${n.task} --for conflict\`, spawn aidw:integration with the brief, then \`aidw resolve ${n.task}\`` : n.action === "review-merge" ? `review the merge of ${n.task} with ${n.with.join(", ") || "the change branch"}: \`aidw brief ${n.task} --for merge-review\`, spawn ${AGENTS.taskReview} with the brief, then \`aidw verdict ${n.task}\`` : n.action === "triage" ? `triage ${n.task} (${n.reason}): \`aidw brief ${n.task} --for triage\`, spawn ${AGENTS.triage} with the brief, then \`aidw triage ${n.task}\`` : n.action === "escalate" ? `escalate: ${n.reason}` : n.action === "wave" ? `wave of ${n.tasks.length}: ${n.tasks.map((x) => `${x.task} (${x.title})`).join(", ")}` : n.action === "integrate" ? `integrate ${n.tasks.join(", ")}: run \`aidw integrate\` on the merged code` : `complete: all ${n.done} task(s) done`;
 }
 function nextLine(p, id) {
   try {
@@ -16594,6 +16959,10 @@ Execution (state executing; add --change <id> when several changes are active):
   task start <task> [--worktree]         mark a task running (counts attempts, records the base commit);
                                          --worktree: a wave task in its own git worktree
   integrate                              after a wave: verify the merged code; a failure adds a fix task
+  brief <task> --for conflict            a wave task's merge conflicted: start the merge in its worktree and brief the
+                                         integration Role with both tasks; --for merge-review briefs the reviewer of the merge
+  resolve <task>                         check the integration Role's resolution, commit it and rerun both tasks' checks;
+                                         a failure drops the task, which reruns sequentially
 
 Unattended (in your own terminal, not inside Claude Code):
   run [<id>] [--detach] [--permission-mode M] [--max-runs N] [--claude BIN] [--keep-mcp] [-- <claude args>]
@@ -16658,12 +17027,12 @@ var UsageError = class extends Error {
 function addBinToPath(env) {
   const file = env.CLAUDE_ENV_FILE;
   if (!file) return false;
-  const bin = (0, import_node_path46.join)(pluginRoot(env), "bin");
+  const bin = (0, import_node_path47.join)(pluginRoot(env), "bin");
   if (bin.includes("'")) return false;
   const line = `export PATH="$PATH":'${bin}'`;
-  const current = (0, import_node_fs41.existsSync)(file) ? (0, import_node_fs41.readFileSync)(file, "utf8") : "";
+  const current = (0, import_node_fs42.existsSync)(file) ? (0, import_node_fs42.readFileSync)(file, "utf8") : "";
   if (current.split("\n").includes(line)) return false;
-  (0, import_node_fs41.appendFileSync)(file, `${current && !current.endsWith("\n") ? "\n" : ""}${line}
+  (0, import_node_fs42.appendFileSync)(file, `${current && !current.endsWith("\n") ? "\n" : ""}${line}
 `);
   return true;
 }
@@ -16676,7 +17045,7 @@ function logHook(env, hook, input, output) {
       parsed = JSON.parse(input);
     } catch {
     }
-    (0, import_node_fs41.appendFileSync)(file, `${JSON.stringify({ at: (/* @__PURE__ */ new Date()).toISOString(), hook, input: parsed, output: output || null })}
+    (0, import_node_fs42.appendFileSync)(file, `${JSON.stringify({ at: (/* @__PURE__ */ new Date()).toISOString(), hook, input: parsed, output: output || null })}
 `);
   } catch {
   }
@@ -16803,7 +17172,7 @@ ${r2.dependents.length ? `WARNING: done task(s) ${r2.dependents.join(", ")} depe
           return 0;
         }
         const r = startTask(p, id, need(rest[1], "task id"), { worktree: args.flags.worktree === true });
-        const brief = buildBrief(p, id, r.task, "implement", (0, import_node_path46.join)(pluginRoot(env), "library", "vendor"));
+        const brief = buildBrief(p, id, r.task, "implement", (0, import_node_path47.join)(pluginRoot(env), "library", "vendor"));
         const agent = agentForTask(pluginRoot(env), r.role);
         emit(
           { ok: true, change: id, ...r, agent, brief: brief.path },
@@ -16828,8 +17197,24 @@ Then: aidw triage ${taskId}
 `);
           return 0;
         }
-        if (kind !== "implement" && kind !== "review") throw new UsageError('--for must be "implement" or "review" (or "triage" for brief)');
-        const b = buildBrief(p, id, taskId, kind, (0, import_node_path46.join)(pluginRoot(env), "library", "vendor"));
+        if (kind === "conflict" && cmd2 === "brief") {
+          const cb = buildConflictBrief(p, id, taskId);
+          emit({ change: id, task: taskId, for: kind, path: cb.path }, `${cb.path}
+SPAWN aidw:integration with: Conflict brief: ${cb.path}. Read it and resolve the conflict.
+Then: aidw resolve ${taskId}
+`);
+          return 0;
+        }
+        if (kind === "merge-review" && cmd2 === "brief") {
+          const mb = buildMergeReviewBrief(p, id, taskId);
+          emit({ change: id, task: taskId, for: kind, path: mb.path }, `${mb.path}
+SPAWN ${AGENTS.taskReview} with: Merge review brief: ${mb.path}. Review the merge and reply with the verdict.
+Then: aidw verdict ${taskId}
+`);
+          return 0;
+        }
+        if (kind !== "implement" && kind !== "review") throw new UsageError('--for must be "implement" or "review" (or "triage", "conflict", "merge-review" for brief)');
+        const b = buildBrief(p, id, taskId, kind, (0, import_node_path47.join)(pluginRoot(env), "library", "vendor"));
         if (cmd2 === "skills") {
           emit({ change: id, task: taskId, for: kind, skills: b.skills }, b.skills.map((s) => `${s.path}  # ${s.reason}
 `).join(""));
@@ -16862,7 +17247,7 @@ Then: aidw triage ${taskId}
             after = `review ${auto.task}: auto-passed (converge tests, or a layer fix its own reviewer judges again)${auto.commit ? ` (commit ${auto.commit.slice(0, 8)})` : ""}
 ${nextLine(p, id)}${sessionEnd(env, p, id)}`;
           } else {
-            reviewBrief = buildBrief(p, id, r.task, "review", (0, import_node_path46.join)(pluginRoot(env), "library", "vendor")).path;
+            reviewBrief = buildBrief(p, id, r.task, "review", (0, import_node_path47.join)(pluginRoot(env), "library", "vendor")).path;
             after = `review brief ${reviewBrief}
 SPAWN ${AGENTS.taskReview} with: ${REVIEWER_PROMPT(reviewBrief)}
 Then: aidw verdict ${r.task}
@@ -16890,7 +17275,7 @@ ${failed.tail}
           ...str(args.flags.layer) ? { layer: str(args.flags.layer) } : {},
           fresh: args.flags.fresh === true,
           ...timeout ? { timeoutMs: Number(timeout) * 1e3 } : {},
-          vendorDir: (0, import_node_path46.join)(pluginRoot(env), "library", "vendor")
+          vendorDir: (0, import_node_path47.join)(pluginRoot(env), "library", "vendor")
         });
         const lines = r.layers.map((l) => {
           const bad = l.runs.find((x) => x.exit !== 0);
@@ -16926,14 +17311,14 @@ NEXT: spawn these ${group.length} reviewers in one message, one subagent each wi
         let verdict = rest[1];
         let notesFile = str(args.flags["notes-file"]);
         if (verdict === void 0 || verdict === "auto") {
-          notesFile = notesFile ?? (0, import_node_path46.join)(p.run, `layer-review-${layer}.md`);
-          if (!(0, import_node_fs41.existsSync)(notesFile)) throw new OpError(`no verdict file at ${notesFile}: the reviewer did not write it. Spawn a fresh reviewer, or save its reply there and run this again`);
-          const parsed = parseVerdict((0, import_node_fs41.readFileSync)(notesFile, "utf8"));
+          notesFile = notesFile ?? (0, import_node_path47.join)(p.run, `layer-review-${layer}.md`);
+          if (!(0, import_node_fs42.existsSync)(notesFile)) throw new OpError(`no verdict file at ${notesFile}: the reviewer did not write it. Spawn a fresh reviewer, or save its reply there and run this again`);
+          const parsed = parseVerdict((0, import_node_fs42.readFileSync)(notesFile, "utf8"));
           if (!parsed) throw new OpError(`${notesFile} does not start with "VERDICT: pass" or "VERDICT: fix"; spawn a fresh reviewer once more`);
           verdict = parsed;
         }
         if (verdict !== "pass" && verdict !== "fix") throw new UsageError('verdict must be "pass" or "fix"');
-        const notes = notesFile ? (0, import_node_fs41.readFileSync)(notesFile, "utf8") : str(args.flags.notes) ?? "";
+        const notes = notesFile ? (0, import_node_fs42.readFileSync)(notesFile, "utf8") : str(args.flags.notes) ?? "";
         if (verdict === "fix" && !notes.trim()) throw new UsageError("a fix verdict needs --notes or --notes-file");
         const r = recordLayerReview(p, id, layer, verdict, notes);
         emit(
@@ -17104,7 +17489,7 @@ ${r.ok && r.ran ? "Previews work from now on: run aidw deploy.\n" : ""}`);
         const verdict = need(rest[1], "verdict (pass|fix)");
         if (verdict !== "pass" && verdict !== "fix") throw new UsageError('verdict must be "pass" or "fix"');
         const notesFile = str(args.flags["notes-file"]);
-        const notes = notesFile ? (0, import_node_fs41.readFileSync)(notesFile, "utf8") : str(args.flags.notes) ?? "";
+        const notes = notesFile ? (0, import_node_fs42.readFileSync)(notesFile, "utf8") : str(args.flags.notes) ?? "";
         if (verdict === "fix" && !notes.trim()) throw new UsageError("a fix verdict needs --notes or --notes-file");
         const r = recordReview(p, id, taskId, verdict, notes, { commit: args.flags["no-commit"] !== true });
         emit(
@@ -17113,13 +17498,40 @@ ${r.ok && r.ran ? "Previews work from now on: run aidw deploy.\n" : ""}`);
         );
         return 0;
       }
+      case "resolve": {
+        const p = project();
+        const id = resolveChangeId(p, str(args.flags.change));
+        const taskId = need(rest[0], "task id");
+        const r = resolveConflict(p, id, taskId);
+        const lines = r.checks.flatMap((c) => [
+          ...c.missing_scenarios.map((s) => `  MISSING ${c.task} ${s}`),
+          ...c.runs.map((x) => `  ${x.exit === 0 ? "ok     " : "FAILED "} ${c.task} ${x.command}`)
+        ]);
+        let after = nextLine(p, id);
+        if (r.blocked) after = `NEXT: the machine refused a check, not the code. Run \`aidw resolve ${taskId} --change ${id}\` once more outside the sandbox (dangerouslyDisableSandbox: true); if it is blocked again, escalate with this line.
+`;
+        if (r.ok) {
+          const mb = buildMergeReviewBrief(p, id, taskId);
+          after = `review brief ${mb.path}
+SPAWN ${AGENTS.taskReview} with: Merge review brief: ${mb.path}. Review the merge and reply with the verdict.
+Then: aidw verdict ${taskId}
+`;
+        }
+        emit(
+          { change: id, ...r },
+          `${r.ok ? "RESOLVED" : r.blocked ? "BLOCKED (environment)" : "DROPPED"} ${taskId}: ${r.ok ? `merge ${String(r.resolution).slice(0, 8)}; both tasks' checks pass` : r.blocked ? `${r.reason}; nothing dropped, the conflict stays open` : `${r.reason}; the task reruns sequentially on the latest code`}
+${lines.length ? `${lines.join("\n")}
+` : ""}${after}`
+        );
+        return r.ok ? 0 : 1;
+      }
       case "triage": {
         const p = project();
         const id = resolveChangeId(p, str(args.flags.change));
         const taskId = need(rest[0], "task id");
         const file = str(args.flags["notes-file"]) ?? triageFile(p, taskId);
-        if (!(0, import_node_fs41.existsSync)(file)) throw new OpError(`no triage answer at ${file}: the Agent did not write it. Spawn it once more with \`aidw brief ${taskId} --for triage\``);
-        const r = recordTriage(p, id, taskId, (0, import_node_fs41.readFileSync)(file, "utf8"));
+        if (!(0, import_node_fs42.existsSync)(file)) throw new OpError(`no triage answer at ${file}: the Agent did not write it. Spawn it once more with \`aidw brief ${taskId} --for triage\``);
+        const r = recordTriage(p, id, taskId, (0, import_node_fs42.readFileSync)(file, "utf8"));
         const first = r.diagnosis.split("\n").find((l) => l.trim()) ?? "";
         const line = r.outcome === "retry" ? `${r.task} triaged: the cause is the implementation. One further attempt is granted with the diagnosis in its brief: ${first}
 ` : r.cause === "environment" ? `${r.task} triaged: the cause is the environment, so it escalated. What the user must fix: ${first}
@@ -17134,9 +17546,9 @@ ${r.ok && r.ran ? "Previews work from now on: run aidw deploy.\n" : ""}`);
         const p = project();
         const id = resolveChangeId(p, str(args.flags.change));
         const taskId = need(rest[0], "task id");
-        const file = str(args.flags["notes-file"]) ?? (0, import_node_path46.join)(p.run, `review-${taskId}.md`);
-        if (!(0, import_node_fs41.existsSync)(file)) throw new OpError(`no verdict file at ${file}: the reviewer did not write it. Spawn a fresh reviewer, or save its reply there and run this again`);
-        const notes = (0, import_node_fs41.readFileSync)(file, "utf8");
+        const file = str(args.flags["notes-file"]) ?? (0, import_node_path47.join)(p.run, `review-${taskId}.md`);
+        if (!(0, import_node_fs42.existsSync)(file)) throw new OpError(`no verdict file at ${file}: the reviewer did not write it. Spawn a fresh reviewer, or save its reply there and run this again`);
+        const notes = (0, import_node_fs42.readFileSync)(file, "utf8");
         const verdict = parseVerdict(notes);
         if (!verdict) throw new OpError(`${file} does not start with "VERDICT: pass" or "VERDICT: fix"; spawn a fresh reviewer once more, and if it is still unclear record it with \`aidw review ${taskId} fix --notes-file\``);
         const r = recordReview(p, id, taskId, verdict, notes, { commit: args.flags["no-commit"] !== true });
@@ -17149,8 +17561,8 @@ ${r.ok && r.ran ? "Previews work from now on: run aidw deploy.\n" : ""}`);
       case "vendor-path": {
         const ref = need(rest[0], "<upstream>/<skill>");
         if (!/^[a-z0-9-]+\/[a-z0-9-]+$/.test(ref)) throw new UsageError(`invalid vendored skill "${ref}"`);
-        const file = skillPath((0, import_node_path46.join)(pluginRoot(env), "library", "vendor"), ref);
-        if (!(0, import_node_fs41.existsSync)(file)) throw new OpError(`skill "${ref}" not found at ${file}`);
+        const file = skillPath((0, import_node_path47.join)(pluginRoot(env), "library", "vendor"), ref);
+        if (!(0, import_node_fs42.existsSync)(file)) throw new OpError(`skill "${ref}" not found at ${file}`);
         emit({ path: file }, `${file}
 `);
         return 0;
@@ -17160,12 +17572,12 @@ ${r.ok && r.ran ? "Previews work from now on: run aidw deploy.\n" : ""}`);
         const report = need(rest[0], "LCOV report file (e.g. coverage/lcov.info)");
         const min = args.flags.min === void 0 ? 80 : Number(args.flags.min);
         if (!Number.isFinite(min) || min < 0 || min > 100) throw new UsageError("--min must be a number from 0 to 100");
-        const file = (0, import_node_path46.resolve)(p.project, report);
-        if (!(0, import_node_fs41.existsSync)(file)) throw new OpError(`no coverage report at ${report}: run the tests with an lcov reporter first`);
+        const file = (0, import_node_path47.resolve)(p.project, report);
+        if (!(0, import_node_fs42.existsSync)(file)) throw new OpError(`no coverage report at ${report}: run the tests with an lcov reporter first`);
         const open = listChangeIds(p).flatMap((id) => loadTasks(p, id).tasks.map((t) => typeof t.base === "string" ? t.base : null));
         const base2 = typeof args.flags.base === "string" ? args.flags.base : open.find((b) => b) ?? trunkBase(p.project);
         if (!base2) throw new OpError("no base commit to compare with: pass --base <ref>");
-        const c = diffCoverage(p.project, base2, (0, import_node_fs41.readFileSync)(file, "utf8"));
+        const c = diffCoverage(p.project, base2, (0, import_node_fs42.readFileSync)(file, "utf8"));
         emit(c, `${coverageReport(c, min)}
 `);
         return c.percent >= min ? 0 : 1;
@@ -17270,7 +17682,7 @@ ${d.kind === "brownfield" ? `${d.signals.map((s) => `  signal  ${s}
       case "plan": {
         const p = project();
         const id = resolveChangeId(p, rest[0]);
-        const tasks = parseTasks(readText((0, import_node_path46.join)(loadChange(p, id).dir, "tasks.yaml")) ?? "").tasks;
+        const tasks = parseTasks(readText((0, import_node_path47.join)(loadChange(p, id).dir, "tasks.yaml")) ?? "").tasks;
         const shape = planShape(tasks);
         emit({ change: id, ...shape, summary: planSummary(tasks), advice: planAdvice(tasks) }, `${planSummary(tasks)}
 ${planAdvice(tasks).map((a) => `  advice: ${a}
@@ -17333,7 +17745,7 @@ layers get it as E2E_CDP_URL and E2E_CDP_PORT; for your own shell: export E2E_CD
           const family = need(rest.slice(1).join(" ").trim() || void 0, "font family");
           const weights = str(args.flags.weights)?.split(",").map((w) => Number(w.trim()));
           if (weights?.some((w) => !Number.isInteger(w))) throw new UsageError("--weights takes numbers, for example 400,700");
-          const to = (0, import_node_path46.resolve)(cwd, str(args.flags.to) ?? (0, import_node_path46.join)(project().design, "mock", "fonts"));
+          const to = (0, import_node_path47.resolve)(cwd, str(args.flags.to) ?? (0, import_node_path47.join)(project().design, "mock", "fonts"));
           const f = fetchFont(family, { weights, italic: args.flags.italic === true, to });
           emit({ ok: true, ...f, dir: to }, `${f.family} ${f.version} (${f.license}): ${f.files.length} file(s) in ${to}${f.cached ? `, ${f.cached} from cache` : ""}
 link ${f.css} from the mock's CSS (@import url("fonts/${f.css}")) and use font-family: "${f.family}"
@@ -17341,12 +17753,12 @@ link ${f.css} from the mock's CSS (@import url("fonts/${f.css}")) and use font-f
           return 0;
         }
         if (sub === "shots") {
-          const dir = (0, import_node_path46.resolve)(cwd, need(rest[1], "mock folder"));
+          const dir = (0, import_node_path47.resolve)(cwd, need(rest[1], "mock folder"));
           const s = browserStatus(project());
           if (!s.running || !s.record) throw new OpError("mock shots need the test browser: run `aidw browser start` (outside the sandbox if it is refused)");
-          const self = typeof __filename !== "undefined" ? __filename : (0, import_node_path46.join)(pluginRoot(env), "bin", "aidw");
+          const self = typeof __filename !== "undefined" ? __filename : (0, import_node_path47.join)(pluginRoot(env), "bin", "aidw");
           const r = takeShots({ dir, cdp: s.record.url, full: args.flags.full === true }, self);
-          emit({ ok: r.errors.length === 0, dir, ...r }, `${r.written.length} screenshot(s) in ${(0, import_node_path46.join)(dir, "shots")}
+          emit({ ok: r.errors.length === 0, dir, ...r }, `${r.written.length} screenshot(s) in ${(0, import_node_path47.join)(dir, "shots")}
 ${r.errors.map((e) => `failed: ${e}
 `).join("")}`);
           return r.errors.length ? 1 : 0;
@@ -17504,7 +17916,7 @@ SPAWN aidw:${role} with: Audit brief: ${b.path}. Read it and write your answer a
             const r = all2[x.id];
             return r ? `**${x.id}**: ${[r.answer].flat().join(", ")} (${r.reason || "no reason recorded"})` : `**${x.id}**: open (${x.options.join(" | ")})`;
           });
-          const tasks = parseTasks(readText((0, import_node_path46.join)(c.dir, "tasks.yaml")) ?? "").tasks;
+          const tasks = parseTasks(readText((0, import_node_path47.join)(c.dir, "tasks.yaml")) ?? "").tasks;
           return [
             ...points.length ? [{ id: "decision-points", title: "Decision Points", body: "", points, html: "" }] : [],
             ...tasks.length ? [{ id: "plan", title: "Plan", body: planSummary(tasks), points: [], html: "" }] : [],
@@ -17528,13 +17940,13 @@ Fix the file and render again.`);
           return r.page;
         };
         const save = (name, data) => {
-          (0, import_node_fs41.mkdirSync)(pagesDir(p), { recursive: true });
-          (0, import_node_fs41.writeFileSync)(pageDataFile(p, name), typeof data === "string" ? data : (0, import_yaml18.stringify)(data));
+          (0, import_node_fs42.mkdirSync)(pagesDir(p), { recursive: true });
+          (0, import_node_fs42.writeFileSync)(pageDataFile(p, name), typeof data === "string" ? data : (0, import_yaml19.stringify)(data));
         };
         const show = (name) => {
           const page = load2(name);
           const file = pageHtmlFile(p, name);
-          (0, import_node_fs41.writeFileSync)(file, renderPage(page));
+          (0, import_node_fs42.writeFileSync)(file, renderPage(page));
           const url = (0, import_node_url.pathToFileURL)(file).href;
           emit(
             { ok: true, page: name, version: page.version, layout: page.layout, file, url },
@@ -17664,7 +18076,7 @@ ${rows2.join("\n")}${rows2.length ? "\n" : ""}${stagesNext(v)}
         const { hash, files, by } = approve(p, id, auto ? { auto: { pluginRoot: pluginRoot(env) } } : {});
         const { kept, reopened } = reconcileDoneTasks(p, id);
         const root = pluginRoot(env);
-        const route = buildRoute(id, tasksLeft(p, id), (0, import_node_path46.join)(root, "bin", "aidw"), installedOutside(root, p.project) ? void 0 : root);
+        const route = buildRoute(id, tasksLeft(p, id), (0, import_node_path47.join)(root, "bin", "aidw"), installedOutside(root, p.project) ? void 0 : root);
         emit(
           { ok: true, id, hash, files, kept, reopened, route },
           `approved ${id}${by === "user" ? "" : ` by ${by}`}
@@ -17776,7 +18188,7 @@ if (typeof require !== "undefined" && require.main === module && process.argv[2]
     err: (s) => process.stderr.write(s),
     stdin: () => {
       try {
-        return (0, import_node_fs41.readFileSync)(0, "utf8");
+        return (0, import_node_fs42.readFileSync)(0, "utf8");
       } catch {
         return "";
       }

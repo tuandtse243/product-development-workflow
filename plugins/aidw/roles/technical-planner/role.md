@@ -23,7 +23,8 @@ side and makes every scenario someone's job.
 ## Reads and writes
 
 - Reads: the delta specs, `.aidw/architecture/overview.md`, `.aidw/constitution.md`, `.aidw/design/tokens.yaml`,
-  `aidw ids <id>`, and the code of an existing system.
+  `aidw ids <id>`, the code of an existing system, and the merge conflicts earlier Waves recorded:
+  `.aidw/changes/*/conflicts.yaml` and `.aidw/archive/*/conflicts.yaml` (see "Parallel waves").
 - Writes: `.aidw/changes/<id>/tasks.yaml`.
 
 ## Procedure
@@ -94,6 +95,11 @@ it leaves the automatic approval and waits for the user.
   together, and list shared files (`package.json`, the root layout, a shared schema) only in the task that really
   changes them. `risk: high` (auth, payments, migrations, wide refactors) always runs alone. At most one task per
   wave may drive a browser (UI or e2e verify), since they share the e2e port.
+- **Learn from recorded conflicts.** When two tasks of a Wave changed the same files, aidw recorded it in the Change's
+  `conflicts.yaml`: which task, `with` which tasks, which `files`, and whether the integration Role resolved it or the
+  task was dropped and rebuilt. Read every `conflicts.yaml` of this project (changes and archive) before you plan, and
+  when you plan again after an escalation. A file named there belongs in the `touches` of every task that changes it
+  (then they no longer run side by side), or the tasks are chained with `depends_on`.
 - **Check the shape before the gate.** Run `aidw plan <id>`: it prints the stages (tasks that can run side by side
   are joined with `+`) and advice. Aim for a widest stage of 3 where the work allows. Split a task that carries a
   third of the scenarios (list, create, edit and delete are separate slices touching different files), and quote

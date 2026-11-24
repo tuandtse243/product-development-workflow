@@ -150,8 +150,21 @@ aidw next --change <id> --json
 6. Each passing checkpoint printed its review prompt. Spawn the reviewers of all passing tasks in one message,
    then `aidw verdict <T>` for each, one after the other.
    `aidw review <T> pass` merges the task's worktree into the change branch and commits it. If the merge
-   conflicts, the output says so: the task's work is dropped and it reruns sequentially later (say so to the
-   user in one line).
+   conflicts, the output says so (say so to the user in one line); record the remaining verdicts first: `resolve <T>`
+   (below) comes up in `NEXT:` after the wave's other reviews.
+
+**`resolve <T>`** (a wave task's merge conflicted with a task already merged; its work is kept):
+1. `aidw brief <T> --for conflict --change <id>`. It merges the change branch into the task's worktree and prints the
+   brief path and the `SPAWN aidw:integration` line.
+2. Spawn `aidw:integration` with the printed prompt (`Conflict brief: <path>. Read it and resolve the conflict.`) and
+   nothing else. Wait for it.
+3. `aidw resolve <T> --change <id>`: it checks the resolution, commits the merge in the worktree and runs the
+   checkpoint's guards and both tasks' checks again. `BLOCKED (environment)`: run it once more outside the sandbox, as for
+   a blocked checkpoint; nothing was dropped. `RESOLVED`: it printed the merge review brief and `SPAWN aidw:code-reviewer`; spawn it with the printed
+   prompt, then `aidw verdict <T> --change <id>` (pass merges the task). `DROPPED`: the task reruns sequentially later;
+   follow the printed `NEXT:`.
+If only `NEXT: review the merge of <T>` is left (a new session), run `aidw brief <T> --for merge-review --change <id>` and
+continue at the reviewer. A `fix` verdict on the merge drops the task too: no retry of the integration Role.
 
 **`integrate <T1>, <T2>, ...`** (a wave was merged): `aidw integrate --change <id>`. It runs the wave's verify
 commands and the `code` layer on the merged code.
