@@ -2,13 +2,15 @@
 // error-shape-probe: do the project's error responses have the one declared error shape, and do they leak nothing?
 // A backend Role tool for rule B6 (advisory). Node built-ins only.
 const HELP = `
-Usage: node error-shape-probe.mjs [dir] [--contract <openapi.yaml|.json> | --shape <a,b,c>] [--responses <file>] [--text]
+Usage: node error-shape-probe.mjs [dir] [--contract <openapi.yaml|.json> | --shape <a,b,c>] [--responses <file>]
+                                  [--base <ref>] [--text]
 
 Two probes, either or both:
 
 1. Static (when [dir] is given, or no --responses): finds where the code in [dir] builds an error response and
    compares the keys of the body literal with the declared error shape:
      res.status(404).json({...})  res.status(500).send({...})  reply.code(409).send({...})
+     res.status(404).type('...').set(...).json({...})  (header calls between status and json)
      NextResponse.json({...}, { status: 403 })  Response.json(...)  c.json({...}, 422)  new HttpException({...}, 400)
      JSONResponse(status_code=422, content={...})  HTTPException(status_code=404, detail=...)  JsonResponse({...}, status=400)
    and a success response that carries an error ("200 with an error inside"): res.json({ error }) with no status,
@@ -26,15 +28,21 @@ ApiError or HttpError: its "required" and "properties", and the response's media
 details (required type, title, status; also detail, instance, errors; media type application/problem+json), the
 default of library/skills/api-design-rules.
 
-Options:
+Options (a file path is relative to [dir], the working directory when [dir] is not given; absolute paths work):
   --contract <file>   an OpenAPI document (YAML in block style, or JSON)
   --shape <names>     comma-separated required member names; overrides --contract
   --responses <file>  captured responses to check
+  --base <ref>        the static probe looks only at lines added since <ref> (without it: the whole tree)
   --text              short text instead of JSON
   --help              this text
 
-Output (JSON): { root, shape: { source, required, properties, mediaType }, sites?: [{ file, line, status, keys,
-  missing, extra, kind }], responses?: [{ index, name, status, mediaType, missing, leaks, findings, kind }], summary }
+Output (JSON): { tool, schemaVersion: 1, root, base, shape: { source, required, properties, mediaType }, sites?: [{ file,
+  line, status, keys, missing, extra, kind }], skipped?, responses?: [{ index, name, status, mediaType, missing,
+  leaks, findings, kind }], summary }
+"skipped" lists what the static probe did not read: public/ and static/ output, *.min.* and *.bundle.*, files over
+512 KB, unreadable files. Leak markers are looked for in the body's string values: a stack frame ("    at f (...)",
+file.js:12:5, a Python traceback), SQL text, an absolute path under a system folder with a file extension or at
+least three levels.
 
 Limits: a static scan sees literal bodies and literal status codes only; an error shaped by an exception filter or a
 handler registered elsewhere (Nest's built-in NotFoundException, a FastAPI exception handler) is judged by the
@@ -45,7 +53,7 @@ Exit: 0 when the probe ran (whatever it found), 2 on a usage or read error.
 
 import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
-import { inStringOf, isPython, isTestFile, JS_EXTS, lineIndex, maskComments, matchClose, objectKeys, projectRoot, PY_EXTS, read, runCli, splitTop, UsageError, walk } from "./_common.mjs";
+import { changedSince, inStringOf, isAdded, isPython, isTestFile, JS_EXTS, lineIndex, loadSources, maskComments, matchClose, objectKeys, projectRoot, PY_EXTS, runCli, splitTop, UsageError } from "./_common.mjs";
 
 const PROBLEM = { source: "default (RFC 9457 problem details)", required: ["type", "title", "status"], properties: ["type", "title", "status", "detail", "instance", "errors"], mediaType: "application/problem+json" };
 
@@ -184,7 +192,7 @@ function staticSites(file, src, shape) {
   };
   const num = (s) => (s !== undefined && /^\d{3}$/.test(s.trim()) ? Number(s.trim()) : null);
   if (!python) {
-    for (const m of code.matchAll(/\.\s*(?:status|code)\s*\(\s*(\d{3})\s*\)\s*\.\s*(?:json|send)\s*\(/g)) if (!inString(m.index)) site(m.index, Number(m[1]), args(m.index + m[0].length - 1)?.[0]);
+    for (const m of code.matchAll(/\.\s*(?:status|code)\s*\(\s*(\d{3})\s*\)(?:\s*\.\s*(?:type|set|header|headers|setHeader|contentType|vary|append|cookie|location)\s*\((?:[^()]|\([^()]*\))*\))*\s*\.\s*(?:json|send)\s*\(/g)) if (!inString(m.index)) site(m.index, Number(m[1]), args(m.index + m[0].length - 1)?.[0]);
     for (const m of code.matchAll(/(?<![.\w$])(?:res|response|reply)\s*\.\s*(?:json|send)\s*\(\s*\{/g)) if (!inString(m.index)) {
       const a = args(code.indexOf("(", m.index));
       if (a && ERRORISH(objectKeys(a[0].slice(1, -1)).keys, a[0])) site(m.index, 200, a[0]);
@@ -224,10 +232,18 @@ function staticSites(file, src, shape) {
 // ---- Probe of captured responses.
 
 const LEAKS = [
-  ["stack trace", /\bat\s+[\w$.<>[\] ]+?\s+\(?[^\s()]+:\d+:\d+\)?|Traceback \(most recent call last\)|File "[^"]+", line \d+/],
+  ["stack trace", /^\s+at\s+\S|[\w./\\-]+\.(?:[cm]?js|tsx?|jsx|py|rb|go|java|php|cs|kt):\d+(?::\d+)?\b|Traceback \(most recent call last\)|File "[^"]+", line \d+/m],
   ["SQL text", /\bSELECT\s[\s\S]{0,300}?\bFROM\b|\bINSERT\s+INTO\b|\bUPDATE\s+\S+\s+SET\b|\bDELETE\s+FROM\b|SQLSTATE|syntax error at or near|duplicate key value violates|\bER_[A-Z_]{3,}|\bORA-\d{5}|\bSQLITE_[A-Z]+/],
-  ["absolute path", /(?:^|[\s"'(=:])(?:\/(?:Users|home|var|usr|opt|srv|app|tmp|root|etc)\/[^\s"')]+|[A-Za-z]:\\[^\s"']+)|node_modules[\\/]/],
+  ["absolute path", /(?:^|[\s"'(=:])(?:\/(?:Users|home|var|usr|opt|srv|app|tmp|root|etc|private|mnt|workspace)(?:(?:\/[^\s"')/]+){2,}|(?:\/[^\s"')/]+)*\/[^\s"')/]+\.[A-Za-z0-9]{1,6}\b)|[A-Za-z]:\\[^\s"']+)|node_modules[\\/]/],
 ];
+
+/** Every string value in a JSON value (keys left out), so a newline in a message stays a newline. */
+function stringsOf(v) {
+  if (typeof v === "string") return [v];
+  if (Array.isArray(v)) return v.flatMap(stringsOf);
+  if (v && typeof v === "object") return Object.values(v).flatMap(stringsOf);
+  return [];
+}
 
 function readResponses(file) {
   if (!existsSync(file)) throw new UsageError(`no responses file at ${file}`);
@@ -256,17 +272,22 @@ function probeResponse(shape, r, index) {
     findings.push(`media type ${mediaType ?? "(none)"}, expected ${shape.mediaType ?? "a JSON type"}`);
   }
   if (isObject && "status" in body && Number(body.status) !== status) findings.push(`body status ${body.status} differs from the response status ${status}`);
-  const text = typeof r?.body === "string" ? r.body : JSON.stringify(r?.body ?? "");
+  const text = typeof r?.body === "string" ? r.body : stringsOf(r?.body).join("\n");
   const leaks = LEAKS.filter(([, re]) => re.test(text)).map(([name]) => name);
   for (const l of leaks) findings.push(`leaks ${l}`);
   return { index, name: r?.name ?? null, status, mediaType, missing, leaks, findings, kind: findings.length ? "mismatch" : "ok" };
 }
 
 await runCli({
+  tool: "error-shape-probe",
   help: HELP,
-  options: { contract: { type: "string" }, shape: { type: "string" }, responses: { type: "string" } },
+  options: { contract: { type: "string" }, shape: { type: "string" }, responses: { type: "string" }, base: { type: "string" } },
   main(values, positionals) {
     const root = positionals.length || !values.responses ? projectRoot(positionals) : null;
+    const pathBase = positionals[0] ?? process.cwd();
+    if (values.contract) values.contract = resolve(pathBase, values.contract);
+    if (values.responses) values.responses = resolve(pathBase, values.responses);
+    const changed = root && values.base ? changedSince(root, values.base) : null;
     let shape = PROBLEM;
     if (values.shape) {
       shape = { source: "--shape", required: values.shape.split(",").map((s) => s.trim()).filter(Boolean), properties: null, mediaType: null };
@@ -279,12 +300,17 @@ await runCli({
       const rel = root && !relative(resolve(root), abs).startsWith("..") && !isAbsolute(relative(resolve(root), abs)) ? relative(resolve(root), abs) : values.contract;
       shape = shapeFromContract(doc, rel) ?? { ...PROBLEM, source: `default (RFC 9457 problem details): no error schema found in ${rel}` };
     }
-    const result = { root, shape };
+    const result = { root, base: values.base ?? null, shape };
     const summary = {};
     if (root) {
       const sites = [];
-      for (const file of walk(root, [...JS_EXTS, ...PY_EXTS])) if (!isTestFile(file)) sites.push(...staticSites(file, read(root, file), shape));
+      const { sources, skipped } = loadSources(root, [...JS_EXTS, ...PY_EXTS]);
+      for (const { file, src } of sources) {
+        if (isTestFile(file) || (changed && !changed.has(file))) continue;
+        sites.push(...staticSites(file, src, shape).filter((x) => !changed || isAdded(changed, x.file, x.line)));
+      }
       result.sites = sites.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
+      result.skipped = skipped;
       Object.assign(summary, { sites: sites.length, mismatch: sites.filter((s) => s.kind === "mismatch").length, errorIn200: sites.filter((s) => s.kind === "error-in-200").length, unknown: sites.filter((s) => s.kind === "unknown").length });
     }
     if (values.responses) {

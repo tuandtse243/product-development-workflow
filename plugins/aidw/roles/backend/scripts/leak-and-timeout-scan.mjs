@@ -13,8 +13,9 @@ Scans the code in [dir] (default: the working directory) and lists findings with
              timeout option or a .setTimeout(...) after it; Python requests.get/post/...(...) without timeout=,
              urlopen(...) without a timeout
   leak     a log call (console.*, logger.*, log.*, req.log.*, this.logger.*, logging.*) whose arguments carry
-             a risky name (password, secret, token, apiKey, authorization, cookie, session id, connection string,
-             private key, card number, cvv, ssn) or a whole object (req, request, res, ctx, user, headers, body,
+             a risky name (an identifier ending in password, secret, token, apiKey, authorization, cookie, jwt,
+             session id, connection string, database url, private key, card number, cvv, ssn: resetToken and
+             userPassword count, tokenCount does not) or a whole object (req, request, res, ctx, user, headers, body,
              req.headers, req.body, err.config, err.request, err.response). Text inside string literals is ignored,
              so 'Invalid password' in a message is not a finding.
 
@@ -27,7 +28,11 @@ Options:
   --text             one finding per line instead of JSON
   --help             this text
 
-Output (JSON): { root, base, findings: [{ file, line, kind, pattern, code }], summary: { timeout, leak } }
+Output (JSON): { tool, schemaVersion: 1, root, base, findings: [{ file, line, kind, pattern, code }], skipped,
+  summary: { timeout, leak } }
+"code" is the source line with the text of its string literals removed, so a literal secret is never echoed.
+"skipped" lists what was not read: public/ and static/ output, *.min.* and *.bundle.*, files over 512 KB,
+unreadable files.
 
 Limits: a client made elsewhere (axios.create, a got instance, a wrapper) is not followed; a logger with redaction
 or serializers (pino redact, a pino req serializer) still shows up; judge each finding.
@@ -35,9 +40,19 @@ or serializers (pino redact, a pino req serializer) still shows up; judge each f
 Exit: 0 when the scan ran (whatever it found), 2 on a usage or read error.
 `;
 
-import { inStringOf, changedSince, isAdded, isPython, isTestFile, JS_EXTS, lineIndex, maskComments, matchClose, projectRoot, PY_EXTS, read, runCli, splitTop, stripStrings, walk } from "./_common.mjs";
+import { inStringOf, changedSince, isAdded, isPython, isTestFile, JS_EXTS, lineIndex, maskComments, matchClose, loadSources, projectRoot, PY_EXTS, runCli, splitTop, stripStrings } from "./_common.mjs";
 
-const RISKY = /\b(password|passwd|pwd|secret|client_?secret|token|access_?token|refresh_?token|id_?token|api_?key|apikey|authorization|cookie|cookies|session_?id|connection_?string|database_?url|private_?key|card_?number|cvv|ssn)\b/i;
+const RISKY_LAST = new Set(["password", "passwords", "passwd", "pwd", "secret", "secrets", "token", "tokens", "apikey", "authorization", "cookie", "cookies", "jwt", "sessionid", "cvv", "ssn", "credentials"]);
+const RISKY_LAST_TWO = new Set(["api key", "session id", "connection string", "database url", "private key", "card number", "set cookie"]);
+
+/** The first identifier whose last word (camelCase or snake_case) names a secret: resetToken yes, tokenCount no. */
+function riskyName(text) {
+  for (const m of text.matchAll(/[A-Za-z_$][\w$]*/g)) {
+    const words = m[0].replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2").toLowerCase().split(/[_$\s]+/).filter(Boolean);
+    if (RISKY_LAST.has(words[words.length - 1]) || RISKY_LAST_TWO.has(words.slice(-2).join(" "))) return m[0];
+  }
+  return null;
+}
 const WHOLE = /^(?:req|request|res|response|ctx|context|user|currentUser|headers|body|(?:[\w$]+\.)+(?:headers|body|cookies)|(?:err|error|e|ex)\.(?:config|request|response)|c\.req(?:\.raw)?)$/;
 const LOG_CALL = /(?<![\w$])(console\s*\.\s*(?:log|info|warn|error|debug|trace)|(?:[\w$]+\s*\.\s*)*(?:logger|log|logging|_logger|LOGGER)\s*\.\s*(?:info|warn|warning|error|debug|trace|fatal|log|verbose|critical|exception))\s*\(/g;
 const HAS_TIMEOUT = /\b(timeout|signal|headersTimeout|bodyTimeout|AbortSignal)\b/;
@@ -69,7 +84,7 @@ function scanFile(file, src, ctx) {
   const findings = [];
   const add = (index, kind, pattern) => {
     const n = line(index);
-    findings.push({ file, line: n, kind, pattern, code: (lines[n - 1] ?? "").trim().slice(0, 160) });
+    findings.push({ file, line: n, kind, pattern, code: stripStrings((lines[n - 1] ?? "").trim(), python).slice(0, 160) });
   };
   const callAt = (m) => {
     const open = m.index + m[0].length - 1;
@@ -130,8 +145,8 @@ function scanFile(file, src, ctx) {
     if (!c || c.isDefinition) continue;
     const reasons = [];
     const stripped = stripStrings(c.text, python);
-    const risky = RISKY.exec(stripped);
-    if (risky) reasons.push(`a risky name: ${risky[1]}`);
+    const risky = riskyName(stripped);
+    if (risky) reasons.push(`a risky name: ${risky}`);
     for (const arg of splitTop(stripped, python)) {
       const values = arg.startsWith("{") && !python ? splitTop(arg.slice(1, -1)).map((e) => (/^[\w$]+\s*:/.test(e) ? e.replace(/^[\w$]+\s*:\s*/, "") : e)) : [arg];
       const whole = values.map((v) => v.trim()).find((v) => WHOLE.test(v));
@@ -143,13 +158,14 @@ function scanFile(file, src, ctx) {
 }
 
 await runCli({
+  tool: "leak-and-timeout-scan",
   help: HELP,
   options: { base: { type: "string" }, "include-tests": { type: "boolean" } },
   main(values, positionals) {
     const root = projectRoot(positionals);
     const changed = values.base ? changedSince(root, values.base) : null;
-    const files = walk(root, [...JS_EXTS, ...PY_EXTS]).filter((f) => values["include-tests"] || !isTestFile(f));
-    const sources = files.map((file) => ({ file, src: read(root, file) }));
+    const loaded = loadSources(root, [...JS_EXTS, ...PY_EXTS]);
+    const sources = loaded.sources.filter((s) => values["include-tests"] || !isTestFile(s.file));
     const ctx = { axiosDefaults: sources.some((s) => /axios\.defaults\.timeout\s*=/.test(s.src)) };
     const findings = [];
     for (const { file, src } of sources) {
@@ -161,6 +177,7 @@ await runCli({
       root,
       base: values.base ?? null,
       findings,
+      skipped: loaded.skipped,
       summary: { timeout: findings.filter((f) => f.kind === "timeout").length, leak: findings.filter((f) => f.kind === "leak").length },
     };
   },

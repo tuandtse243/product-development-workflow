@@ -10,10 +10,10 @@ import { parseArgs } from "node:util";
 export class UsageError extends Error {}
 
 /**
- * Runs a script: parses argv with `options` (node:util parseArgs), prints `help` for --help, calls `main(values,
- * positionals)` and prints its result: JSON by default, `text(result)` with --text. Exits 2 on a UsageError.
+ * Runs a script named `tool`: parses argv with `options` (node:util parseArgs), prints `help` for --help, calls `main(values,
+ * positionals)` and prints its result, headed by { tool, schemaVersion: 1 }: JSON by default, `text(result)` with --text. Exits 2 on a UsageError.
  */
-export async function runCli({ help, options, main, text }) {
+export async function runCli({ tool, help, options, main, text }) {
   try {
     let parsed;
     try {
@@ -25,7 +25,7 @@ export async function runCli({ help, options, main, text }) {
       process.stdout.write(help.trim() + "\n");
       return;
     }
-    const result = await main(parsed.values, parsed.positionals);
+    const result = { tool, schemaVersion: 1, ...(await main(parsed.values, parsed.positionals)) };
     process.stdout.write(parsed.values.text && text ? text(result) : JSON.stringify(result, null, 2) + "\n");
   } catch (e) {
     if (!(e instanceof UsageError)) process.stderr.write(`${e.stack ?? e}\n`);
@@ -43,22 +43,51 @@ export function projectRoot(positionals) {
 }
 
 const SKIP_DIRS = new Set(["node_modules", "dist", "build", "out", "coverage", "vendor", "venv", "__pycache__", "target", "site-packages"]);
+const OUTPUT_DIRS = new Set(["public", "static"]); // served or built assets: skipped and reported
+export const MAX_BYTES = 512 * 1024;
 
-/** Every file under root (relative paths with "/"), skipping dependencies, build output and hidden folders. */
+/**
+ * Every file under root (relative paths with "/"), skipping dependencies, build output and hidden folders.
+ * Returns { files, skipped }: skipped lists [{ file, reason }] for a public/ or static/ folder (as "dir/"), a
+ * minified or bundled file and a file over MAX_BYTES.
+ */
 export function walk(root, exts) {
-  const found = [];
+  const files = [];
+  const skipped = [];
   const visit = (dir) => {
     let entries;
     try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
     for (const e of entries) {
       if (e.name.startsWith(".")) continue;
       const abs = join(dir, e.name);
-      if (e.isDirectory()) { if (!SKIP_DIRS.has(e.name)) visit(abs); }
-      else if (e.isFile() && (!exts || exts.some((x) => e.name.endsWith(x)))) found.push(relative(root, abs).split(sep).join("/"));
+      const rel = relative(root, abs).split(sep).join("/");
+      if (e.isDirectory()) {
+        if (OUTPUT_DIRS.has(e.name)) skipped.push({ file: `${rel}/`, reason: "build or asset output folder" });
+        else if (!SKIP_DIRS.has(e.name)) visit(abs);
+        continue;
+      }
+      if (!e.isFile() || (exts && !exts.some((x) => e.name.endsWith(x)))) continue;
+      if (/\.(min|bundle)\.[^.]+$/.test(e.name)) { skipped.push({ file: rel, reason: "minified or bundled" }); continue; }
+      let size = 0;
+      try { size = statSync(abs).size; } catch { /* read reports it */ }
+      if (size > MAX_BYTES) { skipped.push({ file: rel, reason: `larger than ${MAX_BYTES / 1024} KB` }); continue; }
+      files.push(rel);
     }
   };
   visit(root);
-  return found.sort();
+  return { files: files.sort(), skipped };
+}
+
+/** walk + read: { sources: [{ file, src }], skipped }; a file that cannot be read is skipped with its error code. */
+export function loadSources(root, exts) {
+  const { files, skipped } = walk(root, exts);
+  const sources = [];
+  for (const file of files) {
+    try { sources.push({ file, src: readFileSync(join(root, file), "utf8") }); }
+    catch (e) { skipped.push({ file, reason: `unreadable (${e.code ?? e.message})` }); }
+  }
+  skipped.sort((a, b) => a.file.localeCompare(b.file));
+  return { sources, skipped };
 }
 
 export const JS_EXTS = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts"];
@@ -70,8 +99,6 @@ export function isTestFile(file) {
   const base = file.split("/").pop();
   return /\.(test|spec)\.[cm]?[jt]sx?$/.test(base) || /^test_.*\.py$/.test(base) || /_test\.py$/.test(base) || /(^|\/)(tests?|__tests__|e2e|spec)\//.test(file);
 }
-
-export const read = (root, file) => readFileSync(join(root, file), "utf8");
 
 /**
  * Files and added line numbers since `base` (working tree against the ref, plus untracked files, which count as
@@ -88,9 +115,11 @@ export function changedSince(root, base) {
   run(["rev-parse", "--verify", "--quiet", `${base}^{commit}`]);
   const changed = new Map();
   let file = null;
-  for (const line of run(["diff", "-U0", "--no-color", "--no-ext-diff", "--relative", base, "--"]).split("\n")) {
+  const diff = ["-c", "core.quotePath=false", "diff", "-U0", "--no-color", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/", "--relative", base, "--"];
+  for (const line of run(diff).split("\n")) {
     if (line.startsWith("+++ ")) {
-      file = line === "+++ /dev/null" ? null : line.slice(6);
+      const name = unquoteGit(line.slice(4));
+      file = name === "/dev/null" ? null : name.replace(/^b\//, "");
       if (file !== null && !changed.has(file)) changed.set(file, new Set());
       continue;
     }
@@ -101,8 +130,21 @@ export function changedSince(root, base) {
       for (let i = 0; i < count; i++) changed.get(file).add(start + i);
     }
   }
-  for (const f of run(["ls-files", "--others", "--exclude-standard"]).split("\n")) if (f) changed.set(f, "all");
+  for (const f of run(["ls-files", "-z", "--others", "--exclude-standard"]).split("\0")) if (f) changed.set(f, "all");
   return changed;
+}
+
+/** A path as git prints it: C-quoted ("a\\tb", "\\303\\251") when it holds special bytes. */
+function unquoteGit(s) {
+  if (!s.startsWith('"')) return s.replace(/\t$/, "");
+  const bytes = [];
+  for (let i = 1; i < s.length - 1; i++) {
+    if (s[i] !== "\\") { bytes.push(...Buffer.from(s[i])); continue; }
+    const n = s[++i];
+    if (/[0-7]/.test(n)) { bytes.push(parseInt(s.slice(i, i + 3), 8)); i += 2; }
+    else bytes.push({ n: 10, t: 9, r: 13, '"': 34, "\\": 92, a: 7, b: 8, f: 12, v: 11 }[n] ?? n.charCodeAt(0));
+  }
+  return Buffer.from(bytes).toString("utf8");
 }
 
 /** True when line `n` of `file` is added in `changed` (a Map from changedSince). */
@@ -169,11 +211,12 @@ export function stringEnd(src, i, python = false) {
   return src.length;
 }
 
-/** Index of the bracket that closes the one at `open` ((, [ or {), skipping strings; -1 when unbalanced. */
-export function matchClose(src, open, python = false) {
+/** Index of the bracket that closes the one at `open` ((, [ or {), skipping strings; -1 when unbalanced or further than `limit`. */
+export function matchClose(src, open, python = false, limit = 20000) {
   const pairs = { "(": ")", "[": "]", "{": "}" };
   const stack = [];
-  for (let i = open; i < src.length; i++) {
+  const stop = Math.min(src.length, open + limit);
+  for (let i = open; i < stop; i++) {
     const c = src[i];
     if (c === '"' || c === "'" || c === "`") { i = stringEnd(src, i, python) - 1; continue; }
     if (pairs[c]) stack.push(pairs[c]);

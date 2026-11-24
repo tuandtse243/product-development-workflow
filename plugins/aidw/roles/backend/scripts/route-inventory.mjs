@@ -6,8 +6,9 @@ Usage: node route-inventory.mjs [dir] [--base <ref>] [--text]
 
 Lists the HTTP routes declared in [dir] (default: the working directory): method, path, file:line, handler name
 (when it is a named function), framework, and the test files that call the path. For a route whose path takes a
-record id (a parameter), "accessCases" says which of the three B2 cases the status codes in those test files
-suggest: noIdentity (401), otherUser (403 or 404), owner (200, 201 or 204).
+record id (a parameter), "accessCases" says which of the three B2 cases the tests assert: a status assertion
+(.expect(401), toBe(404), toHaveStatus(200), status_code == 403, HTTP_401_...) within 15 lines of a call of the
+path: noIdentity (401), otherUser (403 or 404), owner (200, 201 or 204).
 
 Recognised (Node frameworks first):
   Express, Koa-router, Hono, Fastify  app.get('/x', h)  router.post('/x', mw, h)  router.route('/x').get(h).put(h2)
@@ -23,18 +24,21 @@ Options:
   --text         a table instead of JSON
   --help         this text
 
-Output (JSON): { root, base, routes: [{ method, path, file, line, handler, framework, params, tests,
-  accessCases?, added? }], summary: { routes, withoutTests, byFramework }, limits }
+Output (JSON): { tool, schemaVersion: 1, root, base, routes: [{ method, path, file, line, handler, framework, params, tests,
+  accessCases?, added? }], summary: { routes, withoutTests, byFramework }, skipped, limits }
+"skipped" lists files and folders not read: public/ and static/ output, *.min.* and *.bundle.* files, files over
+512 KB, unreadable files.
 
 Limits: paths are as written in the file; a prefix added elsewhere (app.use('/api', router), Fastify register
 prefix, Nest global prefix, Django include) is not applied, so a test is matched on the path's tail. Routes built
-from variables or loops are missed; a client call shaped like a route (two arguments, first a '/path') can be listed.
+from variables or loops are missed; a client call shaped like a route (two arguments, first a '/path', on a receiver
+not named like an HTTP client: axios, got, ky, http, client, api, apiClient, httpClient...) can be listed.
 Test files are those named *.test.*, *.spec.*, test_*.py, *_test.py or under tests/, test/, __tests__/, e2e/.
 
 Exit: 0 when the scan ran (whatever it found), 2 on a usage or read error.
 `;
 
-import { inStringOf, changedSince, isAdded, isPython, isTestFile, JS_EXTS, lineIndex, maskComments, matchClose, projectRoot, PY_EXTS, read, runCli, splitTop, table, walk } from "./_common.mjs";
+import { inStringOf, changedSince, isAdded, isPython, isTestFile, JS_EXTS, lineIndex, maskComments, matchClose, loadSources, projectRoot, PY_EXTS, runCli, splitTop, table } from "./_common.mjs";
 
 const METHODS = ["get", "post", "put", "patch", "delete", "options", "head", "all"];
 const HTTP_CLIENTS = /^(axios|got|ky|http|https|client|api|apiClient|httpClient|http_client|request|superagent|agent|instance|fetcher|\$http|wretch|this)$/i;
@@ -65,7 +69,7 @@ function jsRoutes(file, src) {
     const path = literal(call.args[0]);
     if (path === null || !/^[/*]/.test(path)) continue;
     const receiver = /([A-Za-z_$][\w$]*)\s*$/.exec(code.slice(Math.max(0, m.index - 80), m.index))?.[1] ?? "";
-    if (HTTP_CLIENTS.test(receiver) || call.args[1].startsWith("{")) continue; // an outbound client call, not a route
+    if (HTTP_CLIENTS.test(receiver)) continue; // an outbound client call, not a route
     add(m[1], path, m.index, handlerName(call.args[call.args.length - 1]), "express-style");
   }
 
@@ -192,47 +196,63 @@ function pyRoutes(file, src) {
 
 const PARAM = /^(:\w+|\{[^}]+\}|\[[^\]]+\]|<[^>]+>|\*.*)$/;
 
-/** Does the content of a test file call this route? Matched on the path's tail, or on the route file for Next.js. */
-function callsRoute(route, content) {
+/**
+ * Where a test file calls this route: character indices of the matches (the path's tail, or the static part before
+ * its first parameter followed by a quote), and for a Next.js route handler the import of its route file.
+ */
+function routeHits(route, content) {
   const segs = route.path.split("/").filter(Boolean);
   const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const param = "(?:[^/'\"`\\s?#]+|\\$\\{[^}]*\\})";
+  const param = "(?:[^/'\"`\\s?#]+|\\$\\{[^}]*\\}|\\{[^}]*\\})";
   const full = segs.map((s) => (PARAM.test(s) ? param : esc(s))).join("/");
-  if (new RegExp(`/${full}/?(?=["'\`?#)\\s]|$)`, "m").test(content)) return true;
+  const hits = [...content.matchAll(new RegExp(`/${full}/?(?=["'\`?#)\\s]|$)`, "gm"))].map((m) => m.index);
   const firstParam = segs.findIndex((s) => PARAM.test(s));
-  if (firstParam > 0 && new RegExp(`/${segs.slice(0, firstParam).map(esc).join("/")}/["'\`]`).test(content)) return true;
+  if (firstParam > 0) hits.push(...[...content.matchAll(new RegExp(`/${segs.slice(0, firstParam).map(esc).join("/")}/["'\`]`, "g"))].map((m) => m.index));
   if (route.framework === "nextjs") {
     const segsOfFile = route.file.split("/");
     const tail = segsOfFile.slice(segsOfFile.indexOf("app") + 1).join("/").replace(/\.[cm]?[jt]sx?$/, "");
-    if (content.includes(tail)) return true;
+    if (content.includes(tail)) hits.push(-1); // the test imports the handler: the whole file is its test
   }
-  return false;
+  return hits;
 }
 
-const has = (code) => new RegExp(`(?<!\\d)(?:${code})(?!\\d)`);
+const STATUS_ASSERTION = /(?:\bexpect\(\s*|\b(?:toBe|toEqual|toStrictEqual|toHaveStatus|toHaveHTTPStatus|toHaveStatusCode)\(\s*|\bstatus(?:_code|Code)?\s*(?:===?|:)\s*|\bHTTP_)(\d{3})(?!\d)/g;
+const NEAR = 15;
+
+/** The status codes asserted within NEAR lines of any hit (the whole file for a hit of -1). */
+function assertedNear(content, hits) {
+  const line = lineIndex(content);
+  const at = hits.map((h) => (h < 0 ? -1 : line(h)));
+  const codes = new Set();
+  for (const m of content.matchAll(STATUS_ASSERTION)) {
+    const n = line(m.index);
+    if (at.some((h) => h < 0 || Math.abs(h - n) <= NEAR)) codes.add(Number(m[1]));
+  }
+  return codes;
+}
 
 await runCli({
+  tool: "route-inventory",
   help: HELP,
   options: { base: { type: "string" } },
   main(values, positionals) {
     const root = projectRoot(positionals);
     const changed = values.base ? changedSince(root, values.base) : null;
-    const files = walk(root, [...JS_EXTS, ...PY_EXTS]);
-    const tests = files.filter(isTestFile).map((f) => ({ file: f, content: read(root, f) }));
+    const { sources, skipped } = loadSources(root, [...JS_EXTS, ...PY_EXTS]);
+    const tests = sources.filter((s) => isTestFile(s.file)).map((s) => ({ file: s.file, content: s.src }));
     let routes = [];
-    for (const file of files) {
+    for (const { file, src } of sources) {
       if (isTestFile(file) || (changed && !changed.has(file))) continue;
-      const src = read(root, file);
       routes.push(...(isPython(file) ? pyRoutes(file, src) : jsRoutes(file, src)));
     }
     routes.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line || a.method.localeCompare(b.method));
     routes = routes.map((r) => {
       const params = r.path.split("/").some((s) => PARAM.test(s));
-      const hits = tests.filter((t) => callsRoute(r, t.content));
-      const out = { ...r, params, tests: hits.map((t) => t.file) };
+      const hits = tests.map((t) => ({ t, at: routeHits(r, t.content) })).filter((h) => h.at.length);
+      const out = { ...r, params, tests: hits.map((h) => h.t.file) };
       if (params) {
-        const text = hits.map((t) => t.content).join("\n");
-        out.accessCases = { noIdentity: has("401").test(text), otherUser: has("403|404").test(text), owner: has("200|201|204").test(text) };
+        const codes = new Set(hits.flatMap((h) => [...assertedNear(h.t.content, h.at)]));
+        out.accessCases = { noIdentity: codes.has(401), otherUser: codes.has(403) || codes.has(404), owner: codes.has(200) || codes.has(201) || codes.has(204) };
       }
       if (changed) out.added = isAdded(changed, r.file, r.line);
       return out;
@@ -243,8 +263,9 @@ await runCli({
       root,
       base: values.base ?? null,
       routes,
+      skipped,
       summary: { routes: routes.length, withoutTests: routes.filter((r) => r.tests.length === 0).length, byFramework },
-      limits: ["static scan: prefixes added elsewhere are not applied; dynamic routes are missed", "accessCases reads status codes anywhere in the matching test files, not per test"],
+      limits: ["static scan: prefixes added elsewhere are not applied; dynamic routes are missed", "accessCases reads status assertions within 15 lines of a call of the path, not per test block"],
     };
   },
   text(result) {

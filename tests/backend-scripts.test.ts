@@ -1,4 +1,5 @@
-import { mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { chmodSync, mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { cleanTemps, gitBase, project, roleScript, runScript, write } from "./rolescripts.js";
@@ -548,5 +549,167 @@ describe("backend scripts on realistic code", () => {
     }
     const paths = runScript(S("route-inventory.mjs"), [root]).json.routes.map((x: any) => x.path).sort();
     expect(paths).toEqual(expect.arrayContaining(["/latin", "/ok"]));
+  });
+});
+
+describe("route-inventory: known misdetections", () => {
+  it("lists a Fastify route declared with an options object (fastify.get('/x', { schema }, h))", () => {
+    const root = project({ "src/f.ts": "fastify.get('/x', { schema }, handlerX);\nfastify.post('/y', { preHandler: [auth] }, async (req, reply) => {});\n" });
+    expect(runScript(S("route-inventory.mjs"), [root]).json.routes.map((x: any) => `${x.method} ${x.path}`)).toEqual(["GET /x", "POST /y"]);
+  });
+});
+
+describe("review fixes", () => {
+  const tiny = { "src/a.ts": "app.get('/a', h);\n", "q.log": "SELECT a FROM b\n" };
+  it.each([
+    ["route-inventory.mjs", (r: string) => [r], ["tool", "schemaVersion", "root", "base", "routes", "skipped", "summary", "limits"]],
+    ["env-names.mjs", (r: string) => [r], ["tool", "schemaVersion", "root", "base", "example", "configFiles", "read", "readNotListed", "listedNotRead", "readOutsideConfig", "dynamic", "skipped"]],
+    ["error-shape-probe.mjs", (r: string) => [r], ["tool", "schemaVersion", "root", "base", "shape", "sites", "skipped", "summary"]],
+    ["query-count.mjs", (r: string) => ["--log", join(r, "q.log")], ["tool", "schemaVersion", "log", "total", "sections"]],
+    ["leak-and-timeout-scan.mjs", (r: string) => [r], ["tool", "schemaVersion", "root", "base", "findings", "skipped", "summary"]],
+  ])("%s names the tool and schema version and keeps its top-level keys", (name, args, keys) => {
+    const r = runScript(S(name), args(project(tiny)));
+    expect(Object.keys(r.json)).toEqual(keys);
+    expect(r.json).toMatchObject({ tool: name.replace(/\.mjs$/, ""), schemaVersion: 1 });
+  });
+
+  it("query-count --run never empties a file that is not a query log; without --log it writes a fresh temp file", () => {
+    const mod = S("query-count.mjs");
+    const root = project({
+      "notes.txt": "keep me\n",
+      "t.mjs": `import { createCounter } from ${JSON.stringify(mod)};\ncreateCounter().tick('SELECT a FROM b');\n`,
+    });
+    const refused = runScript(S("query-count.mjs"), ["--run", "node t.mjs", "--log", "notes.txt"], root);
+    expect(refused.code).toBe(2);
+    expect(readFileSync(join(root, "notes.txt"), "utf8")).toBe("keep me\n");
+    const temp = runScript(S("query-count.mjs"), ["--run", "node t.mjs"], root);
+    expect(temp.code).toBe(0);
+    expect(temp.json.total).toBe(1);
+    expect(temp.json.log.startsWith(root)).toBe(false);
+    write(root, { "q.log": "aidw:query SELECT x FROM y\n" });
+    expect(runScript(S("query-count.mjs"), ["--run", "node t.mjs", "--log", "q.log"], root).json.total).toBe(1);
+  });
+
+  it("query-count wrapStatements counts executions of prepared statements, not preparations", () => {
+    const mod = S("query-count.mjs");
+    const root = project({
+      "t.mjs": [
+        `import { createCounter } from ${JSON.stringify(mod)};`,
+        "const db = { prepare(sql) { return { sql, run() { return 1; }, all() { return []; } }; } };",
+        "const c = createCounter({ log: '' });",
+        "const restore = c.wrapStatements(db);",
+        "const st = db.prepare('SELECT * FROM t WHERE id = ?');",
+        "db.prepare('SELECT unused FROM t');",
+        "st.all(); st.all(); st.run();",
+        "restore();",
+        "console.log(JSON.stringify({ count: c.count, restored: !Object.hasOwn(db, 'prepare') || db.prepare.toString().includes('return { sql') }));",
+      ].join("\n"),
+    });
+    expect(runScript(join(root, "t.mjs"), [], root).json).toEqual({ count: 3, restored: true });
+  });
+
+  it("query-count does not say 'does not grow' when it counted nothing", () => {
+    const root = project({ "a.log": "server started\n", "b.log": "" });
+    const r = runScript(S("query-count.mjs"), ["--one", join(root, "a.log"), "--many", join(root, "b.log")]);
+    expect(r.json).toMatchObject({ one: 0, many: 0, grows: null });
+    expect(r.json.note).toMatch(/no statements counted/);
+    const t = runScript(S("query-count.mjs"), ["--one", join(root, "a.log"), "--many", join(root, "b.log"), "--text"]);
+    expect(t.stdout).toMatch(/no statements counted/);
+    expect(t.stdout).not.toMatch(/does not grow/);
+  });
+
+  it("query-count counts only lines with SQL context, and --timeout stops a hanging command", () => {
+    const root = project({ "a.log": "UPDATE available for the package\nSelected 3 items\nUPDATE users SET a = 1\nSELECT id FROM users\nINSERT INTO t VALUES (1)\n" });
+    expect(runScript(S("query-count.mjs"), ["--log", join(root, "a.log")]).json.total).toBe(3);
+    const r = runScript(S("query-count.mjs"), ["--run", "node -e \"setTimeout(() => {}, 20000)\"", "--timeout", "1"], root);
+    expect(r.code).toBe(0);
+    expect(r.json.run.exitCode).toBeNull();
+    expect(r.json.run.signal ?? r.json.run.error).toBeTruthy();
+    expect(runScript(S("query-count.mjs"), ["--help"]).stdout).toMatch(/read-only/);
+  });
+
+  it("--base works with diff.noprefix and with non-ASCII and spaced file names", () => {
+    const root = project({ "src/café.ts": "app.get('/a', a);\n" });
+    gitBase(root);
+    spawnSync("git", ["config", "diff.noprefix", "true"], { cwd: root });
+    write(root, { "src/café.ts": "app.get('/a', a);\napp.post('/b', b);\n", "src/new é.ts": "app.put('/c', c);\n" });
+    const r = runScript(S("route-inventory.mjs"), [root, "--base", "HEAD"]);
+    expect(r.json.routes.map((x: any) => `${x.method} ${x.path} ${x.added}`).sort()).toEqual(["GET /a false", "POST /b true", "PUT /c true"]);
+  });
+
+  it("every directory scan skips large, minified and bundled files and public/static output, and reports them", () => {
+    const root = project({
+      "src/big.ts": "process.env.BIG;\nfetch(u);\napp.get('/big', h);\n" + "x".repeat(600 * 1024),
+      "src/app.min.js": "process.env.MIN;\n",
+      "src/app.bundle.js": "process.env.BUN;\n",
+      "public/x.js": "process.env.PUB;\n",
+      "static/y.js": "process.env.STA;\n",
+      "src/ok.ts": "process.env.OK;\n",
+    });
+    expect(runScript(S("env-names.mjs"), [root]).json.read.map((x: any) => x.name)).toEqual(["OK"]);
+    for (const name of ["route-inventory.mjs", "env-names.mjs", "error-shape-probe.mjs", "leak-and-timeout-scan.mjs"]) {
+      const skipped = runScript(S(name), [root]).json.skipped.map((x: any) => x.file);
+      expect(skipped, name).toEqual(expect.arrayContaining(["src/big.ts", "src/app.min.js", "src/app.bundle.js", "public/", "static/"]));
+    }
+  });
+
+  it("an unreadable file is skipped and reported, not a failed scan", () => {
+    const root = project({ "src/ok.ts": "process.env.OK;\n", "src/locked.ts": "process.env.LOCKED;\n" });
+    chmodSync(join(root, "src/locked.ts"), 0o000);
+    try {
+      for (const name of ["route-inventory.mjs", "env-names.mjs", "error-shape-probe.mjs", "leak-and-timeout-scan.mjs"]) {
+        const r = runScript(S(name), [root]);
+        expect(r.code, name).toBe(0);
+        expect(r.json.skipped.find((x: any) => x.file === "src/locked.ts")?.reason, name).toMatch(/unreadable/);
+      }
+    } finally {
+      chmodSync(join(root, "src/locked.ts"), 0o644);
+    }
+  });
+
+  it("env-names stays fast on many reads and reads process.env?.X", () => {
+    const files: Record<string, string> = { "src/opt.ts": "const a = process.env?.OPTIONAL_CHAIN;\n" };
+    for (let f = 0; f < 8; f++) files[`src/f${f}.ts`] = Array.from({ length: 20000 }, (_, i) => `process.env.V_${i % 500};`).join("\n");
+    const root = project(files);
+    const start = Date.now();
+    const r = runScript(S("env-names.mjs"), [root]);
+    expect(Date.now() - start).toBeLessThan(15000);
+    expect(r.json.read).toHaveLength(501);
+    expect(r.json.read.map((x: any) => x.name)).toContain("OPTIONAL_CHAIN");
+  });
+
+  it("route-inventory reads access-case assertions near the call of the route, not anywhere in the file", () => {
+    const root = project({
+      "src/a.ts": "router.get('/items/:id', getItem);\nrouter.get('/other/:id', getOther);\n",
+      "tests/a.test.ts": "it('item', async () => { await request(app).get('/items/' + id).expect(401); });\n" + "\n".repeat(40) + "it('other', async () => { const res = await request(app).get(`/other/${id}`); expect(res.status).toBe(404); expect(res.status).toBe(200); });\n",
+      "tests/test_x.py": "def test_x(client):\n    r = client.get(f\"/other/{oid}\")\n    assert r.status_code == 401\n",
+    });
+    const routes = runScript(S("route-inventory.mjs"), [root]).json.routes;
+    expect(routes.find((x: any) => x.path === "/items/:id").accessCases).toEqual({ noIdentity: true, otherUser: false, owner: false });
+    expect(routes.find((x: any) => x.path === "/other/:id").accessCases).toEqual({ noIdentity: true, otherUser: true, owner: true });
+  });
+
+  it("error-shape-probe: header chains, paths relative to [dir], --base, and fewer false leak markers", () => {
+    const root = project({
+      "openapi.yaml": "components:\n  schemas:\n    ApiError:\n      required: [code]\n",
+      "src/a.ts": "res.status(404).type('application/problem+json').json({ code: 'x' });\nres.status(400).set('X-A', f(1)).json({ nope: 1 });\n",
+      "r.json": JSON.stringify([{ status: 404, headers: { "content-type": "application/json" }, body: { code: "x", detail: "Try again at noon", instance: "/orders/5/items", hint: "see /tmp" } }]),
+    });
+    const r = runScript(S("error-shape-probe.mjs"), [root, "--contract", "openapi.yaml", "--responses", "r.json"]);
+    expect(r.code).toBe(0);
+    expect(r.json.shape.required).toEqual(["code"]);
+    expect(r.json.sites.map((s: any) => `${s.line}:${s.status}:${s.kind}`)).toEqual(["1:404:ok", "2:400:mismatch"]);
+    expect(r.json.responses[0].leaks).toEqual([]);
+    gitBase(root);
+    write(root, { "src/a.ts": readFileSync(join(root, "src/a.ts"), "utf8") + "res.status(500).json({ boom: 1 });\n" });
+    expect(runScript(S("error-shape-probe.mjs"), [root, "--contract", "openapi.yaml", "--base", "HEAD"]).json.sites.map((s: any) => s.line)).toEqual([3]);
+    expect(runScript(S("error-shape-probe.mjs"), ["--help"]).stdout).toMatch(/relative to \[dir\]/);
+  });
+
+  it("leak-and-timeout-scan never echoes a literal secret and catches camelCase compounds", () => {
+    const root = project({ "src/a.ts": "logger.info('key sk_live_ABC123', token);\nlogger.info({ resetToken });\nlog.debug(userPassword);\nlogger.info({ tokenCount });\n" });
+    const r = runScript(S("leak-and-timeout-scan.mjs"), [root]);
+    expect(r.json.findings.map((f: any) => f.line)).toEqual([1, 2, 3]);
+    for (const out of [r.stdout, runScript(S("leak-and-timeout-scan.mjs"), [root, "--text"]).stdout]) expect(out).not.toMatch(/sk_live/);
   });
 });

@@ -2,74 +2,97 @@
 // query-count: how many queries a request or a test runs, for 1 row and for N rows (rule B11: the count of a list
 // does not grow with the rows). A backend Role tool (advisory). A CLI and a module. Node built-ins only.
 const HELP = `
-Usage: node query-count.mjs --log <file> [--one <label> --many <label>] [--run "<test command>"] [--pattern <re>] [--text]
+Usage: node query-count.mjs --log <file> [--one <label> --many <label>] [--pattern <re>] [--text]
        node query-count.mjs --one <log of 1 row> --many <log of N rows> [--pattern <re>] [--text]
+       node query-count.mjs --run "<test command>" [--log <file>] [--timeout <s>] [--one <label> --many <label>]
 
 Counts the SQL statements in a query log and compares two measurements: "one" (the list with 1 row) and "many"
-(the same list with N rows). grows: true means the count rises with the rows (an N+1).
+(the same list with N rows). grows: true means the count rises with the rows (an N+1); grows: null means nothing
+was counted at all, which proves nothing.
 
   --log <file>      a query log; a line "-- aidw:query-count <label>" starts a labelled section (the module's
-                    mark() writes it). With --one/--many, those are section labels of this log.
-  --one, --many     without --log: two log files to count and compare; with --log: two section labels
-  --run "<cmd>"     empties --log, runs the command through the shell with AIDW_QUERY_LOG=<absolute log path> in
-                    its environment, then counts. The command's exit code is reported, never a failure here.
-  --pattern <re>    a line counts as one statement when it matches this regular expression (default: an ORM log
-                    line with SELECT, INSERT INTO, UPDATE, DELETE FROM, WITH, MERGE INTO or REPLACE INTO, or a
-                    line the module wrote)
+                    mark() writes it). With --one/--many, those are section labels of this log. A path is relative
+                    to the working directory.
+  --one, --many     without --log: two log files to count and compare; with --log or --run: two section labels
+  --run "<cmd>"     for a one-off measurement: runs the command through the shell with AIDW_QUERY_LOG=<log> in its
+                    environment, then counts the log. The log is a fresh temp file, or --log when that file is new,
+                    empty or already a log this tool wrote (it is emptied first; any other file is refused, exit 2).
+                    The command's exit code, signal or error is reported, never a failure here. --run executes
+                    code: a read-only reviewer must not use it; it reads a log the tests already wrote.
+  --timeout <s>     seconds --run may take before the command is stopped (default 600)
+  --pattern <re>    a line counts as one statement when it matches this regular expression. Default: a line with
+                    SQL context (SELECT ... FROM, INSERT INTO, UPDATE x SET, DELETE FROM, WITH x AS (, MERGE INTO,
+                    REPLACE INTO; upper case anywhere, any case at the start of the line or after "query:"; SELECT
+                    or UPDATE x whose FROM or SET starts the next line), or a line the module wrote
   --text            short text instead of JSON
   --help            this text
 
-Output (JSON): { log?, total?, sections?: [{ label, count }], one, many, difference, grows, run?: { command,
-  exitCode, output? }, note? }
+Output (JSON): { tool, schemaVersion: 1, run?: { command, exitCode, signal?, error?, output? }, log?, total?,
+  sections?: [{ label, count }], one, many, difference, grows, note? }
 
-As a module, in a Node test (import it by the path that \`aidw plugin-path roles/backend/scripts/query-count.mjs\`
-prints, or copy the measurement into the test):
+In a test, the assertion is what stays. Copy createCounter below (it is self-contained) into the
+project's test helpers rather than importing this file from the plugin, then:
 
-  import { createCounter } from "<path>/query-count.mjs";
-  const counter = createCounter();               // logs to $AIDW_QUERY_LOG when set (so --run can read it)
-  const restore = counter.wrap(pool, ["query"]); // node-postgres, mysql2, better-sqlite3 ("prepare"), any driver
+  const counter = createCounter();               // with $AIDW_QUERY_LOG set it also writes the log --run reads
+  const restore = counter.wrap(pool, ["query"]); // node-postgres, mysql2 ("query", "execute"), any driver object
+  // better-sqlite3: counter.wrapStatements(db) counts each statement's run/get/all/iterate (wrapping "prepare"
+  //   would count preparations, not executions)
   // or a listener: prisma.$on("query", counter.tick); drizzle({ logger: { logQuery: counter.tick } });
   //   knex.on("query", (q) => counter.tick(q.sql)); new Sequelize(url, { logging: counter.tick })
   await seed(1);  const one = await counter.measure(() => request(app).get("/posts"));
   await seed(20); const many = await counter.measure(() => request(app).get("/posts"));
-  expect(many.count).toBe(one.count);            // the assertion the test keeps
+  expect(many.count).toBe(one.count);
   restore();
-  // counter.mark("one") / counter.mark("many") label the log for: node query-count.mjs --log q.log --one one --many many
+  // counter.mark("one") / counter.mark("many") label the log for: --log q.log --one one --many many
 
 Other stacks: Django has assertNumQueries / CaptureQueriesContext; SQLAlchemy counts with
 event.listen(engine, "before_cursor_execute", ...) or echo=True into a log this script reads.
 
 Limits: counting a log is line-based: a statement spread over lines counts once, a subquery that starts its own
-line counts again; use --pattern for a log this does not fit. BEGIN and COMMIT are not counted.
+line counts again, a SELECT with no FROM (SELECT 1) is not counted; use --pattern for a log this does not fit.
+BEGIN and COMMIT are not counted.
 
 Exit: 0 when the count ran (whatever it found), 2 on a usage or read error.
 `;
 
 import { spawnSync } from "node:child_process";
-import { appendFileSync, existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { appendFileSync, existsSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runCli, UsageError } from "./_common.mjs";
 
 const MARK = /aidw:query-count\s+(\S.*?)\s*$/;
-const UPPER = /(?:^|[\s:)\]>])(?:SELECT|INSERT\s+INTO|UPDATE|DELETE\s+FROM|WITH|MERGE\s+INTO|REPLACE\s+INTO)\s/;
-const LOWER = /^\s*(?:query:?\s+)?(?:select|insert\s+into|update|delete\s+from|with)\s/i;
+const FORMS = String.raw`SELECT\b.*?\bFROM\b|INSERT\s+INTO\b|DELETE\s+FROM\b|MERGE\s+INTO\b|REPLACE\s+INTO\b|UPDATE\s+\S+\s+SET\b|WITH\s+\w+\s+AS\s*\(`;
+const OPEN = String.raw`SELECT\b(?!.*\bFROM\b)|UPDATE\s+\S+\s*$`; // FROM or SET on the next line
+const UPPER = new RegExp(`(?:^|[\\s:)\\]>])(?:${FORMS})`);
+const LOWER = new RegExp(`^\\s*(?:query:?\\s+)?(?:${FORMS})`, "i");
+const UPPER_OPEN = new RegExp(`(?:^|[\\s:)\\]>])(?:${OPEN})`);
+const LOWER_OPEN = new RegExp(`^\\s*(?:query:?\\s+)?(?:${OPEN})`, "i");
+const CONTINUES = /^\s*(?:FROM|SET)\b/i;
 const OWN = /^\s*aidw:query\b/;
 
 /** Counts statements in a log: { total, sections: [{ label, count }] } (label null for lines before any mark). */
 export function countLog(text, pattern) {
   const re = pattern ? new RegExp(pattern) : null;
   const sections = [{ label: null, count: 0 }];
-  for (const line of text.split(/\r?\n/)) {
+  const lines = text.split(/\r?\n/);
+  lines.forEach((line, i) => {
     const mark = MARK.exec(line);
-    if (mark) { sections.push({ label: mark[1], count: 0 }); continue; }
-    if (re ? re.test(line) : OWN.test(line) || UPPER.test(line) || LOWER.test(line)) sections[sections.length - 1].count++;
-  }
+    if (mark) { sections.push({ label: mark[1], count: 0 }); return; }
+    const statement = re
+      ? re.test(line)
+      : OWN.test(line) || UPPER.test(line) || LOWER.test(line) || ((UPPER_OPEN.test(line) || LOWER_OPEN.test(line)) && CONTINUES.test(lines[i + 1] ?? ""));
+    if (statement) sections[sections.length - 1].count++;
+  });
   return { total: sections.reduce((n, s) => n + s.count, 0), sections: sections.filter((s) => s.label !== null || s.count > 0) };
 }
 
-/** { one, many, difference, grows } of two counts. */
-export const compare = (one, many) => ({ one, many, difference: many - one, grows: many > one });
+/** { one, many, difference, grows } of two counts; grows is null (with a note) when both are 0. */
+export const compare = (one, many) =>
+  one === 0 && many === 0
+    ? { one, many, difference: 0, grows: null, note: "no statements counted: the counter or the log saw no queries" }
+    : { one, many, difference: many - one, grows: many > one };
 
 /**
  * A query counter for a test. tick() counts one query (pass it as an ORM's query listener); wrap() counts the calls
@@ -99,6 +122,19 @@ export function createCounter({ log = process.env.AIDW_QUERY_LOG } = {}) {
       }
       return () => { for (const [name, original, own] of originals) { if (own) target[name] = original; else delete target[name]; } };
     },
+    wrapStatements: (db, methods = ["run", "get", "all", "iterate"], prepare = "prepare") => {
+      const original = db[prepare];
+      const own = Object.prototype.hasOwnProperty.call(db, prepare);
+      db[prepare] = function (...args) {
+        const statement = original.apply(this, args);
+        for (const name of methods) {
+          const run = statement?.[name];
+          if (typeof run === "function") statement[name] = function (...a) { counter.tick(args[0]); return run.apply(this, a); };
+        }
+        return statement;
+      };
+      return () => { if (own) db[prepare] = original; else delete db[prepare]; };
+    },
     measure: async (fn) => {
       const start = counter.count;
       const result = await fn();
@@ -114,20 +150,32 @@ async function main() {
     return readFileSync(file, "utf8");
   };
   await runCli({
+    tool: "query-count",
     help: HELP,
-    options: { log: { type: "string" }, one: { type: "string" }, many: { type: "string" }, run: { type: "string" }, pattern: { type: "string" } },
+    options: { log: { type: "string" }, one: { type: "string" }, many: { type: "string" }, run: { type: "string" }, pattern: { type: "string" }, timeout: { type: "string" } },
     main(values, positionals) {
       if (positionals.length) throw new UsageError(`unexpected argument ${positionals[0]}. See --help.`);
       if (values.pattern) { try { new RegExp(values.pattern); } catch (e) { throw new UsageError(`--pattern: ${e.message}`); } }
       if ((values.one === undefined) !== (values.many === undefined)) throw new UsageError("--one and --many go together. See --help.");
-      if (values.run && !values.log) throw new UsageError("--run needs --log, the file the test writes. See --help.");
-      if (!values.log && values.one === undefined) throw new UsageError("give --log, or --one and --many. See --help.");
+      if (!values.run && !values.log && values.one === undefined) throw new UsageError("give --log, or --one and --many, or --run. See --help.");
+      const timeout = values.timeout === undefined ? 600 : Number(values.timeout);
+      if (!(timeout > 0)) throw new UsageError("--timeout takes a number of seconds above 0");
       const result = {};
       if (values.run) {
-        const log = resolve(values.log);
+        let log;
+        if (values.log) {
+          log = resolve(values.log);
+          if (existsSync(log)) {
+            const before = readFileSync(log, "utf8");
+            if (before.trim() !== "" && !/aidw:query/.test(before)) throw new UsageError(`refusing to empty ${values.log}: it is not a query log this tool wrote. Give a new file, or leave out --log.`);
+          }
+        } else log = join(mkdtempSync(join(tmpdir(), "aidw-query-count-")), "queries.log");
         writeFileSync(log, "");
-        const r = spawnSync(values.run, { shell: true, encoding: "utf8", env: { ...process.env, AIDW_QUERY_LOG: log }, maxBuffer: 64 * 1024 * 1024 });
+        values.log = log;
+        const r = spawnSync(values.run, { shell: true, encoding: "utf8", env: { ...process.env, AIDW_QUERY_LOG: log }, maxBuffer: 64 * 1024 * 1024, timeout: timeout * 1000, killSignal: "SIGKILL" });
         result.run = { command: values.run, exitCode: r.status };
+        if (r.signal) result.run.signal = r.signal;
+        if (r.error) result.run.error = r.error.code === "ETIMEDOUT" ? `stopped after ${timeout} s` : r.error.message;
         if (r.status !== 0) result.run.output = `${r.stdout ?? ""}${r.stderr ?? ""}`.slice(-2000);
       }
       if (values.log) {
@@ -148,7 +196,8 @@ async function main() {
       const out = [];
       if (r.run) out.push(`ran: ${r.run.command} (exit ${r.run.exitCode})`);
       if (r.sections) out.push(`${r.log}: ${r.total} statements${r.sections.length ? ` (${r.sections.map((s) => `${s.label ?? "unlabelled"} ${s.count}`).join(", ")})` : ""}`);
-      if (r.one !== undefined) out.push(`one ${r.one}, many ${r.many}, difference ${r.difference}: ${r.grows ? "GROWS with the rows" : "does not grow"}`);
+      if (r.run?.signal || r.run?.error) out.push(`the command was stopped: ${r.run.error ?? r.run.signal}`);
+      if (r.one !== undefined) out.push(`one ${r.one}, many ${r.many}, difference ${r.difference}${r.grows === null ? "" : `: ${r.grows ? "GROWS with the rows" : "does not grow"}`}`);
       if (r.note) out.push(r.note);
       return out.join("\n") + "\n";
     },

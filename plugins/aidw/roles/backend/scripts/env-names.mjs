@@ -11,7 +11,7 @@ with the names listed in .env.example. Three lists:
   readOutsideConfig  read outside the config module (B13: read once, in one validated config module)
 plus "dynamic": places that read process.env[someVariable], whose name cannot be known statically.
 
-Reads: process.env.X, process.env['X'], const { X, Y: y } = process.env, import.meta.env.X, Bun.env.X,
+Reads: process.env.X, process.env?.X, process.env['X'], const { X, Y: y } = process.env, import.meta.env.X, Bun.env.X,
 Deno.env.get('X'); os.environ['X'], os.environ.get('X'), os.getenv('X'), environ.get('X'), env('X') and env.str('X')
 (django-environ). Test files are not scanned (setting a variable in a test is not reading it in the code).
 NODE_ENV and Vite's built-ins (MODE, DEV, PROD, SSR, BASE_URL) are never flagged.
@@ -28,20 +28,26 @@ Options:
   --text            short text instead of JSON
   --help            this text
 
-Output (JSON): { root, base, example, configFiles, read: [{ name, sites: [{ file, line }] }], readNotListed:
-  [{ name, file, line }], listedNotRead: [name], readOutsideConfig: [{ name, file, line }], dynamic: [{ file, line }] }
+Output (JSON): { tool, schemaVersion: 1, root, base, example, configFiles, read: [{ name, count, sites: [{ file,
+  line }] }], readNotListed: [{ name, file, line }], listedNotRead: [name], readOutsideConfig: [{ name, file, line }],
+  dynamic: [{ file, line }], skipped }
+"read" keeps the first 10 sites of a name ("count" has them all); readOutsideConfig keeps the first read of a name
+in each file.
+"skipped" lists what was not read: public/ and static/ output, *.min.* and *.bundle.*, files over 512 KB,
+unreadable files.
 The example file is read for names only (NAME=..., export NAME=..., or a commented "# NAME=" line); .env itself is
 never opened.
 
 Limits: names built at run time are only reported as "dynamic"; settings classes (pydantic BaseSettings, a Nest
-ConfigService.get('X')) are not read as names.
+ConfigService.get('X')) are not read as names. Whether a server-only name is read in client code (B13's client
+clause) is left to the reviewer.
 
 Exit: 0 when the scan ran (whatever it found), 2 on a usage or read error.
 `;
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { inStringOf, changedSince, isAdded, isPython, isTestFile, JS_EXTS, lineIndex, maskComments, projectRoot, PY_EXTS, read, runCli, UsageError, walk } from "./_common.mjs";
+import { inStringOf, changedSince, isAdded, isPython, isTestFile, JS_EXTS, lineIndex, maskComments, loadSources, projectRoot, PY_EXTS, runCli, UsageError } from "./_common.mjs";
 
 const ALWAYS_IGNORED = ["NODE_ENV", "MODE", "DEV", "PROD", "SSR", "BASE_URL"];
 const NAME = "[A-Za-z_][A-Za-z0-9_]*";
@@ -66,8 +72,8 @@ function reads(file, src) {
         ...(/environ\.Env\s*\(/.test(code) ? [new RegExp(`\\benv(?:\\.\\w+)?\\s*\\(\\s*["'](${NAME})["']`, "g")] : []),
       ]
     : [
-        new RegExp(`\\bprocess\\.env\\.(${NAME})`, "g"),
-        new RegExp(`\\bprocess\\.env\\s*\\[\\s*["'\`](${NAME})["'\`]\\s*\\]`, "g"),
+        new RegExp(`\\bprocess\\.env(?:\\?)?\\.(${NAME})`, "g"),
+        new RegExp(`\\bprocess\\.env(?:\\?\\.)?\\s*\\[\\s*["'\`](${NAME})["'\`]\\s*\\]`, "g"),
         new RegExp(`\\bimport\\.meta\\.env\\.(${NAME})`, "g"),
         new RegExp(`\\bBun\\.env\\.(${NAME})`, "g"),
         new RegExp(`\\bDeno\\.env\\.get\\s*\\(\\s*["'\`](${NAME})["'\`]`, "g"),
@@ -80,7 +86,7 @@ function reads(file, src) {
         if (n) found.push({ name: n[1], index: m.index });
       }
     }
-    for (const m of code.matchAll(/\bprocess\.env\s*\[(?!\s*["'`])/g)) if (!inString(m.index)) dynamic.push({ index: m.index });
+    for (const m of code.matchAll(/\bprocess\.env(?:\?\.)?\s*\[(?!\s*["'`])/g)) if (!inString(m.index)) dynamic.push({ index: m.index });
   } else {
     for (const m of code.matchAll(/\b(?:os\.environ\s*\[|os\.environ\.get\s*\(|os\.getenv\s*\()(?!\s*["'])/g)) if (!inString(m.index)) dynamic.push({ index: m.index });
   }
@@ -97,9 +103,13 @@ function listedNames(text) {
   return names;
 }
 
+const MAX_SITES = 10;
+/** The first read of each name in each file (the list stays short when a file reads one name many times). */
+const firstPerFile = (list) => { const seen = new Set(); return list.filter((x) => !seen.has(`${x.name} ${x.file}`) && seen.add(`${x.name} ${x.file}`)); };
 const bySite = (a, b) => a.file.localeCompare(b.file) || a.line - b.line || a.name.localeCompare(b.name);
 
 await runCli({
+  tool: "env-names",
   help: HELP,
   options: { base: { type: "string" }, example: { type: "string" }, config: { type: "string", multiple: true }, ignore: { type: "string", multiple: true } },
   main(values, positionals) {
@@ -115,43 +125,44 @@ await runCli({
     const configSet = values.config ? new Set(values.config.map((f) => f.replace(/^\.\//, ""))) : null;
     const inConfig = (file) => (configSet ? configSet.has(file) : isConfigFile(file));
 
-    const sites = new Map(); // name -> [{ file, line }], whole tree
-    const added = []; // { name, file, line } on lines that count (all lines without --base)
-    const dynamic = [];
+    const sites = new Map(); // name -> Map("file:line" -> { file, line }), whole tree
+    const added = new Map(); // "name file:line" -> { name, file, line } on lines that count (all lines without --base)
+    const dynamic = new Map(); // "file:line" -> { file, line }
     const configFiles = new Set();
-    for (const file of walk(root, [...JS_EXTS, ...PY_EXTS])) {
+    const { sources, skipped } = loadSources(root, [...JS_EXTS, ...PY_EXTS]);
+    for (const { file, src } of sources) {
       if (isTestFile(file)) continue;
-      const src = read(root, file);
       const { found, dynamic: dyn } = reads(file, src);
       if (found.length === 0 && dyn.length === 0) continue;
       const line = lineIndex(src);
       if (inConfig(file)) configFiles.add(file);
       for (const f of found) {
         const site = { file, line: line(f.index) };
-        if (!sites.has(f.name)) sites.set(f.name, []);
-        if (!sites.get(f.name).some((s) => s.file === site.file && s.line === site.line)) sites.get(f.name).push(site);
-        if (!changed || isAdded(changed, file, site.line)) added.push({ name: f.name, ...site });
+        const key = `${file}:${site.line}`;
+        if (!sites.has(f.name)) sites.set(f.name, new Map());
+        sites.get(f.name).set(key, site);
+        if (!changed || isAdded(changed, file, site.line)) added.set(`${f.name} ${key}`, { name: f.name, ...site });
       }
       for (const d of dyn) {
         const site = { file, line: line(d.index) };
-        if ((!changed || isAdded(changed, file, site.line)) && !dynamic.some((d) => d.file === file && d.line === site.line)) dynamic.push(site);
+        if (!changed || isAdded(changed, file, site.line)) dynamic.set(`${file}:${site.line}`, site);
       }
     }
-    const unique = (list) => list.filter((x, i) => list.findIndex((y) => y.name === x.name && y.file === x.file && y.line === x.line) === i);
-    const counted = unique(added).sort(bySite).filter((x) => !ignored.has(x.name));
-    const readNotListed = [];
-    for (const x of counted) if (!listed.has(x.name) && !readNotListed.some((y) => y.name === x.name)) readNotListed.push(x);
-    readNotListed.sort((a, b) => a.name.localeCompare(b.name));
+    const counted = [...added.values()].sort(bySite).filter((x) => !ignored.has(x.name));
+    const firstRead = new Map();
+    for (const x of counted) if (!listed.has(x.name) && !firstRead.has(x.name)) firstRead.set(x.name, x);
+    const readNotListed = [...firstRead.values()].sort((a, b) => a.name.localeCompare(b.name));
     return {
       root,
       base: values.base ?? null,
       example,
       configFiles: [...configFiles].sort(),
-      read: [...sites.entries()].map(([name, s]) => ({ name, sites: s.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line) })).sort((a, b) => a.name.localeCompare(b.name)),
+      read: [...sites.entries()].map(([name, s]) => ({ name, count: s.size, sites: [...s.values()].sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line).slice(0, MAX_SITES) })).sort((a, b) => a.name.localeCompare(b.name)),
       readNotListed,
       listedNotRead: [...listed].filter((n) => !sites.has(n) && !ignored.has(n)).sort(),
-      readOutsideConfig: counted.filter((x) => !inConfig(x.file)),
-      dynamic: dynamic.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line),
+      readOutsideConfig: firstPerFile(counted.filter((x) => !inConfig(x.file))),
+      dynamic: [...dynamic.values()].sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line),
+      skipped,
     };
   },
   text(r) {
