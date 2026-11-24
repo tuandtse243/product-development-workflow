@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -135,12 +136,13 @@ describe("roleDigest stability (C6)", () => {
     expect(roleDigest(a, "backend")).toBe(roleDigest(b, "backend"));
   });
 
-  it("changes with a new case file and not with a results.json or another non-case file in evals/", () => {
+  it("changes with a new case file or any other file of the Role, and not with results.json", () => {
     const root = copy();
     const before = roleDigest(root, "backend");
     writeFileSync(join(root, "roles", "backend", "evals", "results.json"), "{}\n");
-    writeFileSync(join(root, "roles", "backend", "evals", "notes.txt"), "x\n");
     expect(roleDigest(root, "backend")).toBe(before);
+    writeFileSync(join(root, "roles", "backend", "evals", "notes.txt"), "x\n");
+    expect(roleDigest(root, "backend")).not.toBe(before); // every file of the Role counts, but the result file
     writeFileSync(join(root, "roles", "backend", "evals", "new-case.md"), "---\ncase: new-case\n---\n");
     expect(roleDigest(root, "backend")).not.toBe(before);
   });
@@ -161,6 +163,7 @@ describe("roleDigest stability (C6)", () => {
 describe("FLAKY through aidw eval (C2, C6)", () => {
   it("exits 1 and records the case as not passed with 2 of 3 runs", () => {
     const root = copy();
+    execFileSync("git", ["init", "-q"], { cwd: root }); // a source checkout: only there is the result file written
     let grade = 0;
     // runs 1 of 3 of every case fails, the others pass
     const exec: Exec = (prompt, system) => {

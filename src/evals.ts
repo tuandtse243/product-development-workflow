@@ -3,7 +3,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import YAML from "yaml";
 import { Diags } from "./diag.js";
-import { loadRole, loadRoster, loadRuleTable, roleDir } from "./roles.js";
+import { LIBRARY_SKILL, loadRole, loadRoster, loadRuleTable, roleDir, skillFile } from "./roles.js";
 
 /**
  * Per-Role evals (docs/factory-architecture.md, section 11): an active Role ships at least one case in
@@ -114,23 +114,29 @@ export interface RunRecord {
 }
 
 /**
- * One hash of what a Role is: role.md, rules.md, skills/, references/, scripts/ and the cases (evals/*.md), not the result
- * file. A result file with another digest was made from other content.
+ * One hash of what a Role is: every file under `roles/<id>/` but the result file, its generated agent file (which also
+ * carries the shared procedures it includes) and the shared library skills its index lists. Dotfiles (`.DS_Store`) are
+ * left out and text is hashed with LF line endings, so a checkout with `core.autocrlf` gives the same digest. A result
+ * file with another digest was made from other content.
  */
 export function roleDigest(root: string, id: string): string {
-  const dir = roleDir(root, id);
-  const files: string[] = [];
+  const files: string[] = []; // plugin-relative
   const walk = (rel: string) => {
-    const abs = join(dir, rel);
+    const abs = join(root, rel);
     if (!existsSync(abs)) return;
-    if (statSync(abs).isDirectory()) for (const n of readdirSync(abs).sort()) walk(`${rel}/${n}`);
-    else files.push(rel);
+    if (statSync(abs).isDirectory()) {
+      for (const n of readdirSync(abs).sort()) if (!n.startsWith(".")) walk(`${rel}/${n}`);
+    } else if (rel !== `roles/${id}/evals/results.json`) files.push(rel);
   };
-  for (const f of ["role.md", "rules.md", "skills", "references", "scripts"]) walk(f);
-  const evals = join(dir, "evals");
-  if (existsSync(evals)) for (const n of readdirSync(evals).filter((x) => x.endsWith(".md")).sort()) files.push(`evals/${n}`);
+  walk(`roles/${id}`);
+  walk(`agents/${id}.md`);
+  for (const sk of loadRole(root, id)?.skills ?? []) if (LIBRARY_SKILL.test(sk.name)) walk(skillFile(id, sk.name));
   const h = createHash("sha256");
-  for (const f of files.sort()) h.update(`${f}\0`).update(readFileSync(join(dir, f))).update("\0");
+  for (const f of [...new Set(files)].sort()) {
+    const raw = readFileSync(join(root, f));
+    const text = !raw.includes(0);
+    h.update(`${f}\0`).update(text ? raw.toString("utf8").replace(/\r\n/g, "\n") : raw).update("\0");
+  }
   return `sha256:${h.digest("hex")}`;
 }
 
@@ -160,6 +166,7 @@ function checkCoverage(root: string, id: string, cases: EvalCase[], d: Diags): v
   }
   if (rec.digest !== roleDigest(root, id)) d.warn(rf, `older than the Role's content (it changed after the run of ${rec.date}): run \`aidw eval ${id}\` again`);
   else {
+    if (!(Number(rec.runs) >= 3)) d.warn(rf, `the last run had ${String(rec.runs)} run(s) per case; a case passes level 1 only with 3 of 3: run it again without --runs`);
     const failed = Array.isArray(rec.cases) ? rec.cases.filter((c) => !c.pass).map((c) => c.name) : [];
     if (failed.length) d.warn(rf, `the last run did not pass ${failed.length} case(s): ${failed.join(", ")}`);
   }
