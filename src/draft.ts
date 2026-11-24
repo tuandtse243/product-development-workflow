@@ -15,21 +15,24 @@
  * Discarded work: a task not built on the main checkout had its uncommitted work saved under `.aidw/run/evidence/`
  * (src/run.ts), which is machine-local and never committed. The pull request is read on another machine, usually by
  * someone else, so the saved files are copied into the Change folder (`delivery/not-built/`) and committed with the
- * delivery package; they then travel with the branch and survive the archive. They hold only files git would commit
- * anyway (ignored files, `.env` among them, are never saved).
+ * delivery package; they then travel with the branch and survive the archive. What git saw as changed is not proof it
+ * is safe to publish (a `.env.local` the project does not ignore, a key pasted into a file), so the copy leaves out
+ * secrets files, dependency and build output, and text that looks like a credential, and says so.
  *
  * `/aidw:resume` finishes a draft: `aidw transition <id> executing` from `delivered` reopens it (reopenDraft).
  */
-import { cpSync, existsSync, mkdirSync, statSync } from "node:fs";
-import { basename, join } from "node:path";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { basename, dirname, join, relative, sep } from "node:path";
 import { agentRunStatus, capReason } from "./agentruns.js";
 import type { Change } from "./change.js";
-import { loadConsultations, parseRequest } from "./consult.js";
+import { loadConsultations, parseRequest, type Consultation } from "./consult.js";
 import { lastConverge } from "./converge.js";
 import { loadDeviations } from "./deviationrecord.js";
 import { carriedFindings, readRecord } from "./planreview.js";
+import { git, headCommit, isEnvFile, isGeneratedPath } from "./git.js";
 import { readText, rel, type Paths } from "./project.js";
-import { forgetLayers, lastDeploy, notBuiltLayers, parseQuality, qualityFile, readSummary } from "./quality.js";
+import { scanLine } from "./secrets.js";
+import { codeChangedAt, forgetLayers, lastDeploy, notBuiltLayers, parseQuality, qualityFile, readSummary } from "./quality.js";
 import { loadTasks, reviveNotBuilt } from "./run.js";
 import type { Task } from "./tasks.js";
 
@@ -59,7 +62,28 @@ export interface Readiness {
   why: string[];
 }
 
-/** Ready when everything passed and nothing is not built; otherwise a draft, with the reasons. */
+/**
+ * A result recorded at `head` still speaks for the code now: newer than the last finished task, and HEAD differs from it
+ * at most by bookkeeping (`.aidw/`, and the delivery's README.md, .env.example, .gitignore), such as the commits of
+ * `transition delivered` and `aidw pr --create`. Without git, only the time counts.
+ */
+function freshNow(p: Paths, r: { at: string; head: string | null } | null | undefined, tasks: Task[]): boolean {
+  if (!r) return false;
+  if (String(r.at) < codeChangedAt(tasks)) return false;
+  const head = headCommit(p.project);
+  if (head === null || r.head === head) return true;
+  if (!r.head) return false;
+  const d = git(p.project, ["diff", "--name-only", r.head, head, "--", ".", ":(exclude).aidw", ":(exclude)README.md", ":(exclude).env.example", ":(exclude).gitignore"]);
+  return d.ok && d.out === "";
+}
+
+/** Questions after the gate that needed a Deviation and none settled: what was approved may not hold there. */
+const unsettled = (change: Change) => loadConsultations(change).filter((c) => c.route === "deviation" && c.deviation !== "recorded");
+
+/**
+ * Ready when everything passed on the current code and nothing is not built; otherwise a draft, with the reasons. The
+ * same checks as the transition guards (quality and converge on the current code), not the summaries alone.
+ */
 export function prReadiness(p: Paths, change: Change, tasks: Task[]): Readiness {
   const why: string[] = [];
   const nb = tasks.filter((t) => statusOf(t) === "not_built");
@@ -71,35 +95,117 @@ export function prReadiness(p: Paths, change: Change, tasks: Task[]): Readiness 
   const summary = readSummary(change).layers;
   const notPassed = layers.filter((n) => summary[n]?.status !== "pass");
   if (notPassed.length) why.push(`quality layers not passing: ${notPassed.map((n) => `${n} (${summary[n]?.status ?? "not run"})`).join(", ")}`);
+  const stale = layers.filter((n) => summary[n]?.status === "pass" && !freshNow(p, summary[n], tasks));
+  if (stale.length) why.push(`quality layers passed on older code: ${stale.join(", ")}`);
   const conv = lastConverge(change);
   if (!conv) why.push("converge did not run");
   else if (!conv.ok) why.push("converge found gaps");
   else if (conv.not_built?.length) why.push(`scenarios not built: ${conv.not_built.length}`);
+  else if (!freshNow(p, conv, tasks)) why.push("converge passed on older code");
   const d = lastDeploy(change);
   if (!d) why.push("the deploy did not run");
   else if (!d.ok) why.push("the deploy failed");
+  const q = unsettled(change);
+  if (q.length) why.push(`questions after the gate no Deviation settled: ${q.map((c) => c.id).join(", ")}`);
   return { ready: why.length === 0, why };
+}
+
+/**
+ * Why a delivered Change is a draft that `aidw archive` keeps open, or null: its pull request (recorded) is not ready
+ * now, or, with none recorded, something is not built or the deploy failed. Readiness is computed again, never read
+ * from the record (a redelivery may have made it ready).
+ */
+export function draftReason(p: Paths, change: Change): string | null {
+  let tasks: Task[];
+  try {
+    tasks = loadTasks(p, change.id).tasks;
+  } catch {
+    return null;
+  }
+  const r = prReadiness(p, change, tasks);
+  if (r.ready) return null;
+  const recorded = !!(change.data.run as { pr?: unknown } | undefined)?.pr;
+  const d = lastDeploy(change);
+  const left = tasks.some((t) => statusOf(t) === "not_built") || notBuiltLayers(change).length > 0 || (lastConverge(change)?.not_built?.length ?? 0) > 0 || (d !== null && !d.ok) || unsettled(change).length > 0;
+  return recorded || left ? r.why.join("; ") : null;
 }
 
 /** Where the discarded work of not-built tasks is kept in the Change (committed with the delivery package). */
 export const notBuiltDir = (change: Change) => join(change.dir, "delivery", "not-built");
+const droppedFile = (change: Change, taskId: string) => join(notBuiltDir(change), `${taskId}.left-out.txt`);
+
+/** Why a saved file must not be committed with the package, or null. */
+function leaveOut(path: string, text: string | null): string | null {
+  if (isEnvFile(path)) return "a secrets file";
+  if (isGeneratedPath(path)) return "dependency or build output";
+  if (text === null) return null;
+  for (const line of text.split("\n")) {
+    const kind = scanLine(line);
+    if (kind) return `looks like a credential (${kind})`;
+  }
+  return null;
+}
+
+/** Every file under dir, dotfiles included (walkFiles skips them, and a `.env` must be seen to be left out). */
+function allFiles(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true })
+    .sort((a, b) => (a.name < b.name ? -1 : 1))
+    .flatMap((e) => (e.isDirectory() ? allFiles(join(dir, e.name)) : e.isFile() ? [join(dir, e.name)] : []));
+}
+
+const textOf = (file: string): string | null => {
+  const buf = readFileSync(file);
+  return buf.subarray(0, 8000).includes(0) ? null : buf.toString("utf8");
+};
 
 /**
  * Copies the work saved from not-built tasks (`.aidw/run/evidence/notbuilt-<T>.patch` and `notbuilt-<T>/`) into
- * `delivery/not-built/` (`<T>.patch`, `<T>/`). Returns the project-relative paths written.
+ * `delivery/not-built/` (`<T>.patch`, `<T>/`), which is committed and pushed: a secrets file, dependency or build output,
+ * and a text that looks like a credential are left out (a patch as a whole when it touches one), and
+ * `<T>.left-out.txt` says what and why. Returns the project-relative paths written.
  */
 export function keepDiscardedWork(p: Paths, change: Change, tasks: Task[]): string[] {
   const out: string[] = [];
   for (const t of tasks) {
+    const left: string[] = [];
     for (const s of notBuiltOf(t)?.saved ?? []) {
       const from = join(p.project, s.replace(/\/$/, ""));
       if (!existsSync(from)) continue;
-      const dir = statSync(from).isDirectory();
-      const to = join(notBuiltDir(change), dir ? t.id : `${t.id}${basename(from).endsWith(".patch") ? ".patch" : `-${basename(from)}`}`);
       mkdirSync(notBuiltDir(change), { recursive: true });
-      cpSync(from, to, { recursive: true });
-      out.push(`${rel(p, to)}${dir ? "/" : ""}`);
+      if (statSync(from).isDirectory()) {
+        const to = join(notBuiltDir(change), t.id);
+        rmSync(to, { recursive: true, force: true });
+        for (const f of allFiles(from)) {
+          const r = relative(from, f).split(sep).join("/");
+          const why = leaveOut(r, textOf(f));
+          if (why) {
+            left.push(`${r}: ${why}`);
+            continue;
+          }
+          mkdirSync(dirname(join(to, r)), { recursive: true });
+          copyFileSync(f, join(to, r));
+        }
+        if (existsSync(to)) out.push(`${rel(p, to)}/`);
+        continue;
+      }
+      const to = join(notBuiltDir(change), `${t.id}${basename(from).endsWith(".patch") ? ".patch" : `-${basename(from)}`}`);
+      const text = textOf(from);
+      const touched = text ? [...text.matchAll(/^diff --git a\/(\S+) b\//gm)].map((m) => m[1] as string) : [];
+      const added = text ? text.split("\n").filter((l) => l.startsWith("+") && !l.startsWith("+++")).map((l) => l.slice(1)).join("\n") : null;
+      const why = touched.map((f) => leaveOut(f, null)).find(Boolean) ?? leaveOut(basename(from), added);
+      if (why) {
+        rmSync(to, { force: true });
+        left.push(`${basename(from)} (the whole patch): ${why}`);
+        continue;
+      }
+      copyFileSync(from, to);
+      out.push(rel(p, to));
     }
+    if (left.length) {
+      mkdirSync(notBuiltDir(change), { recursive: true });
+      writeFileSync(droppedFile(change, t.id), `${left.join("\n")}\n`);
+      out.push(rel(p, droppedFile(change, t.id)));
+    } else rmSync(droppedFile(change, t.id), { force: true });
   }
   return out;
 }
@@ -108,8 +214,10 @@ export function keepDiscardedWork(p: Paths, change: Change, tasks: Task[]): stri
 function savedWork(p: Paths, change: Change, t: Task, n: NotBuilt): string | null {
   if (!n.saved?.length) return null;
   const kept = [join(notBuiltDir(change), `${t.id}.patch`), join(notBuiltDir(change), t.id)].filter((f) => existsSync(f)).map((f) => code(rel(p, f) + (statSync(f).isDirectory() ? "/" : "")));
-  if (kept.length) return `its discarded work is kept in ${kept.join(" and ")}`;
-  return `its discarded work was saved on the machine that ran the build, in ${n.saved.map(code).join(" and ")} (not committed)`;
+  const leftOut = readText(droppedFile(change, t.id));
+  const note = leftOut ? ` (left out of the commit: ${leftOut.trim().split("\n").join("; ")}; those stay only in ${n.saved.map(code).join(" and ")} on the machine that ran the build)` : "";
+  if (kept.length) return `its discarded work is kept in ${kept.join(" and ")}${note}`;
+  return `its discarded work was saved on the machine that ran the build, in ${n.saved.map(code).join(" and ")} (not committed)${leftOut ? `; left out of the commit: ${leftOut.trim().split("\n").join("; ")}` : ""}`;
 }
 
 /** The not-built tasks that depend, directly or not, on `root` and were not built because of it. */
@@ -201,19 +309,29 @@ function needed(p: Paths, change: Change, tasks: Task[]): string[] {
   const d = lastDeploy(change);
   if (!d) out.push(`- Deploy: it did not run. Run \`aidw deploy\` through ${resume}, or deploy by hand (a production deploy is always yours).`);
   else if (!d.ok) out.push(`- Deploy: ${oneLine(d.error) || "it failed"}. Fix that, then ${resume} deploys again; or deploy by hand (a production deploy is always yours).`);
-  for (const f of carriedFindings(p, change)) out.push(`- Review finding carried from the gate (${f.target}): ${oneLine(f.text)}. Graded against the package as approved.`);
-  for (const c of loadConsultations(change)) {
-    const q = () => {
-      try {
-        return oneLine(parseRequest(readText(join(change.dir, c.request)) ?? "", c.request).question);
-      } catch {
-        return "(the request could not be read)";
-      }
-    };
-    if (!c.after_gate && c.outcome === "cannot-answer") out.push(`- Question no Role could answer before the gate (${c.id}, ${c.from} asked ${c.to}): ${q()}`);
-    if (c.route === "deviation" && c.deviation !== "recorded") out.push(`- Question left open after the gate (${c.id}, ${c.from} asked ${c.to}; no Deviation settled it): ${q()}`);
-  }
+  for (const c of unsettled(change)) out.push(`- Question left open after the gate (${c.id}, ${c.from} asked ${c.to}; no Deviation settled it): ${question(change, c)}`);
   return out;
+}
+
+function question(change: Change, c: Consultation): string {
+  try {
+    return oneLine(parseRequest(readText(join(change.dir, c.request)) ?? "", c.request).question);
+  } catch {
+    return "(the request could not be read)";
+  }
+}
+
+/**
+ * What the user approved knowingly at the gate: the plan-review findings carried to it and the questions no Role could
+ * answer before it. Listed after the three sections, not as something needed: they do not make the pull request a draft.
+ */
+function approvedOpen(p: Paths, change: Change): string[] {
+  return [
+    ...carriedFindings(p, change).map((f) => `- Review finding carried to the gate (${f.target}): ${oneLine(f.text)}`),
+    ...loadConsultations(change)
+      .filter((c) => !c.after_gate && c.outcome === "cannot-answer")
+      .map((c) => `- Question no Role could answer before the gate (${c.id}, ${c.from} asked ${c.to}): ${question(change, c)}`),
+  ];
 }
 
 /** The three fixed sections that open the pull request body. */
@@ -231,6 +349,7 @@ export function prSections(p: Paths, change: Change, tasks: Task[]): string[] {
     "",
     ...withNothing(needed(p, change, tasks)),
     "",
+    ...((open) => (open.length ? ["## Approved with open points", "", ...open, ""] : []))(approvedOpen(p, change)),
   ];
 }
 

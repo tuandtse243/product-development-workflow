@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { approvalStatus, computeApprovalHash, PACKAGE_VERSION } from "./approval.js";
+import { approvalStatus, computeApprovalHash, PACKAGE_VERSION, packageVersionOf } from "./approval.js";
 import { openDeviation } from "./deviationrecord.js";
 import {
   CHANGE_ID,
@@ -23,9 +23,10 @@ import { aidwCommitMessage } from "./commit.js";
 import { capabilityOf, findProject, isDir, KEBAB_SEGMENT, pathsFor, projectKind, readText, rel, walkFiles, type Paths } from "./project.js";
 import { applyDelta, type MergeSummary } from "./spec/merge.js";
 import { parseSpec } from "./spec/parse.js";
-import { git, headCommit, isDefaultBranch, isGitRepo } from "./git.js";
-import { agentRunCap, bindPush, boundPush, changeAgentRunCap, GRANT_STATES, plannedAgentRuns, pushGrantReason, readGrants } from "./grants.js";
-import { nothingToFinish, reopenDraft } from "./draft.js";
+import { git, headCommit, isDefaultBranch, isGitRepo, junkMessage, stagedJunk } from "./git.js";
+import { commitProblem, secretsMessage, stagedSecrets } from "./secrets.js";
+import { agentRunCap, bindingProblem, bindPush, boundPush, changeAgentRunCap, GRANT_STATES, plannedAgentRuns, pushGrantReason, readGrants } from "./grants.js";
+import { draftReason, nothingToFinish, reopenDraft } from "./draft.js";
 import { checkDelivery } from "./deliver.js";
 import { transitionGuard } from "./guards.js";
 import { parseTasks } from "./tasks.js";
@@ -356,9 +357,10 @@ export function approve(p: Paths, id: string, opts: { auto?: { pluginRoot: strin
   }
   // ADR-0012: the push grant holds only for the branch, remote URL and base fixed here, hashed with the package.
   const push = bindPush(p, change).binding;
-  const { hash, files } = computeApprovalHash(p, change, push, { version: PACKAGE_VERSION });
-  // D5: the cap on Agent runs is fixed with the approval, so a Deviation that adds tasks does not move it
+  // D5: the cap on Agent runs is fixed with the approval, so a Deviation that adds tasks does not move it; it is
+  // hashed with the package (version 3), so only `aidw cap` moves it afterwards
   const agent_run_cap = agentRunCap(readGrants(change), plannedAgentRuns(change).runs);
+  const { hash, files } = computeApprovalHash(p, change, push, { version: PACKAGE_VERSION, cap: { cap: agent_run_cap, raises: [] } });
   change.doc.set("approval", change.doc.createNode({ hash, at: now(), by, package: PACKAGE_VERSION, agent_run_cap, ...(push ? { push } : {}) }));
   change.doc.set("state", "approved");
   saveChange(change);
@@ -523,10 +525,19 @@ function useChangeBranch(p: Paths, change: ReturnType<typeof loadChange>, id: st
  * Commits pending changes under .aidw/ plus the delivery files the gate lets in after delivery (README.md,
  * .env.example, and .gitignore, which deploy CLIs edit, e.g. `.vercel`) and nothing else. Returns the commit, or null outside git or when nothing changed.
  */
-export function commitAidw(p: Paths, message: string, opts: { delivery?: boolean } = {}): string | null {
+export function commitAidw(p: Paths, message: string, opts: { delivery?: boolean; guard?: boolean } = {}): string | null {
   if (!isGitRepo(p.project)) return null;
   const paths = [".aidw", ...(opts.delivery ? ["README.md", ".env.example", ".gitignore"].filter((f) => existsSync(join(p.project, f))) : [])];
   if (!git(p.project, ["add", "--", ...paths]).ok) return null;
+  if (opts.guard) {
+    // T11: this commit is pushed (the pull request, the archive): the same checks as a task commit, before it exists
+    const junk = stagedJunk(p.project, paths);
+    const secrets = stagedSecrets(p.project, paths);
+    if (junk.length || secrets.length) {
+      git(p.project, ["reset", "-q", "--", ...paths]);
+      throw new OpError(junk.length ? junkMessage(junk) : secretsMessage(secrets));
+    }
+  }
   if (git(p.project, ["diff", "--cached", "--quiet", "--", ...paths]).ok) return null;
   return git(p.project, ["commit", "-q", "-m", message, "--", ...paths]).ok ? headCommit(p.project) : null;
 }
@@ -536,17 +547,27 @@ export function commitAidw(p: Paths, message: string, opts: { delivery?: boolean
  * approval record (fixed at `aidw approve`), not in the frozen quality.yaml, so raising it is no Deviation and no drift;
  * each raise is kept in `approval.history`. The gate asks for this command every time: it is the user's decision.
  */
-export function raiseCap(p: Paths, id: string, by: number): { from: number; to: number } {
+export function raiseCap(p: Paths, id: string, by: number, env: NodeJS.ProcessEnv = process.env): { from: number; to: number } {
+  if (env.AIDW_RUNNER === "1") throw new OpError("raising the cap on Agent runs is the user's decision: an unattended session never does it");
   if (!Number.isInteger(by) || by < 1) throw new OpError("--raise takes a positive whole number of Agent runs");
-  const change = loadChange(p, id);
+  let change = loadChange(p, id);
   const approval = change.data.approval as Record<string, unknown> | null | undefined;
   if (!approval || typeof approval.hash !== "string") throw new OpError(`change "${id}" is not approved: the cap is set at the Approval Gate (grants.agent_runs in quality.yaml)`);
   if (stateOf(change) === "archived") throw new OpError(`change "${id}" is archived`);
+  // rehashing a package that already drifted would launder the drift: the approval must hold first
+  if (approvalStatus(p, change).status !== "valid") throw new OpError(`approval drift in "${id}": the cap is raised only on a valid approval`);
+  // a Deviation closes against the hash it opened from: raise the cap once it is closed
+  if (openDeviation(change)) throw new OpError(`a Deviation of "${id}" is open: raise the cap once it is closed`);
   const from = changeAgentRunCap(change);
   const to = from + by;
   const history = Array.isArray(approval.history) ? (approval.history as unknown[]) : [];
   change.doc.setIn(["approval", "agent_run_cap"], to);
   change.doc.setIn(["approval", "history"], change.doc.createNode([...history, { cap: { from, to }, by: "user", at: now() }]));
+  // a version 2 approval has the same files as version 3: it moves to 3, so the raised cap is bound from now on
+  if (packageVersionOf(change) === 2) change.doc.setIn(["approval", "package"], 3);
+  saveChange(change);
+  change = loadChange(p, id);
+  change.doc.setIn(["approval", "hash"], computeApprovalHash(p, change).hash);
   saveChange(change);
   return { from, to };
 }
@@ -586,15 +607,30 @@ export function writeMerge(merges: CapabilityMerge[]): void {
   }
 }
 
-export function archiveChange(p: Paths, id: string, env: NodeJS.ProcessEnv = process.env): { target: string; merges: CapabilityMerge[]; commit?: string; pushed?: string; pushError?: string } {
+export function archiveChange(
+  p: Paths,
+  id: string,
+  env: NodeJS.ProcessEnv = process.env,
+  opts: { force?: boolean } = {},
+): { target: string; merges: CapabilityMerge[]; commit?: string; pushed?: string; pushError?: string } {
   const change = loadChange(p, id);
   if (stateOf(change) !== "delivered") {
     throw new OpError(`change "${id}" is in state "${String(change.data.state)}"; only "delivered" changes can be archived`);
   }
+  // the archive commit goes on the checked-out branch: it must be the Change's own
+  const branch = (change.data.run as { branch?: unknown } | undefined)?.branch;
+  if (typeof branch === "string" && branch && isGitRepo(p.project) && headCommit(p.project)) {
+    const current = git(p.project, ["branch", "--show-current"]).out;
+    if (current !== branch) throw new OpError(`HEAD is on ${current || "a detached commit"}, not the Change Branch ${branch}: switch to it (git switch ${branch}) and archive again`);
+  }
+  // D12: a draft stays open so /aidw:resume can finish it; archiving it anyway is the user's call
+  const builds = "deploying" in machineOf(p, change).transitions;
+  const draft = builds ? draftReason(p, change) : null;
+  if (draft && !opts.force) throw new OpError(`change "${id}" ends in a draft pull request (${draft}): /aidw:resume ${id} finishes it; archive it as it is with \`aidw archive ${id} --force\``);
   const d = checkChange(p, id);
   if (d.errors.length) throw new OpError(`change "${id}" has validation errors; nothing was archived`, d);
   // A Workflow that never deploys (audit) has no delivery package.
-  const delivery = "deploying" in machineOf(p, change).transitions ? checkDelivery(p, id) : new Diags();
+  const delivery = builds ? checkDelivery(p, id) : new Diags();
   if (delivery.errors.length) throw new OpError(`the delivery package of "${id}" is incomplete; run \`aidw deliver\` and complete it`, delivery);
   const merges = planMerge(p, id);
   // D12: the pull request opened before the archive, while the push grant covered the Change; the archive commit
@@ -616,6 +652,9 @@ export function archiveChange(p: Paths, id: string, env: NodeJS.ProcessEnv = pro
   renameSync(change.dir, target);
   const commit = commitAidw(p, aidwCommitMessage(`archive ${id}`, `Moved-to: ${rel(p, target)}`), { delivery: true });
   if (commit && follow) {
+    // checked again right before the push: the binding, the branch, and what this commit carries
+    const why = bindingProblem(p, follow) ?? (git(p.project, ["branch", "--show-current"]).out !== follow.branch ? `HEAD is not on ${follow.branch}` : null) ?? commitProblem(p.project, commit);
+    if (why) return { target, merges, commit, pushError: `the archive commit was not pushed: ${why}` };
     const r = git(p.project, ["push", follow.remote, follow.branch]);
     if (r.ok) return { target, merges, commit, pushed: `${follow.branch} to ${follow.remote}` };
     return { target, merges, commit, pushError: `pushing the archive commit failed (${(r.err || r.out).split("\n")[0]}); the pull request lacks it until \`git push ${follow.remote} ${follow.branch}\`` };
@@ -635,6 +674,8 @@ export interface ChangeStatus {
   deltas: number;
   /** an open Deviation (ADR-0014): its id, files and author Roles */
   deviation?: { id: string; files: string[]; roles: string[] };
+  /** the pull request the run ended in (D12), as recorded: url null while only its body is written */
+  pr?: { url: string | null; draft: boolean };
   error?: string;
 }
 
@@ -678,6 +719,7 @@ export function projectStatus(p: Paths, only?: string): ProjectStatus {
         paused,
         deltas: deltaFiles(p, c, new Diags()).length,
         ...((d) => (d ? { deviation: { id: d.id, files: d.files, roles: d.roles } } : {}))(openDeviation(c)),
+        ...((r) => (r && typeof r === "object" ? { pr: { url: typeof r.url === "string" && r.url ? r.url : null, draft: r.draft === true } } : {}))((c.data.run as { pr?: { url?: unknown; draft?: unknown } } | undefined)?.pr),
       };
     } catch (e) {
       if (e instanceof ChangeError) {

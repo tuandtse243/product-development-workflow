@@ -158,6 +158,17 @@ function pushConfigProblem(p: Paths, remote: string): string | null {
   return null;
 }
 
+/**
+ * Why the push binding fixed at approval does not hold right now, or null: the remote's push URL changed, or a push
+ * refspec, mirror or pushInsteadOf rewrite would send the push elsewhere. Checked again right before every push and
+ * `gh` call aidw makes itself (`aidw pr --create`, `aidw archive`), not only by the gate before the command.
+ */
+export function bindingProblem(p: Paths, b: PushBinding): string | null {
+  const url = remoteUrl(p, b.remote);
+  if (url !== b.url) return `the push URL of ${b.remote} is ${url ?? "missing"}, not ${b.url ?? "none"} as fixed at approval`;
+  return pushConfigProblem(p, b.remote);
+}
+
 /** Why a name cannot be the Change Branch the push grant covers, or null. Checked at approval and again at push time. */
 function branchProblem(p: Paths, branch: string, base: string): string | null {
   if (!BRANCH_NAME.test(branch) || branch.startsWith("refs/") || branch === "HEAD" || branch === "@" || branch.endsWith(".lock") || branch.includes("..")) return `"${branch}" is not a plain branch name`;

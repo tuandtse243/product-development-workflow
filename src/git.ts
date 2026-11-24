@@ -46,8 +46,11 @@ const JUNK_PATH = { test: (f: string) => GENERATED_PATH.test(f) || ENV_FILE.test
 /** Files a tool generates while it runs (tsc state, Next shims, build output). */
 export const isGeneratedPath = (f: string): boolean => GENERATED_PATH.test(f);
 
-export function stagedJunk(cwd: string): string[] {
-  const r = git(cwd, ["diff", "--cached", "--name-only"]);
+/** A secrets file such as `.env` or `.env.local` (`.env.example` is not one). */
+export const isEnvFile = (f: string): boolean => ENV_FILE.test(f);
+
+export function stagedJunk(cwd: string, paths: string[] = []): string[] {
+  const r = git(cwd, ["diff", "--cached", "--name-only", ...(paths.length ? ["--", ...paths] : [])]);
   return r.ok ? r.out.split("\n").filter((f) => JUNK_PATH.test(f)) : [];
 }
 

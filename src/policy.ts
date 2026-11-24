@@ -366,6 +366,9 @@ export const APPROVE_COMMAND = /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+a
  */
 export const CAP_COMMAND = /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+cap\b/;
 
+/** `aidw archive`: it can push the archive commit under the push grant (T11), so no Agent runs it unasked. */
+export const ARCHIVE_COMMAND = /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+archive\b/;
+
 /**
  * `aidw run`: the headless auto-resume runner (S9); it spawns `claude -p`, so it never runs inside a session.
  * `aidw run --status` and `--stop` only read or stop the runner, so they are not matched.

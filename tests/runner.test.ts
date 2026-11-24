@@ -99,12 +99,29 @@ describe("aidw run preflight", () => {
     expect(r).toMatchObject({ outcome: "needs_user", runs: 0, message: "pnpm store: unreachable" });
     expect(t.calls()).toEqual([]);
   });
-  it("does not stop a deploy that needs the user: the pull request opens as a draft that lists it (T11, D12)", () => {
+  it("does not stop a deploy that needs the user: it is recorded as failed and the run goes on to its pull request (T11, D12)", () => {
     const t = setup("deploying", [{ state: "delivered", progress: true, archive: true }]);
-    const r = t.go({ preflight: () => "vercel deployments: none yet" });
+    const blocked: string[] = [];
+    const deployBlocked = (problem: string) => {
+      blocked.push(problem);
+      const f = join(t.root, ".aidw/changes", ID, "change.yaml");
+      writeFileSync(f, readFileSync(f, "utf8").replace(/^state: .*$/m, "state: delivered"));
+      return null;
+    };
+    const r = t.go({ preflight: () => "vercel deployments: none yet", deployBlocked });
+    expect(blocked).toEqual(["vercel deployments: none yet"]);
     expect(r.outcome).toBe("archived");
+    // no session was spent on the deploy: the first one delivers
     expect(t.calls()).toHaveLength(1);
-    expect(t.lines.join("\n")).toMatch(/vercel deployments: none yet; the deploy will likely fail/);
+    expect(t.calls()[0]).toContain(`/aidw:deliver ${ID}`);
+    expect(t.lines.join("\n")).toMatch(/recorded as a failed deploy/);
+  });
+
+  it("stops with needs_user when the failed deploy cannot be recorded", () => {
+    const t = setup("deploying", [{ progress: true }]);
+    const r = t.go({ preflight: () => "vercel: not logged in", deployBlocked: () => "the change is not deploying" });
+    expect(r).toMatchObject({ outcome: "needs_user", runs: 0 });
+    expect(r.message).toMatch(/vercel: not logged in/);
   });
   it("checks once at the start, and again only before deploy sessions", () => {
     const t = setup("executing", [{ state: "executing", progress: true }, { state: "deploying", progress: true }, { state: "archived", progress: true, archive: true }]);

@@ -21,6 +21,7 @@ import { AIDW_DIR, findProject, pathsFor, rel, type Paths } from "./project.js";
 import {
   AIDW_COMMAND,
   APPROVE_COMMAND,
+  ARCHIVE_COMMAND,
   ASK_COMMANDS,
   CAP_COMMAND,
   AIDW_STATE_COMMAND,
@@ -401,6 +402,8 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
         "`aidw run` starts Claude Code headless in a loop: only the main session of an approved change starts it, in the background (`aidw run <id> --detach --permission-mode auto`); otherwise the user runs it in their own terminal",
       );
     }
+    // T11: archive may push the archive commit under the push grant, which is the Orchestrator's alone (ADR-0012)
+    if (input.agent_type && ARCHIVE_COMMAND.test(cmd)) return ask("`aidw archive` can push the Change Branch; only the lead runs it unasked");
     if (CAP_COMMAND.test(cmd)) {
       return ask("raising the cap on Agent runs is the user's decision (D5); it is recorded in the approval record");
     }

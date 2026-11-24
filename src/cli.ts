@@ -58,7 +58,7 @@ import { planAdvice, planShape, planSummary } from "./plan.js";
 import { buildRoute, installedOutside, tasksLeft } from "./buildroute.js";
 import { detachRun, runLoop, runnerPid, stopRunner } from "./runner.js";
 import { deliver } from "./deliver.js";
-import { deploy, parseQuality, qualityFile, recordLayerReview, verify } from "./quality.js";
+import { deploy, parseQuality, qualityFile, recordBlockedDeploy, recordLayerReview, verify } from "./quality.js";
 import { firstDeploy } from "./firstdeploy.js";
 import { markNotBuilt, recordBlocked, reconcileDoneTasks, reopenTask, settleChange } from "./run.js";
 import { autoReview, buildBrief, buildTriageBrief, buildUpstreamBrief, checkpoint, integrateChange, MAX_UPSTREAM_ROUNDS, nextAction, parseVerdict, recordReview, recordTriage, recordUpstream, retryTask, startTask, triageFile, type ConsultAction, type DeviationAction, type NextAction } from "./run.js";
@@ -262,8 +262,10 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
   approval check <id>                    exit 1 when the approved package drifted
   transition <id> <state|resume> [--reason R]
   merge <id> [--write]                   merge delta specs into .aidw/specs (dry run by default)
-  archive <id>                           merge deltas and move a delivered change to archive/; when its pull request
-                                         was opened with the push grant, the archive commit is pushed to it too
+  archive <id> [--force]                 merge deltas and move a delivered change to archive/; when its pull request
+                                         was opened with the push grant, the archive commit is pushed to it too. A
+                                         draft (something not built, a failed deploy) is kept open for /aidw:resume;
+                                         --force archives it as it is
   pr [<id>] [--create [--draft]] [--base B]
                                          the pull request the run ends in (D12): ready when everything passed, a draft
                                          otherwise; the body opens with what differs from the approved package, what
@@ -363,7 +365,7 @@ interface Args {
   flags: Record<string, string | true>;
 }
 
-const VALUE_FLAGS = new Set(["role", "files", "consultation", "remove-reason", "scope-reason", "summary", "cause", "task", "session", "last", "root", "title", "input-type", "workflow", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude", "model", "case", "runs", "text", "lang", "weights", "to", "done", "cannot", "raise"]);
+const VALUE_FLAGS = new Set(["role", "files", "consultation", "remove-reason", "scope-reason", "summary", "cause", "task", "session", "last", "root", "title", "input-type", "workflow", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude", "model", "case", "runs", "text", "lang", "weights", "to", "done", "cannot", "raise", "base"]);
 
 export function parseArgs(argv: string[]): Args {
   const pos: string[] = [];
@@ -572,6 +574,8 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           return 0;
         }
         if (rest[0] === "retry") {
+          // a retry is the user's go-ahead (ADR-0014): an unattended session never grants one
+          if (env.AIDW_RUNNER === "1") throw new OpError("a retry is granted by the user: an unattended session never runs `aidw task retry`");
           const r = retryTask(p, id, need(rest[1], "task id"));
           emit({ ok: true, change: id, ...r }, `${r.task}: retry granted (fresh attempt budget)${r.revived && r.revived.length > 1 ? `; back with it: ${r.revived.slice(1).join(", ")}` : ""}\n`);
           return 0;
@@ -798,6 +802,15 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           preflight: () => {
             const bad = doctor(p, id, env, undefined, { run: installRunner() }).filter((c) => c.status === "fail");
             return bad.length ? `fix this first, then run the same command again: ${bad.map((c) => `${c.name}: ${c.detail}`).join("; ")}` : null;
+          },
+          deployBlocked: (problem) => {
+            try {
+              recordBlockedDeploy(p, id, problem);
+              transition(p, id, "delivered", { pluginRoot: pluginRoot(env) });
+              return null;
+            } catch (e) {
+              return (e as Error).message;
+            }
           },
           extraArgs: passthrough,
           env,
@@ -1128,7 +1141,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const raw = str(args.flags.raise);
         if (raw === undefined) throw new UsageError("usage: aidw cap <id> --raise <runs>");
         if (!/^\d+$/.test(raw)) throw new OpError("--raise takes a positive whole number of Agent runs");
-        const r = raiseCap(p, id, Number(raw));
+        const r = raiseCap(p, id, Number(raw), env);
         const used = agentRunStatus(p, loadChange(p, id)).used;
         emit({ ok: true, change: id, ...r, used }, `cap on Agent runs raised: ${r.from} -> ${r.to} (${used} used); recorded in the approval record\nNEXT: /aidw:resume ${id}\n`);
         return 0;
@@ -1246,7 +1259,8 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
             const paused = c.paused ? `  paused(${c.paused.reason ?? "?"})` : "";
             const appr = c.approval === "drift" ? "APPROVAL DRIFT" : `approval ${c.approval}`;
             const dev = c.deviation ? `\n    Deviation ${c.deviation.id} open (${c.deviation.roles.join(", ")}): ${c.deviation.files.join(", ")}` : "";
-            return `  ${c.id}  [${c.state}]  ${appr}  ${tasks}  deltas ${c.deltas}${paused}${dev}`;
+            const pr = c.pr ? `\n    pull request ${c.pr.url ?? `not opened (body in .aidw/run/pr-${c.id}.md)`}${c.pr.draft ? " (draft: /aidw:resume finishes it)" : ""}` : "";
+            return `  ${c.id}  [${c.state}]  ${appr}  ${tasks}  deltas ${c.deltas}${paused}${dev}${pr}`;
           }),
         ];
         emit(s, `${lines.join("\n")}\n`);
@@ -1675,7 +1689,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
       case "archive": {
         const p = project();
         const id = resolveChangeId(p, rest[0]);
-        const { target, merges, commit, pushed, pushError } = archiveChange(p, id, env);
+        const { target, merges, commit, pushed, pushError } = archiveChange(p, id, env, { force: args.flags.force === true });
         // The archive commit also carries the project files the delivery wrote (README.md, .env.example): say so, they are not left uncommitted.
         const alsoCommitted = commit ? git(p.project, ["show", "--name-only", "--format=", commit]).out.split("\n").filter((f) => f && !f.startsWith(".aidw/")) : [];
         emit(

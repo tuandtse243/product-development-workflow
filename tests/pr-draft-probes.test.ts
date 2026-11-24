@@ -43,7 +43,7 @@ if (a[0] === "pr" && a[1] === "create") {
 }
 if (a[0] === "pr" && (a[1] === "list" || a[1] === "view")) {
   if (!fs.existsSync(open)) { if (a[1] === "view") { process.stderr.write("no pull requests found"); process.exit(1); } console.log("[]"); process.exit(0); }
-  const pr = { url: "${PR_URL}", number: 7, isDraft: true, state: "OPEN", headRefName: "aidw/app" };
+  const pr = { url: "${PR_URL}", number: 7, isDraft: true, state: "OPEN", headRefName: "aidw/app", baseRefName: "main" };
   console.log(JSON.stringify(a[1] === "list" ? [pr] : pr));
 }
 `;
@@ -301,6 +301,18 @@ describe("a pull request that already exists", () => {
     expect(ghCalls().filter((c) => c[1] === "ready")).toEqual([]);
     expect(ghCalls().filter((c) => c[1] === "edit")).toHaveLength(1);
   });
+
+  it("`--create` again without a recorded pull request finds the open one for the branch instead of failing", () => {
+    approved();
+    finished();
+    expect(cli(["pr", ID, "--create"]).code).toBe(0);
+    // the record is lost (a change.yaml restored from git, or the PR opened by hand)
+    setChange((c) => delete c.run.pr);
+    const r = cli(["pr", ID, "--create", "--json"]);
+    expect(r.code, r.err).toBe(0);
+    expect(JSON.parse(r.out)).toMatchObject({ url: PR_URL });
+    expect(changeData().run.pr).toMatchObject({ url: PR_URL });
+  });
 });
 
 describe("what `aidw pr --create` commits", () => {
@@ -403,9 +415,8 @@ describe("the cap and resume", () => {
   });
 
   it("resume is refused while the cap is reached, and goes through once the user raised it", () => {
-    approved();
+    approved(QUALITY_YAML + GRANTS + "  agent_runs: 1\n");
     finished();
-    setChange((c) => (c.approval.agent_run_cap = 1));
     json("evidence/agent-runs.json", { runs: [{ key: "implementer:a", kind: "implementer", at: "x" }] });
     setTasks((ts) => {
       ts[1]!.status = "not_built";

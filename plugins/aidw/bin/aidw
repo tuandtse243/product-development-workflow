@@ -3979,10 +3979,10 @@ var require_resolve_block_map = __commonJS({
       let offset = bm.offset;
       let commentEnd = null;
       for (const collItem of bm.items) {
-        const { start, key, sep: sep12, value } = collItem;
+        const { start, key, sep: sep13, value } = collItem;
         const keyProps = resolveProps.resolveProps(start, {
           indicator: "explicit-key-ind",
-          next: key ?? sep12?.[0],
+          next: key ?? sep13?.[0],
           offset,
           onError,
           parentIndent: bm.indent,
@@ -3996,7 +3996,7 @@ var require_resolve_block_map = __commonJS({
             else if ("indent" in key && key.indent !== bm.indent)
               onError(offset, "BAD_INDENT", startColMsg);
           }
-          if (!keyProps.anchor && !keyProps.tag && !sep12) {
+          if (!keyProps.anchor && !keyProps.tag && !sep13) {
             commentEnd = keyProps.end;
             if (keyProps.comment) {
               if (map.comment)
@@ -4020,7 +4020,7 @@ var require_resolve_block_map = __commonJS({
         ctx.atKey = false;
         if (utilMapIncludes.mapIncludes(ctx, map.items, keyNode))
           onError(keyStart, "DUPLICATE_KEY", "Map keys must be unique");
-        const valueProps = resolveProps.resolveProps(sep12 ?? [], {
+        const valueProps = resolveProps.resolveProps(sep13 ?? [], {
           indicator: "map-value-ind",
           next: value,
           offset: keyNode.range[2],
@@ -4036,7 +4036,7 @@ var require_resolve_block_map = __commonJS({
             if (ctx.options.strict && keyProps.start < valueProps.found.offset - 1024)
               onError(keyNode.range, "KEY_OVER_1024_CHARS", "The : indicator must be at most 1024 chars after the start of an implicit block mapping key");
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep12, null, valueProps, onError);
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep13, null, valueProps, onError);
           if (ctx.schema.compat)
             utilFlowIndentCheck.flowIndentCheck(bm.indent, value, onError);
           offset = valueNode.range[2];
@@ -4127,7 +4127,7 @@ var require_resolve_end = __commonJS({
       let comment = "";
       if (end) {
         let hasSpace = false;
-        let sep12 = "";
+        let sep13 = "";
         for (const token of end) {
           const { source, type } = token;
           switch (type) {
@@ -4141,13 +4141,13 @@ var require_resolve_end = __commonJS({
               if (!comment)
                 comment = cb;
               else
-                comment += sep12 + cb;
-              sep12 = "";
+                comment += sep13 + cb;
+              sep13 = "";
               break;
             }
             case "newline":
               if (comment)
-                sep12 += source;
+                sep13 += source;
               hasSpace = true;
               break;
             default:
@@ -4190,18 +4190,18 @@ var require_resolve_flow_collection = __commonJS({
       let offset = fc.offset + fc.start.source.length;
       for (let i = 0; i < fc.items.length; ++i) {
         const collItem = fc.items[i];
-        const { start, key, sep: sep12, value } = collItem;
+        const { start, key, sep: sep13, value } = collItem;
         const props = resolveProps.resolveProps(start, {
           flow: fcName,
           indicator: "explicit-key-ind",
-          next: key ?? sep12?.[0],
+          next: key ?? sep13?.[0],
           offset,
           onError,
           parentIndent: fc.indent,
           startOnNewline: false
         });
         if (!props.found) {
-          if (!props.anchor && !props.tag && !sep12 && !value) {
+          if (!props.anchor && !props.tag && !sep13 && !value) {
             if (i === 0 && props.comma)
               onError(props.comma, "UNEXPECTED_TOKEN", `Unexpected , in ${fcName}`);
             else if (i < fc.items.length - 1)
@@ -4255,8 +4255,8 @@ var require_resolve_flow_collection = __commonJS({
             }
           }
         }
-        if (!isMap && !sep12 && !props.found) {
-          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep12, null, props, onError);
+        if (!isMap && !sep13 && !props.found) {
+          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep13, null, props, onError);
           coll.items.push(valueNode);
           offset = valueNode.range[2];
           if (isBlock(value))
@@ -4268,7 +4268,7 @@ var require_resolve_flow_collection = __commonJS({
           if (isBlock(key))
             onError(keyNode.range, "BLOCK_IN_FLOW", blockMsg);
           ctx.atKey = false;
-          const valueProps = resolveProps.resolveProps(sep12 ?? [], {
+          const valueProps = resolveProps.resolveProps(sep13 ?? [], {
             flow: fcName,
             indicator: "map-value-ind",
             next: value,
@@ -4279,8 +4279,8 @@ var require_resolve_flow_collection = __commonJS({
           });
           if (valueProps.found) {
             if (!isMap && !props.found && ctx.options.strict) {
-              if (sep12)
-                for (const st of sep12) {
+              if (sep13)
+                for (const st of sep13) {
                   if (st === valueProps.found)
                     break;
                   if (st.type === "newline") {
@@ -4297,7 +4297,7 @@ var require_resolve_flow_collection = __commonJS({
             else
               onError(valueProps.start, "MISSING_CHAR", `Missing , or : between ${fcName} items`);
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep12, null, valueProps, onError) : null;
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep13, null, valueProps, onError) : null;
           if (valueNode) {
             if (isBlock(value))
               onError(valueNode.range, "BLOCK_IN_FLOW", blockMsg);
@@ -4477,7 +4477,7 @@ var require_resolve_block_scalar = __commonJS({
           chompStart = i + 1;
       }
       let value = "";
-      let sep12 = "";
+      let sep13 = "";
       let prevMoreIndented = false;
       for (let i = 0; i < contentStart; ++i)
         value += lines[i][0].slice(trimIndent) + "\n";
@@ -4494,24 +4494,24 @@ var require_resolve_block_scalar = __commonJS({
           indent = "";
         }
         if (type === Scalar.Scalar.BLOCK_LITERAL) {
-          value += sep12 + indent.slice(trimIndent) + content;
-          sep12 = "\n";
+          value += sep13 + indent.slice(trimIndent) + content;
+          sep13 = "\n";
         } else if (indent.length > trimIndent || content[0] === "	") {
-          if (sep12 === " ")
-            sep12 = "\n";
-          else if (!prevMoreIndented && sep12 === "\n")
-            sep12 = "\n\n";
-          value += sep12 + indent.slice(trimIndent) + content;
-          sep12 = "\n";
+          if (sep13 === " ")
+            sep13 = "\n";
+          else if (!prevMoreIndented && sep13 === "\n")
+            sep13 = "\n\n";
+          value += sep13 + indent.slice(trimIndent) + content;
+          sep13 = "\n";
           prevMoreIndented = true;
         } else if (content === "") {
-          if (sep12 === "\n")
+          if (sep13 === "\n")
             value += "\n";
           else
-            sep12 = "\n";
+            sep13 = "\n";
         } else {
-          value += sep12 + content;
-          sep12 = " ";
+          value += sep13 + content;
+          sep13 = " ";
           prevMoreIndented = false;
         }
       }
@@ -4693,25 +4693,25 @@ var require_resolve_flow_scalar = __commonJS({
       if (!match)
         return source;
       let res = match[1];
-      let sep12 = " ";
+      let sep13 = " ";
       let pos = first.lastIndex;
       line.lastIndex = pos;
       while (match = line.exec(source)) {
         if (match[1] === "") {
-          if (sep12 === "\n")
-            res += sep12;
+          if (sep13 === "\n")
+            res += sep13;
           else
-            sep12 = "\n";
+            sep13 = "\n";
         } else {
-          res += sep12 + match[1];
-          sep12 = " ";
+          res += sep13 + match[1];
+          sep13 = " ";
         }
         pos = line.lastIndex;
       }
       const last = /[ \t]*(.*)/sy;
       last.lastIndex = pos;
       match = last.exec(source);
-      return res + sep12 + (match?.[1] ?? "");
+      return res + sep13 + (match?.[1] ?? "");
     }
     function doubleQuotedValue(source, onError) {
       let res = "";
@@ -5513,14 +5513,14 @@ var require_cst_stringify = __commonJS({
         }
       }
     }
-    function stringifyItem({ start, key, sep: sep12, value }) {
+    function stringifyItem({ start, key, sep: sep13, value }) {
       let res = "";
       for (const st of start)
         res += st.source;
       if (key)
         res += stringifyToken(key);
-      if (sep12)
-        for (const st of sep12)
+      if (sep13)
+        for (const st of sep13)
           res += st.source;
       if (value)
         res += stringifyToken(value);
@@ -6670,18 +6670,18 @@ var require_parser = __commonJS({
         if (this.type === "map-value-ind") {
           const prev = getPrevProps(this.peek(2));
           const start = getFirstKeyStartProps(prev);
-          let sep12;
+          let sep13;
           if (scalar.end) {
-            sep12 = scalar.end;
-            sep12.push(this.sourceToken);
+            sep13 = scalar.end;
+            sep13.push(this.sourceToken);
             delete scalar.end;
           } else
-            sep12 = [this.sourceToken];
+            sep13 = [this.sourceToken];
           const map = {
             type: "block-map",
             offset: scalar.offset,
             indent: scalar.indent,
-            items: [{ start, key: scalar, sep: sep12 }]
+            items: [{ start, key: scalar, sep: sep13 }]
           };
           this.onKeyLine = true;
           this.stack[this.stack.length - 1] = map;
@@ -6834,15 +6834,15 @@ var require_parser = __commonJS({
                 } else if (isFlowToken(it.key) && !includesToken(it.sep, "newline")) {
                   const start2 = getFirstKeyStartProps(it.start);
                   const key = it.key;
-                  const sep12 = it.sep;
-                  sep12.push(this.sourceToken);
+                  const sep13 = it.sep;
+                  sep13.push(this.sourceToken);
                   delete it.key;
                   delete it.sep;
                   this.stack.push({
                     type: "block-map",
                     offset: this.offset,
                     indent: this.indent,
-                    items: [{ start: start2, key, sep: sep12 }]
+                    items: [{ start: start2, key, sep: sep13 }]
                   });
                 } else if (start.length > 0) {
                   it.sep = it.sep.concat(start, this.sourceToken);
@@ -7036,13 +7036,13 @@ var require_parser = __commonJS({
             const prev = getPrevProps(parent);
             const start = getFirstKeyStartProps(prev);
             fixFlowSeqItems(fc);
-            const sep12 = fc.end.splice(1, fc.end.length);
-            sep12.push(this.sourceToken);
+            const sep13 = fc.end.splice(1, fc.end.length);
+            sep13.push(this.sourceToken);
             const map = {
               type: "block-map",
               offset: fc.offset,
               indent: fc.indent,
-              items: [{ start, key: fc, sep: sep12 }]
+              items: [{ start, key: fc, sep: sep13 }]
             };
             this.onKeyLine = true;
             this.stack[this.stack.length - 1] = map;
@@ -7727,7 +7727,7 @@ function parsePage(name, source, extra = [], lead = []) {
         if (!opt.summary && !opt.pros.length && !opt.cons.length && !criteria.length) problems.push(`${at}: say what this option gives and costs (summary, pros, cons or facts)`);
         return opt;
       });
-      const question = {
+      const question2 = {
         id,
         title: text(q.title),
         body: text(q.body),
@@ -7742,15 +7742,15 @@ function parsePage(name, source, extra = [], lead = []) {
         html: slot(q.html, where),
         options
       };
-      if (!question.title) problems.push(`${where}: title is missing`);
+      if (!question2.title) problems.push(`${where}: title is missing`);
       if (options.length === 1) problems.push(`${where}: one option is not a choice; give at least two, or none for an open question`);
       unique(options.map((o) => o.key), "option key", where, problems);
-      for (const r of question.recommend) if (!options.some((o) => o.key === r)) problems.push(`${where}.recommend: "${r}" is not an option key`);
-      if (!question.multi && question.recommend.length > 1) problems.push(`${where}.recommend: several keys, but the question is not multi`);
-      if (options.length && !question.recommend.length) problems.push(`${where}: recommend is missing; every choice carries the Role's recommended answer and why`);
-      if (question.recommend.length && !question.why) problems.push(`${where}: why is missing; say in one or two sentences why that answer is recommended`);
+      for (const r of question2.recommend) if (!options.some((o) => o.key === r)) problems.push(`${where}.recommend: "${r}" is not an option key`);
+      if (!question2.multi && question2.recommend.length > 1) problems.push(`${where}.recommend: several keys, but the question is not multi`);
+      if (options.length && !question2.recommend.length) problems.push(`${where}: recommend is missing; every choice carries the Role's recommended answer and why`);
+      if (question2.recommend.length && !question2.why) problems.push(`${where}: why is missing; say in one or two sentences why that answer is recommended`);
       if (criteria.length === 1 || criteria.length > 4) problems.push(`${where}.criteria: give 2 to 4 criteria, or none`);
-      return question;
+      return question2;
     });
     if (!page.questions.length) problems.push("questions: missing or empty");
     unique(page.questions.map((q) => q.id), "question id", "questions", problems);
@@ -8170,8 +8170,9 @@ var GENERATED_PATH = new RegExp(
 var ENV_FILE = /(^|\/)\.env(?:\.(?!example$)[\w.-]+)?$/;
 var JUNK_PATH = { test: (f) => GENERATED_PATH.test(f) || ENV_FILE.test(f) };
 var isGeneratedPath = (f) => GENERATED_PATH.test(f);
-function stagedJunk(cwd) {
-  const r = git(cwd, ["diff", "--cached", "--name-only"]);
+var isEnvFile = (f) => ENV_FILE.test(f);
+function stagedJunk(cwd, paths = []) {
+  const r = git(cwd, ["diff", "--cached", "--name-only", ...paths.length ? ["--", ...paths] : []]);
   return r.ok ? r.out.split("\n").filter((f) => JUNK_PATH.test(f)) : [];
 }
 var junkMessage = (files) => `refusing to commit dependency or build output (${files.slice(0, 3).join(", ")}${files.length > 3 ? ", ..." : ""}): the project has no .gitignore covering it. Add node_modules/, .next/, *.tsbuildinfo, next-env.d.ts, .env and the like to .gitignore, run \`git rm -r -q --cached <path>\` for anything already tracked, then retry`;
@@ -8762,10 +8763,15 @@ var PACKAGE_FILES_V2 = [
   "data-model.md",
   "data-model.dbml"
 ];
-var PACKAGE_VERSION = 2;
+var PACKAGE_VERSION = 3;
 function packageVersionOf(change) {
   const v = change.data.approval?.package;
-  return v === 2 ? 2 : 1;
+  return v === 3 ? 3 : v === 2 ? 2 : 1;
+}
+function capBindingOf(change) {
+  const a = change.data.approval ?? {};
+  const raises = Array.isArray(a.history) ? a.history.filter((e) => !!e && typeof e === "object" && "cap" in e) : [];
+  return { cap: a.agent_run_cap ?? null, raises };
 }
 var packageFilesFor = (version) => version >= 2 ? PACKAGE_FILES_V2 : PACKAGE_FILES_V1;
 var FROZEN_PROJECT_DIRS = (p) => [p.design, p.domain, p.architecture, p.requirements];
@@ -8782,7 +8788,9 @@ function baseSpecFiles(p, change) {
 var sha256 = (s) => (0, import_node_crypto3.createHash)("sha256").update(s).digest("hex");
 var normalize = (s) => s.replace(/\r\n?/g, "\n");
 function computeApprovalHash(p, change, push, opts = {}) {
-  return hashOf(packageDigests(p, change, opts.as, opts.version), push === void 0 ? change.data.approval?.push : push);
+  const version = opts.version ?? packageVersionOf(change);
+  const cap = version >= 3 ? opts.cap ?? capBindingOf(change) : null;
+  return hashOf(packageDigests(p, change, opts.as, version), push === void 0 ? change.data.approval?.push : push, cap);
 }
 function packageDigests(p, change, as, version = packageVersionOf(change)) {
   const entries = [];
@@ -8818,14 +8826,17 @@ function isPackageRel(p, change, path, version = packageVersionOf(change)) {
   const r = file.slice(dir.length + 1);
   return r === "tasks.yaml" || packageFilesFor(version).includes(r) || r.startsWith("specs/") && r.endsWith(".md");
 }
-function hashOf(digests, bound) {
+function hashOf(digests, bound, cap = null) {
   const files = [...digests.keys()].sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
   const binding = bound ? `approval.push
 ${sha256(JSON.stringify(bound))}
 ` : "";
+  const capBinding = cap ? `approval.agent_run_cap
+${sha256(JSON.stringify(cap))}
+` : "";
   const manifest = files.map((f) => `${f}
 ${digests.get(f)}
-`).join("") + binding;
+`).join("") + binding + capBinding;
   return { hash: `sha256:${sha256(manifest)}`, files };
 }
 function fileDigest(p, change, file) {
@@ -9706,6 +9717,7 @@ function firstMatch(rules, text2) {
 }
 var APPROVE_COMMAND = /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+approve\b/;
 var CAP_COMMAND = /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+cap\b/;
+var ARCHIVE_COMMAND = /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+archive\b/;
 var RUNNER_COMMAND = /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+run\b(?![^;&|]*\s--(?:status|stop)\b)/;
 var AIDW_COMMAND = /^\s*["']?(?:[^\s;&|"']*\/)?aidw["']?\s/;
 var SHELL_CHAINING = /[;&|`<>\n\r]|\$\(/;
@@ -9835,6 +9847,11 @@ function pushConfigProblem(p, remote) {
   if (git(p.project, ["config", "--get", `remote.${remote}.mirror`]).out) return `remote.${remote}.mirror is set`;
   if (git(p.project, ["config", "--get-regexp", "^url\\..*\\.pushinsteadof$"]).out) return "a url.<base>.pushInsteadOf rewrite is set";
   return null;
+}
+function bindingProblem(p, b) {
+  const url = remoteUrl(p, b.remote);
+  if (url !== b.url) return `the push URL of ${b.remote} is ${url ?? "missing"}, not ${b.url ?? "none"} as fixed at approval`;
+  return pushConfigProblem(p, b.remote);
 }
 function branchProblem(p, branch, base2) {
   if (!BRANCH_NAME.test(branch) || branch.startsWith("refs/") || branch === "HEAD" || branch === "@" || branch.endsWith(".lock") || branch.includes("..")) return `"${branch}" is not a plain branch name`;
@@ -10994,7 +11011,7 @@ var stageConsultationsInFlight = (change, stage) => loadConsultations(change).fi
 function unansweredSection(change) {
   const list9 = loadConsultations(change).filter((c) => !c.after_gate && c.outcome === "cannot-answer");
   if (!list9.length) return null;
-  const question = (c) => {
+  const question2 = (c) => {
     try {
       return parseRequest(readText((0, import_node_path19.join)(change.dir, c.request)) ?? "", c.request).question.replace(/\s+/g, " ").trim();
     } catch {
@@ -11005,7 +11022,7 @@ function unansweredSection(change) {
     id: "unanswered-consultations",
     title: "Questions no Role could answer",
     body: "An Agent asked another Role these questions while drafting the package and got no answer. Each is recorded as an open question in the asker's Artifact. Approve with them, or mark this section for a change.",
-    points: list9.map((c) => `**${c.id}** ${c.from} asked ${c.to} (stage \`${c.stage}\`): ${question(c)}`),
+    points: list9.map((c) => `**${c.id}** ${c.from} asked ${c.to} (stage \`${c.stage}\`): ${question2(c)}`),
     html: ""
   };
 }
@@ -11266,6 +11283,7 @@ function decide(input, env) {
         "`aidw run` starts Claude Code headless in a loop: only the main session of an approved change starts it, in the background (`aidw run <id> --detach --permission-mode auto`); otherwise the user runs it in their own terminal"
       );
     }
+    if (input.agent_type && ARCHIVE_COMMAND.test(cmd2)) return ask("`aidw archive` can push the Change Branch; only the lead runs it unasked");
     if (CAP_COMMAND.test(cmd2)) {
       return ask("raising the cap on Agent runs is the user's decision (D5); it is recorded in the approval record");
     }
@@ -11446,6 +11464,76 @@ function boundaryExceeded(p, id, b) {
 function boundaryOf(pluginRoot2, workflow) {
   const w = loadWorkflow(pluginRoot2, workflow);
   return w?.stages.find((s) => s.gate === "approval-auto")?.boundary ?? null;
+}
+
+// src/secrets.ts
+var RULES = [
+  { kind: "private key", re: /-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----/ },
+  { kind: "AWS access key", re: /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/ },
+  { kind: "GitHub token", re: /\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{60,})\b/ },
+  { kind: "Anthropic API key", re: /\bsk-ant-[A-Za-z0-9_-]{20,}/ },
+  { kind: "OpenAI API key", re: /\bsk-(?:proj-)?[A-Za-z0-9_-]{40,}/ },
+  { kind: "Stripe live key", re: /\b[sr]k_live_[A-Za-z0-9]{16,}/ },
+  { kind: "Stripe webhook secret", re: /\bwhsec_[A-Za-z0-9]{24,}/ },
+  { kind: "Slack token", re: /\bxox[abprs]-[A-Za-z0-9-]{10,}/ },
+  { kind: "Google API key", re: /\bAIza[0-9A-Za-z_-]{35}\b/ },
+  { kind: "npm token", re: /\bnpm_[A-Za-z0-9]{36}\b/ },
+  { kind: "SendGrid key", re: /\bSG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}\b/ },
+  { kind: "Supabase service key", re: /\bsb_secret_[A-Za-z0-9_-]{20,}/ },
+  { kind: "database URL with a password", re: /\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqps?):\/\/[^\s:@/"']+:(?!\$|<|\{|password\b|postgres\b|secret\b|example\b|changeme\b|root\b|test\b|user\b|pass\b)[^\s@/"']{8,}@(?!(?:localhost|127\.0\.0\.1|db|postgres|mongo|redis|mysql)(?:[:/?"'\s]|$))/i }
+];
+var ALLOW = /gitleaks:allow/;
+var BINARY = /\.(?:png|jpe?g|gif|webp|ico|pdf|woff2?|ttf|zip|gz|lockb)$/i;
+function scanLine(text2) {
+  if (ALLOW.test(text2)) return null;
+  return RULES.find((r) => r.re.test(text2))?.kind ?? null;
+}
+function secretsInChanges(dir, base2, changed) {
+  if (changed === null) return null;
+  const out = [];
+  for (const file of changed) {
+    if (BINARY.test(file)) continue;
+    for (const { line, text: text2 } of addedLines(dir, base2, file)) {
+      const kind = scanLine(text2);
+      if (kind) out.push({ kind, file, line });
+    }
+  }
+  return out;
+}
+function stagedSecrets(cwd, paths = []) {
+  const r = git(cwd, ["diff", "--cached", "-U0", "--no-color", ...paths.length ? ["--", ...paths] : []]);
+  if (!r.ok) return [];
+  const out = [];
+  let file = "";
+  let n = 0;
+  for (const l of r.out.split("\n")) {
+    if (l.startsWith("+++ ")) file = l.slice(4).replace(/^b\//, "");
+    else if (l.startsWith("@@")) n = Number(/\+(\d+)/.exec(l)?.[1] ?? 0);
+    else if (l.startsWith("+")) {
+      const kind = BINARY.test(file) ? null : scanLine(l.slice(1));
+      if (kind) out.push({ kind, file, line: n });
+      n++;
+    }
+  }
+  return out;
+}
+var secretsProblem = (found) => `credential in the code: ${found.slice(0, 5).map((f) => `${f.kind} at ${f.file}:${f.line}`).join(", ")}${found.length > 5 ? `, and ${found.length - 5} more` : ""}`;
+var secretsMessage = (found) => `refusing to commit: ${secretsProblem(found)}. Read it from an environment variable and put only its name in .env.example; a key that was real must also be revoked. A line that only looks like a key (a documented example) can carry the comment \`gitleaks:allow\`.`;
+function commitProblem(cwd, commit) {
+  const names2 = git(cwd, ["show", "--name-only", "--format=", commit]).out.split("\n").filter(Boolean);
+  const junk = names2.filter((f) => isEnvFile(f) || isGeneratedPath(f));
+  if (junk.length) return `it adds ${junk.slice(0, 3).join(", ")} (a secrets file or build output)`;
+  const r = git(cwd, ["show", "--format=", "-U0", "--no-color", commit]);
+  const found = [];
+  let file = "";
+  for (const l of r.out.split("\n")) {
+    if (l.startsWith("+++ ")) file = l.slice(4).replace(/^b\//, "");
+    else if (l.startsWith("+") && !BINARY.test(file)) {
+      const kind = scanLine(l.slice(1));
+      if (kind) found.push({ kind, file, line: 0 });
+    }
+  }
+  return found.length ? secretsProblem(found) : null;
 }
 
 // src/draft.ts
@@ -11888,6 +11976,16 @@ var notBuiltOf = (t) => {
   const n = t.not_built;
   return statusOf(t) === "not_built" ? { cause: String(n?.cause ?? "unknown"), reason: oneLine(n?.reason), discarded: list3(n?.discarded), saved: list3(n?.saved) } : null;
 };
+function freshNow(p, r, tasks) {
+  if (!r) return false;
+  if (String(r.at) < codeChangedAt(tasks)) return false;
+  const head = headCommit(p.project);
+  if (head === null || r.head === head) return true;
+  if (!r.head) return false;
+  const d = git(p.project, ["diff", "--name-only", r.head, head, "--", ".", ":(exclude).aidw", ":(exclude)README.md", ":(exclude).env.example", ":(exclude).gitignore"]);
+  return d.ok && d.out === "";
+}
+var unsettled = (change) => loadConsultations(change).filter((c) => c.route === "deviation" && c.deviation !== "recorded");
 function prReadiness(p, change, tasks) {
   const why = [];
   const nb = tasks.filter((t) => statusOf(t) === "not_built");
@@ -11899,36 +11997,106 @@ function prReadiness(p, change, tasks) {
   const summary = readSummary(change).layers;
   const notPassed = layers.filter((n) => summary[n]?.status !== "pass");
   if (notPassed.length) why.push(`quality layers not passing: ${notPassed.map((n) => `${n} (${summary[n]?.status ?? "not run"})`).join(", ")}`);
+  const stale = layers.filter((n) => summary[n]?.status === "pass" && !freshNow(p, summary[n], tasks));
+  if (stale.length) why.push(`quality layers passed on older code: ${stale.join(", ")}`);
   const conv = lastConverge(change);
   if (!conv) why.push("converge did not run");
   else if (!conv.ok) why.push("converge found gaps");
   else if (conv.not_built?.length) why.push(`scenarios not built: ${conv.not_built.length}`);
+  else if (!freshNow(p, conv, tasks)) why.push("converge passed on older code");
   const d = lastDeploy(change);
   if (!d) why.push("the deploy did not run");
   else if (!d.ok) why.push("the deploy failed");
+  const q = unsettled(change);
+  if (q.length) why.push(`questions after the gate no Deviation settled: ${q.map((c) => c.id).join(", ")}`);
   return { ready: why.length === 0, why };
 }
+function draftReason(p, change) {
+  let tasks;
+  try {
+    tasks = loadTasks(p, change.id).tasks;
+  } catch {
+    return null;
+  }
+  const r = prReadiness(p, change, tasks);
+  if (r.ready) return null;
+  const recorded = !!change.data.run?.pr;
+  const d = lastDeploy(change);
+  const left = tasks.some((t) => statusOf(t) === "not_built") || notBuiltLayers(change).length > 0 || (lastConverge(change)?.not_built?.length ?? 0) > 0 || d !== null && !d.ok || unsettled(change).length > 0;
+  return recorded || left ? r.why.join("; ") : null;
+}
 var notBuiltDir = (change) => (0, import_node_path25.join)(change.dir, "delivery", "not-built");
+var droppedFile = (change, taskId) => (0, import_node_path25.join)(notBuiltDir(change), `${taskId}.left-out.txt`);
+function leaveOut(path, text2) {
+  if (isEnvFile(path)) return "a secrets file";
+  if (isGeneratedPath(path)) return "dependency or build output";
+  if (text2 === null) return null;
+  for (const line of text2.split("\n")) {
+    const kind = scanLine(line);
+    if (kind) return `looks like a credential (${kind})`;
+  }
+  return null;
+}
+function allFiles(dir) {
+  return (0, import_node_fs20.readdirSync)(dir, { withFileTypes: true }).sort((a, b) => a.name < b.name ? -1 : 1).flatMap((e) => e.isDirectory() ? allFiles((0, import_node_path25.join)(dir, e.name)) : e.isFile() ? [(0, import_node_path25.join)(dir, e.name)] : []);
+}
+var textOf = (file) => {
+  const buf = (0, import_node_fs20.readFileSync)(file);
+  return buf.subarray(0, 8e3).includes(0) ? null : buf.toString("utf8");
+};
 function keepDiscardedWork(p, change, tasks) {
   const out = [];
   for (const t of tasks) {
+    const left = [];
     for (const s of notBuiltOf(t)?.saved ?? []) {
       const from = (0, import_node_path25.join)(p.project, s.replace(/\/$/, ""));
       if (!(0, import_node_fs20.existsSync)(from)) continue;
-      const dir = (0, import_node_fs20.statSync)(from).isDirectory();
-      const to = (0, import_node_path25.join)(notBuiltDir(change), dir ? t.id : `${t.id}${(0, import_node_path25.basename)(from).endsWith(".patch") ? ".patch" : `-${(0, import_node_path25.basename)(from)}`}`);
       (0, import_node_fs20.mkdirSync)(notBuiltDir(change), { recursive: true });
-      (0, import_node_fs20.cpSync)(from, to, { recursive: true });
-      out.push(`${rel(p, to)}${dir ? "/" : ""}`);
+      if ((0, import_node_fs20.statSync)(from).isDirectory()) {
+        const to2 = (0, import_node_path25.join)(notBuiltDir(change), t.id);
+        (0, import_node_fs20.rmSync)(to2, { recursive: true, force: true });
+        for (const f of allFiles(from)) {
+          const r = (0, import_node_path25.relative)(from, f).split(import_node_path25.sep).join("/");
+          const why2 = leaveOut(r, textOf(f));
+          if (why2) {
+            left.push(`${r}: ${why2}`);
+            continue;
+          }
+          (0, import_node_fs20.mkdirSync)((0, import_node_path25.dirname)((0, import_node_path25.join)(to2, r)), { recursive: true });
+          (0, import_node_fs20.copyFileSync)(f, (0, import_node_path25.join)(to2, r));
+        }
+        if ((0, import_node_fs20.existsSync)(to2)) out.push(`${rel(p, to2)}/`);
+        continue;
+      }
+      const to = (0, import_node_path25.join)(notBuiltDir(change), `${t.id}${(0, import_node_path25.basename)(from).endsWith(".patch") ? ".patch" : `-${(0, import_node_path25.basename)(from)}`}`);
+      const text2 = textOf(from);
+      const touched = text2 ? [...text2.matchAll(/^diff --git a\/(\S+) b\//gm)].map((m) => m[1]) : [];
+      const added = text2 ? text2.split("\n").filter((l) => l.startsWith("+") && !l.startsWith("+++")).map((l) => l.slice(1)).join("\n") : null;
+      const why = touched.map((f) => leaveOut(f, null)).find(Boolean) ?? leaveOut((0, import_node_path25.basename)(from), added);
+      if (why) {
+        (0, import_node_fs20.rmSync)(to, { force: true });
+        left.push(`${(0, import_node_path25.basename)(from)} (the whole patch): ${why}`);
+        continue;
+      }
+      (0, import_node_fs20.copyFileSync)(from, to);
+      out.push(rel(p, to));
     }
+    if (left.length) {
+      (0, import_node_fs20.mkdirSync)(notBuiltDir(change), { recursive: true });
+      (0, import_node_fs20.writeFileSync)(droppedFile(change, t.id), `${left.join("\n")}
+`);
+      out.push(rel(p, droppedFile(change, t.id)));
+    } else (0, import_node_fs20.rmSync)(droppedFile(change, t.id), { force: true });
   }
   return out;
 }
 function savedWork(p, change, t, n) {
   if (!n.saved?.length) return null;
   const kept = [(0, import_node_path25.join)(notBuiltDir(change), `${t.id}.patch`), (0, import_node_path25.join)(notBuiltDir(change), t.id)].filter((f) => (0, import_node_fs20.existsSync)(f)).map((f) => code(rel(p, f) + ((0, import_node_fs20.statSync)(f).isDirectory() ? "/" : "")));
-  if (kept.length) return `its discarded work is kept in ${kept.join(" and ")}`;
-  return `its discarded work was saved on the machine that ran the build, in ${n.saved.map(code).join(" and ")} (not committed)`;
+  const leftOut = readText(droppedFile(change, t.id));
+  const note = leftOut ? ` (left out of the commit: ${leftOut.trim().split("\n").join("; ")}; those stay only in ${n.saved.map(code).join(" and ")} on the machine that ran the build)` : "";
+  if (kept.length) return `its discarded work is kept in ${kept.join(" and ")}${note}`;
+  return `its discarded work was saved on the machine that ran the build, in ${n.saved.map(code).join(" and ")} (not committed)${leftOut ? `; left out of the commit: ${leftOut.trim().split("\n").join("; ")}` : ""}`;
 }
 function dependantsOf(root, tasks) {
   const out = [];
@@ -12014,19 +12182,21 @@ function needed(p, change, tasks) {
   const d = lastDeploy(change);
   if (!d) out.push(`- Deploy: it did not run. Run \`aidw deploy\` through ${resume}, or deploy by hand (a production deploy is always yours).`);
   else if (!d.ok) out.push(`- Deploy: ${oneLine(d.error) || "it failed"}. Fix that, then ${resume} deploys again; or deploy by hand (a production deploy is always yours).`);
-  for (const f of carriedFindings(p, change)) out.push(`- Review finding carried from the gate (${f.target}): ${oneLine(f.text)}. Graded against the package as approved.`);
-  for (const c of loadConsultations(change)) {
-    const q = () => {
-      try {
-        return oneLine(parseRequest(readText((0, import_node_path25.join)(change.dir, c.request)) ?? "", c.request).question);
-      } catch {
-        return "(the request could not be read)";
-      }
-    };
-    if (!c.after_gate && c.outcome === "cannot-answer") out.push(`- Question no Role could answer before the gate (${c.id}, ${c.from} asked ${c.to}): ${q()}`);
-    if (c.route === "deviation" && c.deviation !== "recorded") out.push(`- Question left open after the gate (${c.id}, ${c.from} asked ${c.to}; no Deviation settled it): ${q()}`);
-  }
+  for (const c of unsettled(change)) out.push(`- Question left open after the gate (${c.id}, ${c.from} asked ${c.to}; no Deviation settled it): ${question(change, c)}`);
   return out;
+}
+function question(change, c) {
+  try {
+    return oneLine(parseRequest(readText((0, import_node_path25.join)(change.dir, c.request)) ?? "", c.request).question);
+  } catch {
+    return "(the request could not be read)";
+  }
+}
+function approvedOpen(p, change) {
+  return [
+    ...carriedFindings(p, change).map((f) => `- Review finding carried to the gate (${f.target}): ${oneLine(f.text)}`),
+    ...loadConsultations(change).filter((c) => !c.after_gate && c.outcome === "cannot-answer").map((c) => `- Question no Role could answer before the gate (${c.id}, ${c.from} asked ${c.to}): ${question(change, c)}`)
+  ];
 }
 function prSections(p, change, tasks) {
   return [
@@ -12041,7 +12211,8 @@ function prSections(p, change, tasks) {
     `## ${PR_SECTIONS[2]}`,
     "",
     ...withNothing(needed(p, change, tasks)),
-    ""
+    "",
+    ...((open) => open.length ? ["## Approved with open points", "", ...open, ""] : [])(approvedOpen(p, change))
   ];
 }
 function nothingToFinish(p, change) {
@@ -12813,60 +12984,6 @@ var import_node_child_process4 = require("node:child_process");
 var import_node_fs25 = require("node:fs");
 var import_node_path30 = require("node:path");
 var import_yaml14 = __toESM(require_dist(), 1);
-
-// src/secrets.ts
-var RULES = [
-  { kind: "private key", re: /-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----/ },
-  { kind: "AWS access key", re: /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/ },
-  { kind: "GitHub token", re: /\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{60,})\b/ },
-  { kind: "Anthropic API key", re: /\bsk-ant-[A-Za-z0-9_-]{20,}/ },
-  { kind: "OpenAI API key", re: /\bsk-(?:proj-)?[A-Za-z0-9_-]{40,}/ },
-  { kind: "Stripe live key", re: /\b[sr]k_live_[A-Za-z0-9]{16,}/ },
-  { kind: "Stripe webhook secret", re: /\bwhsec_[A-Za-z0-9]{24,}/ },
-  { kind: "Slack token", re: /\bxox[abprs]-[A-Za-z0-9-]{10,}/ },
-  { kind: "Google API key", re: /\bAIza[0-9A-Za-z_-]{35}\b/ },
-  { kind: "npm token", re: /\bnpm_[A-Za-z0-9]{36}\b/ },
-  { kind: "SendGrid key", re: /\bSG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}\b/ },
-  { kind: "Supabase service key", re: /\bsb_secret_[A-Za-z0-9_-]{20,}/ },
-  { kind: "database URL with a password", re: /\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqps?):\/\/[^\s:@/"']+:(?!\$|<|\{|password\b|postgres\b|secret\b|example\b|changeme\b|root\b|test\b|user\b|pass\b)[^\s@/"']{8,}@(?!(?:localhost|127\.0\.0\.1|db|postgres|mongo|redis|mysql)(?:[:/?"'\s]|$))/i }
-];
-var ALLOW = /gitleaks:allow/;
-var BINARY = /\.(?:png|jpe?g|gif|webp|ico|pdf|woff2?|ttf|zip|gz|lockb)$/i;
-function scanLine(text2) {
-  if (ALLOW.test(text2)) return null;
-  return RULES.find((r) => r.re.test(text2))?.kind ?? null;
-}
-function secretsInChanges(dir, base2, changed) {
-  if (changed === null) return null;
-  const out = [];
-  for (const file of changed) {
-    if (BINARY.test(file)) continue;
-    for (const { line, text: text2 } of addedLines(dir, base2, file)) {
-      const kind = scanLine(text2);
-      if (kind) out.push({ kind, file, line });
-    }
-  }
-  return out;
-}
-function stagedSecrets(cwd) {
-  const r = git(cwd, ["diff", "--cached", "-U0", "--no-color"]);
-  if (!r.ok) return [];
-  const out = [];
-  let file = "";
-  let n = 0;
-  for (const l of r.out.split("\n")) {
-    if (l.startsWith("+++ ")) file = l.slice(4).replace(/^b\//, "");
-    else if (l.startsWith("@@")) n = Number(/\+(\d+)/.exec(l)?.[1] ?? 0);
-    else if (l.startsWith("+")) {
-      const kind = BINARY.test(file) ? null : scanLine(l.slice(1));
-      if (kind) out.push({ kind, file, line: n });
-      n++;
-    }
-  }
-  return out;
-}
-var secretsProblem = (found) => `credential in the code: ${found.slice(0, 5).map((f) => `${f.kind} at ${f.file}:${f.line}`).join(", ")}${found.length > 5 ? `, and ${found.length - 5} more` : ""}`;
-var secretsMessage = (found) => `refusing to commit: ${secretsProblem(found)}. Read it from an environment variable and put only its name in .env.example; a key that was real must also be revoked. A line that only looks like a key (a documented example) can carry the comment \`gitleaks:allow\`.`;
 
 // src/touches.ts
 function staticPrefix(glob) {
@@ -13803,8 +13920,8 @@ function approve(p, id, opts = {}) {
     by = `aidw (${workflow} boundary)`;
   }
   const push = bindPush(p, change).binding;
-  const { hash, files } = computeApprovalHash(p, change, push, { version: PACKAGE_VERSION });
   const agent_run_cap = agentRunCap(readGrants(change), plannedAgentRuns(change).runs);
+  const { hash, files } = computeApprovalHash(p, change, push, { version: PACKAGE_VERSION, cap: { cap: agent_run_cap, raises: [] } });
   change.doc.set("approval", change.doc.createNode({ hash, at: now4(), by, package: PACKAGE_VERSION, agent_run_cap, ...push ? { push } : {} }));
   change.doc.set("state", "approved");
   saveChange(change);
@@ -13926,20 +14043,35 @@ function commitAidw(p, message, opts = {}) {
   if (!isGitRepo(p.project)) return null;
   const paths = [".aidw", ...opts.delivery ? ["README.md", ".env.example", ".gitignore"].filter((f) => (0, import_node_fs28.existsSync)((0, import_node_path33.join)(p.project, f))) : []];
   if (!git(p.project, ["add", "--", ...paths]).ok) return null;
+  if (opts.guard) {
+    const junk = stagedJunk(p.project, paths);
+    const secrets = stagedSecrets(p.project, paths);
+    if (junk.length || secrets.length) {
+      git(p.project, ["reset", "-q", "--", ...paths]);
+      throw new OpError(junk.length ? junkMessage(junk) : secretsMessage(secrets));
+    }
+  }
   if (git(p.project, ["diff", "--cached", "--quiet", "--", ...paths]).ok) return null;
   return git(p.project, ["commit", "-q", "-m", message, "--", ...paths]).ok ? headCommit(p.project) : null;
 }
-function raiseCap(p, id, by) {
+function raiseCap(p, id, by, env = process.env) {
+  if (env.AIDW_RUNNER === "1") throw new OpError("raising the cap on Agent runs is the user's decision: an unattended session never does it");
   if (!Number.isInteger(by) || by < 1) throw new OpError("--raise takes a positive whole number of Agent runs");
-  const change = loadChange(p, id);
+  let change = loadChange(p, id);
   const approval = change.data.approval;
   if (!approval || typeof approval.hash !== "string") throw new OpError(`change "${id}" is not approved: the cap is set at the Approval Gate (grants.agent_runs in quality.yaml)`);
   if (stateOf(change) === "archived") throw new OpError(`change "${id}" is archived`);
+  if (approvalStatus(p, change).status !== "valid") throw new OpError(`approval drift in "${id}": the cap is raised only on a valid approval`);
+  if (openDeviation(change)) throw new OpError(`a Deviation of "${id}" is open: raise the cap once it is closed`);
   const from = changeAgentRunCap(change);
   const to = from + by;
   const history = Array.isArray(approval.history) ? approval.history : [];
   change.doc.setIn(["approval", "agent_run_cap"], to);
   change.doc.setIn(["approval", "history"], change.doc.createNode([...history, { cap: { from, to }, by: "user", at: now4() }]));
+  if (packageVersionOf(change) === 2) change.doc.setIn(["approval", "package"], 3);
+  saveChange(change);
+  change = loadChange(p, id);
+  change.doc.setIn(["approval", "hash"], computeApprovalHash(p, change).hash);
   saveChange(change);
   return { from, to };
 }
@@ -13965,14 +14097,22 @@ function writeMerge(merges) {
     (0, import_node_fs28.writeFileSync)(m.file, m.text);
   }
 }
-function archiveChange(p, id, env = process.env) {
+function archiveChange(p, id, env = process.env, opts = {}) {
   const change = loadChange(p, id);
   if (stateOf(change) !== "delivered") {
     throw new OpError(`change "${id}" is in state "${String(change.data.state)}"; only "delivered" changes can be archived`);
   }
+  const branch = change.data.run?.branch;
+  if (typeof branch === "string" && branch && isGitRepo(p.project) && headCommit(p.project)) {
+    const current = git(p.project, ["branch", "--show-current"]).out;
+    if (current !== branch) throw new OpError(`HEAD is on ${current || "a detached commit"}, not the Change Branch ${branch}: switch to it (git switch ${branch}) and archive again`);
+  }
+  const builds = "deploying" in machineOf(p, change).transitions;
+  const draft = builds ? draftReason(p, change) : null;
+  if (draft && !opts.force) throw new OpError(`change "${id}" ends in a draft pull request (${draft}): /aidw:resume ${id} finishes it; archive it as it is with \`aidw archive ${id} --force\``);
   const d = checkChange(p, id);
   if (d.errors.length) throw new OpError(`change "${id}" has validation errors; nothing was archived`, d);
-  const delivery = "deploying" in machineOf(p, change).transitions ? checkDelivery(p, id) : new Diags();
+  const delivery = builds ? checkDelivery(p, id) : new Diags();
   if (delivery.errors.length) throw new OpError(`the delivery package of "${id}" is incomplete; run \`aidw deliver\` and complete it`, delivery);
   const merges = planMerge(p, id);
   const pr = change.data.run?.pr;
@@ -13990,6 +14130,8 @@ function archiveChange(p, id, env = process.env) {
   (0, import_node_fs28.renameSync)(change.dir, target);
   const commit = commitAidw(p, aidwCommitMessage(`archive ${id}`, `Moved-to: ${rel(p, target)}`), { delivery: true });
   if (commit && follow) {
+    const why = bindingProblem(p, follow) ?? (git(p.project, ["branch", "--show-current"]).out !== follow.branch ? `HEAD is not on ${follow.branch}` : null) ?? commitProblem(p.project, commit);
+    if (why) return { target, merges, commit, pushError: `the archive commit was not pushed: ${why}` };
     const r = git(p.project, ["push", follow.remote, follow.branch]);
     if (r.ok) return { target, merges, commit, pushed: `${follow.branch} to ${follow.remote}` };
     return { target, merges, commit, pushError: `pushing the archive commit failed (${(r.err || r.out).split("\n")[0]}); the pull request lacks it until \`git push ${follow.remote} ${follow.branch}\`` };
@@ -14028,7 +14170,8 @@ function projectStatus(p, only) {
         tasks,
         paused,
         deltas: deltaFiles(p, c, new Diags()).length,
-        ...((d) => d ? { deviation: { id: d.id, files: d.files, roles: d.roles } } : {})(openDeviation(c))
+        ...((d) => d ? { deviation: { id: d.id, files: d.files, roles: d.roles } } : {})(openDeviation(c)),
+        ...((r) => r && typeof r === "object" ? { pr: { url: typeof r.url === "string" && r.url ? r.url : null, draft: r.draft === true } } : {})(c.data.run?.pr)
       };
     } catch (e) {
       if (e instanceof ChangeError) {
@@ -14816,6 +14959,14 @@ function deploy(p, id, opts = {}) {
       record = { ...base2, runs, smoke, url, ok: !smokeFailed, skipped: false, ...smokeFailed ? { error: `smoke check failed: ${smokeFailed.command}` } : {} };
     }
   }
+  appendHistory(deployFile(change), record);
+  return record;
+}
+function recordBlockedDeploy(p, id, problem) {
+  const change = loadChange(p, id);
+  if (stateOf(change) !== "deploying") throw new OpError(`change "${id}" is "${String(change.data.state)}"; a deploy is recorded in state deploying`);
+  const config = loadQuality(p, change);
+  const record = { at: now5(), target: config.deploy.target, ok: false, skipped: false, url: null, head: headCommit(p.project), runs: [], smoke: [], error: `the machine check before the deploy failed, so it did not run: ${problem}` };
   appendHistory(deployFile(change), record);
   return record;
 }
@@ -18607,25 +18758,72 @@ function prNext(p, id, plan, runner2) {
   return `NEXT: \`${create}\` (it asks you first: the push was not granted at the Approval Gate); ${after}`;
 }
 function createPr(p, id, opts = {}) {
+  const env = opts.env ?? process.env;
   const change = loadAny(p, id);
   const st = stateOf(change);
   if (st !== "delivered" && st !== "archived") throw new OpError(`change "${id}" is "${String(st)}"; open the PR after delivery`);
   const plan = writePrBody(p, id, opts);
+  if (env.AIDW_RUNNER === "1" && !plan.granted) throw new OpError(`the push was not granted at the Approval Gate and nobody is here to answer; ${prNext(p, id, plan, true).replace(/^NEXT: /, "")}`);
   if (!git(p.project, ["remote", "get-url", plan.remote]).ok) throw new OpError(`no git remote named ${plan.remote}: add one (git remote add ${plan.remote} <url>) and run this again`);
-  if (st === "delivered") commitAidw(p, aidwCommitMessage(`${id} pull request`, `Evidence: ${rel(p, change.dir)}/delivery/`), { delivery: true });
+  const current = git(p.project, ["branch", "--show-current"]).out;
+  if (current !== plan.head) throw new OpError(`HEAD is on ${current || "a detached commit"}, not the Change Branch ${plan.head}: switch to it (git switch ${plan.head}) and run this again`);
+  const bound = boundPush(p, change);
+  const holds = () => {
+    const why = bound ? bindingProblem(p, bound) : null;
+    if (why) throw new OpError(`the push fixed at approval does not hold: ${why}; nothing more was pushed`);
+  };
+  holds();
+  if (st === "delivered") {
+    if (bound && approvalStatus(p, loadAny(p, id)).status !== "valid") throw new OpError(`approval drift in "${id}": the approved package changed; nothing was pushed`);
+    commitAidw(p, aidwCommitMessage(`${id} pull request`, `Evidence: ${rel(p, change.dir)}/delivery/`), { delivery: true, guard: true });
+  }
+  const leak = pushedProblem(p, plan);
+  if (leak) throw new OpError(`refusing to push: ${leak}; nothing was pushed`);
+  holds();
   const push = git(p.project, ["push", "-u", plan.remote, plan.head]);
   if (!push.ok) throw new OpError(`git push failed: ${(push.err || push.out).split("\n")[0]}`);
   const draft = opts.draft === true || !plan.ready;
-  const prev = plan.record;
+  holds();
+  const prev = existingPr(p, plan);
   let url;
-  if (prev?.url) {
+  if (prev) {
     url = prev.url;
     gh(p, plan, ["pr", "edit", url, "--body-file", plan.bodyFile]);
     if (prev.draft && !draft) gh(p, plan, ["pr", "ready", url]);
     else if (!prev.draft && draft) gh(p, plan, ["pr", "ready", url, "--undo"]);
   } else url = ghCreate(p, plan, draft);
   savePrRecord(loadAny(p, id), { url, draft, at: (/* @__PURE__ */ new Date()).toISOString() });
-  return { url, plan, draft, updated: Boolean(prev?.url) };
+  return { url, plan, draft, updated: Boolean(prev) };
+}
+var escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function ghJson(p, args) {
+  const r = (0, import_node_child_process11.spawnSync)("gh", args, { cwd: p.project, encoding: "utf8" });
+  if (r.error || r.status !== 0) return null;
+  try {
+    return JSON.parse(r.stdout);
+  } catch {
+    return null;
+  }
+}
+function existingPr(p, plan) {
+  const urlOk = (u) => typeof u === "string" && (plan.repo ? new RegExp(`^https://github\\.com/${escapeRe(plan.repo)}/pull/\\d+$`) : /^https:\/\/\S+\/pull\/\d+$/).test(u);
+  const rec = plan.record;
+  if (rec?.url && urlOk(rec.url)) {
+    const v = ghJson(p, ["pr", "view", rec.url, "--json", "headRefName,baseRefName,state,isDraft"]);
+    if (v && v.headRefName === plan.head && v.baseRefName === plan.base && v.state === "OPEN") return { url: rec.url, draft: rec.draft };
+  }
+  const list9 = ghJson(p, ["pr", "list", "--head", plan.head, "--base", plan.base, "--state", "open", "--json", "url,isDraft", ...plan.repo ? ["--repo", plan.repo] : []]);
+  const hit = Array.isArray(list9) ? list9.find((x) => urlOk(x?.url)) : void 0;
+  return hit ? { url: hit.url, draft: hit.isDraft === true } : null;
+}
+function pushedProblem(p, plan) {
+  const mb = [plan.base, `${plan.remote}/${plan.base}`].map((b) => git(p.project, ["merge-base", b, "HEAD"])).find((r) => r.ok && r.out);
+  if (!mb) return null;
+  const changed = git(p.project, ["diff", "--name-only", mb.out, "HEAD", "--", ".aidw", "README.md", ".env.example", ".gitignore"]).out.split("\n").filter(Boolean);
+  const junk = changed.filter((f) => isEnvFile(f) || isGeneratedPath(f));
+  if (junk.length) return `it would publish ${junk.slice(0, 3).join(", ")} (a secrets file or build output)`;
+  const found = secretsInChanges(p.project, mb.out, changed) ?? [];
+  return found.length ? secretsProblem(found) : null;
 }
 function gh(p, plan, args) {
   const r = (0, import_node_child_process11.spawnSync)("gh", [...args, ...plan.repo ? ["--repo", plan.repo] : []], { cwd: p.project, encoding: "utf8" });
@@ -18704,7 +18902,15 @@ function prEnding(p, id, pr) {
   if (!pr) return `no pull request was recorded: run \`aidw pr ${id}\` for its body`;
   const open = pr.url ? `pull request ${pr.url}${pr.draft ? " (draft)" : ""}` : `the pull request is not opened (the push was not granted at the Approval Gate); its body is in ${body}`;
   const create = pr.url ? "" : `open it with \`aidw pr ${id} --create${pr.draft ? " --draft" : ""}\` (it asks you); `;
-  return pr.draft ? `${open}. NEXT: ${create}act on its "Needed from the user to finish", then \`/aidw:resume ${id}\` (or \`aidw run ${id}\`) finishes it and updates the same pull request` : `${open}${pr.url ? "" : `. NEXT: ${create.replace(/; $/, "")}`}`;
+  return pr.draft ? `${open}. NEXT: ${create}act on its "Needed from the user to finish", then \`/aidw:resume ${id}\` (or \`aidw run ${id}\`) finishes it and updates the same pull request` : `${open}${pr.url ? "" : `. NEXT: ${create}then \`aidw archive ${id}\``}`;
+}
+function readyNow(p, id) {
+  try {
+    const change = loadChange(p, id);
+    return prReadiness(p, change, loadTasks(p, id).tasks).ready;
+  } catch {
+    return false;
+  }
 }
 function readdirNames(dir) {
   try {
@@ -18749,6 +18955,7 @@ function runLoop(p, id, opts = {}) {
   let backoff = 0;
   let idle = 0;
   let last = fingerprint(p, id);
+  let checked = false;
   const result = (outcome, state, message) => {
     if (env.AIDW_RUN_DETACHED === "1") (0, import_node_fs45.rmSync)(pidFile(p), { force: true });
     record(`stop: ${outcome}: ${message}`);
@@ -18763,7 +18970,11 @@ function runLoop(p, id, opts = {}) {
     const change = loadChange(p, id);
     const state = stateOf(change) ?? String(change.data.state);
     const pr = prOf(p, id);
-    if (state === "delivered" && pr?.draft && runs > 0) return result("draft", state, `change ${id} is delivered as a draft; ${prEnding(p, id, pr)}`);
+    const ready = state === "delivered" && pr !== null && readyNow(p, id);
+    if (state === "delivered" && pr && runs > 0) {
+      if (!ready) return result("draft", state, `change ${id} is delivered as a draft; ${prEnding(p, id, { ...pr, draft: true })}`);
+      if (!pr.url) return result("needs_user", state, `change ${id} is delivered and ready; ${prEnding(p, id, { ...pr, draft: false })}`);
+    }
     if (state === "escalated") return result("escalated", state, "the change is escalated and needs your decision: open Claude Code and run /aidw:status");
     if (!DRIVABLE.has(state)) return result("needs_user", state, `state "${state}" needs you (approval or analysis); the runner continues only approved work`);
     if (state === "paused") {
@@ -18777,13 +18988,19 @@ function runLoop(p, id, opts = {}) {
       const problem = opts.prepare(state);
       if (problem) return result("needs_user", state, problem);
     }
-    if (opts.preflight && (runs === 0 || state === "deploying")) {
+    if (opts.preflight && (!checked || state === "deploying")) {
+      checked = true;
       const problem = opts.preflight(state);
-      if (problem && state === "deploying") record(`machine check before the deploy: ${problem}; the deploy will likely fail and the pull request opens as a draft that lists it`);
-      else if (problem) return result("needs_user", state, problem);
+      if (problem && state === "deploying" && opts.deployBlocked) {
+        const failed = opts.deployBlocked(problem);
+        if (failed) return result("needs_user", state, `${problem} (${failed})`);
+        record(`machine check before the deploy: ${problem}; recorded as a failed deploy, the Change goes on to a draft pull request`);
+        continue;
+      }
+      if (problem) return result("needs_user", state, problem);
     }
     if (runs >= maxRuns) return result("max_runs", state, `${runs} sessions ran; raise --max-runs to continue`);
-    const prompt = state === "delivered" && !pr?.draft ? `/aidw:deliver ${id}` : `/aidw:resume ${id}`;
+    const prompt = state === "delivered" && (!pr || ready) ? `/aidw:deliver ${id}` : `/aidw:resume ${id}`;
     const args = ["-p", prompt, "--permission-mode", mode, ...opts.keepMcp ? [] : ["--strict-mcp-config"], ...opts.extraArgs ?? []];
     record(`session ${runs + 1}: ${claude} ${args.map((a) => /\s/.test(a) ? JSON.stringify(a) : a).join(" ")}`);
     const r = (0, import_node_child_process12.spawnSync)(claude, args, {
@@ -19312,8 +19529,10 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
   approval check <id>                    exit 1 when the approved package drifted
   transition <id> <state|resume> [--reason R]
   merge <id> [--write]                   merge delta specs into .aidw/specs (dry run by default)
-  archive <id>                           merge deltas and move a delivered change to archive/; when its pull request
-                                         was opened with the push grant, the archive commit is pushed to it too
+  archive <id> [--force]                 merge deltas and move a delivered change to archive/; when its pull request
+                                         was opened with the push grant, the archive commit is pushed to it too. A
+                                         draft (something not built, a failed deploy) is kept open for /aidw:resume;
+                                         --force archives it as it is
   pr [<id>] [--create [--draft]] [--base B]
                                          the pull request the run ends in (D12): ready when everything passed, a draft
                                          otherwise; the body opens with what differs from the approved package, what
@@ -19407,7 +19626,7 @@ Hooks:
 States: ${STATES.join(", ")}
 Exit codes: 0 ok, 1 failed check or refused operation, 2 usage error
 `;
-var VALUE_FLAGS = /* @__PURE__ */ new Set(["role", "files", "consultation", "remove-reason", "scope-reason", "summary", "cause", "task", "session", "last", "root", "title", "input-type", "workflow", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude", "model", "case", "runs", "text", "lang", "weights", "to", "done", "cannot", "raise"]);
+var VALUE_FLAGS = /* @__PURE__ */ new Set(["role", "files", "consultation", "remove-reason", "scope-reason", "summary", "cause", "task", "session", "last", "root", "title", "input-type", "workflow", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude", "model", "case", "runs", "text", "lang", "weights", "to", "done", "cannot", "raise", "base"]);
 function parseArgs(argv) {
   const pos = [];
   const flags = {};
@@ -19580,6 +19799,7 @@ ${r2.dependents.length ? `WARNING: done task(s) ${r2.dependents.join(", ")} depe
           return 0;
         }
         if (rest[0] === "retry") {
+          if (env.AIDW_RUNNER === "1") throw new OpError("a retry is granted by the user: an unattended session never runs `aidw task retry`");
           const r2 = retryTask(p, id, need(rest[1], "task id"));
           emit({ ok: true, change: id, ...r2 }, `${r2.task}: retry granted (fresh attempt budget)${r2.revived && r2.revived.length > 1 ? `; back with it: ${r2.revived.slice(1).join(", ")}` : ""}
 `);
@@ -19843,6 +20063,15 @@ Status: aidw run --status   Stop: aidw run --stop   (it also stops by itself whe
           preflight: () => {
             const bad = doctor(p, id, env, void 0, { run: installRunner() }).filter((c) => c.status === "fail");
             return bad.length ? `fix this first, then run the same command again: ${bad.map((c) => `${c.name}: ${c.detail}`).join("; ")}` : null;
+          },
+          deployBlocked: (problem) => {
+            try {
+              recordBlockedDeploy(p, id, problem);
+              transition(p, id, "delivered", { pluginRoot: pluginRoot(env) });
+              return null;
+            } catch (e) {
+              return e.message;
+            }
           },
           extraArgs: passthrough,
           env,
@@ -20191,7 +20420,7 @@ ${next}
         const raw = str(args.flags.raise);
         if (raw === void 0) throw new UsageError("usage: aidw cap <id> --raise <runs>");
         if (!/^\d+$/.test(raw)) throw new OpError("--raise takes a positive whole number of Agent runs");
-        const r = raiseCap(p, id, Number(raw));
+        const r = raiseCap(p, id, Number(raw), env);
         const used = agentRunStatus(p, loadChange(p, id)).used;
         emit({ ok: true, change: id, ...r, used }, `cap on Agent runs raised: ${r.from} -> ${r.to} (${used} used); recorded in the approval record
 NEXT: /aidw:resume ${id}
@@ -20317,7 +20546,9 @@ ${r.errors.map((e) => `failed: ${e}
             const appr = c.approval === "drift" ? "APPROVAL DRIFT" : `approval ${c.approval}`;
             const dev = c.deviation ? `
     Deviation ${c.deviation.id} open (${c.deviation.roles.join(", ")}): ${c.deviation.files.join(", ")}` : "";
-            return `  ${c.id}  [${c.state}]  ${appr}  ${tasks}  deltas ${c.deltas}${paused}${dev}`;
+            const pr = c.pr ? `
+    pull request ${c.pr.url ?? `not opened (body in .aidw/run/pr-${c.id}.md)`}${c.pr.draft ? " (draft: /aidw:resume finishes it)" : ""}` : "";
+            return `  ${c.id}  [${c.state}]  ${appr}  ${tasks}  deltas ${c.deltas}${paused}${dev}${pr}`;
           })
         ];
         emit(s, `${lines.join("\n")}
@@ -20771,7 +21002,7 @@ ${lines.join("\n")}
       case "archive": {
         const p = project();
         const id = resolveChangeId(p, rest[0]);
-        const { target, merges, commit, pushed, pushError } = archiveChange(p, id, env);
+        const { target, merges, commit, pushed, pushError } = archiveChange(p, id, env, { force: args.flags.force === true });
         const alsoCommitted = commit ? git(p.project, ["show", "--name-only", "--format=", commit]).out.split("\n").filter((f) => f && !f.startsWith(".aidw/")) : [];
         emit(
           { ok: true, id, archived: rel(p, target), capabilities: merges.map((m) => m.capability), commit: commit ?? null, also_committed: alsoCommitted, pushed: pushed ?? null, ...pushError ? { push_error: pushError } : {} },

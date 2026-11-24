@@ -25,11 +25,22 @@ let bare: string;
 let ghLog: string;
 const saved: Record<string, string | undefined> = {};
 
+/**
+ * Behaves like the real gh for what aidw asks: `pr create` opens one pull request per branch; `pr view <url>` knows only
+ * that one (head aidw/app, base main, open); `pr list --head` finds it.
+ */
 const FAKE_GH = `#!/usr/bin/env node
 const fs = require("fs");
 const a = process.argv.slice(2);
 fs.appendFileSync(process.env.FAKE_GH_LOG, JSON.stringify(a) + "\\n");
-if (a[0] === "pr" && a[1] === "create") console.log("${PR_URL}");
+const open = process.env.FAKE_GH_LOG + ".open";
+const pr = { url: "${PR_URL}", number: 7, isDraft: true, state: "OPEN", headRefName: "aidw/app", baseRefName: "main" };
+if (a[0] === "pr" && a[1] === "create") { fs.writeFileSync(open, "1"); console.log("${PR_URL}"); }
+if (a[0] === "pr" && a[1] === "view") {
+  if (!fs.existsSync(open) || a[2] !== "${PR_URL}") { process.stderr.write("no pull requests found"); process.exit(1); }
+  console.log(JSON.stringify(pr));
+}
+if (a[0] === "pr" && a[1] === "list") console.log(JSON.stringify(fs.existsSync(open) ? [pr] : []));
 `;
 
 beforeAll(() => {
@@ -214,7 +225,7 @@ describe("the pull request at the end of the run", () => {
   });
 
   it("lists a layer that is not built and the Agent-run cap", () => {
-    approved();
+    approved(QUALITY_YAML + GRANTS + "  agent_runs: 2\n");
     finished();
     const head = git(root, "rev-parse", "HEAD");
     json("evidence/quality/summary.json", {
@@ -224,7 +235,6 @@ describe("the pull request at the end of the run", () => {
         e2e: { status: "not_built", at: "x", head, runs: [], not_built_reason: "still failing after 2 fix round(s): Docker is not running" },
       },
     });
-    setChange((c) => (c.approval.agent_run_cap = 2));
     json("evidence/agent-runs.json", { runs: [{ key: "implementer:a", kind: "implementer", at: "x" }, { key: "reviewer:a", kind: "reviewer", at: "x" }] });
     const body = JSON.parse(cli(["pr", ID, "--json"]).out).body as string;
     expect(section(body, "Not built and why")).toMatch(/e2e.*Docker is not running/);
@@ -402,8 +412,7 @@ describe("resume finishes a draft", () => {
   });
 
   it("task retry of a task not built at the cap asks for the cap to be raised first", () => {
-    approved();
-    setChange((c) => (c.approval.agent_run_cap = 1));
+    approved(QUALITY_YAML + GRANTS + "  agent_runs: 1\n");
     json("evidence/agent-runs.json", { runs: [{ key: "implementer:a", kind: "implementer", at: "x" }] });
     setTasks((ts) => {
       ts[0]!.status = "not_built";
@@ -435,5 +444,173 @@ describe("aidw cap", () => {
 
   it("refuses a raise that is not a positive whole number", () => {
     for (const n of ["0", "-3", "x", "1.5"]) expect([n, cli(["cap", ID, "--raise", n]).code]).toEqual([n, 1]);
+  });
+});
+
+describe("review fixes: which pull request is edited, what is pushed, the cap's binding", () => {
+  const KEY = `AKIA${"ABCDEFGHIJKLMNOP"}`; // built at run time: no key literal in the repository
+
+  it("never edits a pull request change.yaml names but gh does not confirm as this branch's open one", () => {
+    approved();
+    finished();
+    expect(cli(["pr", ID, "--create"]).code).toBe(0);
+    setChange((c) => (c.run.pr = { url: "https://github.com/evil/other/pull/1", draft: true, at: "x" }));
+    const r = cli(["pr", ID, "--create", "--json"]);
+    expect(r.code, r.err).toBe(0);
+    expect(JSON.parse(r.out)).toMatchObject({ url: PR_URL, updated: true });
+    for (const c of ghCalls()) if (c[1] === "edit" || c[1] === "ready") expect(c).not.toContain("https://github.com/evil/other/pull/1");
+    expect(changeData().run.pr.url).toBe(PR_URL);
+  });
+
+  it("refuses to push when the remote moved after approval, or HEAD is not the Change Branch", () => {
+    approved();
+    finished();
+    const other = join(tempProject(), "other.git");
+    execFileSync("git", ["init", "-q", "--bare", other]);
+    git(root, "remote", "set-url", "origin", other);
+    const moved = cli(["pr", ID, "--create"]);
+    expect(moved.code).toBe(1);
+    expect(moved.err).toMatch(/does not hold/);
+    expect(git(other, "for-each-ref", "--format=%(refname)")).toBe("");
+    git(root, "remote", "set-url", "origin", bare);
+    git(root, "switch", "-q", "--detach");
+    const off = cli(["pr", ID, "--create"]);
+    expect(off.code).toBe(1);
+    expect(off.err).toMatch(/not the Change Branch aidw\/app/);
+    expect(git(bare, "for-each-ref", "--format=%(refname)")).toBe("");
+    expect(ghCalls()).toEqual([]);
+  });
+
+  it("refuses to commit and push a credential in the delivery package", () => {
+    approved();
+    finished();
+    write(root, `.aidw/changes/${ID}/delivery/notes.md`, `key ${KEY}\n`);
+    const r = cli(["pr", ID, "--create"]);
+    expect(r.code).toBe(1);
+    expect(r.err).toMatch(/AWS access key/);
+    expect(git(bare, "for-each-ref", "--format=%(refname)")).toBe("");
+    expect(git(root, "diff", "--cached", "--name-only")).toBe("");
+  });
+
+  it("leaves secrets files and credentials out of the discarded work it commits, and says so", () => {
+    approved();
+    finished();
+    t01NotBuilt();
+    write(root, ".aidw/run/evidence/notbuilt-T01/app/api/bookings/new.ts", "export const ok = 1;\n");
+    write(root, ".aidw/run/evidence/notbuilt-T01/app/api/bookings/key.ts", `export const k = "${KEY}";\n`);
+    write(root, ".aidw/run/evidence/notbuilt-T01/.env.local", "X=1\n");
+    setTasks((ts) => (ts[0]!.not_built.saved = [".aidw/run/evidence/notbuilt-T01.patch", ".aidw/run/evidence/notbuilt-T01/"]));
+    const body = JSON.parse(cli(["pr", ID, "--json"]).out).body as string;
+    const dir = join(changeDir(), "delivery/not-built/T01");
+    expect(existsSync(join(dir, "app/api/bookings/new.ts"))).toBe(true);
+    expect(existsSync(join(dir, "app/api/bookings/key.ts"))).toBe(false);
+    expect(existsSync(join(dir, ".env.local"))).toBe(false);
+    const nb = section(body, "Not built and why");
+    expect(nb).toMatch(/left out of the commit: .*key\.ts: looks like a credential/);
+    expect(nb).toMatch(/left out of the commit: .*\.env\.local: a secrets file/);
+  });
+
+  it("binds the cap into the approval hash: a direct edit is drift, aidw cap rehashes, and never under the runner", () => {
+    approved();
+    setChange((c) => (c.approval.agent_run_cap = 999));
+    expect(cli(["approval", "check", ID]).code).toBe(1);
+    approved();
+    expect(cli(["cap", ID, "--raise", "5"], { AIDW_RUNNER: "1" }).code).toBe(1);
+    expect(cli(["cap", ID, "--raise", "5"]).code).toBe(0);
+    expect(cli(["approval", "check", ID]).code).toBe(0);
+    setChange((c) => (c.approval.history = []));
+    expect(cli(["approval", "check", ID]).code).toBe(1);
+  });
+});
+
+describe("review fixes: the run's own refusals and the ready rule", () => {
+  it("--create refuses without the grant under the runner; task retry refuses under the runner", () => {
+    approved(QUALITY_YAML);
+    finished();
+    const r = cli(["pr", ID, "--create"], { AIDW_RUNNER: "1" });
+    expect(r.code).toBe(1);
+    expect(r.err).toMatch(/not granted/);
+    expect(ghCalls()).toEqual([]);
+    expect(git(bare, "for-each-ref", "--format=%(refname)")).toBe("");
+    expect(cli(["task", "retry", "T01", "--change", ID], { AIDW_RUNNER: "1" }).code).toBe(1);
+  });
+
+  it("asks before any Agent archives, Role or not", () => {
+    approved();
+    expect(bash("aidw archive app", "general-purpose")).toBe("ask");
+    expect(bash("aidw archive app", "aidw:backend")).toBe("deny");
+    expect(bash("aidw archive app")).toBe("none");
+  });
+
+  it("archive keeps a draft open unless forced", () => {
+    approved();
+    finished();
+    t01NotBuilt();
+    const a = cli(["archive", ID]);
+    expect(a.code).toBe(1);
+    expect(a.err).toMatch(/draft pull request.*--force/);
+    expect(changeData().state).toBe("delivered");
+  });
+
+  it("puts what was approved with open points after the three sections, so a ready PR needs Nothing", () => {
+    approved();
+    finished();
+    write(
+      root,
+      `.aidw/changes/${ID}/plan-review.yaml`,
+      YAML.stringify({ rounds: [1, 2, 3].map((round) => ({ round, verdict: "fix", digest: "x", at: "2026-11-24T00:00:00.000Z", findings: [{ item: 1, target: "T01", text: "the slot lock is not specified" }] })) }),
+    );
+    const r = JSON.parse(cli(["pr", ID, "--json"]).out) as { ready: boolean; body: string };
+    expect(section(r.body, "Needed from the user to finish")).toBe("Nothing.");
+    if (/Approved with open points/.test(r.body)) expect(section(r.body, "Approved with open points")).toMatch(/slot lock/);
+  });
+
+  it("a question after the gate no Deviation settled makes a draft", () => {
+    approved();
+    finished();
+    write(root, `.aidw/changes/${ID}/consult/T01.request.md`, "## Question\n\nMay a slot move practitioner?\n");
+    write(
+      root,
+      `.aidw/changes/${ID}/consultations.yaml`,
+      YAML.stringify({ consultations: [{ id: "C01", from: "backend", to: "api-designer", task: "T01", run: "task:T01#1", request: "consult/T01.request.md", answer: "consult/C01.answer.md", brief: "x", after_gate: true, status: "needs-deviation", route: "deviation", deviation: "abandoned", at: "x" }] }),
+    );
+    const r = JSON.parse(cli(["pr", ID, "--json"]).out) as { ready: boolean; why: string[]; body: string };
+    expect(r.ready).toBe(false);
+    expect(r.why.join("; ")).toMatch(/C01/);
+    expect(section(r.body, "Needed from the user to finish")).toMatch(/C01/);
+  });
+
+  it("a layer that passed on older code is not ready; bookkeeping commits since do not count", () => {
+    approved();
+    finished();
+    expect(JSON.parse(cli(["pr", ID, "--json"]).out).ready).toBe(true);
+    write(root, "app/api/bookings/late.ts", "export {};\n");
+    git(root, "add", "app");
+    git(root, "commit", "-q", "-m", "feat(booking): late change");
+    const r = JSON.parse(cli(["pr", ID, "--json"]).out) as { ready: boolean; why: string[] };
+    expect(r.ready).toBe(false);
+    expect(r.why.join("; ")).toMatch(/older code/);
+  });
+
+  it("reads --base as a value and shows the pull request in aidw status", () => {
+    approved();
+    finished();
+    const plan = JSON.parse(cli(["pr", ID, "--base", "develop", "--json"]).out) as { base: string };
+    expect(plan.base).toBe("develop");
+    expect(cli(["pr", ID, "--create"]).code).toBe(0);
+    expect(cli(["status", ID]).out).toContain(`pull request ${PR_URL}`);
+  });
+
+  it("the runner ends a ready Change whose push was not granted with a NEXT, not no_progress", () => {
+    approved(QUALITY_YAML);
+    finished();
+    const claude = write(root, "fake-claude", `#!/usr/bin/env node\nrequire("fs").appendFileSync(require("path").join(process.cwd(), "calls.log"), "x\\n");\n`);
+    chmodSync(claude, 0o755);
+    cli(["pr", ID]); // the delivery session wrote the body: run.pr { url: null, draft: false }
+    setChange((c) => (c.run.pr.at = "y"));
+    const r = runLoop(pathsFor(root), ID, { claude, sleep: () => {}, maxRuns: 5 });
+    expect(r.outcome).toBe("needs_user");
+    expect(r.runs).toBe(1);
+    expect(r.message).toMatch(/NEXT: open it with `aidw pr app --create`.*then `aidw archive app`/);
   });
 });

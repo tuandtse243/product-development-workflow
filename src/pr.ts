@@ -12,9 +12,11 @@ import YAML from "yaml";
 import { ChangeError, loadChange, saveChange, stateOf, type Change } from "./change.js";
 import { aidwCommitMessage, header, scopeOf } from "./commit.js";
 import { keepDiscardedWork, prReadiness, prSections } from "./draft.js";
-import { boundPush, githubSlug, GRANT_STATES, pushGrantReason, readGrants } from "./grants.js";
+import { approvalStatus } from "./approval.js";
+import { bindingProblem, boundPush, githubSlug, GRANT_STATES, pushGrantReason, readGrants } from "./grants.js";
+import { secretsInChanges, secretsProblem } from "./secrets.js";
 import { lastDeploy, readSummary } from "./quality.js";
-import { git } from "./git.js";
+import { git, isEnvFile, isGeneratedPath } from "./git.js";
 import { commitAidw, OpError } from "./ops.js";
 import { readText, rel, type Paths } from "./project.js";
 import { sections } from "./spec/parse.js";
@@ -188,29 +190,89 @@ export function prNext(p: Paths, id: string, plan: PrPlan, runner: boolean): str
 /**
  * Pushes the Change Branch and opens its pull request, ready or draft (D12), before the archive so the push grant still
  * covers the Change (ADR-0012). The delivery package is committed first, so the branch carries it. A pull request
- * already opened for the Change is updated instead: the branch pushed again, the body replaced, and marked ready when
- * the Change now is (/aidw:resume finished a draft).
+ * already open for the Change Branch against its base is updated instead: the branch pushed again, the body replaced,
+ * and marked ready (or back to draft) as the Change now is. Which pull request that is, is never taken from change.yaml
+ * alone (the lead may write it): the recorded URL must point at the bound remote's repository and `gh pr view` must
+ * show it open, from the Change Branch, against the base; else the open one for the branch is looked up.
  */
 export function createPr(p: Paths, id: string, opts: { base?: string; draft?: boolean; env?: NodeJS.ProcessEnv } = {}): { url: string; plan: PrPlan; draft: boolean; updated: boolean } {
+  const env = opts.env ?? process.env;
   const change = loadAny(p, id);
   const st = stateOf(change);
   if (st !== "delivered" && st !== "archived") throw new OpError(`change "${id}" is "${String(st)}"; open the PR after delivery`);
   const plan = writePrBody(p, id, opts);
+  // an unattended session cannot answer the push question: never push what the user did not grant
+  if (env.AIDW_RUNNER === "1" && !plan.granted) throw new OpError(`the push was not granted at the Approval Gate and nobody is here to answer; ${prNext(p, id, plan, true).replace(/^NEXT: /, "")}`);
   if (!git(p.project, ["remote", "get-url", plan.remote]).ok) throw new OpError(`no git remote named ${plan.remote}: add one (git remote add ${plan.remote} <url>) and run this again`);
-  if (st === "delivered") commitAidw(p, aidwCommitMessage(`${id} pull request`, `Evidence: ${rel(p, change.dir)}/delivery/`), { delivery: true });
+  const current = git(p.project, ["branch", "--show-current"]).out;
+  if (current !== plan.head) throw new OpError(`HEAD is on ${current || "a detached commit"}, not the Change Branch ${plan.head}: switch to it (git switch ${plan.head}) and run this again`);
+  const bound = boundPush(p, change);
+  const holds = () => {
+    const why = bound ? bindingProblem(p, bound) : null;
+    if (why) throw new OpError(`the push fixed at approval does not hold: ${why}; nothing more was pushed`);
+  };
+  holds();
+  if (st === "delivered") {
+    if (bound && approvalStatus(p, loadAny(p, id)).status !== "valid") throw new OpError(`approval drift in "${id}": the approved package changed; nothing was pushed`);
+    commitAidw(p, aidwCommitMessage(`${id} pull request`, `Evidence: ${rel(p, change.dir)}/delivery/`), { delivery: true, guard: true });
+  }
+  const leak = pushedProblem(p, plan);
+  if (leak) throw new OpError(`refusing to push: ${leak}; nothing was pushed`);
+  holds();
   const push = git(p.project, ["push", "-u", plan.remote, plan.head]);
   if (!push.ok) throw new OpError(`git push failed: ${(push.err || push.out).split("\n")[0]}`);
   const draft = opts.draft === true || !plan.ready;
-  const prev = plan.record;
+  holds();
+  const prev = existingPr(p, plan);
   let url: string;
-  if (prev?.url) {
+  if (prev) {
     url = prev.url;
     gh(p, plan, ["pr", "edit", url, "--body-file", plan.bodyFile]);
     if (prev.draft && !draft) gh(p, plan, ["pr", "ready", url]);
     else if (!prev.draft && draft) gh(p, plan, ["pr", "ready", url, "--undo"]);
   } else url = ghCreate(p, plan, draft);
   savePrRecord(loadAny(p, id), { url, draft, at: new Date().toISOString() });
-  return { url, plan, draft, updated: Boolean(prev?.url) };
+  return { url, plan, draft, updated: Boolean(prev) };
+}
+
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** gh's JSON answer, or null when gh failed or said something else. */
+function ghJson(p: Paths, args: string[]): unknown {
+  const r = spawnSync("gh", args, { cwd: p.project, encoding: "utf8" });
+  if (r.error || r.status !== 0) return null;
+  try {
+    return JSON.parse(r.stdout);
+  } catch {
+    return null;
+  }
+}
+
+/** The open pull request of the Change Branch against its base, checked with gh; null when there is none. */
+function existingPr(p: Paths, plan: PrPlan): { url: string; draft: boolean } | null {
+  const urlOk = (u: unknown): u is string => typeof u === "string" && (plan.repo ? new RegExp(`^https://github\\.com/${escapeRe(plan.repo)}/pull/\\d+$`) : /^https:\/\/\S+\/pull\/\d+$/).test(u);
+  const rec = plan.record;
+  if (rec?.url && urlOk(rec.url)) {
+    const v = ghJson(p, ["pr", "view", rec.url, "--json", "headRefName,baseRefName,state,isDraft"]) as { headRefName?: unknown; baseRefName?: unknown; state?: unknown } | null;
+    if (v && v.headRefName === plan.head && v.baseRefName === plan.base && v.state === "OPEN") return { url: rec.url, draft: rec.draft };
+  }
+  const list = ghJson(p, ["pr", "list", "--head", plan.head, "--base", plan.base, "--state", "open", "--json", "url,isDraft", ...(plan.repo ? ["--repo", plan.repo] : [])]);
+  const hit = Array.isArray(list) ? (list as { url?: unknown; isDraft?: unknown }[]).find((x) => urlOk(x?.url)) : undefined;
+  return hit ? { url: hit.url as string, draft: hit.isDraft === true } : null;
+}
+
+/**
+ * What the push would carry beyond the task commits that must not leave the machine: the bookkeeping aidw committed
+ * since the base (`.aidw/`, README.md, .env.example, .gitignore) holding a secrets file, build output or a credential.
+ */
+function pushedProblem(p: Paths, plan: PrPlan): string | null {
+  const mb = [plan.base, `${plan.remote}/${plan.base}`].map((b) => git(p.project, ["merge-base", b, "HEAD"])).find((r) => r.ok && r.out);
+  if (!mb) return null;
+  const changed = git(p.project, ["diff", "--name-only", mb.out, "HEAD", "--", ".aidw", "README.md", ".env.example", ".gitignore"]).out.split("\n").filter(Boolean);
+  const junk = changed.filter((f) => isEnvFile(f) || isGeneratedPath(f));
+  if (junk.length) return `it would publish ${junk.slice(0, 3).join(", ")} (a secrets file or build output)`;
+  const found = secretsInChanges(p.project, mb.out, changed) ?? [];
+  return found.length ? secretsProblem(found) : null;
 }
 
 function gh(p: Paths, plan: PrPlan, args: string[]): string {
