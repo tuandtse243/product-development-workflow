@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { cleanTemps, gitBase, project, roleScript, runScript, write } from "./rolescripts.js";
@@ -410,5 +410,143 @@ describe("leak-and-timeout-scan", () => {
   it("prints file:line findings with --text", () => {
     const root = project(files);
     expect(runScript(S("leak-and-timeout-scan.mjs"), [root, "--text"]).stdout).toMatch(/src\/client\.ts:1\s+timeout/);
+  });
+});
+
+describe("backend scripts on realistic code", () => {
+  it("route-inventory: an outbound client call shaped like a route is not a route", () => {
+    const root = project({ "src/a.ts": "await axios.get('/remote/users', cfg);\nconst r = await apiClient.post('/remote/orders', body);\nrouter.get('/:id', auth, getUser);\n" });
+    expect(runScript(S("route-inventory.mjs"), [root]).json.routes.map((x: any) => `${x.method} ${x.path} ${x.handler}`)).toEqual(["GET /:id getUser"]);
+  });
+
+  it("route-inventory: Nest @Controller({ path }) and a Next.js route group under app/", () => {
+    const root = project({
+      "src/admin.controller.ts": "@Controller({ path: 'admin' })\nexport class A {\n  @Delete(':id')\n  @UseGuards(G)\n  remove() {}\n}\n",
+      "app/(shop)/api/cart/route.ts": "export const POST = async () => {};\n",
+      "tests/cart.test.ts": "await request(app).post('/api/cart').expect(201);\n",
+    });
+    const routes = runScript(S("route-inventory.mjs"), [root]).json.routes.map((x: any) => `${x.method} ${x.path} ${x.handler} ${x.tests.length}`);
+    expect(routes.sort()).toEqual(["DELETE /admin/:id remove 0", "POST /api/cart POST 1"]);
+  });
+
+  it("env-names: ?? defaults, multi-line destructuring and an example file with blanks, comments and export", () => {
+    const root = project({
+      ".env.example": "# Database\n\nDATABASE_URL=postgres://u:hunter2@h/db\n  # an indented comment\nexport JWT_SECRET=\"s3cr3t\"\nPORT=3000 # inline comment\n\n",
+      ".env": "JWT_SECRET=realsecret123\n",
+      "src/app.ts": "const port = process.env.PORT ?? '3000';\nconst { JWT_SECRET, DATABASE_URL } = process.env;\nconst {\n  REDIS_URL,\n  LOG_LEVEL = 'info',\n} = process.env;\n",
+    });
+    const r = runScript(S("env-names.mjs"), [root]);
+    expect(r.code).toBe(0);
+    expect(r.json.read.map((x: any) => x.name)).toEqual(["DATABASE_URL", "JWT_SECRET", "LOG_LEVEL", "PORT", "REDIS_URL"]);
+    expect(r.json.readNotListed.map((x: any) => x.name)).toEqual(["LOG_LEVEL", "REDIS_URL"]);
+    expect(r.json.listedNotRead).toEqual([]);
+    for (const args of [[root], [root, "--text"]]) expect(runScript(S("env-names.mjs"), args).stdout).not.toMatch(/hunter2|s3cr3t|realsecret|3000/);
+  });
+
+  it("error-shape-probe: --contract follows a $ref to components/responses and takes its media type", () => {
+    const root = project({
+      "openapi.yaml": [
+        "openapi: 3.0.3",
+        "info:",
+        "  title: \"T: x\"  # a comment",
+        "paths:",
+        "  /users/{id}:",
+        "    get:",
+        "      responses:",
+        "        \"200\":",
+        "          description: ok",
+        "        \"404\":",
+        "          $ref: '#/components/responses/NotFound'",
+        "components:",
+        "  responses:",
+        "    NotFound:",
+        "      description: nf",
+        "      content:",
+        "        application/problem+json:",
+        "          schema:",
+        "            $ref: \"#/components/schemas/Problem\"",
+        "  schemas:",
+        "    Problem:",
+        "      type: object",
+        "      required:",
+        "        - type",
+        "        - title",
+        "      properties:",
+        "        type: { type: string }",
+        "        title:",
+        "          type: string",
+      ].join("\n"),
+      "src/a.ts": "res.status(404).json({ type: 't', title: 'x' });\nres.status(400).json({ title: 'x', code: 1 });\n",
+      "r.jsonl": JSON.stringify({ name: "stack", status: 500, headers: { "content-type": "application/problem+json; charset=utf-8" }, body: { type: "t", title: "Internal", detail: "TypeError: x\n    at getUser (/app/src/users.js:12:9)" } }) + "\n",
+    });
+    const r = runScript(S("error-shape-probe.mjs"), [root, "--contract", join(root, "openapi.yaml"), "--responses", join(root, "r.jsonl")]);
+    expect(r.code).toBe(0);
+    expect(r.json.shape).toMatchObject({ source: "contract openapi.yaml#/components/schemas/Problem", required: ["type", "title"], properties: ["type", "title"], mediaType: "application/problem+json" });
+    expect(r.json.sites.map((s: any) => `${s.line}:${s.kind}:${s.missing.join(",")}:${s.extra.join(",")}`)).toEqual(["1:ok::", "2:mismatch:type:code"]);
+    expect(r.json.responses[0]).toMatchObject({ mediaType: "application/problem+json", missing: [], kind: "mismatch" });
+    expect(r.json.responses[0].leaks).toContain("stack trace");
+  });
+
+  it("query-count: measure counts only the queries of its own call, on a driver whose method is on the prototype", async () => {
+    const mod = S("query-count.mjs");
+    const root = project({
+      "t.mjs": [
+        `import { createCounter } from ${JSON.stringify(mod)};`,
+        "class Pool { query(q) { return Promise.resolve(q); } }",
+        "const pool = new Pool();",
+        "const c = createCounter({ log: '' });",
+        "const restore = c.wrap(pool, ['query']);",
+        "await pool.query({ text: 'SELECT before' });",
+        "const m = await c.measure(async () => { await pool.query('SELECT 1'); await pool.query('SELECT 2'); return 7; });",
+        "restore();",
+        "console.log(JSON.stringify({ measured: m.count, result: m.result, total: c.count, restored: !Object.hasOwn(pool, 'query') }));",
+      ].join("\n"),
+    });
+    const r = runScript(join(root, "t.mjs"), [], root);
+    expect(r.code).toBe(0);
+    expect(r.json).toEqual({ measured: 2, result: 7, total: 3, restored: true });
+  });
+
+  it("leak-and-timeout-scan: axios config forms, axios.defaults.timeout and a bare err", () => {
+    const a = project({
+      "src/a.ts": [
+        "await axios({ url, method: 'get' });",
+        "await axios({ url, timeout: 1000 });",
+        "await axios.get(url, { timeout: 5000 });",
+        "console.log(err);",
+        "logger.info({ tokenCount });",
+        "logger.info('reset', { password: p });",
+      ].join("\n"),
+    });
+    expect(runScript(S("leak-and-timeout-scan.mjs"), [a]).json.findings.map((f: any) => `${f.kind} ${f.line}`)).toEqual(["timeout 1", "leak 6"]);
+    const b = project({ "src/setup.ts": "axios.defaults.timeout = 5000;\n", "src/a.ts": "await axios.get(url);\nawait fetch(url);\n" });
+    expect(runScript(S("leak-and-timeout-scan.mjs"), [b]).json.findings.map((f: any) => `${f.file}:${f.line}`)).toEqual(["src/a.ts:2"]);
+  });
+
+  it("every directory scan skips dependencies, build output and hidden folders", () => {
+    const code = "app.get('/skip', h);\nprocess.env.SKIPPED;\nfetch(u);\nres.status(400).json({ e: 1 });\n";
+    const root = project(Object.fromEntries(["node_modules/x/a.ts", "dist/a.js", "build/a.ts", ".next/a.js"].map((f) => [f, code])));
+    expect(runScript(S("route-inventory.mjs"), [root]).json.routes).toEqual([]);
+    expect(runScript(S("env-names.mjs"), [root]).json.read).toEqual([]);
+    expect(runScript(S("leak-and-timeout-scan.mjs"), [root]).json.findings).toEqual([]);
+    expect(runScript(S("error-shape-probe.mjs"), [root]).json.sites).toEqual([]);
+  });
+
+  it("every directory scan survives a symlink loop, a binary file, non-UTF-8 text and a syntax error", () => {
+    const root = project({
+      "src/ok.ts": "app.get('/ok', h);\nfetch(u);\nprocess.env.OK;\nres.status(400).json({ e: 1 });\n",
+      "src/broken.ts": "app.get('/broken', (req, res) => { res.status(500).json({ error: 'x' ;\nfetch(u, {\nlogger.info(req\nconst x = `unterminated\n",
+    });
+    writeFileSync(join(root, "src/bin.js"), Buffer.from(Array.from({ length: 4096 }, (_, i) => (i * 37) % 256)));
+    writeFileSync(join(root, "src/latin1.ts"), Buffer.from("const a = '\xff\xfe caf\xe9';\napp.get('/latin', h);\n", "latin1"));
+    mkdirSync(join(root, "src/loop"));
+    symlinkSync("..", join(root, "src/loop/up"));
+    for (const name of ["route-inventory.mjs", "env-names.mjs", "error-shape-probe.mjs", "leak-and-timeout-scan.mjs"]) {
+      const r = runScript(S(name), [root]);
+      expect(r.code, `${name}: ${r.stderr}`).toBe(0);
+      expect(r.json, name).not.toBeNull();
+    }
+    const paths = runScript(S("route-inventory.mjs"), [root]).json.routes.map((x: any) => x.path).sort();
+    expect(paths).toEqual(expect.arrayContaining(["/latin", "/ok"]));
   });
 });
