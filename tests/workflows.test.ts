@@ -162,7 +162,8 @@ describe("the state machine of a workflow", () => {
     verifying: ["executing", "converging", "paused", "escalated"],
     converging: ["executing", "deploying", "paused", "escalated"],
     deploying: ["delivered", "paused", "escalated"],
-    delivered: [],
+    // T11 (D12): /aidw:resume finishes a draft pull request by taking a delivered Change back to executing
+    delivered: ["executing"],
     archived: [],
     escalated: ["executing", "verifying", "converging", "deploying", "analyzing"],
   };

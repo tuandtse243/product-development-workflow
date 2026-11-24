@@ -21,7 +21,7 @@ transitions:
   verifying: [executing, converging, paused, escalated]
   converging: [executing, deploying, paused, escalated]
   deploying: [delivered, paused, escalated]
-  delivered: []
+  delivered: [executing]  # /aidw:resume finishes a draft pull request (D12)
   archived: []
   escalated: [executing, verifying, converging, deploying, analyzing]
 

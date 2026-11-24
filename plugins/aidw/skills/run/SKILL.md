@@ -341,20 +341,25 @@ are not built (ADR-0014).
    - `PASS` with `not built:` scenarios: their task was not built, their converge task did not close the gap, or the
      Agent-run cap was reached. Nobody is asked: go to section 5; the pull request lists them.
 
-## 5. Deploy and deliver
+## 5. Deploy, deliver, pull request
 
 1. `aidw transition <id> deploying` (refused without a passing converge on the current code), then
    `aidw deploy --change <id>`.
    - target `preview`: runs the approved deploy command and the smoke checks; prints the URL.
    - target `none` / `local`: records that nothing was deployed.
-   - `DEPLOY FAILED`: if the error carries a hint (e.g. "the user runs `vercel whoami` in their own terminal"),
-     tell the user exactly that and wait: the change stays in `deploying`, and you run `aidw deploy` again when
-     they say it is done. Otherwise escalate with the output. Do not retry with different commands: anything
-     beyond the approved command needs the user.
-2. `aidw transition <id> delivered` (refused without a successful deploy record; commits `.aidw/`).
-3. Follow `$(aidw plugin-path skills/deliver/SKILL.md)`: delivery package, screenshots, check, archive.
-4. Final report to the user: tasks and commits, quality layers and fix rounds, converge result, the preview
-   URL, known issues, and where the delivery package is.
+   - `DEPLOY FAILED`: do not wait and do not retry with other commands (anything beyond the approved command needs
+     the user, and a production deploy is never automatic, D14). Go on: the pull request opens as a draft and lists
+     the deploy, with the error and its hint (e.g. "the user runs `vercel login` in their own terminal"), under
+     "Needed from the user to finish"; `/aidw:resume` deploys again once the user fixed it.
+2. `aidw transition <id> delivered` (refused only when `aidw deploy` never ran; commits `.aidw/`).
+3. Follow `$(aidw plugin-path skills/deliver/SKILL.md)`: delivery package, screenshots, check, then the pull request
+   (`aidw pr <id>`, then `aidw pr <id> --create` as its `NEXT:` says) **before** the archive, and the archive only when
+   the pull request is ready. The run always ends in a pull request (D12): ready when everything passed, a draft when
+   something was not built or the deploy failed. A draft is not archived: the Change stays `delivered` and
+   `/aidw:resume <id>` finishes it.
+4. Final report to the user: the pull request (link, ready or draft; or its body and the `NEXT:` line when the push was
+   not granted), tasks and commits, quality layers and fix rounds, converge result, the preview URL, known issues,
+   and where the delivery package is.
 
 ## Unattended runs (usage limits)
 
@@ -371,7 +376,12 @@ Before every session the runner prepares what a sandboxed session cannot do: it 
 change is archived. The sessions then connect to it over localhost. It loops `claude -p "/aidw:resume <id>"` until the change is archived, **one task per session** (a fresh session
 starts at about 55K tokens instead of carrying hundreds of thousands), waits out each limit (the reset time from
 the error, or 5 to 60 minutes of backoff), and stops on escalation or when two sessions make no progress
-(log: `.aidw/run/runner.log`). Tier-3 questions cannot be answered headless; they end in an escalation.
+(log: `.aidw/run/runner.log`). Tier-3 questions cannot be answered headless; they end in an escalation. The run ends
+at the pull request: archived after a ready one, or `draft` (the runner stops and prints the link, or the body and the
+`NEXT:` when the push was not granted; `needs_user` with the `NEXT:` for a ready Change whose pull request the user
+must open). Started again on a draft, the runner resumes it first. A machine check that fails right before a deploy
+does not stop it: the runner records the deploy as failed with the check's words (the command is not run), delivers
+the Change, and the pull request is a draft that lists the deploy.
 
 ## Long-running commands
 

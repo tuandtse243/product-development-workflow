@@ -466,7 +466,70 @@ read-only views) abandons an open upstream Deviation and marks every pending or 
 the reason, while running work (running, review, conflict) finishes; verify, integration and converge add no fix task
 and mark what fails not built; review layers still run their reviewers. The Change then goes on to verify, deploy and
 delivery: a clean end, ready for a draft pull request. The same settling marks tasks that can never run not built, and a
-check the machine refused twice (`blocked_runs`, checkpoint or resolve) is an environment cause.
+check the machine refused twice (`blocked_runs`, checkpoint or resolve) is an environment cause. Only the user raises
+the cap after the gate: `aidw cap <id> --raise <runs>` (the gate asks every time, a headless run cannot answer it; it is
+not a grant made ahead of time) adds to `approval.agent_run_cap`, appends `{ cap: { from, to }, by: user }` to
+`approval.history` and rehashes: from package version 3 the cap and its raises are bound into the approval hash like
+`approval.push`, so a hand edit is drift, and a raise is not a Deviation. It refuses under the runner, on a drifted
+approval and while a Deviation is open (that closes against the hash it opened from).
+
+**The pull request** (plan D12, `src/pr.ts`, `src/draft.ts`). The run always ends in one. It is **ready** when every
+layer of the approved quality profile passed, converge passed with no scenario not built, the deploy succeeded and every
+task is done; a **draft** otherwise (`prReadiness` names why). The body opens with three fixed sections, in this order,
+"Nothing." when empty, all from records, never from an Agent's summary: *Differs from the approved package* (every
+closed Deviation of `deviations.yaml`: reason, author Roles, summary, scenarios and requirements removed, added or
+changed, removals with their reasons, contract classes, tasks added, removed and run again; the plan review graded the
+package as it was approved), *Not built and why* (each task with its cause and reason, the dependants not built with it
+and where its discarded work is; layers; converge scenarios; the cap with runs used), and *Needed from the user to
+finish* (derived from the causes: what to provide for an environment cause, what to do by hand for work outside the
+envelope or never automatic, `aidw cap` for the cap, a failed deploy, the plan-review findings carried from the gate,
+the questions no Role could answer). Then the summary, tasks, evidence and merge danger as before.
+
+Order at delivery: package, check, then `aidw pr <id>` (writes `.aidw/run/pr-<id>.md`, records `run.pr` in
+change.yaml, prints ready or draft, whether the push is granted and a `NEXT:`), then `aidw pr <id> --create`, then the
+archive. The push grant (ADR-0012) covers a Change still under `changes/` (open or `delivered`, `GRANT_STATES`), so the
+pull request opens before `aidw archive`; `--create` commits `.aidw/` (the delivery package) first so the branch
+carries it, and `aidw archive` pushes its own commit to the same branch when the pull request was opened and the gate's
+own rule (`pushGrantReason`) still allows the push at that moment. A draft is not archived. Without the grant the gate
+asks for `--create`; under the runner nobody can answer, so the session only writes the body and the runner ends with
+the outcome `draft` (or `archived` for a ready Change) and a `NEXT:` naming `aidw pr <id> --create`: no hang. A deploy
+that failed does not block the pull request: `delivered` needs a deploy that ran, not one that succeeded, and the
+failure goes under "Needed". The work a not-built task left on the main checkout is saved under the machine-local,
+uncommitted `.aidw/run/evidence/`; `aidw deliver` and `aidw pr` copy it into `changes/<id>/delivery/not-built/`, which
+is committed with the package, because the pull request is read on another machine and must point at something there.
+What git saw as changed is not proof it is safe to publish (a `.env.local` the project does not ignore, a key pasted
+into a file), so the copy leaves out secrets files (`.env*` but `.env.example`), dependency and
+build output, and any text with a line that looks like a credential (a patch as a whole when it touches one), and
+writes `<T>.left-out.txt`; the pull request says what was left out and that it stays only on the machine.
+
+Hardening (review of T11). Which pull request `--create` edits is never taken from change.yaml alone, which the lead
+may write: the recorded URL must point at the bound remote's GitHub repository (this slug check applies only to a
+GitHub remote; for another host the URL only has to be a pull request URL) and `gh pr view` must show it open, from
+the Change Branch of the repository itself (`isCrossRepository` false, the head owner the remote's owner: a fork can
+use the same branch name), against the base; otherwise the open one for the branch is looked up (`gh pr list --head
+--base --state open`, same checks), else a new one is created. HEAD must be the Change Branch (for `--create` and `aidw archive`);
+the push binding is checked again right before every push and `gh` call; the delivery commit runs the junk and secret
+checks of a task commit, and nothing is pushed when the bookkeeping since the base holds a secrets file, build output
+or a credential. `aidw archive` refuses a draft (computed again, not read from `run.pr`), and, with the push granted,
+a Change whose pull request was never opened, unless `--force`; `--force` is the user's: the gate asks the lead for
+it and an unattended session refuses it. Any Agent that runs `aidw archive` is asked. The last deploy must have run on
+the current code too (its `head`, bookkeeping-only differences allowed). Readiness uses the current code: a layer or converge result counts only when HEAD
+differs from where it ran by bookkeeping alone (`.aidw/`, README.md, .env.example, .gitignore). The plan-review
+findings carried to the gate and the questions no Role could answer before it were approved knowingly: they go
+under *Approved with open points* after the three sections, so a ready pull request needs "Nothing."; a question
+after the gate that needed a Deviation nobody settled makes a draft. Under the runner, a machine check that fails
+right before a deploy is recorded as a failed deploy (the command is not run) and the Change is delivered as a draft,
+and a ready Change whose push was not granted ends with `needs_user` and the NEXT (`aidw pr <id> --create`, then
+`aidw archive <id>`), never `no_progress`. The cap is hashed (package version 3): `aidw cap` rehashes, a hand edit is
+drift.
+
+**Finishing a draft.** `/aidw:resume` takes a delivered draft back to `executing` (`delivered: [executing]` in the
+Workflow's state machine, refused when nothing can run again). `reopenDraft` brings back the tasks not built for the
+environment, or at the cap once it was raised, with the tasks not built only because they depend on them; forgets the
+layers not built so verify runs them; a failed deploy runs again at the end. Tasks not built after Triage, after their
+fix rounds or outside the envelope stay so unless the user grants `aidw task retry <T>` (which accepts `not_built` and
+brings the dependants back; never under the runner). At the end `aidw pr <id> --create` finds `run.pr` and updates the same pull request: push
+again, `gh pr edit --body-file`, and `gh pr ready` when it became ready (`--undo` the other way).
 
 ## 8. Workflows
 

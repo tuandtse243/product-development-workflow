@@ -26,15 +26,25 @@ export const PACKAGE_FILES_V2 = [
   "data-model.md",
   "data-model.dbml",
 ] as const;
-/** The version `aidw approve` and a Deviation's close write. */
-export const PACKAGE_VERSION = 2;
+/**
+ * The version `aidw approve` writes (a Deviation's close keeps the Change's own). Version 3 has the files of version 2
+ * and binds the cap on Agent runs into the hash (T11): `approval.agent_run_cap` and the raises in `approval.history`.
+ */
+export const PACKAGE_VERSION = 3;
 /** The newest list (kept for readers that name every package file). */
 export const CHANGE_PACKAGE_FILES = PACKAGE_FILES_V2;
 
 /** The package version a Change was approved with (1 when the record names none). */
 export function packageVersionOf(change: Change): number {
   const v = (change.data.approval as { package?: unknown } | null | undefined)?.package;
-  return v === 2 ? 2 : 1;
+  return v === 3 ? 3 : v === 2 ? 2 : 1;
+}
+
+/** What the hash binds of the cap on Agent runs (package version 3): the cap and every raise the user made. */
+export function capBindingOf(change: Change): { cap: unknown; raises: unknown[] } {
+  const a = (change.data.approval ?? {}) as { agent_run_cap?: unknown; history?: unknown };
+  const raises = Array.isArray(a.history) ? a.history.filter((e) => !!e && typeof e === "object" && "cap" in (e as object)) : [];
+  return { cap: a.agent_run_cap ?? null, raises };
 }
 
 export const packageFilesFor = (version: number): readonly string[] => (version >= 2 ? PACKAGE_FILES_V2 : PACKAGE_FILES_V1);
@@ -74,8 +84,16 @@ const normalize = (s: string) => s.replace(/\r\n?/g, "\n");
  * is read from the recorded approval. `opts.as` replaces the digests of some files: while a Deviation is open its files
  * count as they were when it opened (src/deviation.ts).
  */
-export function computeApprovalHash(p: Paths, change: Change, push?: unknown, opts: { as?: Map<string, string | null>; version?: number } = {}): ApprovalHash {
-  return hashOf(packageDigests(p, change, opts.as, opts.version), push === undefined ? (change.data.approval as { push?: unknown } | null | undefined)?.push : push);
+export function computeApprovalHash(
+  p: Paths,
+  change: Change,
+  push?: unknown,
+  opts: { as?: Map<string, string | null>; version?: number; cap?: { cap: unknown; raises: unknown[] } } = {},
+): ApprovalHash {
+  const version = opts.version ?? packageVersionOf(change);
+  // version 3: the cap on Agent runs is bound too, so editing it in change.yaml is drift; only `aidw cap` rehashes
+  const cap = version >= 3 ? (opts.cap ?? capBindingOf(change)) : null;
+  return hashOf(packageDigests(p, change, opts.as, version), push === undefined ? (change.data.approval as { push?: unknown } | null | undefined)?.push : push, cap);
 }
 
 /**
@@ -124,10 +142,11 @@ export function isPackageRel(p: Paths, change: Change, path: string, version = p
   return r === "tasks.yaml" || packageFilesFor(version).includes(r) || (r.startsWith("specs/") && r.endsWith(".md"));
 }
 
-function hashOf(digests: Map<string, string>, bound: unknown): ApprovalHash {
+function hashOf(digests: Map<string, string>, bound: unknown, cap: unknown = null): ApprovalHash {
   const files = [...digests.keys()].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
   const binding = bound ? `approval.push\n${sha256(JSON.stringify(bound))}\n` : "";
-  const manifest = files.map((f) => `${f}\n${digests.get(f)}\n`).join("") + binding;
+  const capBinding = cap ? `approval.agent_run_cap\n${sha256(JSON.stringify(cap))}\n` : "";
+  const manifest = files.map((f) => `${f}\n${digests.get(f)}\n`).join("") + binding + capBinding;
   return { hash: `sha256:${sha256(manifest)}`, files };
 }
 

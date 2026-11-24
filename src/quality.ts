@@ -271,6 +271,13 @@ export function resetQualitySummary(change: Change): void {
   writeJson(summaryFile(change), { layers: {} });
 }
 
+/** Forgets the results of some layers (a draft reopened by /aidw:resume runs them again); their history files stay. */
+export function forgetLayers(change: Change, names: string[]): void {
+  const summary = readSummary(change);
+  for (const n of names) delete summary.layers[n];
+  writeJson(summaryFile(change), summary);
+}
+
 export function readSummary(change: Change): QualitySummary {
   const f = summaryFile(change);
   if (!existsSync(f)) return { layers: {} };
@@ -287,7 +294,7 @@ function writeJson(file: string, data: unknown): void {
 }
 
 /** Latest moment code was accepted: a layer result older than this says nothing about the current code. */
-function codeChangedAt(tasks: Task[]): string {
+export function codeChangedAt(tasks: Task[]): string {
   return tasks.reduce((m, t) => (typeof t.finished_at === "string" && t.finished_at > m ? t.finished_at : m), "");
 }
 
@@ -710,6 +717,19 @@ export function deploy(p: Paths, id: string, opts: { timeoutMs?: number; runner?
       record = { ...base, runs, smoke, url, ok: !smokeFailed, skipped: false, ...(smokeFailed ? { error: `smoke check failed: ${smokeFailed.command}` } : {}) };
     }
   }
+  appendHistory(deployFile(change), record);
+  return record;
+}
+
+/**
+ * The runner's machine check failed right before a deploy (T11, D14): a failed deploy is recorded with its message and
+ * the deploy command is not run, so the Change can be delivered and its pull request lists the deploy as needed.
+ */
+export function recordBlockedDeploy(p: Paths, id: string, problem: string): DeployRecord {
+  const change = loadChange(p, id);
+  if (stateOf(change) !== "deploying") throw new OpError(`change "${id}" is "${String(change.data.state)}"; a deploy is recorded in state deploying`);
+  const config = loadQuality(p, change);
+  const record: DeployRecord = { at: now(), target: config.deploy.target, ok: false, skipped: false, url: null, head: headCommit(p.project), runs: [], smoke: [], error: `the machine check before the deploy failed, so it did not run: ${problem}` };
   appendHistory(deployFile(change), record);
   return record;
 }

@@ -71,11 +71,26 @@ grants:
   remote or base, `--force`, `--no-verify`, `git -C`, shell chaining, substitution or globs) still asks. Pushing a Task
   Worktree branch (`aidw/<id>.T<n>`) is denied, granted or not. `aidw pr` pushes the branch, remote and base fixed at
   approval and passes `--repo` for a GitHub remote; its grant holds only while `run.branch` still names that branch.
+  What `aidw pr <id> --create` does under that grant (T11): it refuses unless HEAD is the Change Branch and the binding
+  still holds (checked again right before the push and every `gh` call); commits the delivery package (`.aidw/` plus
+  README.md, .env.example and .gitignore, refused when it would add a secrets file, build output or a credential, and
+  nothing is pushed when the bookkeeping since the base holds one); pushes the branch; then opens the pull request, or
+  edits the one open for that branch against that base (`gh pr edit --body-file`, `gh pr ready [--undo]`), confirmed
+  with `gh pr view` / `gh pr list` (open, head a branch of the repository itself and not a fork's of the same name,
+  base the bound base; the URL must also name the bound repository when the remote is on GitHub), never just the URL
+  change.yaml records. Under the runner without the grant it
+  refuses instead of pushing. `aidw archive` pushes its own commit to the Change Branch only when a pull request was
+  opened and the gate's rule allows that push at that moment (binding, branch and the commit's content checked again);
+  any Agent that runs `aidw archive` is asked (an aidw Role is denied). `aidw archive --force` (a draft as it is, or a
+  Change whose granted pull request never opened) always asks the lead and is refused in an unattended session.
 - **Envelope.** `envelope: true` adds any free resource of a provider the project already uses, and migrations that
   change data on local and dev databases when they are reversible and were tried on seed data first. A pattern cannot
   tell "free" apart, so the gate does not enforce it: it is written into every task brief and the gate page, and work
   outside it is marked not built, never done. Tier 2 commands still need their key in `permissions` to run without asking.
 - **Cap.** `agent_runs` is recorded here; the run enforces it (at the cap no new task starts and the run ends cleanly).
+  `aidw approve` fixes it in `approval.agent_run_cap`, hashed with the package (editing it is drift). Only the user
+  raises it afterwards: `aidw cap <id> --raise <runs>` always asks (an Agent is denied, an unattended session refuses
+  it), needs a valid approval and no open Deviation, records the raise in `approval.history` and rehashes.
 - **Never automatic, whatever is granted:** credentials outside the project's own `.env`, anything that costs money,
   production deploys, deleting cloud data. `grants` has no key for them; an unknown key fails validation.
 
