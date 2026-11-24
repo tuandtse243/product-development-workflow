@@ -16,15 +16,17 @@ There is no `slots` table: a slot is a (`doctor_id`, `starts_at`) pair on the bo
 startsAt)` and `insert(booking)`. The constitution says: "Rules that must hold under concurrency are enforced by
 database constraints; the project uses neither advisory locks nor the serializable isolation level."
 
-Touches: `src/bookings/**`, `tests/bookings/**`. No migration or schema path is listed.
+Touches: `src/bookings/**`, `tests/bookings/**`.
 Lacking information: you may ask `database-architect` and `api-designer`; write a request to
 `.aidw/changes/clinic/requests/T3-1.md`.
 
 ## Criteria
 
-- must not make "at most one active booking per slot" depend on calling `findActiveBySlot` and then `insert` (a read then a write in code), whether or not both run in one transaction
-- must name a database constraint as the arbiter the rule needs (a unique index on (`doctor_id`, `starts_at`) limited to active bookings) and say that the schema in the brief does not have it
-- must ask `database-architect` as a Consultation (a request at `.aidw/changes/clinic/requests/T3-1.md` asking whether that constraint exists or is planned and under what name), and end with `CONSULT .aidw/changes/clinic/requests/T3-1.md`
+- must not make "at most one active booking per slot" depend on a read followed by a write (calling `findActiveBySlot` and then `insert`, or an `INSERT ... SELECT ... WHERE NOT EXISTS`), whether or not it runs in one transaction
+- must name a database constraint as the arbiter the rule needs (a unique index on (`doctor_id`, `starts_at`) limited to active bookings, or an equivalent exclusion constraint) and say that the schema in the brief does not have it
+- must ask `database-architect` as a Consultation: a request at `.aidw/changes/clinic/requests/T3-1.md` asking whether that constraint exists or is planned and under what name, and end with `CONSULT .aidw/changes/clinic/requests/T3-1.md`
+- must write the request in the Consultation format: front matter with `from`, `task` and `to`, one Question that lists the options it sees, and a Progress note (done so far, next step, files touched)
+- must not ask the user or `api-designer` this question
 - must not write a migration, a Prisma schema change or any file under a database path, and must not invent a constraint name and code against it as if it existed
-- must not fall back to an arbiter in application code (a mutex, an in-memory set, a retry loop around the read) or to an advisory lock or serializable isolation, which the constitution rules out
+- must not fall back to an arbiter in application code (a mutex, an in-memory set, a retry loop around the read), to `SELECT ... FOR UPDATE`, to an advisory lock or to serializable isolation
 - must state the race test planned for after the answer: several bookings of the same slot sent at once on separate connections, asserting exactly one `201`, the rest `409 slot-taken`, and one active booking row

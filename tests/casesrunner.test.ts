@@ -369,7 +369,67 @@ describe("the Role case runner", () => {
     it("refuses an id the Role does not have, and a run with no Role", () => {
       const root = ablatable();
       expect(go(root, ["eval", "backend", "--without", "B9"], () => fake(true)).out).toMatch(/--without: "B9" is not a rule id or a skill of backend/);
+      expect(go(root, ["eval", "backend", "--without", "B1,B9"], () => fake(true)).out).toMatch(/--without: "B9" is not a rule id or a skill of backend/);
       expect(go(root, ["eval", "--without", "B1"], () => fake(true)).out).toMatch(/--without needs a Role/);
+    });
+
+    it("takes a list: drops every item and runs the cases covering any of them", () => {
+      const root = ablatable();
+      const s = roleSystem(root, "backend", ["B1", "effects-after-commit"]);
+      expect(s).not.toContain("RULE-ONE-TEXT");
+      expect(s).not.toContain("SKILL-BODY-TEXT");
+      expect(s).toContain("RULE-TWO-TEXT");
+      expect(roleSystem(root, "backend", "B1, B2")).not.toMatch(/RULE-(ONE|TWO)-TEXT/);
+      const prompts: string[] = [];
+      const r = go(root, ["eval", "backend", "--without", "B1,B2", "--runs", "1"], () => (p, system) => (system && prompts.push(system), fake(false)(p, system)));
+      expect(r.code, r.out).toBe(0);
+      expect(r.out).toMatch(/without B1,B2: 2\/2 case\(s\) failed, as they should/);
+      expect(prompts.every((x) => !x.includes("RULE-ONE-TEXT") && !x.includes("RULE-TWO-TEXT"))).toBe(true);
+      expect(existsSync(join(root, "roles", "backend", "evals", "results.json"))).toBe(false);
+    });
+
+    it("with --case runs only that case, and prints every criterion's verdict", () => {
+      const root = ablatable();
+      let grade = 0;
+      // the first criterion fails, the others pass
+      const half: Exec = (p, system) => {
+        if (system) return "ANSWER " + "x".repeat(400);
+        const n = (p.match(/^\d+\. /gm) ?? []).length;
+        grade++;
+        return JSON.stringify(Array.from({ length: n }, (_, i) => ({ n: i + 1, pass: i > 0, reason: "why" })));
+      };
+      const r = go(root, ["eval", "backend", "--without", "B1,effects-after-commit", "--case", "entity-is-not-a-response", "--runs", "2"], () => half);
+      expect(grade).toBe(2);
+      expect(r.out).toMatch(/FAIL {2}backend\/entity-is-not-a-response \(0\/2 runs\)/);
+      expect(r.out).not.toMatch(/validates-authorizes/);
+      expect(r.out).toMatch(/^ {6}FAIL .*\n {11}failed in 2 of 2 graded runs: why$/m);
+      expect(r.out).toMatch(/^ {6}ok {3}\S/m);
+    });
+  });
+
+  describe("the bare baseline (C3, --bare)", () => {
+    it("answers with only the shared procedures the Role includes, never its own text", () => {
+      const root = gitCopy();
+      const prompts: string[] = [];
+      const r = go(root, ["eval", "backend", "--bare", "--runs", "1"], () => (p, system) => (system && prompts.push(system), fake(false)(p, system)));
+      expect(r.code, r.out).toBe(0);
+      expect(r.out).toMatch(/bare \(no Role instructions\): \d+\/\d+ case\(s\) failed, as they should/);
+      expect(prompts.length).toBeGreaterThan(0);
+      const shared = readFileSync(join(root, "library", "implement-a-task.md"), "utf8").trim();
+      const role = readFileSync(join(root, "roles", "backend", "role.md"), "utf8");
+      const own = /## Responsibility\n\n(.+)/.exec(role)?.[1] ?? "no-such-text";
+      expect(prompts.every((x) => x === shared)).toBe(true);
+      expect(prompts.every((x) => !x.includes(own))).toBe(true);
+      expect(existsSync(join(root, "roles", "backend", "evals", "results.json"))).toBe(false);
+    });
+
+    it("flags a case the bare model passes, and needs a Role", () => {
+      const root = gitCopy();
+      const r = go(root, ["eval", "backend", "--bare", "--runs", "1", "--case", "entity-is-not-a-response"], () => fake(true));
+      expect(r.code).toBe(1);
+      expect(r.out).toMatch(/PASSES BARE backend\/entity-is-not-a-response: the model passes it with no Role; rewrite or drop it \(C3\)/);
+      expect(go(root, ["eval", "--bare"], () => fake(true)).out).toMatch(/--bare needs a Role/);
+      expect(go(root, ["eval", "backend", "--bare", "--without", "B1"], () => fake(true)).out).toMatch(/--bare and --without do not go together/);
     });
   });
 

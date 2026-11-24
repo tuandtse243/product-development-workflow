@@ -713,9 +713,14 @@ In the user's project, `.aidw/` keeps its current shape and gains `roles/<id>/` 
   `expect: ask` for a case whose right answer is a question (a hole in the contract: ask, do not guess). For an
   `expect: ask` case the runner drops the "do not stop to ask" line from the prompt and grades a short answer instead
   of calling it no deliverable; an empty reply or a refusal is still an ERROR.
-- **A case fails without what it covers (plan C3).** `aidw eval <role> --without <rule-id|skill>` takes that rule row
-  or skill out of the instructions and runs only the cases covering it; each must fail, and one that still passes is
-  printed as STILL PASSES (exit 1): rewrite or drop it. Such a run never writes the result file.
+- **A case fails without what it covers (plan C3).** `aidw eval <role> --without <id>[,<id>...]` takes those rule rows
+  and skills out of the instructions and runs only the cases covering any of them (with `--case`, that case: pass all
+  of its `covers` to test the case as a whole, since a rule and the skill that serves it say the same thing twice); each
+  must fail, and one that still passes is printed as STILL PASSES (exit 1): rewrite or drop it. `aidw eval <role>
+  --bare` is the baseline: the cases are answered with none of the Role's instructions, only the shared procedures it
+  includes (`library/implement-a-task.md`, so the protocol for asking does not decide a case), and a case that passes is
+  printed as PASSES BARE (exit 1). Both print every criterion's verdict, so a run is read per criterion, and never write
+  the result file.
 - **Coverage (level 0, no tokens; plan C1).** For a Role whose `rules.md` is a table, `aidw roster` fails when a rule
   id or a skill of the Role has no case covering it. A `covers:` entry that names neither a rule id nor a skill of
   the Role fails for every Role. Roles still in prose are not held to coverage.

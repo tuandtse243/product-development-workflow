@@ -300,14 +300,17 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
   vendor-path <upstream>/<skill>         absolute path of a vendored SKILL.md (e.g. pocock/grilling)
   diff-coverage <lcov> [--min 80] [--base <ref>]  coverage of the lines added since the change's first task started
   plugin-path <path>                     absolute path of a plugin file (e.g. roles/software-architect/references/stack-pool.md)
-  eval [<role>] [--case <name>] [--model <m>] [--runs <n>] [--without <id>] [--answers]
+  eval [<role>] [--case <name>] [--model <m>] [--runs <n>] [--without <id,...> | --bare] [--answers]
                                          run a Role's cases with claude -p (no tools) and grade each answer against its
                                          criteria; without a Role, every active Role. Costs tokens; exits 1 when a case fails.
                                          The model is the one the Role's tier maps to in tiers.yaml (--model overrides it).
                                          --runs <n> runs each case n times (1-10, default 3): a case passes only when every run
                                          passes; one that passes only some runs is FLAKY and not passed
-                                         --without <rule-id|skill> drops that rule row or skill and runs the cases covering it:
-                                         each must fail (exits 1 when one still passes)
+                                         --without <id>[,<id>...] drops those rule rows and skills and runs the cases covering any
+                                         of them (with --case, that case): each must fail (exits 1 when one still passes)
+                                         --bare answers with none of the Role's instructions (only the shared procedures it
+                                         includes): each case must fail (exits 1 when one passes)
+                                         both print every criterion's verdict and never write the result file
                                          --answers also prints each answer, to see why a case failed
                                          A full run from a source checkout on the tier's model writes
                                          roles/<id>/evals/results.json (commit it with the Role's change)
@@ -1032,6 +1035,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         if (!Number.isInteger(runs) || runs < 1 || runs > 10) throw new OpError("--runs takes a whole number from 1 to 10");
         const caseName = str(args.flags.case);
         const without = str(args.flags.without);
+        const bare = args.flags.bare === true;
         const asked = str(args.flags.model);
         const progress = (r: CaseResult) => io.err(`  ... ${r.role}/${r.name}: ${r.error ? "ERROR" : r.pass ? "pass" : "fail"}${r.runs ? ` (${r.runs.passed}/${r.runs.total})` : ""}\n`);
         // One Role at a time: each answers with the model its tier maps to, unless --model names one.
@@ -1039,6 +1043,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const modelOf = new Map<string, string | undefined>();
         try {
           if (without !== undefined && !rest[0]) throw new Error("--without needs a Role: rule ids and skills belong to one Role");
+          if (bare && !rest[0]) throw new Error("--bare needs a Role: it runs that Role's cases with none of its instructions");
           const roster = loadRoster(root);
           let ids = rest[0] ? [rest[0]] : Object.entries(roster.roles).filter(([, e]) => e?.status === "active").map(([k]) => k);
           if (caseName && !rest[0]) ids = ids.filter((id) => loadEvalCases(root, id).cases.some((c) => c.name === caseName));
@@ -1046,21 +1051,24 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           for (const id of ids) {
             const model = asked ?? (roster.roles[id] ? tierModel(root, id) : undefined);
             modelOf.set(id, model);
-            results.push(...runCases(root, id, caseName, (io.modelExec ?? claudeExec)(model), progress, runs, without));
+            results.push(...runCases(root, id, caseName, (io.modelExec ?? claudeExec)(model), progress, runs, without, bare));
           }
         } catch (e) {
           throw new OpError((e as Error).message);
         }
         const ok = results.every((r) => r.pass);
         const written: string[] = [];
-        if (without) {
-          // C3: each case must fail without what it covers; one that still passes does not test it.
+        if (without || bare) {
+          // C3: each case must fail without what it covers, and with no Role at all; one that still passes does not test it.
+          const what = bare ? "bare (no Role instructions)" : `without ${without}`;
           const still = results.filter((r) => r.pass);
           const text =
-            `without ${without}: ${results.length - still.length}/${results.length} case(s) failed, as they should\n` +
-            still.map((r) => `  STILL PASSES ${r.role}/${r.name}: it does not test ${without}; rewrite or drop it (C3)\n`).join("") +
-            "  no result file written: a run --without is not the Role\n";
-          emit({ ok: still.length === 0, without, results }, printResults(results, args.flags.answers === true) + text);
+            `${what}: ${results.length - still.length}/${results.length} case(s) failed, as they should\n` +
+            still
+              .map((r) => `  ${bare ? "PASSES BARE" : "STILL PASSES"} ${r.role}/${r.name}: ${bare ? "the model passes it with no Role" : `it does not test ${without}`}; rewrite or drop it (C3)\n`)
+              .join("") +
+            `  no result file written: a run ${bare ? "--bare" : "--without"} is not the Role\n`;
+          emit({ ok: still.length === 0, ...(bare ? { bare } : { without }), results }, printResults(results, args.flags.answers === true, true) + text);
           return still.length === 0 ? 0 : 1;
         }
         // The record of the run (C6): only a full run of a Role's cases, on its tier's model, from a source checkout.

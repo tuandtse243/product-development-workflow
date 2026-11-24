@@ -50,13 +50,14 @@ export const claudeExec =
  * the text of its skills. A real Agent reads a skill from the index when it needs it; here there are no tools, so every skill
  * is inlined, or a case could only fail on knowledge the Role has but cannot reach.
  */
-export function roleSystem(root: string, id: string, without?: string): string {
+export function roleSystem(root: string, id: string, without?: string | string[]): string {
   const role = loadRole(root, id);
+  const out = idList(without);
   const strip = (body: string) => body.replace(/^---\n[\s\S]*?\n---\n/, "").trim();
   let body: string;
   let index: string[] = [];
   if (role) {
-    const r: RoleProfile = without ? withoutItem(role, without) : role;
+    const r: RoleProfile = out.reduce(withoutItem, role);
     body = strip(renderAgent(r, loadTiers(root)));
     index = r.skills.map((x) => x.name);
   } else {
@@ -67,12 +68,29 @@ export function roleSystem(root: string, id: string, without?: string): string {
   // The skills of the index (own and library), then any other file in the Role's skills/ folder.
   const dir = join(root, "roles", id, "skills");
   const own = existsSync(dir) ? readdirSync(dir).filter((n) => n.endsWith(".md")).map((n) => n.slice(0, -3)) : [];
-  const names = [...index, ...own.filter((n) => !index.includes(n) && n !== without).sort()];
+  const names = [...index, ...own.filter((n) => !index.includes(n) && !out.includes(n)).sort()];
   const skills = names
     .map((n) => ({ n, file: join(root, skillFile(id, n)) }))
     .filter((x) => existsSync(x.file))
     .map((x) => `### Skill: ${x.n}\n\n${strip(readFileSync(x.file, "utf8"))}`);
   return skills.length ? `${body}\n\n## Your skills, in full\n\nThe index above points at these files; here is their text.\n\n${skills.join("\n\n")}` : body;
+}
+
+/** `--without a,b,c` or one id, as a list; empty when nothing is taken out. */
+export function idList(without?: string | string[]): string[] {
+  if (without === undefined) return [];
+  return (Array.isArray(without) ? without : without.split(",")).map((x) => x.trim()).filter(Boolean);
+}
+
+/**
+ * The bare baseline (plan C3): none of the Role's own instructions, rules or skills, only the shared procedures it
+ * includes (for an implementing Role, `library/implement-a-task.md`), so the protocol (how to ask, Touches) does not
+ * decide the case. A case the bare model passes does not test what the Role adds: rewrite or drop it.
+ */
+export function bareSystem(root: string, id: string): string {
+  const role = loadRole(root, id);
+  if (!role) throw new Error(`Role "${id}" has no role.md`);
+  return role.shared.filter(Boolean).join("\n\n").trim();
 }
 
 /**
@@ -155,8 +173,15 @@ const MIN_ANSWER = 300;
 /** A reply that refuses the work: for a case that expects a question, this (or nothing) is no answer. */
 const REFUSAL = /^(I can['’]?t|I cannot|I won['’]?t|I'm (not able|unable)|I am (not able|unable)|Sorry, I)\b/i;
 
-export function runCase(root: string, id: string, c: EvalCase, exec: Exec, without?: string): CaseResult {
-  const system = roleSystem(root, id, without);
+/** How a case is answered: the Role whole, without some of its rules and skills (C3), or bare (no Role at all). */
+export interface Ablation {
+  without?: string | string[];
+  bare?: boolean;
+}
+
+export function runCase(root: string, id: string, c: EvalCase, exec: Exec, ab: Ablation | string = {}): CaseResult {
+  const a: Ablation = typeof ab === "string" ? { without: ab } : ab;
+  const system = a.bare ? bareSystem(root, id) : roleSystem(root, id, a.without);
   // A case that expects a question is graded whatever its length (a short question is the right answer there), but an
   // empty reply or a refusal is still no answer.
   const short = (a: string) => (c.expect === "ask" ? !a.trim() || REFUSAL.test(a.trim()) : a.trim().length < MIN_ANSWER);
@@ -169,30 +194,34 @@ export function runCase(root: string, id: string, c: EvalCase, exec: Exec, witho
 }
 
 /** One attempt at a case: a failed model call is an ERROR result, so one refusal never ends a run over many Roles. */
-function attempt(root: string, id: string, c: EvalCase, exec: Exec, without?: string): CaseResult {
+function attempt(root: string, id: string, c: EvalCase, exec: Exec, ab: Ablation): CaseResult {
   try {
-    return runCase(root, id, c, exec, without);
+    return runCase(root, id, c, exec, ab);
   } catch (e) {
     return { role: id, name: c.name, pass: false, criteria: [], answer: "", error: (e as Error).message.replace(/^claude -p failed: /, "") };
   }
 }
 
 /** N attempts as one result. A single run is the plain result; with more, a criterion that failed says in how many runs. */
-function attempts(root: string, id: string, c: EvalCase, exec: Exec, n: number, without?: string): CaseResult {
-  if (n <= 1) return attempt(root, id, c, exec, without);
-  const rs = Array.from({ length: n }, () => attempt(root, id, c, exec, without));
+function attempts(root: string, id: string, c: EvalCase, exec: Exec, n: number, ab: Ablation): CaseResult {
+  if (n <= 1) return attempt(root, id, c, exec, ab);
+  const rs = Array.from({ length: n }, () => attempt(root, id, c, exec, ab));
   const graded = rs.filter((r) => !r.error);
   const passed = rs.filter((r) => r.pass).length;
-  const failing = new Map<string, { count: number; reason: string }>();
-  for (const r of graded) for (const k of r.criteria.filter((x) => !x.pass)) {
-    const e = failing.get(k.criterion);
-    failing.set(k.criterion, { count: (e?.count ?? 0) + 1, reason: e?.reason ?? k.reason });
-  }
+  // Every criterion, in the case's order: a failing one says in how many runs, so a C3 run can be read per criterion.
+  const criteria = graded.length
+    ? c.criteria.map((criterion) => {
+        const fails = graded.map((r) => r.criteria.find((x) => x.criterion === criterion)).filter((x) => !x || !x.pass);
+        return fails.length
+          ? { criterion, pass: false, reason: `failed in ${fails.length} of ${graded.length} graded runs: ${fails[0]?.reason ?? "no verdict"}` }
+          : { criterion, pass: true, reason: `passed in ${graded.length} of ${graded.length} graded runs` };
+      })
+    : [];
   return {
     role: id,
     name: c.name,
     pass: passed === n,
-    criteria: [...failing].map(([criterion, v]) => ({ criterion, pass: false, reason: `failed in ${v.count} of ${graded.length} graded runs: ${v.reason}` })),
+    criteria,
     answer: (graded[graded.length - 1] ?? rs[rs.length - 1]!).answer,
     ...(graded.length === 0 ? { error: rs[0]!.error as string } : {}),
     runs: { total: n, passed, errors: rs.length - graded.length },
@@ -201,10 +230,25 @@ function attempts(root: string, id: string, c: EvalCase, exec: Exec, n: number, 
 
 /**
  * Runs the cases of one Role (or of every active Role when `role` is omitted), optionally only the named case. With
- * `without` (one Role only) the Role's instructions lose that rule row or skill and only the cases that cover it run.
+ * `without` (one Role only; one id or a list) the Role's instructions lose those rule rows and skills and only the cases
+ * that cover at least one of them run (all of `caseName` with it). With `bare` (one Role only) the cases are answered with
+ * none of the Role's instructions (`bareSystem`).
  */
-export function runCases(root: string, role: string | undefined, caseName: string | undefined, exec: Exec, onCase?: (r: CaseResult) => void, runs = 1, without?: string): CaseResult[] {
-  if (without !== undefined && !role) throw new Error("--without needs a Role: rule ids and skills belong to one Role");
+export function runCases(
+  root: string,
+  role: string | undefined,
+  caseName: string | undefined,
+  exec: Exec,
+  onCase?: (r: CaseResult) => void,
+  runs = 1,
+  without?: string | string[],
+  bare = false,
+): CaseResult[] {
+  const dropped = idList(without);
+  if (without !== undefined && !dropped.length) throw new Error("--without takes a rule id or a skill, or a comma-separated list of them");
+  if (dropped.length && !role) throw new Error("--without needs a Role: rule ids and skills belong to one Role");
+  if (bare && !role) throw new Error("--bare needs a Role: it runs that Role's cases with none of its instructions");
+  if (bare && dropped.length) throw new Error("--bare and --without do not go together: --bare already leaves out every rule and skill");
   const roster = loadRoster(root);
   const ids = role
     ? [role]
@@ -214,20 +258,20 @@ export function runCases(root: string, role: string | undefined, caseName: strin
   const out: CaseResult[] = [];
   for (const id of ids) {
     if (!roster.roles[id]) throw new Error(`"${id}" is not a Role in roster.yaml`);
-    if (without !== undefined) {
+    if (dropped.length) {
       const known = [...(loadRuleTable(root, id) ?? []).map((r) => r.id), ...(loadRole(root, id)?.skills ?? []).map((x) => x.name)];
-      if (!known.includes(without)) throw new Error(`--without: "${without}" is not a rule id or a skill of ${id}`);
+      for (const w of dropped) if (!known.includes(w)) throw new Error(`--without: "${w}" is not a rule id or a skill of ${id}`);
     }
     for (const c of loadEvalCases(root, id).cases) {
       if (caseName && c.name !== caseName) continue;
-      if (without !== undefined && !caseName && !c.covers.includes(without)) continue;
-      const r = attempts(root, id, c, exec, runs, without);
+      if (dropped.length && !caseName && !c.covers.some((x) => dropped.includes(x))) continue;
+      const r = attempts(root, id, c, exec, runs, bare ? { bare } : { without: dropped });
       out.push(r);
       onCase?.(r);
     }
   }
   if (caseName && !out.length) throw new Error(`no case "${caseName}"${role ? ` for ${role}` : ""}`);
-  if (without !== undefined && !out.length) throw new Error(`no case of ${role} covers "${without}"`);
+  if (dropped.length && !out.length) throw new Error(`no case of ${role} covers ${dropped.map((x) => `"${x}"`).join(" or ")}`);
   return out;
 }
 
@@ -258,7 +302,8 @@ export function writeResults(root: string, id: string, results: CaseResult[], me
   return file;
 }
 
-export function printResults(rs: CaseResult[], showAnswers = false): string {
+/** `every`: list every criterion with its verdict, not only the failing ones (a C3 run is read per criterion). */
+export function printResults(rs: CaseResult[], showAnswers = false, every = false): string {
   const lines: string[] = [];
   for (const r of rs) {
     if (showAnswers && r.answer) lines.push(`----- answer of ${r.role}/${r.name} -----\n${r.answer.trim()}\n-----`);
@@ -266,7 +311,8 @@ export function printResults(rs: CaseResult[], showAnswers = false): string {
     const tally = r.runs ? ` (${r.runs.passed}/${r.runs.total} runs${r.runs.errors ? `, ${r.runs.errors} error` : ""})` : "";
     lines.push(`${word} ${r.role}/${r.name}${tally}`.replace(/^(PASS|FAIL) /, "$1  "));
     if (r.error) lines.push(`      ${r.error.split("\n")[0]?.slice(0, 200)}`);
-    for (const c of r.criteria.filter((x) => !x.pass)) lines.push(`      - ${c.criterion}\n        ${c.reason}`);
+    if (every) for (const c of r.criteria) lines.push(`      ${c.pass ? "ok  " : "FAIL"} ${c.criterion}${c.pass ? "" : `\n           ${c.reason}`}`);
+    else for (const c of r.criteria.filter((x) => !x.pass)) lines.push(`      - ${c.criterion}\n        ${c.reason}`);
   }
   const bad = rs.filter((r) => !r.pass).length;
   lines.push(`${rs.length - bad}/${rs.length} case(s) passed`);

@@ -69,13 +69,12 @@ Ask, never guess (B1, B8, B10, B15), as a Consultation ("Ask before you guess" b
 lists under **Lacking information**. When the one you need is not listed, build what the brief states and write the gap
 to your report file. After the Approval Gate a gap goes in the report, never to the user (ADR-0014).
 
-- **`api-designer`**: the contract has a hole or contradicts a scenario (a status code, an error type, a field, a list
-  parameter nobody named), or a scenario needs a route the contract does not have.
-- **`database-architect`**: the work needs a table, column, constraint or key table the schema does not have (a
-  unique constraint as the arbiter of a race, an idempotency key table, an outbox table), or the data model and a
-  scenario disagree. An index needed only for speed is not a question: it goes under Owed.
-- **`software-architect`**: the architecture leaves a choice open that your task must make (a queue or an after-commit
-  hook, a library for an outside service, where config lives), or two of its decisions conflict.
+- **`api-designer`**: the contract has a hole or contradicts a scenario, or a scenario needs a route the contract
+  does not have (B1, B10).
+- **`database-architect`**: the work needs a database shape the schema does not have, or the data model and a
+  scenario disagree (B8, B15).
+- **`software-architect`**: the architecture leaves a choice open that your task must make, or two of its decisions
+  conflict.
 
 ## Scripts
 

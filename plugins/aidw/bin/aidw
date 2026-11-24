@@ -18319,11 +18319,12 @@ var claudeExec = (model) => (prompt, system) => {
 };
 function roleSystem(root, id, without) {
   const role = loadRole(root, id);
+  const out = idList(without);
   const strip = (body2) => body2.replace(/^---\n[\s\S]*?\n---\n/, "").trim();
   let body;
   let index = [];
   if (role) {
-    const r = without ? withoutItem(role, without) : role;
+    const r = out.reduce(withoutItem, role);
     body = strip(renderAgent(r, loadTiers(root)));
     index = r.skills.map((x) => x.name);
   } else {
@@ -18333,7 +18334,7 @@ function roleSystem(root, id, without) {
   }
   const dir = (0, import_node_path46.join)(root, "roles", id, "skills");
   const own = (0, import_node_fs41.existsSync)(dir) ? (0, import_node_fs41.readdirSync)(dir).filter((n) => n.endsWith(".md")).map((n) => n.slice(0, -3)) : [];
-  const names2 = [...index, ...own.filter((n) => !index.includes(n) && n !== without).sort()];
+  const names2 = [...index, ...own.filter((n) => !index.includes(n) && !out.includes(n)).sort()];
   const skills = names2.map((n) => ({ n, file: (0, import_node_path46.join)(root, skillFile(id, n)) })).filter((x) => (0, import_node_fs41.existsSync)(x.file)).map((x) => `### Skill: ${x.n}
 
 ${strip((0, import_node_fs41.readFileSync)(x.file, "utf8"))}`);
@@ -18344,6 +18345,15 @@ ${strip((0, import_node_fs41.readFileSync)(x.file, "utf8"))}`);
 The index above points at these files; here is their text.
 
 ${skills.join("\n\n")}` : body;
+}
+function idList(without) {
+  if (without === void 0) return [];
+  return (Array.isArray(without) ? without : without.split(",")).map((x) => x.trim()).filter(Boolean);
+}
+function bareSystem(root, id) {
+  const role = loadRole(root, id);
+  if (!role) throw new Error(`Role "${id}" has no role.md`);
+  return role.shared.filter(Boolean).join("\n\n").trim();
 }
 function withoutItem(role, item) {
   if (role.skills.some((x) => x.name === item)) return { ...role, skills: role.skills.filter((x) => x.name !== item) };
@@ -18404,63 +18414,67 @@ function answerPrompt(c) {
 }
 var MIN_ANSWER = 300;
 var REFUSAL = /^(I can['’]?t|I cannot|I won['’]?t|I'm (not able|unable)|I am (not able|unable)|Sorry, I)\b/i;
-function runCase(root, id, c, exec, without) {
-  const system = roleSystem(root, id, without);
-  const short = (a) => c.expect === "ask" ? !a.trim() || REFUSAL.test(a.trim()) : a.trim().length < MIN_ANSWER;
+function runCase(root, id, c, exec, ab = {}) {
+  const a = typeof ab === "string" ? { without: ab } : ab;
+  const system = a.bare ? bareSystem(root, id) : roleSystem(root, id, a.without);
+  const short = (a2) => c.expect === "ask" ? !a2.trim() || REFUSAL.test(a2.trim()) : a2.trim().length < MIN_ANSWER;
   let answer = exec(answerPrompt(c), system);
   if (short(answer)) answer = exec(answerPrompt(c), system);
   if (short(answer)) throw new Error(`no ${c.expect === "ask" ? "answer" : "deliverable"} (the model replied: ${answer.trim().replace(/\s+/g, " ").slice(0, 160) || "nothing"})`);
   const criteria = parseGrade(exec(buildGradePrompt(c, answer)), c.criteria);
   return { role: id, name: c.name, pass: criteria.every((x) => x.pass), criteria, answer };
 }
-function attempt(root, id, c, exec, without) {
+function attempt(root, id, c, exec, ab) {
   try {
-    return runCase(root, id, c, exec, without);
+    return runCase(root, id, c, exec, ab);
   } catch (e) {
     return { role: id, name: c.name, pass: false, criteria: [], answer: "", error: e.message.replace(/^claude -p failed: /, "") };
   }
 }
-function attempts(root, id, c, exec, n, without) {
-  if (n <= 1) return attempt(root, id, c, exec, without);
-  const rs = Array.from({ length: n }, () => attempt(root, id, c, exec, without));
+function attempts(root, id, c, exec, n, ab) {
+  if (n <= 1) return attempt(root, id, c, exec, ab);
+  const rs = Array.from({ length: n }, () => attempt(root, id, c, exec, ab));
   const graded = rs.filter((r) => !r.error);
   const passed = rs.filter((r) => r.pass).length;
-  const failing = /* @__PURE__ */ new Map();
-  for (const r of graded) for (const k of r.criteria.filter((x) => !x.pass)) {
-    const e = failing.get(k.criterion);
-    failing.set(k.criterion, { count: (e?.count ?? 0) + 1, reason: e?.reason ?? k.reason });
-  }
+  const criteria = graded.length ? c.criteria.map((criterion) => {
+    const fails = graded.map((r) => r.criteria.find((x) => x.criterion === criterion)).filter((x) => !x || !x.pass);
+    return fails.length ? { criterion, pass: false, reason: `failed in ${fails.length} of ${graded.length} graded runs: ${fails[0]?.reason ?? "no verdict"}` } : { criterion, pass: true, reason: `passed in ${graded.length} of ${graded.length} graded runs` };
+  }) : [];
   return {
     role: id,
     name: c.name,
     pass: passed === n,
-    criteria: [...failing].map(([criterion, v]) => ({ criterion, pass: false, reason: `failed in ${v.count} of ${graded.length} graded runs: ${v.reason}` })),
+    criteria,
     answer: (graded[graded.length - 1] ?? rs[rs.length - 1]).answer,
     ...graded.length === 0 ? { error: rs[0].error } : {},
     runs: { total: n, passed, errors: rs.length - graded.length }
   };
 }
-function runCases(root, role, caseName, exec, onCase, runs = 1, without) {
-  if (without !== void 0 && !role) throw new Error("--without needs a Role: rule ids and skills belong to one Role");
+function runCases(root, role, caseName, exec, onCase, runs = 1, without, bare = false) {
+  const dropped = idList(without);
+  if (without !== void 0 && !dropped.length) throw new Error("--without takes a rule id or a skill, or a comma-separated list of them");
+  if (dropped.length && !role) throw new Error("--without needs a Role: rule ids and skills belong to one Role");
+  if (bare && !role) throw new Error("--bare needs a Role: it runs that Role's cases with none of its instructions");
+  if (bare && dropped.length) throw new Error("--bare and --without do not go together: --bare already leaves out every rule and skill");
   const roster = loadRoster(root);
   const ids = role ? [role] : Object.entries(roster.roles).filter(([, e]) => e?.status === "active").map(([k]) => k);
   const out = [];
   for (const id of ids) {
     if (!roster.roles[id]) throw new Error(`"${id}" is not a Role in roster.yaml`);
-    if (without !== void 0) {
+    if (dropped.length) {
       const known = [...(loadRuleTable(root, id) ?? []).map((r) => r.id), ...(loadRole(root, id)?.skills ?? []).map((x) => x.name)];
-      if (!known.includes(without)) throw new Error(`--without: "${without}" is not a rule id or a skill of ${id}`);
+      for (const w of dropped) if (!known.includes(w)) throw new Error(`--without: "${w}" is not a rule id or a skill of ${id}`);
     }
     for (const c of loadEvalCases(root, id).cases) {
       if (caseName && c.name !== caseName) continue;
-      if (without !== void 0 && !caseName && !c.covers.includes(without)) continue;
-      const r = attempts(root, id, c, exec, runs, without);
+      if (dropped.length && !caseName && !c.covers.some((x) => dropped.includes(x))) continue;
+      const r = attempts(root, id, c, exec, runs, bare ? { bare } : { without: dropped });
       out.push(r);
       onCase?.(r);
     }
   }
   if (caseName && !out.length) throw new Error(`no case "${caseName}"${role ? ` for ${role}` : ""}`);
-  if (without !== void 0 && !out.length) throw new Error(`no case of ${role} covers "${without}"`);
+  if (dropped.length && !out.length) throw new Error(`no case of ${role} covers ${dropped.map((x) => `"${x}"`).join(" or ")}`);
   return out;
 }
 function writeResults(root, id, results, meta) {
@@ -18484,7 +18498,7 @@ function writeResults(root, id, results, meta) {
 `);
   return file;
 }
-function printResults(rs, showAnswers = false) {
+function printResults(rs, showAnswers = false, every = false) {
   const lines = [];
   for (const r of rs) {
     if (showAnswers && r.answer) lines.push(`----- answer of ${r.role}/${r.name} -----
@@ -18494,7 +18508,9 @@ ${r.answer.trim()}
     const tally = r.runs ? ` (${r.runs.passed}/${r.runs.total} runs${r.runs.errors ? `, ${r.runs.errors} error` : ""})` : "";
     lines.push(`${word} ${r.role}/${r.name}${tally}`.replace(/^(PASS|FAIL) /, "$1  "));
     if (r.error) lines.push(`      ${r.error.split("\n")[0]?.slice(0, 200)}`);
-    for (const c of r.criteria.filter((x) => !x.pass)) lines.push(`      - ${c.criterion}
+    if (every) for (const c of r.criteria) lines.push(`      ${c.pass ? "ok  " : "FAIL"} ${c.criterion}${c.pass ? "" : `
+           ${c.reason}`}`);
+    else for (const c of r.criteria.filter((x) => !x.pass)) lines.push(`      - ${c.criterion}
         ${c.reason}`);
   }
   const bad = rs.filter((r) => !r.pass).length;
@@ -19827,14 +19843,17 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
   vendor-path <upstream>/<skill>         absolute path of a vendored SKILL.md (e.g. pocock/grilling)
   diff-coverage <lcov> [--min 80] [--base <ref>]  coverage of the lines added since the change's first task started
   plugin-path <path>                     absolute path of a plugin file (e.g. roles/software-architect/references/stack-pool.md)
-  eval [<role>] [--case <name>] [--model <m>] [--runs <n>] [--without <id>] [--answers]
+  eval [<role>] [--case <name>] [--model <m>] [--runs <n>] [--without <id,...> | --bare] [--answers]
                                          run a Role's cases with claude -p (no tools) and grade each answer against its
                                          criteria; without a Role, every active Role. Costs tokens; exits 1 when a case fails.
                                          The model is the one the Role's tier maps to in tiers.yaml (--model overrides it).
                                          --runs <n> runs each case n times (1-10, default 3): a case passes only when every run
                                          passes; one that passes only some runs is FLAKY and not passed
-                                         --without <rule-id|skill> drops that rule row or skill and runs the cases covering it:
-                                         each must fail (exits 1 when one still passes)
+                                         --without <id>[,<id>...] drops those rule rows and skills and runs the cases covering any
+                                         of them (with --case, that case): each must fail (exits 1 when one still passes)
+                                         --bare answers with none of the Role's instructions (only the shared procedures it
+                                         includes): each case must fail (exits 1 when one passes)
+                                         both print every criterion's verdict and never write the result file
                                          --answers also prints each answer, to see why a case failed
                                          A full run from a source checkout on the tier's model writes
                                          roles/<id>/evals/results.json (commit it with the Role's change)
@@ -20559,6 +20578,7 @@ ${lines.length ? `${lines.join("\n")}
         if (!Number.isInteger(runs) || runs < 1 || runs > 10) throw new OpError("--runs takes a whole number from 1 to 10");
         const caseName = str(args.flags.case);
         const without = str(args.flags.without);
+        const bare = args.flags.bare === true;
         const asked = str(args.flags.model);
         const progress = (r) => io.err(`  ... ${r.role}/${r.name}: ${r.error ? "ERROR" : r.pass ? "pass" : "fail"}${r.runs ? ` (${r.runs.passed}/${r.runs.total})` : ""}
 `);
@@ -20566,6 +20586,7 @@ ${lines.length ? `${lines.join("\n")}
         const modelOf = /* @__PURE__ */ new Map();
         try {
           if (without !== void 0 && !rest[0]) throw new Error("--without needs a Role: rule ids and skills belong to one Role");
+          if (bare && !rest[0]) throw new Error("--bare needs a Role: it runs that Role's cases with none of its instructions");
           const roster = loadRoster(root);
           let ids = rest[0] ? [rest[0]] : Object.entries(roster.roles).filter(([, e]) => e?.status === "active").map(([k]) => k);
           if (caseName && !rest[0]) ids = ids.filter((id) => loadEvalCases(root, id).cases.some((c) => c.name === caseName));
@@ -20573,19 +20594,21 @@ ${lines.length ? `${lines.join("\n")}
           for (const id of ids) {
             const model = asked ?? (roster.roles[id] ? tierModel(root, id) : void 0);
             modelOf.set(id, model);
-            results.push(...runCases(root, id, caseName, (io.modelExec ?? claudeExec)(model), progress, runs, without));
+            results.push(...runCases(root, id, caseName, (io.modelExec ?? claudeExec)(model), progress, runs, without, bare));
           }
         } catch (e) {
           throw new OpError(e.message);
         }
         const ok = results.every((r) => r.pass);
         const written = [];
-        if (without) {
+        if (without || bare) {
+          const what = bare ? "bare (no Role instructions)" : `without ${without}`;
           const still = results.filter((r) => r.pass);
-          const text2 = `without ${without}: ${results.length - still.length}/${results.length} case(s) failed, as they should
-` + still.map((r) => `  STILL PASSES ${r.role}/${r.name}: it does not test ${without}; rewrite or drop it (C3)
-`).join("") + "  no result file written: a run --without is not the Role\n";
-          emit({ ok: still.length === 0, without, results }, printResults(results, args.flags.answers === true) + text2);
+          const text2 = `${what}: ${results.length - still.length}/${results.length} case(s) failed, as they should
+` + still.map((r) => `  ${bare ? "PASSES BARE" : "STILL PASSES"} ${r.role}/${r.name}: ${bare ? "the model passes it with no Role" : `it does not test ${without}`}; rewrite or drop it (C3)
+`).join("") + `  no result file written: a run ${bare ? "--bare" : "--without"} is not the Role
+`;
+          emit({ ok: still.length === 0, ...bare ? { bare } : { without }, results }, printResults(results, args.flags.answers === true, true) + text2);
           return still.length === 0 ? 0 : 1;
         }
         const inGit = (0, import_node_child_process14.spawnSync)("git", ["rev-parse", "--is-inside-work-tree"], { cwd: root, encoding: "utf8" }).stdout?.trim() === "true";
