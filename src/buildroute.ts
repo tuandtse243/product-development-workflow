@@ -7,8 +7,8 @@
  * about half the tokens (trial-3A against trial-3C). The runner's sessions run in auto mode: after the gate the run
  * never asks the user (ADR-0014).
  */
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync, realpathSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { loadChange } from "./change.js";
 import type { Paths } from "./project.js";
 import { parseTasks } from "./tasks.js";
@@ -26,10 +26,14 @@ export interface BuildRoute {
   next: string;
 }
 
-/** The route for a Change with `tasks` tasks left; `aidw` is the CLI as the orchestrator should type it. */
-export function buildRoute(id: string, tasks: number, aidw = "aidw"): BuildRoute {
+/**
+ * The route for a Change with `tasks` tasks left; `aidw` is the CLI as the orchestrator should type it, `pluginDir` the
+ * plugin directory when it is not installed.
+ */
+export function buildRoute(id: string, tasks: number, aidw = "aidw", pluginDir?: string): BuildRoute {
   if (tasks > RUNNER_THRESHOLD) {
-    const command = `${aidw} run ${id} --detach --permission-mode auto`;
+    // A plugin loaded from a directory is passed on, so the runner's sessions have /aidw:resume and the gate.
+    const command = `${aidw} run ${id} --detach --permission-mode auto${pluginDir ? ` -- --plugin-dir ${pluginDir}` : ""}`;
     return {
       mode: "runner",
       tasks,
@@ -54,33 +58,59 @@ export function tasksLeft(p: Paths, id: string): number {
   }
 }
 
+/** A path compared by what it points at: the real path when it exists, else the resolved one. */
+function canonical(path: string): string {
+  try {
+    return realpathSync(path);
+  } catch {
+    return resolve(path);
+  }
+}
+
+export interface DetachedStart {
+  kind: "plain" | "other";
+  /** the change id named on the command line, if any */
+  id?: string;
+}
+
 /**
- * For a command that runs `aidw run`: `plain` when it is the detached start the route prints (an optional change id,
- * `--detach`, `--permission-mode auto`, `--max-runs N`, and only `--plugin-dir <dir>` after `--`), `other` when it is
- * detached with anything else (another binary, permission mode, claude argument, or chained), null when not detached.
- * The gate lets the main session run a `plain` start after approval without asking (D2): it is the step the user
- * approved, and nothing in it widens what the runner's sessions may do.
+ * For a command that runs `aidw run`: `plain` when it is exactly the detached start the route prints, null when it is
+ * not detached, `other` for every other detached form. Plain means: the CLI itself (bare `aidw`, or `<root>/bin/aidw`
+ * for one of `roots`, the plugin this CLI belongs to), an optional change id, `--detach`, `--permission-mode auto`,
+ * `--max-runs N` (N >= 1), and after `--` at most one `--plugin-dir` that is one of `roots`. Anything else (another
+ * binary or plugin, another permission mode, a claude argument, a newline or other shell syntax) is `other`.
+ *
+ * The gate lets the main session run a `plain` start after approval without asking (D2). That allow also skips the
+ * prompt for running it outside the sandbox, so nothing in it may load code the user did not approve.
  */
-export function detachedStart(cmd: string): "plain" | "other" | null {
+export function detachedStart(cmd: string, roots: string[]): DetachedStart | null {
   if (!/\s--detach(?:\s|$)/.test(cmd)) return null;
-  if (/[;&|`<>]|\$\(/.test(cmd)) return "other";
+  const other: DetachedStart = { kind: "other" };
+  if (/[;&|`<>\n\r'"\\]|\$/.test(cmd)) return other;
+  const allowed = new Set(roots.filter(Boolean).map(canonical));
+  const isRoot = (dir: string) => isAbsolute(dir) && allowed.has(canonical(dir));
   const words = cmd.trim().split(/\s+/);
-  const at = words.findIndex((w, i) => /^["']?(?:\S*\/)?aidw["']?$/.test(w) && words[i + 1] === "run");
-  if (at !== 0) return "other";
-  const args = words.slice(at + 2);
+  const bin = words[0] ?? "";
+  if (words[1] !== "run") return other;
+  if (bin !== "aidw" && !(basename(bin) === "aidw" && basename(dirname(bin)) === "bin" && isRoot(dirname(dirname(bin))))) return other;
+  const args = words.slice(2);
   const dashdash = args.indexOf("--");
   const own = dashdash >= 0 ? args.slice(0, dashdash) : args;
   const passthrough = dashdash >= 0 ? args.slice(dashdash + 1) : [];
+  let id: string | undefined;
   for (let i = 0; i < own.length; i++) {
     const a = own[i] as string;
     if (a === "--detach") continue;
     if (a === "--permission-mode" && own[i + 1] === "auto") i++;
-    else if (a === "--max-runs" && /^\d+$/.test(own[i + 1] ?? "")) i++;
-    else if (i === 0 && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(a)) continue;
-    else return "other";
+    else if (a === "--max-runs" && /^[1-9]\d*$/.test(own[i + 1] ?? "")) i++;
+    else if (i === 0 && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(a)) id = a;
+    else return other;
   }
-  for (let i = 0; i < passthrough.length; i += 2) {
-    if (passthrough[i] !== "--plugin-dir" || !passthrough[i + 1] || passthrough[i + 1]?.startsWith("-")) return "other";
-  }
-  return "plain";
+  if (passthrough.length && !(passthrough.length === 2 && passthrough[0] === "--plugin-dir" && isRoot(passthrough[1] as string))) return other;
+  return { kind: "plain", ...(id ? { id } : {}) };
+}
+
+/** Whether the plugin at `root` is installed (Claude Code loads it by itself) rather than loaded with --plugin-dir. */
+export function installedPlugin(root: string): boolean {
+  return canonical(root).split(sep).join("/").includes("/.claude/plugins/");
 }

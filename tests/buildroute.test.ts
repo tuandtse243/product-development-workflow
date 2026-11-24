@@ -78,7 +78,7 @@ describe("build route after approval (D2)", () => {
     awaitingApproval(4);
     const r = cli("approve", ID);
     expect(r.code).toBe(0);
-    expect(r.out).toMatch(/^NEXT: start the runner: \S*aidw run app --detach --permission-mode auto \(4 tasks/m);
+    expect(r.out).toMatch(/^NEXT: start the runner: (\S+)\/bin\/aidw run app --detach --permission-mode auto -- --plugin-dir \1 \(4 tasks/m);
     expect(r.out).not.toMatch(/build here/);
   });
 
@@ -109,7 +109,7 @@ describe("gate: the main session starts the detached runner after approval", () 
     cwd: root,
     ...(agent_type ? { agent_type } : {}),
   });
-  const env = {} as NodeJS.ProcessEnv;
+  const env = { AIDW_PLUGIN_ROOT: "/opt/plugin" } as NodeJS.ProcessEnv;
   const decision = (command: string, agent_type?: string, e: NodeJS.ProcessEnv = env) => decide(hook(command, agent_type), e)?.decision ?? "none";
   const START = `aidw run ${ID} --detach --permission-mode auto`;
 

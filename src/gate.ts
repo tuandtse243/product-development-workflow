@@ -91,6 +91,23 @@ export function gateState(p: Paths): GateState {
   return st;
 }
 
+/**
+ * Whether the Change a runner start names (or, with no id, the only Change) has a valid approval and is in a state that
+ * builds: the runner allowance of D2 holds for that Change only, not for any approved one.
+ */
+function approvedForBuild(p: Paths, id: string | undefined): boolean {
+  const ids = listChangeIds(p);
+  const target = id ?? (ids.length === 1 ? ids[0] : undefined);
+  if (!target || !ids.includes(target)) return false;
+  try {
+    const c = loadChange(p, target);
+    const state = stateOf(c);
+    return !!state && OPEN_STATES.has(state) && approvalStatus(p, c).status === "valid";
+  } catch {
+    return false;
+  }
+}
+
 function inside(parent: string, child: string): boolean {
   const r = relative(parent, child);
   return r === "" || (r !== ".." && !r.startsWith(`..${sep}`) && !isAbsolute(r));
@@ -245,9 +262,9 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
     }
     if (RUNNER_COMMAND.test(cmd)) {
       // D2: after approval the main session starts the detached runner itself; its sessions run in auto mode (ADR-0014).
-      const start = detachedStart(cmd);
-      if (start && !input.agent_type && env.AIDW_RUNNER !== "1" && gateState(p).open) {
-        return start === "plain"
+      const start = detachedStart(cmd, [pluginRoot(env), bundledRoot() ?? ""]);
+      if (start && !input.agent_type && env.AIDW_RUNNER !== "1" && approvedForBuild(p, start.id)) {
+        return start.kind === "plain"
           ? allow("the change is approved: the detached runner builds it (`aidw approve` printed this step)")
           : ask("this starts the runner with other options than the approved step (`aidw run <id> --detach --permission-mode auto`); it needs your confirmation");
       }

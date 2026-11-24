@@ -3979,10 +3979,10 @@ var require_resolve_block_map = __commonJS({
       let offset = bm.offset;
       let commentEnd = null;
       for (const collItem of bm.items) {
-        const { start, key, sep: sep8, value } = collItem;
+        const { start, key, sep: sep9, value } = collItem;
         const keyProps = resolveProps.resolveProps(start, {
           indicator: "explicit-key-ind",
-          next: key ?? sep8?.[0],
+          next: key ?? sep9?.[0],
           offset,
           onError,
           parentIndent: bm.indent,
@@ -3996,7 +3996,7 @@ var require_resolve_block_map = __commonJS({
             else if ("indent" in key && key.indent !== bm.indent)
               onError(offset, "BAD_INDENT", startColMsg);
           }
-          if (!keyProps.anchor && !keyProps.tag && !sep8) {
+          if (!keyProps.anchor && !keyProps.tag && !sep9) {
             commentEnd = keyProps.end;
             if (keyProps.comment) {
               if (map.comment)
@@ -4020,7 +4020,7 @@ var require_resolve_block_map = __commonJS({
         ctx.atKey = false;
         if (utilMapIncludes.mapIncludes(ctx, map.items, keyNode))
           onError(keyStart, "DUPLICATE_KEY", "Map keys must be unique");
-        const valueProps = resolveProps.resolveProps(sep8 ?? [], {
+        const valueProps = resolveProps.resolveProps(sep9 ?? [], {
           indicator: "map-value-ind",
           next: value,
           offset: keyNode.range[2],
@@ -4036,7 +4036,7 @@ var require_resolve_block_map = __commonJS({
             if (ctx.options.strict && keyProps.start < valueProps.found.offset - 1024)
               onError(keyNode.range, "KEY_OVER_1024_CHARS", "The : indicator must be at most 1024 chars after the start of an implicit block mapping key");
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep8, null, valueProps, onError);
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep9, null, valueProps, onError);
           if (ctx.schema.compat)
             utilFlowIndentCheck.flowIndentCheck(bm.indent, value, onError);
           offset = valueNode.range[2];
@@ -4127,7 +4127,7 @@ var require_resolve_end = __commonJS({
       let comment = "";
       if (end) {
         let hasSpace = false;
-        let sep8 = "";
+        let sep9 = "";
         for (const token of end) {
           const { source, type } = token;
           switch (type) {
@@ -4141,13 +4141,13 @@ var require_resolve_end = __commonJS({
               if (!comment)
                 comment = cb;
               else
-                comment += sep8 + cb;
-              sep8 = "";
+                comment += sep9 + cb;
+              sep9 = "";
               break;
             }
             case "newline":
               if (comment)
-                sep8 += source;
+                sep9 += source;
               hasSpace = true;
               break;
             default:
@@ -4190,18 +4190,18 @@ var require_resolve_flow_collection = __commonJS({
       let offset = fc.offset + fc.start.source.length;
       for (let i = 0; i < fc.items.length; ++i) {
         const collItem = fc.items[i];
-        const { start, key, sep: sep8, value } = collItem;
+        const { start, key, sep: sep9, value } = collItem;
         const props = resolveProps.resolveProps(start, {
           flow: fcName,
           indicator: "explicit-key-ind",
-          next: key ?? sep8?.[0],
+          next: key ?? sep9?.[0],
           offset,
           onError,
           parentIndent: fc.indent,
           startOnNewline: false
         });
         if (!props.found) {
-          if (!props.anchor && !props.tag && !sep8 && !value) {
+          if (!props.anchor && !props.tag && !sep9 && !value) {
             if (i === 0 && props.comma)
               onError(props.comma, "UNEXPECTED_TOKEN", `Unexpected , in ${fcName}`);
             else if (i < fc.items.length - 1)
@@ -4255,8 +4255,8 @@ var require_resolve_flow_collection = __commonJS({
             }
           }
         }
-        if (!isMap && !sep8 && !props.found) {
-          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep8, null, props, onError);
+        if (!isMap && !sep9 && !props.found) {
+          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep9, null, props, onError);
           coll.items.push(valueNode);
           offset = valueNode.range[2];
           if (isBlock(value))
@@ -4268,7 +4268,7 @@ var require_resolve_flow_collection = __commonJS({
           if (isBlock(key))
             onError(keyNode.range, "BLOCK_IN_FLOW", blockMsg);
           ctx.atKey = false;
-          const valueProps = resolveProps.resolveProps(sep8 ?? [], {
+          const valueProps = resolveProps.resolveProps(sep9 ?? [], {
             flow: fcName,
             indicator: "map-value-ind",
             next: value,
@@ -4279,8 +4279,8 @@ var require_resolve_flow_collection = __commonJS({
           });
           if (valueProps.found) {
             if (!isMap && !props.found && ctx.options.strict) {
-              if (sep8)
-                for (const st of sep8) {
+              if (sep9)
+                for (const st of sep9) {
                   if (st === valueProps.found)
                     break;
                   if (st.type === "newline") {
@@ -4297,7 +4297,7 @@ var require_resolve_flow_collection = __commonJS({
             else
               onError(valueProps.start, "MISSING_CHAR", `Missing , or : between ${fcName} items`);
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep8, null, valueProps, onError) : null;
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep9, null, valueProps, onError) : null;
           if (valueNode) {
             if (isBlock(value))
               onError(valueNode.range, "BLOCK_IN_FLOW", blockMsg);
@@ -4477,7 +4477,7 @@ var require_resolve_block_scalar = __commonJS({
           chompStart = i + 1;
       }
       let value = "";
-      let sep8 = "";
+      let sep9 = "";
       let prevMoreIndented = false;
       for (let i = 0; i < contentStart; ++i)
         value += lines[i][0].slice(trimIndent) + "\n";
@@ -4494,24 +4494,24 @@ var require_resolve_block_scalar = __commonJS({
           indent = "";
         }
         if (type === Scalar.Scalar.BLOCK_LITERAL) {
-          value += sep8 + indent.slice(trimIndent) + content;
-          sep8 = "\n";
+          value += sep9 + indent.slice(trimIndent) + content;
+          sep9 = "\n";
         } else if (indent.length > trimIndent || content[0] === "	") {
-          if (sep8 === " ")
-            sep8 = "\n";
-          else if (!prevMoreIndented && sep8 === "\n")
-            sep8 = "\n\n";
-          value += sep8 + indent.slice(trimIndent) + content;
-          sep8 = "\n";
+          if (sep9 === " ")
+            sep9 = "\n";
+          else if (!prevMoreIndented && sep9 === "\n")
+            sep9 = "\n\n";
+          value += sep9 + indent.slice(trimIndent) + content;
+          sep9 = "\n";
           prevMoreIndented = true;
         } else if (content === "") {
-          if (sep8 === "\n")
+          if (sep9 === "\n")
             value += "\n";
           else
-            sep8 = "\n";
+            sep9 = "\n";
         } else {
-          value += sep8 + content;
-          sep8 = " ";
+          value += sep9 + content;
+          sep9 = " ";
           prevMoreIndented = false;
         }
       }
@@ -4693,25 +4693,25 @@ var require_resolve_flow_scalar = __commonJS({
       if (!match)
         return source;
       let res = match[1];
-      let sep8 = " ";
+      let sep9 = " ";
       let pos = first.lastIndex;
       line.lastIndex = pos;
       while (match = line.exec(source)) {
         if (match[1] === "") {
-          if (sep8 === "\n")
-            res += sep8;
+          if (sep9 === "\n")
+            res += sep9;
           else
-            sep8 = "\n";
+            sep9 = "\n";
         } else {
-          res += sep8 + match[1];
-          sep8 = " ";
+          res += sep9 + match[1];
+          sep9 = " ";
         }
         pos = line.lastIndex;
       }
       const last = /[ \t]*(.*)/sy;
       last.lastIndex = pos;
       match = last.exec(source);
-      return res + sep8 + (match?.[1] ?? "");
+      return res + sep9 + (match?.[1] ?? "");
     }
     function doubleQuotedValue(source, onError) {
       let res = "";
@@ -5513,14 +5513,14 @@ var require_cst_stringify = __commonJS({
         }
       }
     }
-    function stringifyItem({ start, key, sep: sep8, value }) {
+    function stringifyItem({ start, key, sep: sep9, value }) {
       let res = "";
       for (const st of start)
         res += st.source;
       if (key)
         res += stringifyToken(key);
-      if (sep8)
-        for (const st of sep8)
+      if (sep9)
+        for (const st of sep9)
           res += st.source;
       if (value)
         res += stringifyToken(value);
@@ -6670,18 +6670,18 @@ var require_parser = __commonJS({
         if (this.type === "map-value-ind") {
           const prev = getPrevProps(this.peek(2));
           const start = getFirstKeyStartProps(prev);
-          let sep8;
+          let sep9;
           if (scalar.end) {
-            sep8 = scalar.end;
-            sep8.push(this.sourceToken);
+            sep9 = scalar.end;
+            sep9.push(this.sourceToken);
             delete scalar.end;
           } else
-            sep8 = [this.sourceToken];
+            sep9 = [this.sourceToken];
           const map = {
             type: "block-map",
             offset: scalar.offset,
             indent: scalar.indent,
-            items: [{ start, key: scalar, sep: sep8 }]
+            items: [{ start, key: scalar, sep: sep9 }]
           };
           this.onKeyLine = true;
           this.stack[this.stack.length - 1] = map;
@@ -6834,15 +6834,15 @@ var require_parser = __commonJS({
                 } else if (isFlowToken(it.key) && !includesToken(it.sep, "newline")) {
                   const start2 = getFirstKeyStartProps(it.start);
                   const key = it.key;
-                  const sep8 = it.sep;
-                  sep8.push(this.sourceToken);
+                  const sep9 = it.sep;
+                  sep9.push(this.sourceToken);
                   delete it.key;
                   delete it.sep;
                   this.stack.push({
                     type: "block-map",
                     offset: this.offset,
                     indent: this.indent,
-                    items: [{ start: start2, key, sep: sep8 }]
+                    items: [{ start: start2, key, sep: sep9 }]
                   });
                 } else if (start.length > 0) {
                   it.sep = it.sep.concat(start, this.sourceToken);
@@ -7036,13 +7036,13 @@ var require_parser = __commonJS({
             const prev = getPrevProps(parent);
             const start = getFirstKeyStartProps(prev);
             fixFlowSeqItems(fc);
-            const sep8 = fc.end.splice(1, fc.end.length);
-            sep8.push(this.sourceToken);
+            const sep9 = fc.end.splice(1, fc.end.length);
+            sep9.push(this.sourceToken);
             const map = {
               type: "block-map",
               offset: fc.offset,
               indent: fc.indent,
-              items: [{ start, key: fc, sep: sep8 }]
+              items: [{ start, key: fc, sep: sep9 }]
             };
             this.onKeyLine = true;
             this.stack[this.stack.length - 1] = map;
@@ -9433,9 +9433,9 @@ var AIDW_STATE_COMMAND = /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+(?:task
 var import_node_fs9 = require("node:fs");
 var import_node_path11 = require("node:path");
 var RUNNER_THRESHOLD = 3;
-function buildRoute(id, tasks, aidw = "aidw") {
+function buildRoute(id, tasks, aidw = "aidw", pluginDir) {
   if (tasks > RUNNER_THRESHOLD) {
-    const command = `${aidw} run ${id} --detach --permission-mode auto`;
+    const command = `${aidw} run ${id} --detach --permission-mode auto${pluginDir ? ` -- --plugin-dir ${pluginDir}` : ""}`;
     return {
       mode: "runner",
       tasks,
@@ -9457,28 +9457,41 @@ function tasksLeft(p, id) {
     return 0;
   }
 }
-function detachedStart(cmd2) {
+function canonical(path) {
+  try {
+    return (0, import_node_fs9.realpathSync)(path);
+  } catch {
+    return (0, import_node_path11.resolve)(path);
+  }
+}
+function detachedStart(cmd2, roots) {
   if (!/\s--detach(?:\s|$)/.test(cmd2)) return null;
-  if (/[;&|`<>]|\$\(/.test(cmd2)) return "other";
+  const other = { kind: "other" };
+  if (/[;&|`<>\n\r'"\\]|\$/.test(cmd2)) return other;
+  const allowed = new Set(roots.filter(Boolean).map(canonical));
+  const isRoot = (dir) => (0, import_node_path11.isAbsolute)(dir) && allowed.has(canonical(dir));
   const words = cmd2.trim().split(/\s+/);
-  const at = words.findIndex((w, i) => /^["']?(?:\S*\/)?aidw["']?$/.test(w) && words[i + 1] === "run");
-  if (at !== 0) return "other";
-  const args = words.slice(at + 2);
+  const bin = words[0] ?? "";
+  if (words[1] !== "run") return other;
+  if (bin !== "aidw" && !((0, import_node_path11.basename)(bin) === "aidw" && (0, import_node_path11.basename)((0, import_node_path11.dirname)(bin)) === "bin" && isRoot((0, import_node_path11.dirname)((0, import_node_path11.dirname)(bin))))) return other;
+  const args = words.slice(2);
   const dashdash = args.indexOf("--");
   const own = dashdash >= 0 ? args.slice(0, dashdash) : args;
   const passthrough = dashdash >= 0 ? args.slice(dashdash + 1) : [];
+  let id;
   for (let i = 0; i < own.length; i++) {
     const a = own[i];
     if (a === "--detach") continue;
     if (a === "--permission-mode" && own[i + 1] === "auto") i++;
-    else if (a === "--max-runs" && /^\d+$/.test(own[i + 1] ?? "")) i++;
-    else if (i === 0 && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(a)) continue;
-    else return "other";
+    else if (a === "--max-runs" && /^[1-9]\d*$/.test(own[i + 1] ?? "")) i++;
+    else if (i === 0 && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(a)) id = a;
+    else return other;
   }
-  for (let i = 0; i < passthrough.length; i += 2) {
-    if (passthrough[i] !== "--plugin-dir" || !passthrough[i + 1] || passthrough[i + 1]?.startsWith("-")) return "other";
-  }
-  return "plain";
+  if (passthrough.length && !(passthrough.length === 2 && passthrough[0] === "--plugin-dir" && isRoot(passthrough[1]))) return other;
+  return { kind: "plain", ...id ? { id } : {} };
+}
+function installedPlugin(root) {
+  return canonical(root).split(import_node_path11.sep).join("/").includes("/.claude/plugins/");
 }
 
 // src/grants.ts
@@ -9782,6 +9795,18 @@ function gateState(p) {
   st.summary = parts.length ? parts.join(", ") : "no changes";
   return st;
 }
+function approvedForBuild(p, id) {
+  const ids = listChangeIds(p);
+  const target = id ?? (ids.length === 1 ? ids[0] : void 0);
+  if (!target || !ids.includes(target)) return false;
+  try {
+    const c = loadChange(p, target);
+    const state = stateOf(c);
+    return !!state && OPEN_STATES.has(state) && approvalStatus(p, c).status === "valid";
+  } catch {
+    return false;
+  }
+}
 function inside(parent, child) {
   const r = (0, import_node_path13.relative)(parent, child);
   return r === "" || r !== ".." && !r.startsWith(`..${import_node_path13.sep}`) && !(0, import_node_path13.isAbsolute)(r);
@@ -9901,9 +9926,9 @@ function decide(input, env) {
       return deny(`the ${role} does not change aidw state (no self-verification); report back to the orchestrator`);
     }
     if (RUNNER_COMMAND.test(cmd2)) {
-      const start = detachedStart(cmd2);
-      if (start && !input.agent_type && env.AIDW_RUNNER !== "1" && gateState(p).open) {
-        return start === "plain" ? allow("the change is approved: the detached runner builds it (`aidw approve` printed this step)") : ask("this starts the runner with other options than the approved step (`aidw run <id> --detach --permission-mode auto`); it needs your confirmation");
+      const start = detachedStart(cmd2, [pluginRoot(env), bundledRoot() ?? ""]);
+      if (start && !input.agent_type && env.AIDW_RUNNER !== "1" && approvedForBuild(p, start.id)) {
+        return start.kind === "plain" ? allow("the change is approved: the detached runner builds it (`aidw approve` printed this step)") : ask("this starts the runner with other options than the approved step (`aidw run <id> --detach --permission-mode auto`); it needs your confirmation");
       }
       return deny(
         "`aidw run` starts Claude Code headless in a loop: only the main session of an approved change starts it, in the background (`aidw run <id> --detach --permission-mode auto`); otherwise the user runs it in their own terminal"
@@ -17309,7 +17334,8 @@ ${rows2.join("\n")}${rows2.length ? "\n" : ""}${stagesNext(v)}
         const auto = args.flags.auto === true;
         const { hash, files, by } = approve(p, id, auto ? { auto: { pluginRoot: pluginRoot(env) } } : {});
         const { kept, reopened } = reconcileDoneTasks(p, id);
-        const route = buildRoute(id, tasksLeft(p, id), (0, import_node_path45.join)(pluginRoot(env), "bin", "aidw"));
+        const root = pluginRoot(env);
+        const route = buildRoute(id, tasksLeft(p, id), (0, import_node_path45.join)(root, "bin", "aidw"), installedPlugin(root) ? void 0 : root);
         emit(
           { ok: true, id, hash, files, kept, reopened, route },
           `approved ${id}${by === "user" ? "" : ` by ${by}`}
