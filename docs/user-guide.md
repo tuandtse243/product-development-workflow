@@ -116,7 +116,11 @@ Sơ đồ: mở [`diagrams/lifecycle.html`](diagrams/lifecycle.html) trong trìn
    sửa rồi agent chấm lại; tối đa 2 vòng sửa (CLI đếm), verdict thứ ba là cuối cùng. Phát hiện còn mở sau đó được đưa
    lên **đầu trang Decision Page của cổng duyệt**, để bạn duyệt kèm chúng hoặc yêu cầu sửa. `aidw transition <id>
    awaiting_approval` từ chối khi chưa có verdict được ghi, khi vòng sửa còn đang mở, hoặc khi file verdict bị sửa sau
-   khi ghi (D4, [ADR-0011](adr/0011-approval-gate-stays-after-the-plan.md)). Workflow `bugfix` cũng chạy bước này.
+   khi ghi (D4, [ADR-0011](adr/0011-approval-gate-stays-after-the-plan.md)). Mỗi vòng cần brief riêng. Nếu bạn trả gói
+   về từ cổng duyệt và kế hoạch đã chấm (task, spec, kiến trúc, constitution, hợp đồng dữ liệu/API, test plan) thay đổi,
+   cổng từ chối và một lượt review mới chạy, với 2 vòng sửa riêng; kế hoạch không đổi thì review cũ vẫn tính. Chỉ
+   code-reviewer được ghi file verdict, không agent nào được ghi `plan-review.yaml`. Workflow `bugfix` cũng chạy bước
+   này; `aidw approve --auto` không tự duyệt khi còn phát hiện mở mà để bạn quyết ở trang cổng duyệt.
 2. **Awaiting approval.** Bạn đọc `analysis.md` và duyệt. Gói bị đóng băng: spec, thiết kế, task. Muốn đổi
    phạm vi thì phải quay lại analyzing và duyệt lại.
 3. **Executing.** Từng task chạy theo vòng lặp ở mục 5.

@@ -252,8 +252,12 @@ test plan against a fixed list: (1) every approved scenario has a task that real
 approved scope, (3) the constitution is followed, (4) no needless complexity. It writes `.aidw/run/review-plan-<id>.md`
 (Artifact `plan-review`): `VERDICT: pass | fix` and numbered findings `[item N] <task id | scenario id | area>: problem ->
 fix`. `aidw plan-review <id>` checks the shape (a known item, a task, requirement, scenario or area of this Change) and
-records the verdict as a round in `changes/<id>/plan-review.yaml`, outside the approved package, with a digest of the file;
-a verdict in the wrong shape is refused and not counted.
+records the verdict as a round in `changes/<id>/plan-review.yaml`, outside the approved package, with a digest of the file
+and a digest of the reviewed plan (tasks, the Change's specs, architecture, constitution, data model and API contract notes,
+test plan; not `analysis.md`). It records only the round the last brief was written for, so every round needs its own
+brief and a round may repeat the previous verdict word for word. A verdict in the wrong shape is refused and not counted.
+Each finding is routed to the owner of the Artifact it names when a stage of the Workflow has that Role write it, otherwise
+to the lead.
 
 | Round | Verdict | What follows |
 |---|---|---|
@@ -262,9 +266,15 @@ a verdict in the wrong shape is refused and not counted.
 | 3 | `fix` | the 2 fix rounds are used up: the stage is done and the findings are carried |
 
 `aidw transition <id> awaiting_approval` is refused until the review is recorded: no verdict, a fix round still open, a
-verdict file changed or missing after it was recorded. The gate Decision Page then opens with the carried findings
+verdict file changed after it was recorded, or a record that cannot be read. `.aidw/run/` is not committed, so a missing
+verdict file is no reason to refuse once a final round is recorded. When the user sends the package back and the reviewed
+plan changes, the gate is refused ("the plan changed since the review") and the next brief starts a new cycle of rounds with
+its own cap; an unchanged plan keeps its review. `aidw approve --auto` (bugfix) refuses a Change whose review carried
+findings: the user decides at the gate page. Only the code-reviewer may write the verdict file and no Agent may write
+`plan-review.yaml` (the gate hook denies them), so an authoring Role cannot forge the review of its own work. The gate Decision Page then opens with the carried findings
 ("Open findings of the independent review", added by the CLI before the authored sections), so the user approves with
-them or asks for a change. The stage is never reported with `aidw stages --done`: recording a final verdict reports it.
+them or asks for a change. The stage is never reported with `aidw stages --done`: it counts as done exactly while the
+recorded review counts.
 
 **Triage.** When a task runs out of attempts, a fresh `software-architect` Agent classifies the cause from the
 evidence. It writes only its answer (`.aidw/run/triage-<task>.md`): the gate keeps the approved package and the
