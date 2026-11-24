@@ -20,6 +20,7 @@ import { Diags } from "./diag.js";
 import { headCommit } from "./git.js";
 import { OpError, transition } from "./ops.js";
 import { firstMatch, isTier2Resource, TIER2_COMMANDS, TIER2_RESOURCES, ASK_COMMANDS, type Tier2Resource } from "./policy.js";
+import { parseGrants, type Grants } from "./grants.js";
 import { readText, rel, type Paths } from "./project.js";
 import { buildLayerBrief } from "./layers.js";
 import { loadTasks, saveTasksDoc, retryingShellRunner, shellRunner, type CommandRunner, type VerifyRun } from "./run.js";
@@ -58,6 +59,8 @@ export interface QualityConfig {
   maxFixRounds: number;
   /** S8: parallel waves of tasks with disjoint touches, each in its own git worktree */
   parallel: ParallelConfig;
+  /** what the user grants at the Approval Gate (push and pull request, envelope, Agent-run cap): src/grants.ts */
+  grants: Grants;
 }
 
 export interface ParallelConfig {
@@ -162,6 +165,7 @@ export function parseQuality(text: string, file: string): { config: QualityConfi
   const parMax = par.max ?? DEFAULT_PARALLEL.max;
   if (!(Number.isInteger(parMax) && Number(parMax) >= 1 && Number(parMax) <= 10)) d.error(file, '"parallel.max" must be an integer from 1 to 10');
   if (par.setup !== undefined && !isStrList(par.setup)) d.error(file, '"parallel.setup" must be a list of commands');
+  const grants = parseGrants(data.grants, file, d);
 
   if (d.errors.length) return { config: null, diags: d };
   return {
@@ -171,6 +175,7 @@ export function parseQuality(text: string, file: string): { config: QualityConfi
       permissions,
       maxFixRounds: Number(max),
       parallel: { max: Number(parMax), setup: isStrList(par.setup) ? par.setup : [] },
+      grants,
     },
     diags: d,
   };

@@ -8,7 +8,8 @@
  *                                          except the frozen approved package after approval
  *   - project writes before approval    -> deny
  *   - project writes after approval     -> allow
- *   - tier 3 / `aidw approve`           -> ask (a human decides)
+ *   - tier 3 / `aidw approve`           -> ask (a human decides), except the push of the Change Branch and
+ *                                          its pull request when granted at the Approval Gate (src/grants.ts)
  *   - MCP tools that may write          -> deny before approval and for subagents, ask after approval
  *                                          (read-like names: get_, list_, search_... follow normal rules)
  * Fails closed inside an aidw project: an internal error denies the call.
@@ -31,6 +32,7 @@ import {
   maskQuotedAngles,
   RUNNER_COMMAND,
 } from "./policy.js";
+import { pushGrantReason } from "./grants.js";
 import { grantedResources } from "./quality.js";
 import { machineOf } from "./machine.js";
 import { bundledRoot, pluginRoot } from "./plugin.js";
@@ -48,6 +50,9 @@ export type Decision = { decision: "allow" | "deny" | "ask"; reason: string } | 
 
 /** States in which code may be written: approved and actively executing. */
 export const OPEN_STATES: ReadonlySet<State> = new Set<State>(["approved", "executing", "verifying", "converging", "deploying"]);
+
+/** States in which a push granted at the Approval Gate holds: open, or delivered (the pull request is opened then). */
+const GRANT_STATES: ReadonlySet<State> = new Set<State>([...OPEN_STATES, "delivered"]);
 
 export interface GateState {
   open: boolean;
@@ -241,6 +246,9 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
     if (APPROVE_COMMAND.test(cmd)) {
       return ask("approving the Analysis package is the user's decision. Approve only if you (the user) reviewed analysis.md.");
     }
+    // ADR-0012: the push of the Change Branch and its pull request, granted at the Approval Gate, for the Orchestrator only.
+    const pushGranted = role ? null : pushGrantReason(p, cmd, GRANT_STATES);
+    if (pushGranted) return allow(pushGranted);
     const risky = firstMatch(ASK_COMMANDS, cmd);
     if (risky) return ask(`this command ${risky.why}; it needs your confirmation (tier 3)`);
     const tier2 = firstMatch(TIER2_COMMANDS, cmd);

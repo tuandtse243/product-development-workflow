@@ -1,7 +1,7 @@
 /**
  * `aidw pr`: an opt-in pull request at delivery (docs/roadmap.md). The body is built from primary sources (the
  * Analysis summary, task commits, quality and deploy evidence, the diff), never from an LLM summary. Pushing and
- * opening the PR is tier 3 (the gate asks for `aidw pr --create`).
+ * opening the PR is tier 3 (the gate asks for `aidw pr --create`) unless the Approval Gate granted it (src/grants.ts).
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -9,6 +9,7 @@ import { join } from "node:path";
 import YAML from "yaml";
 import { ChangeError, loadChange, stateOf, type Change } from "./change.js";
 import { header, scopeOf } from "./commit.js";
+import { readGrants } from "./grants.js";
 import { lastDeploy, readSummary } from "./quality.js";
 import { git } from "./git.js";
 import { OpError } from "./ops.js";
@@ -21,6 +22,8 @@ export interface PrPlan {
   body: string;
   head: string;
   base: string;
+  /** the remote the branch is pushed to: the one granted at the Approval Gate, else origin */
+  remote: string;
   bodyFile: string;
   commands: string[];
 }
@@ -64,7 +67,9 @@ export function planPr(p: Paths, id: string, opts: { base?: string } = {}): PrPl
   const change = loadAny(p, id);
   const run = (change.data.run ?? {}) as { branch?: string; base_branch?: string };
   const head = run.branch ?? `aidw/${id}`;
-  const base = opts.base ?? run.base_branch ?? "main";
+  const grant = readGrants(change).push;
+  const base = opts.base ?? grant?.base ?? run.base_branch ?? "main";
+  const remote = grant?.remote ?? "origin";
   const tasks = parseTasks(readText(join(change.dir, "tasks.yaml")) ?? "").tasks;
   const planned = tasks.filter((t) => !t.origin);
   const allFix = planned.length > 0 && planned.every((t) => t.type === "fix");
@@ -100,8 +105,8 @@ export function planPr(p: Paths, id: string, opts: { base?: string } = {}): PrPl
     "",
   ].join("\n");
   const bodyFile = join(p.run, `pr-${id}.md`);
-  const commands = [`git push -u origin ${head}`, `gh pr create --base ${base} --head ${head} --title "${title}" --body-file ${rel(p, bodyFile)}`];
-  return { title, body, head, base, bodyFile, commands };
+  const commands = [`git push -u ${remote} ${head}`, `gh pr create --base ${base} --head ${head} --title "${title}" --body-file ${rel(p, bodyFile)}`];
+  return { title, body, head, base, remote, bodyFile, commands };
 }
 
 /** Pushes the change branch and opens the PR. Only after delivery, and only with a remote and the GitHub CLI. */
@@ -109,11 +114,11 @@ export function createPr(p: Paths, id: string, opts: { base?: string; draft?: bo
   const change = loadAny(p, id);
   const st = stateOf(change);
   if (st !== "delivered" && st !== "archived") throw new OpError(`change "${id}" is "${String(st)}"; open the PR after delivery`);
-  if (!git(p.project, ["remote", "get-url", "origin"]).ok) throw new OpError("no git remote named origin: add one (git remote add origin <url>) and run this again");
   const plan = planPr(p, id, opts);
+  if (!git(p.project, ["remote", "get-url", plan.remote]).ok) throw new OpError(`no git remote named ${plan.remote}: add one (git remote add ${plan.remote} <url>) and run this again`);
   mkdirSync(p.run, { recursive: true });
   writeFileSync(plan.bodyFile, plan.body);
-  const push = git(p.project, ["push", "-u", "origin", plan.head]);
+  const push = git(p.project, ["push", "-u", plan.remote, plan.head]);
   if (!push.ok) throw new OpError(`git push failed: ${(push.err || push.out).split("\n")[0]}`);
   const r = ghCreate(p, plan, opts.draft === true);
   return { url: r, plan };
