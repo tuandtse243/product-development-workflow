@@ -94,13 +94,17 @@ width; add mobile for the most important one):
       not built and why, and what is needed from the user to finish. Do not edit it.
    2. Run `aidw pr <id> --create` when the `NEXT:` line says so: granted, it does not ask; not granted, it asks the user.
       It commits the delivery package, pushes the Change Branch and opens the pull request (a draft when it is one), or
-      updates the one already open. Under `AIDW_RUNNER=1` with the push not granted, do **not** run it: nobody can
-      answer the question, and the `NEXT:` line already tells the user how to open it. Without a remote or `gh`, hand
-      the user the body file.
+      updates the one open for the branch. It refuses when HEAD is not the Change Branch, when the remote moved since
+      approval, or when the package holds a secrets file or a credential: report the refusal, do not work around it.
+      Under `AIDW_RUNNER=1` with the push not granted, do **not** run it (it refuses there anyway): nobody can answer
+      the question, and the `NEXT:` line already tells the user how to open it. Without a remote or `gh`, hand the user
+      the body file.
 4. **Ready**: `aidw archive <id>`: merges the delta specs into `.aidw/specs/`, moves the change to `.aidw/archive/` and
    commits `.aidw/` (when the pull request was opened with the grant, it pushes that commit to it too). It refuses an
-   incomplete package. **Draft**: do not archive. The Change stays `delivered` so `/aidw:resume <id>` can finish it
-   after the user acted on "Needed from the user to finish", and update the same pull request.
+   incomplete package. **Draft**: do not archive (`aidw archive` refuses a draft; only the user archives one as it is,
+   with `--force`). The Change stays `delivered` so `/aidw:resume <id>` can finish it after the user acted on "Needed
+   from the user to finish", and update the same pull request. **Ready but not opened** (the push not granted, under
+   `AIDW_RUNNER=1`): do not archive either; the user opens the pull request, then archives.
 5. Report to the user: the pull request (its link, ready or draft, or where its body is and the `NEXT:` line), the
    preview URL, where the package is (`.aidw/archive/<id>/delivery/`, or `.aidw/changes/<id>/delivery/` for a draft),
    the quality summary, and the known issues. Name the branch that holds the work (`run.branch` in change.yaml,

@@ -57,7 +57,7 @@ Bạn chỉ gõ các lệnh `/aidw:...` trong Claude Code. CLI `aidw` do Claude 
 | `/aidw:approve` | khi muốn duyệt từ phiên khác | **cổng duy nhất**: bạn bấm Yes. Hash và đóng băng gói phân tích, rồi build như trên |
 | `/aidw:run` | thường không cần gõ | build ngay trong phiên: chạy các task, kiểm tra chất lượng, deploy preview, bàn giao. `start` và `approve` tự gọi nó khi kế hoạch có tối đa 3 task |
 | `/aidw:resume` | sau khi bị ngắt, hoặc để hoàn tất một PR draft | tiếp tục từ chỗ dừng. Đã dừng vì escalation thì xử lý xong rồi mới resume. Change kết thúc bằng PR draft: làm theo mục "Needed from the user to finish" của PR rồi resume, aidw build lại phần còn thiếu và cập nhật chính PR đó |
-| `/aidw:status` | bất cứ lúc nào | trạng thái, drift, task nào xong, việc cần bạn |
+| `/aidw:status` | bất cứ lúc nào | trạng thái, drift, task nào xong, việc cần bạn, pull request (link, draft hay chưa mở) |
 | `/aidw:deliver` | `run` tự gọi ở cuối | tạo gói bàn giao (README, handoff, báo cáo chất lượng), mở pull request (ready hoặc draft), rồi archive khi PR ready |
 
 Các lệnh CLI hữu ích khi bạn tự gõ `aidw` (xem mục 2 để đưa nó vào PATH):
@@ -70,7 +70,8 @@ Các lệnh CLI hữu ích khi bạn tự gõ `aidw` (xem mục 2 để đưa n�
 | `aidw stages [<id>] [--done <stage>]` | các stage phân tích trước cổng duyệt: xong, sẵn sàng, và nhóm chạy song song ngay (không đọc/ghi chồng nhau, một việc dùng trình duyệt, `parallel.max`); `--done` báo một stage đã xong |
 | `aidw plan-review [<id>] [--brief]` | review độc lập kiến trúc và kế hoạch trước cổng duyệt: `--brief` viết brief cho code-reviewer; không có thì ghi verdict của nó thành một vòng (tối đa 2 vòng sửa) |
 | `aidw pr [<id>] [--create]` | sau bàn giao: viết nội dung PR vào `.aidw/run/pr-<id>.md`, cho biết ready hay draft và quyền push; `--create` commit gói bàn giao, push nhánh và mở PR bằng `gh` (draft nếu còn thiếu), hoặc cập nhật PR đã mở (body, đánh dấu ready). Hỏi bạn trước, trừ khi bạn đã cấp quyền push ở cổng duyệt |
-| `aidw cap <id> --raise <n>` | run dừng vì chạm trần Agent run: nâng trần thêm `n` lượt (luôn hỏi bạn, chỉ bạn quyết; ghi vào `approval.history`, không phải Deviation), rồi `/aidw:resume` |
+| `aidw cap <id> --raise <n>` | run dừng vì chạm trần Agent run: nâng trần thêm `n` lượt (luôn hỏi bạn, chỉ bạn quyết; phiên không người trông không chạy được; ghi vào `approval.history` và băm lại: trần nằm trong hash của gói, sửa tay `change.yaml` là drift), rồi `/aidw:resume` |
+| `aidw archive <id> [--force]` | archive change đã bàn giao. Change kết thúc bằng PR draft thì bị từ chối (để `/aidw:resume` hoàn tất); `--force` archive nguyên trạng |
 | `aidw task retry <T>` | cho một task `escalated`, `failed` hoặc `not_built` một lượt thử mới; task `not_built` quay lại cùng các task bị bỏ vì phụ thuộc nó |
 
 **Trang quyết định (Decision Page).** Khi cần bạn chọn, aidw không in một khối chữ dài vào terminal nữa. Nó in một link
@@ -144,7 +145,12 @@ Sơ đồ: mở [`diagrams/lifecycle.html`](diagrams/lifecycle.html) trong trìn
    *delivered*; `/aidw:resume` đưa nó về executing, chạy lại task bị bỏ vì môi trường (sau khi bạn sửa) hoặc vì trần (sau
    khi bạn nâng), chạy lại lớp chất lượng bị bỏ và deploy lỗi, rồi cập nhật chính PR đó (push lại, thay body, `gh pr
    ready` khi đã đủ). Phần việc bị bỏ dở của một task not built được chép vào `changes/<id>/delivery/not-built/` và
-   commit cùng gói bàn giao, để người review PR trên máy khác vẫn thấy (bản gốc ở `.aidw/run/` không được commit).
+   commit cùng gói bàn giao, để người review PR trên máy khác vẫn thấy (bản gốc ở `.aidw/run/` không được commit);
+   file secrets (`.env*`), build output và dòng trông như key bị bỏ ra, và PR ghi rõ. Finding review và câu hỏi chưa ai
+   trả lời mà bạn đã duyệt ở cổng nằm ở mục "Approved with open points" sau ba mục trên, không làm PR thành draft.
+   aidw chỉ sửa PR mà `gh` xác nhận là PR đang mở của Change Branch vào đúng base (không tin URL ghi trong
+   `change.yaml`), chỉ push khi HEAD đang ở Change Branch và remote vẫn là remote đã chốt lúc duyệt, và không push nếu
+   gói bàn giao chứa file secrets hay key.
 6. **Paused, not built và Escalated.** Hết quota thì change tự về *paused* và tự chạy lại. Sau cổng duyệt run không
    hỏi bạn ([ADR-0014](adr/0014-after-the-approval-gate-the-run-does-not-ask-the-user.md)): việc không làm được thì bị
    đánh dấu *not built* (kèm lý do) và phần còn lại chạy tiếp; pull request liệt kê chúng. *Escalated* chỉ còn cho

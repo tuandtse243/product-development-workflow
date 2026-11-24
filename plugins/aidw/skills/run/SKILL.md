@@ -378,7 +378,10 @@ starts at about 55K tokens instead of carrying hundreds of thousands), waits out
 the error, or 5 to 60 minutes of backoff), and stops on escalation or when two sessions make no progress
 (log: `.aidw/run/runner.log`). Tier-3 questions cannot be answered headless; they end in an escalation. The run ends
 at the pull request: archived after a ready one, or `draft` (the runner stops and prints the link, or the body and the
-`NEXT:` when the push was not granted). Started again on a draft, the runner resumes it first.
+`NEXT:` when the push was not granted; `needs_user` with the `NEXT:` for a ready Change whose pull request the user
+must open). Started again on a draft, the runner resumes it first. A machine check that fails right before a deploy
+does not stop it: the runner records the deploy as failed with the check's words (the command is not run), delivers
+the Change, and the pull request is a draft that lists the deploy.
 
 ## Long-running commands
 
