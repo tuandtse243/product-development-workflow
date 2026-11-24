@@ -64,6 +64,28 @@ export function planWave(tasks: Task[], max: number): Task[] {
   return wave;
 }
 
+/**
+ * New wave tasks that may start beside tasks already running (`busy`, e.g. one paused on a Consultation): each busy
+ * task holds its slot of `max`, its touches and its browser, and one that must run alone holds the whole Change.
+ */
+export function planWaveBeside(tasks: Task[], max: number, busy: Task[]): Task[] {
+  if (busy.some(mustRunAlone)) return [];
+  const room = max - busy.length;
+  if (room <= 0) return [];
+  const byId = new Map(tasks.map((t) => [t.id, t]));
+  const ready = tasks.filter((t) => statusOf(t) === "pending" && list(t.depends_on).every((d) => statusOf(byId.get(d) ?? { id: d }) === "done"));
+  const wave: Task[] = [];
+  for (const t of ready) {
+    if (wave.length >= room) break;
+    if (mustRunAlone(t)) continue;
+    const all = [...busy, ...wave];
+    if (all.some((w) => touchesOverlap(list(w.touches), list(t.touches)))) continue;
+    if (drivesBrowser(t) && all.some(drivesBrowser)) continue;
+    wave.push(t);
+  }
+  return wave;
+}
+
 /** parallel settings from the approved quality.yaml; sequential (max 1) without git or without quality.yaml. */
 export function parallelConfig(p: Paths, change: Change): ParallelConfig {
   if (!isGitRepo(p.project) || !headCommit(p.project)) return { ...DEFAULT_PARALLEL, max: 1 };

@@ -37,6 +37,7 @@ const now = () => new Date().toISOString();
 
 import { machineOf, workflowIdOf } from "./machine.js";
 import { carriedFindings, planReviewBlocker } from "./planreview.js";
+import { stageConsultationsInFlight } from "./consult.js";
 import { bundledRoot } from "./plugin.js";
 import { loadWorkflow } from "./workflow.js";
 
@@ -324,6 +325,9 @@ export function approve(p: Paths, id: string, opts: { auto?: { pluginRoot: strin
     const boundary = workflow ? boundaryOf(opts.auto.pluginRoot, workflow) : null;
     if (!boundary) throw new OpError(`change "${id}" runs under ${workflow ? `the "${workflow}" workflow` : "no named workflow"}, which has no automatic approval: the user approves with /aidw:approve`);
   }
+  // ADR-0013: a question in flight is part of the package's work; its answer may still change an Artifact.
+  const asking = stageConsultationsInFlight(change);
+  if (asking.length) throw new OpError(`change "${id}" has Consultation(s) in flight: ${asking.map((c) => `${c.id} (${c.status})`).join(", ")}; finish them first (\`aidw stages ${id}\` says the step)`);
   const state = stateOf(change);
   if (state !== "awaiting_approval") {
     throw new OpError(`change "${id}" is in state "${String(change.data.state)}"; only "awaiting_approval" can be approved`);

@@ -105,8 +105,9 @@ aidw next --change <id> --json
 2. Spawn the Agent named on the `SPAWN` line of `task start` (Agent tool, `subagent_type: "<that name>"`: `aidw:fullstack`,
    `aidw:frontend` or `aidw:backend`, from the task's `role`) with the printed
    prompt (`Task brief: <path>. Read it and implement the task.`). Wait for it.
-3. If the implementer reports a blocker it cannot resolve (missing decision, contradictory spec, credential),
-   go to *Escalate* with its words.
+3. If the implementer ends with `CONSULT <path>`, it lacks information and asks another Role: go to *consult*
+   below. Never answer for that Role yourself and never take the question to the user.
+   If it reports a blocker no Role can answer (a credential, a service that is down), go to *Escalate* with its words.
    A package install or build tool that fails for a reason outside the code (the network, a package scanner that
    times out, a sandbox denial) is such a blocker too: escalate at once with the exact error. Never spawn an
    implementer to find out whether the environment was fixed (two minutes and its tokens each time): run
@@ -145,7 +146,9 @@ aidw next --change <id> --json
 2. Each `task start` printed the brief path and prompt.
 3. Spawn one Agent per task, the one named on its `SPAWN` line, **in a single message** (parallel Agent calls), each with only its
    printed prompt (`Task brief: <path>. Read it and implement the task.`). Wait for all of them.
-4. A blocker from any implementer: finish the others, then *Escalate*.
+4. An implementer that ends with `CONSULT <path>`: handle it as *consult* below while the others go on (spawn the
+   consulted Role as soon as the request comes in; do not wait for the rest of the wave). A blocker no Role can
+   answer: finish the others, then *Escalate*.
 5. `aidw checkpoint <T>` for each task, one after the other (checkpoints run builds; never in parallel).
 6. Each passing checkpoint printed its review prompt. Spawn the reviewers of all passing tasks in one message,
    then `aidw verdict <T>` for each, one after the other.
@@ -183,6 +186,28 @@ commands and the `code` layer on the merged code.
    Escalated: go to *Escalate* and give the user the diagnosis (`.aidw/run/triage-<T>.md`) with its cause.
 4. No clear `CAUSE:` line: spawn it once more; still unclear, escalate with the task's own notes.
 A task is triaged once: if the extra attempt fails too, it escalates without another triage.
+
+**`consult`** (an Agent asked another Role, ADR-0013; `next` returns it first, `step` says which part is left, and
+`meanwhile` is what the rest of the Change does at the same time: the tasks that wait for an answer are left out of it).
+Do the step **and** the `meanwhile` action in one message (parallel calls), so the rest of the wave carries on. No
+`meanwhile` means nothing may run beside the asker (its work sits on the main checkout, or no slot is free): do only the step.
+The Agent wrote a request file and ended its turn with `CONSULT <path>`:
+1. `aidw consult <path> --change <id>`. It checks the request (the pair its Role declares, one level deep, at most 2 per
+   Agent run, in the build only the authors of the contracts the task reads, one open question per run) and prints the
+   brief and the `SPAWN` line of the consulted Role. Refused: the asker goes on without the answer. Spawn a fresh
+   implementer with `aidw brief <T> --change <id>` and the refusal line in its prompt. Never answer in its place.
+2. Spawn the Agent named on the `SPAWN` line with the printed prompt and nothing else (`step: answer`). It writes
+   `.aidw/changes/<id>/consult/C<NN>.answer.md` and replies with its `STATUS:` line.
+3. `aidw consult answer C<NN> --change <id>` (`step: record`: the answer is on disk, do not spawn again). It records the
+   answer and always writes a resume brief (original brief, progress note, answer path). `ROUTE: ... Deviation`: after
+   the gate the answer could not be given without changing something approved; nobody asks the user (ADR-0014), the
+   asker builds what was approved and reports the gap.
+4. `aidw consult resume C<NN> --change <id>` (`step: resume`) prints both ways on. If the Agent that asked is still
+   running in this session (you can still reach it), continue it with SendMessage and the printed line: cheaper, it
+   keeps its context. Otherwise (a new session, the runner, the Agent is gone) spawn the Agent on the `SPAWN` line with
+   the resume brief. Then go on as after any implementer: `aidw checkpoint <T>`.
+An implementer whose reply names a Consultation that was routed to a Deviation (`needs-deviation`) is not a blocker:
+checkpoint it as usual; the gap is on record and the pull request will show it. It is never an escalation.
 
 **`escalate`**: see below.
 

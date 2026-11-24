@@ -90,7 +90,9 @@ export const isTier2Resource = (s: string): s is Tier2Resource => Object.prototy
 
 /** Bash commands that write files or install/scaffold; blocked before approval. */
 export const WRITE_COMMANDS: Rule[] = [
-  { re: /(^|[^0-9&<>=-])>{1,2}\s*(?!&|\/dev\/|["']?(?:\$\{?TMPDIR\b|\/tmp\/|\/private\/tmp\/|\/var\/folders\/))[^\s&|;]/, why: "redirects output into a file" },
+  // any redirect form: `>`, `>>`, `1>`, `2>>`, `&>`, `&>>`, `>|` (clobber); `2>&1` and `/dev/` are not files
+  { re: /(^|[^<>=-])(?:\d*|&)>{1,2}\|?\s*(?!&|\/dev\/|["']?(?:\$\{?TMPDIR\b|\/tmp\/|\/private\/tmp\/|\/var\/folders\/))[^\s&|;]/, why: "redirects output into a file" },
+  { re: cmd(String.raw`dd\b[^|;&\n]*\bof=`), why: "writes files with dd" },
   { re: cmd(String.raw`tee\b`), why: "writes files with tee" },
   { re: /\|\s*tee\b/, why: "writes files with tee" },
   { re: cmd(String.raw`sed\s+(?:-[a-zA-Z]*i|--in-place)`), why: "edits files in place" },
@@ -299,6 +301,7 @@ function shellSegments(command: string): string[][] {
       flush();
       const two = c === ">" && command[i + 1] === ">";
       if (two) i++;
+      if (c === ">" && command[i + 1] === "|") i++; // `>|` (clobber) is a redirect, not a pipe
       if (c === ">" && command[i + 1] === "&") {
         i++; // >&2: a descriptor, not a file
         while (/\d|-/.test(command[i + 1] ?? "")) i++;
@@ -371,4 +374,4 @@ export const SHELL_CHAINING = /[;&|`<>\n\r]|\$\(/;
 
 /** aidw commands that record progress or change state: the orchestrator's job, never a subagent's. */
 export const AIDW_STATE_COMMAND =
-  /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+(?:task|checkpoint|review|layer-review|verify|integrate|resolve|converge|deploy|first-deploy|deliver|transition|approve|archive|merge|init|change|brief|plan-review|pr|stages(?=[^;&|]*--done))\b/;
+  /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+(?:task|checkpoint|review|layer-review|verify|integrate|resolve|converge|deploy|first-deploy|deliver|transition|approve|archive|merge|init|change|brief|plan-review|consult|pr|stages(?=[^;&|]*--done))\b/;

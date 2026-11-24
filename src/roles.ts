@@ -82,6 +82,8 @@ export interface RoleProfile {
   skills: { name: string; when: string }[];
   /** plugin-relative files whose text every Agent of this Role also gets (shared procedures) */
   includes: string[];
+  /** the Roles an Agent of this Role may ask a question through the Orchestrator (a Consultation, ADR-0013) */
+  consults: string[];
   /** role.md after its header */
   body: string;
   /** the text of `includes`, in order */
@@ -134,6 +136,7 @@ export function loadRole(root: string, id: string): RoleProfile | null {
     ...(typeof h.max_turns === "number" ? { max_turns: h.max_turns } : {}),
     skills: skillIndex(h.skills),
     includes,
+    consults: Array.isArray(h.consults) ? h.consults.map(String) : [],
     body: parsed.body,
     shared: includes.map((f) => (existsSync(join(root, f)) ? read(join(root, f)).trim() : "")),
     rules: existsSync(rulesFile) ? read(rulesFile).trim() : "",
@@ -176,7 +179,11 @@ export function renderAgent(role: RoleProfile, tiers: Record<string, string>): s
       "Never drop a skill silently.\n\n" +
       role.skills.map((s) => `- \`${s.name}\`: ${s.when}\n  \`${skillCommand(role.id, s.name)}\``).join("\n")
     : "";
-  return `---\n${head.join("\n")}\n---\n\n${role.body}${shared}${rules}${skills}\n`;
+  const consults = role.consults.length
+    ? `\n\n## Consultation\n\nWhen you lack information you ask, never guess: you may consult ${role.consults.map((c) => `\`${c}\``).join(", ")} ` +
+      "through the orchestrator (a Consultation; how to ask is in your procedure above). The user is not the first stop."
+    : "";
+  return `---\n${head.join("\n")}\n---\n\n${role.body}${shared}${rules}${skills}${consults}\n`;
 }
 
 /** Role ids that have a folder under roles/. */
@@ -286,6 +293,19 @@ export function checkRoster(root: string): Diags {
     if (h.includes !== undefined) {
       if (!Array.isArray(h.includes) || !h.includes.every((f) => typeof f === "string")) d.error(file, "includes must be a list of plugin-relative file paths");
       else for (const f of h.includes as string[]) if (f.includes("..") || !existsSync(join(root, f))) d.error(file, `includes: "${f}" not found in the plugin`);
+    }
+    if (h.consults !== undefined) {
+      // ADR-0013: a Consultation goes to an active Role, never to the asker itself
+      if (!Array.isArray(h.consults) || !h.consults.every((c) => typeof c === "string")) d.error(file, "consults must be a list of role ids");
+      else {
+        for (const c of h.consults as string[]) {
+          if (c === id) d.error(file, `consults: a role does not consult itself ("${c}")`);
+          else if (!(c in roster.roles)) d.error(file, `consults: "${c}" is not a role in roster.yaml`);
+          else if (roster.roles[c]?.status !== "active") d.error(file, `consults: "${c}" is not an active role`);
+          else if (loadRole(root, c)?.access === "read-only") d.error(file, `consults: "${c}" is read-only, so it could never write its answer`);
+        }
+        if (new Set(h.consults).size !== h.consults.length) d.error(file, "consults lists a role twice");
+      }
     }
     // Department, status and carried_by have one home: roster.yaml.
     for (const k of ["department", "status", "carried_by"]) if (k in h) d.error(file, `"${k}" belongs in roster.yaml, not in the profile`);

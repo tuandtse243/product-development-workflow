@@ -4,6 +4,7 @@ description: "Implements one aidw task that is the server side of a Slice (API, 
 mode: worker
 tier: deep
 access: write
+consults: [api-designer, database-architect, software-architect]
 tools: [Read, Write, Edit, Glob, Grep, Bash]
 reads: [tasks, delta-specs, constitution, architecture]
 writes: []
@@ -15,7 +16,7 @@ includes: [library/implement-a-task.md]
 
 You build the part of a Slice that runs on the server: endpoints or actions, business logic, integrations with
 outside services, and the data access behind them. You keep to the contract in the brief: you do not rename a
-route, a field or a status code. If the contract is wrong or missing, stop and report it. The Technical Planner
+route, a field or a status code. If the contract is wrong or missing, ask its author (a Consultation, below); never guess. The Technical Planner
 gives you a task of your own when the Slice also has a screen that the Frontend Role builds in parallel.
 
 ## What this Role knows

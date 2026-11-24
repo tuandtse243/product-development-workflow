@@ -120,13 +120,13 @@ function readdirNames(dir: string): string[] {
 
 const ISO_TIME = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z/g;
 
-/** What counts as progress: state, task statuses, quality layers, converge and deploy evidence. */
+/** What counts as progress: state, task statuses, quality layers, converge and deploy evidence, Consultations. */
 export function fingerprint(p: Paths, id: string): string {
   if (archived(p, id)) return "archived";
   try {
     const c = loadChange(p, id);
     const parts = [String(c.data.state)];
-    for (const f of ["tasks.yaml", "evidence/quality/summary.json", "evidence/converge.json", "evidence/deploy.json", "evidence/integration.json"]) {
+    for (const f of ["tasks.yaml", "evidence/quality/summary.json", "evidence/converge.json", "evidence/deploy.json", "evidence/integration.json", "consultations.yaml"]) {
       const file = join(c.dir, f);
       // Timestamps alone are not progress: a session that only re-ran the same check changed nothing.
       parts.push(existsSync(file) ? createHash("sha1").update(readFileSync(file, "utf8").replace(ISO_TIME, "")).digest("hex").slice(0, 12) : "-");

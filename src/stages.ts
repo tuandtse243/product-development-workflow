@@ -19,6 +19,7 @@ import { loadChange, stateOf, type Change, type State } from "./change.js";
 import { loadArtifacts, type ArtifactEntry } from "./artifacts.js";
 import { readDecisions, workflowOfChange } from "./decisions.js";
 import { OpError } from "./diag.js";
+import { stageConsultationsInFlight } from "./consult.js";
 import type { Paths } from "./project.js";
 import { PLAN_REVIEW, planReviewBlocker } from "./planreview.js";
 import { DEFAULT_PARALLEL, parseQuality, qualityFile } from "./quality.js";
@@ -256,6 +257,8 @@ export function recordStageDone(p: Paths, id: string, stageId: string, pluginRoo
   const registry = registryOf(pluginRoot);
   const done = doneStages(w, change, p, registry);
   if (done.has(stageId)) return;
+  const asking = stageConsultationsInFlight(change, stageId);
+  if (asking.length) throw new OpError(`stage "${stageId}" has Consultation(s) in flight: ${asking.map((c) => `${c.id} (${c.status})`).join(", ")}; the stage is done after its asker resumed and finished`);
   const b = blocker(stages, s, done, keyOfRegistry(registry));
   if (b) throw new OpError(`stage "${stageId}" is not ready: it waits for ${b.id}`);
   // the review before the gate (D4) is done by its recorded verdict, never by a report
