@@ -38,6 +38,11 @@ const WORKFLOW_TOUCH = /(^|\/)\.github\/(workflows|actions)(\/|$)/;
 const PYTHON_PROJECT_TOUCH = /(^|\/)(pyproject\.toml|uv\.lock)$/;
 const MOTION_HINT = /\b(animat\w*|transitions?|motion|easing|gestures?|drag|swipe)\b/i;
 const OBSERVABILITY_HINT = /\b(logging|logs?|metrics?|tracing|traces?|telemetry|observability|monitoring|alerts?|health ?checks?)\b/i;
+// sentry/secret-serialization (plan section 5, T14 S7): narrow on purpose. Either a credential goes onto a config or
+// client object, or the task is about a sink that serializes whole objects (logs, traces, error reports).
+const CREDENTIAL_HINT = /\b(secrets?|api ?keys?|apikeys?|credentials?|access ?keys?|private ?keys?|signing ?keys?|client ?secrets?|tokens?|passwords?|dsn|connection ?strings?)\b/i;
+const HOLDER_HINT = /\b(config|configuration|env|sdk|(api|http|sdk) ?clients?)\b/i;
+const SINK_HINT = /\b(logging|loggers?|logs|tracing|traces?|telemetry|opentelemetry|otel|error (reporting|tracking|context)|sentry|serializ\w*|redact\w*)\b/i;
 
 const list = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : []);
 
@@ -47,6 +52,19 @@ export function isSecuritySensitive(t: Task): boolean {
   const text = [t.title ?? "", ...list(t.touches), ...list(t.specs), ...list(t.scenarios)].join(" ").replace(/[/_.-]/g, " ");
   return SECURITY_HINT.test(text);
 }
+
+/** True for a backend or fullstack task that stores a credential on a config or client object, or works on a sink
+ * that serializes whole objects: the signal for `sentry/secret-serialization`. A task with no role is fullstack. */
+export function handlesSecretSerialization(t: Task): boolean {
+  const role = String(t.role ?? "");
+  if (role && role !== "backend" && role !== "fullstack") return false;
+  const text = [t.title ?? "", ...list(t.touches), ...list(t.scenarios)].join(" ").replace(/[/_.*-]/g, " ");
+  return SINK_HINT.test(text) || (CREDENTIAL_HINT.test(text) && HOLDER_HINT.test(text));
+}
+
+const SECRET_SERIALIZATION = "sentry/secret-serialization";
+const SECRET_SERIALIZATION_READ =
+  "read its SKILL.md and only the reference for the project's language (references/python.md or references/javascript-typescript.md); skip SPEC.md and SOURCES.md";
 
 export function touchesApi(t: Task): boolean {
   return list(t.touches).some((g) => API_TOUCH.test(g));
@@ -72,6 +90,7 @@ export const SKILLS_WITH_NOTES: ReadonlySet<string> = new Set([
   "docker/docker-compose-patterns",
   "sentry/gha-security-review",
   "sentry/django-perf-review",
+  "sentry/secret-serialization",
   "fastapi/fastapi",
   "svelte/svelte-core-bestpractices",
   "vue/vue-best-practices",
@@ -93,6 +112,7 @@ export function selectSkills(t: Task, kind: BriefKind, opts: { retry?: boolean; 
     add("code-review-and-quality", "every review");
     if (isSecuritySensitive(t)) add("security-and-hardening", "security-sensitive task (risk or auth/payment/permissions)");
     if (touches.some((g) => WORKFLOW_TOUCH.test(g))) add("sentry/gha-security-review", "the task changes a GitHub Actions workflow");
+    if (handlesSecretSerialization(t)) add(SECRET_SERIALIZATION, `a credential on a config or client object, or a sink that serializes whole objects: check holder and sink; ${SECRET_SERIALIZATION_READ}`);
     return picks;
   }
 
@@ -119,6 +139,7 @@ export function selectSkills(t: Task, kind: BriefKind, opts: { retry?: boolean; 
     add("docker/docker-build-strategies", "touches a Dockerfile");
   }
   if (touches.some((g) => COMPOSE_TOUCH.test(g))) add("docker/docker-compose-patterns", "touches a compose file");
+  if (handlesSecretSerialization(t)) add(SECRET_SERIALIZATION, `a credential on a config or client object, or a sink that serializes whole objects: keep the secret out of logs, traces and error reports; ${SECRET_SERIALIZATION_READ}`);
   if (OBSERVABILITY_HINT.test([t.title ?? "", ...list(t.scenarios)].join(" ").replace(/[/_.-]/g, " "))) add("observability-and-instrumentation", "the task is about logs, metrics or traces");
   if (touches.some((g) => PYTHON_PROJECT_TOUCH.test(g))) {
     add("astral/uv", "the task sets up or changes the Python project file");

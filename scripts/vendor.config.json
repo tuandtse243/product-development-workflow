@@ -82,10 +82,11 @@
     "repo": "getsentry/skills",
     "ref": "main",
     "license": "LICENSE",
-    "role": "Security review of GitHub Actions workflows; performance review of Django code (ADR-0005)",
+    "role": "Security review of GitHub Actions workflows; performance review of Django code; secrets leaking through serialization, logs and traces (ADR-0005)",
     "skills": {
       "gha-security-review": "skills/gha-security-review",
-      "django-perf-review": "skills/django-perf-review"
+      "django-perf-review": "skills/django-perf-review",
+      "secret-serialization": "skills/secret-serialization"
     }
   },
   "fastapi": {
