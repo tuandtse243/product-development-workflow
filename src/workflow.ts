@@ -36,6 +36,8 @@ export interface Stage {
   writes: string[];
   gate?: (typeof GATES)[number];
   boundary?: Boundary;
+  /** drives the project's test browser (mock screenshots): at most one such piece of work runs at a time (src/stages.ts) */
+  browser?: true;
   /** audit: lens -> the Role whose Agent reviews through it */
   lenses?: Record<string, string>;
   agents?: { implement?: string; review?: string; triage?: string; "layer-review"?: Record<string, string> };
@@ -110,6 +112,7 @@ export function loadWorkflow(root: string, id: string): Workflow | null {
       reads: strings(s.reads),
       writes: strings(s.writes),
       ...(typeof s.gate === "string" ? { gate: s.gate as Stage["gate"] } : {}),
+      ...(s.browser === true ? { browser: true as const } : {}),
       ...(isRecord(s.boundary) ? { boundary: s.boundary as unknown as Boundary } : {}),
       ...(isRecord(s.lenses) ? { lenses: Object.fromEntries(Object.entries(s.lenses).map(([k, v]) => [k, String(v)])) } : {}),
       ...(isRecord(s.agents) ? { agents: s.agents as Stage["agents"] } : {}),

@@ -117,6 +117,7 @@ stages:
     roles: [ui-ux-designer]
     reads: [requirements, delta-specs]
     writes: [design-direction, design-tokens, decision-design-needed, analysis-design]
+    browser: true # screenshots the mocks in the test browser (aidw mock shots); one browser user at a time
 
   - id: architecture
     title: Stack, architecture and constitution
