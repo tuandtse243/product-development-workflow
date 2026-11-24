@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import type { Paths } from "./project.js";
+import { SCOPE_QUESTIONS, SCOPE_ROUND_HEADING } from "./scope.js";
 
 /**
  * Decision Pages (ADR-0007): one round of questions, a pick list or an Approval Gate summary rendered as one
@@ -203,6 +204,11 @@ export function parsePage(name: string, source: string, extra: PageSection[] = [
     });
     if (!page.questions.length) problems.push("questions: missing or empty");
     unique(page.questions.map((q) => q.id), "question id", "questions", problems);
+  }
+  // The scope round of the discovery interview (scope.ts): its answer is recorded where `aidw analyze` looks for it.
+  if (page.kind === "scope") {
+    if (layout !== "questions") problems.push("kind: scope is a round of questions (layout: questions)");
+    else for (const id of SCOPE_QUESTIONS) if (!page.questions.some((q) => q.id === id)) problems.push(`kind: scope needs the question "${id}" (${SCOPE_QUESTIONS.join(", ")})`);
   }
 
   if (layout === "picks") {
@@ -593,6 +599,7 @@ export function parseAnswers(page: Page, pasted: string): Answers {
     );
   }
   for (const id of given.keys()) if (!known.has(id)) problems.push(`"${id}" is not part of this page`);
+  if (page.kind === "scope" && !problems.length) next.push(`record these lines word for word under "### ${SCOPE_ROUND_HEADING}" in the discovery appendix of analysis.md`);
   return { ok: problems.length === 0, problems, answers, note: given.get("note") ?? "", next };
 }
 

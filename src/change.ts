@@ -7,7 +7,6 @@ export const STATES = [
   "draft",
   "intake",
   "analyzing",
-  "awaiting_scope_approval",
   "awaiting_approval",
   "approved",
   "executing",
@@ -20,6 +19,13 @@ export const STATES = [
   "escalated",
 ] as const;
 export type State = (typeof STATES)[number];
+
+/**
+ * States an older aidw wrote that no Workflow has any more, and the state such a Change continues in. A Change left at
+ * the old scope gate of `product` (`awaiting_scope_approval`, ADR-0011) is discovery continuing: it is read as
+ * `analyzing`, and written that way the next time a command saves it.
+ */
+export const LEGACY_STATES: Readonly<Record<string, State>> = { awaiting_scope_approval: "analyzing" };
 
 export const CHANGE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -57,6 +63,11 @@ export function loadChange(p: Paths, id: string): Change {
   const doc = YAML.parseDocument(readFileSync(file, "utf8"));
   if (doc.errors.length) throw new ChangeError(`change.yaml of "${id}" is not valid YAML: ${doc.errors[0]?.message}`);
   const data = (doc.toJS() ?? {}) as Record<string, unknown>;
+  const legacy = typeof data.state === "string" && Object.hasOwn(LEGACY_STATES, data.state) ? LEGACY_STATES[data.state] : undefined;
+  if (legacy) {
+    doc.set("state", legacy);
+    data.state = legacy;
+  }
   return { id, dir, file, doc, data };
 }
 

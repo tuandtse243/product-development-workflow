@@ -14,7 +14,7 @@ import {
 } from "./change.js";
 import { analyzeChange, PLACEHOLDER } from "./analyze.js";
 import { boundaryExceeded, boundaryOf } from "./boundary.js";
-import { BRIEF_FILE, BRIEF_TEMPLATE, briefHash, checkBrief } from "./scope.js";
+import { SCOPE_ROUND_HEADING } from "./scope.js";
 import { recordBaseline } from "./backstop.js";
 import { checkChange, deltaFiles } from "./check.js";
 import { Diags, OpError } from "./diag.js";
@@ -174,7 +174,7 @@ const INTAKE = (title: string) => `# Intake: ${title}
 - Deadline / budget / other: <...>
 `;
 
-export function newChange(p: Paths, id: string, opts: { title?: string; inputType?: string; workflow?: string; workflows?: string[]; skipSpecs?: boolean; scopeGate?: boolean }): string {
+export function newChange(p: Paths, id: string, opts: { title?: string; inputType?: string; workflow?: string; workflows?: string[]; skipSpecs?: boolean; scopeRound?: boolean }): string {
   if (!CHANGE_ID.test(id)) throw new OpError(`change id "${id}" must be kebab-case (e.g. 2026-11-08-booking-app)`);
   if (opts.inputType && !(INPUT_TYPES as readonly string[]).includes(opts.inputType)) {
     throw new OpError(`unknown input type "${opts.inputType}" (expected ${INPUT_TYPES.join(", ")})`);
@@ -195,7 +195,6 @@ export function newChange(p: Paths, id: string, opts: { title?: string; inputTyp
       "state: draft",
       `created_at: ${now()}`,
       `skip_specs: ${opts.skipSpecs === true}`,
-      ...(opts.scopeGate ? ["scope_gate: true", "scope_approval: null"] : []),
       "approval: null",
       "run:",
       "  paused: null",
@@ -203,14 +202,13 @@ export function newChange(p: Paths, id: string, opts: { title?: string; inputTyp
     ].join("\n"),
   );
   writeFileSync(join(dir, "intake.md"), INTAKE(title));
-  if (opts.scopeGate) writeFileSync(join(dir, BRIEF_FILE), BRIEF_TEMPLATE(title));
-  writeFileSync(join(dir, "analysis.md"), ANALYSIS(title, projectKind(p) === "brownfield"));
+  writeFileSync(join(dir, "analysis.md"), ANALYSIS(title, projectKind(p) === "brownfield", opts.scopeRound === true));
   recordBaseline(p);
   return dir;
 }
 
 // Section names must match ANALYSIS_SECTIONS in analyze.ts; `aidw analyze` rejects leftover TODO(aidw).
-const ANALYSIS = (title: string, brownfield = false) => `# Analysis: ${title}
+const ANALYSIS = (title: string, brownfield = false, scopeRound = false) => `# Analysis: ${title}
 
 ## Summary
 
@@ -285,7 +283,15 @@ ${PLACEHOLDER}: what could go wrong and what was assumed.
 ## Appendix: discovery Q&A
 
 ${PLACEHOLDER}: the grilling rounds, questions and answers.
-`;
+${
+  scopeRound
+    ? `
+### ${SCOPE_ROUND_HEADING}
+
+${PLACEHOLDER}: the checked answer of the \`scope\` Decision Page (vision, scope, mvp, out), word for word.
+`
+    : ""
+}`;
 
 // ---------------------------------------------------------------- full check
 
@@ -303,20 +309,9 @@ export function readinessCheck(p: Paths, id: string, asState?: string): Diags {
  * records the approval itself, but only while the plan stays inside the Workflow's boundary; beyond it the Change is
  * reclassified to the Workflow named there and waits for the user.
  */
-export function approve(p: Paths, id: string, opts: { auto?: { pluginRoot: string } } = {}): { hash: string; files: string[]; by: string; scope?: boolean } {
+export function approve(p: Paths, id: string, opts: { auto?: { pluginRoot: string } } = {}): { hash: string; files: string[]; by: string } {
   const change = loadChange(p, id);
   let by = "user";
-  if (stateOf(change) === "awaiting_scope_approval") {
-    // Approval Gate 1: the user approves the product brief, and drafting continues.
-    if (opts.auto) throw new OpError("the scope is always approved by the user");
-    const d = checkBrief(change);
-    if (d.errors.length) throw new OpError(`the product brief of "${id}" is not ready for approval`, d);
-    const hash = briefHash(change);
-    change.doc.set("scope_approval", change.doc.createNode({ hash, at: now(), by: "user" }));
-    change.doc.set("state", "analyzing");
-    saveChange(change);
-    return { hash, files: [rel(p, join(change.dir, BRIEF_FILE))], by, scope: true };
-  }
   if (opts.auto) {
     const workflow = typeof change.data.workflow === "string" ? change.data.workflow : "";
     const boundary = workflow ? boundaryOf(opts.auto.pluginRoot, workflow) : null;

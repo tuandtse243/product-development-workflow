@@ -1001,7 +1001,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const p = project();
         const id = need(rest[1], "change id");
         const wf = str(args.flags.workflow);
-        const dir = newChange(p, id, { title: str(args.flags.title), inputType: str(args.flags["input-type"]), ...(wf ? { workflow: wf, workflows: workflowIds(pluginRoot(env)), skipSpecs: boundaryOf(pluginRoot(env), wf)?.spec_changes === false, scopeGate: loadWorkflow(pluginRoot(env), wf)?.scope_gate === true } : {}) });
+        const dir = newChange(p, id, { title: str(args.flags.title), inputType: str(args.flags["input-type"]), ...(wf ? { workflow: wf, workflows: workflowIds(pluginRoot(env)), skipSpecs: boundaryOf(pluginRoot(env), wf)?.spec_changes === false, scopeRound: loadWorkflow(pluginRoot(env), wf)?.scope_round === true } : {}) });
         emit({ ok: true, id, dir: rel(p, dir) }, `created change ${id} at ${rel(p, dir)}\n`);
         return 0;
       }
@@ -1217,15 +1217,11 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const p = project();
         const id = resolveChangeId(p, rest[0]);
         const auto = args.flags.auto === true;
-        const { hash, files, by, scope } = approve(p, id, auto ? { auto: { pluginRoot: pluginRoot(env) } } : {});
-        if (scope) {
-          emit({ ok: true, id, hash, files, scope: true }, `scope approved ${id}\n  ${hash}\n  The change is back in analyzing: continue with the domain model, requirements and specs (step 3 of /aidw:start).\n`);
-          return 0;
-        }
+        const { hash, files, by } = approve(p, id, auto ? { auto: { pluginRoot: pluginRoot(env) } } : {});
         const { kept, reopened } = reconcileDoneTasks(p, id);
         emit(
           { ok: true, id, hash, files, kept, reopened },
-          `${scope ? "scope approved" : "approved"} ${id}${by === "user" ? "" : ` by ${by}`}\n  ${hash}\n  covers ${files.length} file(s)\n${kept.length ? `  done work kept: ${kept.join(", ")}\n` : ""}${reopened.length ? `  edited tasks run again: ${reopened.join(", ")}\n` : ""}  cheapest build (about a quarter of the tokens): in your own terminal, ${join(pluginRoot(env), "bin", "aidw")} run ${id} --permission-mode auto\n`,
+          `approved ${id}${by === "user" ? "" : ` by ${by}`}\n  ${hash}\n  covers ${files.length} file(s)\n${kept.length ? `  done work kept: ${kept.join(", ")}\n` : ""}${reopened.length ? `  edited tasks run again: ${reopened.join(", ")}\n` : ""}  cheapest build (about a quarter of the tokens): in your own terminal, ${join(pluginRoot(env), "bin", "aidw")} run ${id} --permission-mode auto\n`,
         );
         return 0;
       }

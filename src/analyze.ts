@@ -5,7 +5,7 @@
  */
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { loadChange } from "./change.js";
+import { loadChange, type Change } from "./change.js";
 import { deltaFiles } from "./check.js";
 import { Diags } from "./diag.js";
 import { capabilityOf, projectKind, readText, rel, walkFiles, type Paths } from "./project.js";
@@ -18,7 +18,8 @@ import { touchesApi, touchesUi } from "./skills.js";
 import { planAdvice } from "./plan.js";
 import { pluginRoot } from "./plugin.js";
 import { defaultTaskRole, implementerOf } from "./roles.js";
-import { answerOf, checkDecisions } from "./decisions.js";
+import { answerOf, checkDecisions, workflowOfChange } from "./decisions.js";
+import { checkScopeRound } from "./scope.js";
 
 const TITLE_ADVISED = 60;
 const isPlanned = (t: { origin?: unknown }): boolean => t.origin === undefined || t.origin === "plan";
@@ -186,6 +187,16 @@ export function sizeOf(analysis: string | null): Size | "invalid" {
   return (SIZES as readonly string[]).includes(v) ? (v as Size) : "invalid";
 }
 
+function scopeRoundOf(p: Paths, change: Change): boolean {
+  const root = pluginRoot(process.env);
+  if (!existsSync(join(root, "roster.yaml"))) return false;
+  try {
+    return workflowOfChange(p, change, root).scope_round;
+  } catch {
+    return false; // a Change of an unknown workflow is reported by validate
+  }
+}
+
 /** Runs every pre-gate consistency check for one change. */
 export function analyzeChange(p: Paths, id: string): Diags {
   const d = new Diags();
@@ -196,6 +207,8 @@ export function analyzeChange(p: Paths, id: string): Diags {
   if (analysis === null) d.error(rel(p, analysisFile), "analysis.md is missing");
   else {
     checkAnalysisDoc(analysis, rel(p, analysisFile), d);
+    // ADR-0011: a Workflow with a scope round (product) records it in the discovery appendix before the gate.
+    if (scopeRoundOf(p, change)) d.add(checkScopeRound(change, analysis, rel(p, analysisFile)));
     // S10: a brownfield change states what exists and what it must not break.
     if (projectKind(p) === "brownfield") {
       const existing = sections(analysis).find((s) => s.name.toLowerCase() === "existing system");

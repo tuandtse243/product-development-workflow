@@ -45,28 +45,42 @@ describe("the workflows of the plugin", () => {
     for (const id of workflowIds(plugin).filter((w) => w !== "audit")) {
       const w = loadWorkflow(plugin, id)!;
       const states = new Set([...w.interrupts, ...w.stages.flatMap((s) => s.states)]);
-      // product walks every state; feature and bugfix lack the scope gate
-      expect([...states].sort(), id).toEqual(STATES.filter((s) => id === "product" || s !== "awaiting_scope_approval").sort());
+      expect([...states].sort(), id).toEqual([...STATES].sort());
       const path = w.stages.flatMap((s) => s.states).filter((s, i, a) => s !== a[i - 1]);
-      const tail = ["awaiting_approval", "approved", "executing", "verifying", "converging", "deploying", "delivered", "archived"];
-      expect(path, id).toEqual(["draft", "intake", "analyzing", ...(id === "product" ? ["awaiting_scope_approval", "analyzing"] : []), ...tail]);
+      expect(path, id).toEqual(["draft", "intake", "analyzing", "awaiting_approval", "approved", "executing", "verifying", "converging", "deploying", "delivered", "archived"]);
     }
   });
 
-  it("have one approval gate, before the build (all but audit, which has none)", () => {
-    for (const id of workflowIds(plugin).filter((w) => w !== "audit")) {
-      const stages = loadWorkflow(plugin, id)!.stages.map((s) => s.id);
-      const gates = loadWorkflow(plugin, id)!.stages.filter((s) => s.gate === "approval" || s.gate === "approval-auto");
+  it("have exactly one Approval Gate, after the plan and before the build (all but audit, which has none) (ADR-0011)", () => {
+    for (const id of workflowIds(plugin)) {
+      const w = loadWorkflow(plugin, id)!;
+      const stages = w.stages.map((s) => s.id);
+      const gates = w.stages.filter((s) => s.gate === "approval" || s.gate === "approval-auto");
+      // the only other gate is the production deploy asking first, which is not an Approval Gate of the plan
+      expect(w.stages.filter((s) => s.gate && !gates.includes(s)).map((s) => s.gate), id).toEqual(id === "audit" ? [] : ["production-deploy"]);
+      if (id === "audit") {
+        expect(gates, id).toHaveLength(0);
+        continue;
+      }
       expect(gates, id).toHaveLength(1);
+      expect(stages.indexOf(gates[0]!.id), id).toBeGreaterThan(stages.indexOf("plan"));
       expect(stages.indexOf(gates[0]!.id), id).toBeLessThan(stages.indexOf("build"));
     }
+  });
+
+  it("product asks the scope in the discovery interview, not at a gate of its own", () => {
+    const product = loadWorkflow(plugin, "product")!;
+    expect(product.stages.map((s) => s.id)).not.toContain("scope");
+    expect(product.scope_round).toBe(true);
+    expect(product.stages.find((s) => s.id === "discovery")?.writes).toContain("analysis-discovery-qa");
+    for (const id of ["feature", "bugfix", "audit"]) expect(loadWorkflow(plugin, id)!.scope_round, id).toBe(false);
   });
 
   it("differ only by the assessment stage and the baseline specs: feature adds no new kind of stage", () => {
     const product = loadWorkflow(plugin, "product")!.stages.map((s) => s.id);
     const feature = loadWorkflow(plugin, "feature")!.stages.map((s) => s.id);
     expect(feature.filter((s) => !product.includes(s))).toEqual(["assessment"]);
-    expect(product.filter((s) => !feature.includes(s))).toEqual(["scope"]); // Approval Gate 1
+    expect(product.filter((s) => !feature.includes(s))).toEqual([]);
   });
 });
 
@@ -96,6 +110,15 @@ describe("workflow consistency", () => {
     const root = copy();
     edit(root, "workflows/product.yaml", "states: [verifying]", "states: [deploying]");
     expect(errors(root)).toMatch(/the stages go from state "executing" to "deploying", which its transitions do not allow/);
+  });
+
+  it("rejects a second Approval Gate, and the old scope gate", () => {
+    const root = copy();
+    edit(root, "workflows/product.yaml", /(id: plan[\s\S]*?writes: \[tasks, analysis-plan\]\n)/, "$1    gate: approval\n");
+    expect(errors(root)).toMatch(/at most one stage has gate: approval or approval-auto \(found 2\)/);
+    const root2 = copy();
+    edit(root2, "workflows/product.yaml", /(id: plan[\s\S]*?writes: \[tasks, analysis-plan\]\n)/, "$1    gate: scope-approval\n");
+    expect(errors(root2)).toMatch(/stage plan: gate must be approval or approval-auto or production-deploy/);
   });
 
   it("rejects a workflow with no approval gate, or with a state no stage covers", () => {
@@ -147,9 +170,7 @@ describe("the state machine of a workflow", () => {
   it("is read from the workflow file and equals the table aidw ran before it moved there", () => {
     for (const id of ["product", "feature", "bugfix"]) {
       const m = machineById(id)!;
-      // product adds the scope gate: analyzing may also go to awaiting_scope_approval, and back
-      const flow = id === "product" ? { ...FLOW, analyzing: ["awaiting_scope_approval", "awaiting_approval"], awaiting_scope_approval: ["analyzing"] } : FLOW;
-      expect(m.transitions, id).toEqual(flow);
+      expect(m.transitions, id).toEqual(FLOW);
       expect([...m.approvalRequired].sort(), id).toEqual(["approved", "converging", "delivered", "deploying", "escalated", "executing", "paused", "verifying"]);
       expect([...m.analysisRequired].sort(), id).toEqual(["approved", "archived", "awaiting_approval", "converging", "delivered", "deploying", "escalated", "executing", "paused", "verifying"]);
     }
