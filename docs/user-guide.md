@@ -56,9 +56,9 @@ Bạn chỉ gõ các lệnh `/aidw:...` trong Claude Code. CLI `aidw` do Claude 
 | `/aidw:start <ý tưởng, PRD hoặc đường dẫn file>` | mỗi change mới | hỏi bạn, phân tích, viết spec, chia task, dừng ở cổng duyệt. Bạn đồng ý xong thì nó tự duyệt và tự build (mục 7: tối đa 3 task build ngay trong phiên, hơn 3 task tự bật runner nền) |
 | `/aidw:approve` | khi muốn duyệt từ phiên khác | **cổng duy nhất**: bạn bấm Yes. Hash và đóng băng gói phân tích, rồi build như trên |
 | `/aidw:run` | thường không cần gõ | build ngay trong phiên: chạy các task, kiểm tra chất lượng, deploy preview, bàn giao. `start` và `approve` tự gọi nó khi kế hoạch có tối đa 3 task |
-| `/aidw:resume` | sau khi bị ngắt | tiếp tục từ chỗ dừng. Đã dừng vì escalation thì xử lý xong rồi mới resume |
+| `/aidw:resume` | sau khi bị ngắt, hoặc để hoàn tất một PR draft | tiếp tục từ chỗ dừng. Đã dừng vì escalation thì xử lý xong rồi mới resume. Change kết thúc bằng PR draft: làm theo mục "Needed from the user to finish" của PR rồi resume, aidw build lại phần còn thiếu và cập nhật chính PR đó |
 | `/aidw:status` | bất cứ lúc nào | trạng thái, drift, task nào xong, việc cần bạn |
-| `/aidw:deliver` | `run` tự gọi ở cuối | tạo gói bàn giao (README, handoff, báo cáo chất lượng) và archive |
+| `/aidw:deliver` | `run` tự gọi ở cuối | tạo gói bàn giao (README, handoff, báo cáo chất lượng), mở pull request (ready hoặc draft), rồi archive khi PR ready |
 
 Các lệnh CLI hữu ích khi bạn tự gõ `aidw` (xem mục 2 để đưa nó vào PATH):
 
@@ -69,7 +69,9 @@ Các lệnh CLI hữu ích khi bạn tự gõ `aidw` (xem mục 2 để đưa n�
 | `aidw task reopen <T> [--revert]` | task đã xong nhưng sai: về pending; `--revert` hoàn tác commit của nó (chỉ code, `.aidw/` giữ nguyên) |
 | `aidw stages [<id>] [--done <stage>]` | các stage phân tích trước cổng duyệt: xong, sẵn sàng, và nhóm chạy song song ngay (không đọc/ghi chồng nhau, một việc dùng trình duyệt, `parallel.max`); `--done` báo một stage đã xong |
 | `aidw plan-review [<id>] [--brief]` | review độc lập kiến trúc và kế hoạch trước cổng duyệt: `--brief` viết brief cho code-reviewer; không có thì ghi verdict của nó thành một vòng (tối đa 2 vòng sửa) |
-| `aidw pr [<id>] [--create]` | sau bàn giao: in nội dung PR; `--create` push nhánh và mở PR bằng `gh` (hỏi bạn trước, trừ khi bạn đã cấp quyền push ở cổng duyệt) |
+| `aidw pr [<id>] [--create]` | sau bàn giao: viết nội dung PR vào `.aidw/run/pr-<id>.md`, cho biết ready hay draft và quyền push; `--create` commit gói bàn giao, push nhánh và mở PR bằng `gh` (draft nếu còn thiếu), hoặc cập nhật PR đã mở (body, đánh dấu ready). Hỏi bạn trước, trừ khi bạn đã cấp quyền push ở cổng duyệt |
+| `aidw cap <id> --raise <n>` | run dừng vì chạm trần Agent run: nâng trần thêm `n` lượt (luôn hỏi bạn, chỉ bạn quyết; ghi vào `approval.history`, không phải Deviation), rồi `/aidw:resume` |
+| `aidw task retry <T>` | cho một task `escalated`, `failed` hoặc `not_built` một lượt thử mới; task `not_built` quay lại cùng các task bị bỏ vì phụ thuộc nó |
 
 **Trang quyết định (Decision Page).** Khi cần bạn chọn, aidw không in một khối chữ dài vào terminal nữa. Nó in một link
 `file://…/.aidw/run/pages/<tên>.html` kèm một hai dòng tóm tắt. Giữ Cmd và bấm link (hoặc gõ `! open <đường dẫn>`) để mở
@@ -128,8 +130,21 @@ Sơ đồ: mở [`diagrams/lifecycle.html`](diagrams/lifecycle.html) trong trìn
 4. **Verifying.** aidw chạy các lớp chất lượng trong `quality.yaml` (code, unit, e2e, ui-ux, a11y, security,
    performance...). Lớp fail thì aidw thêm một task sửa và quay lại executing. Sau đó, bước *converge* kiểm
    mọi scenario của change đều có test chạy xanh.
-5. **Delivered.** Deploy preview, chạy smoke check, tạo gói bàn giao rồi archive: spec của change được gộp vào
-   `.aidw/specs/`.
+5. **Delivered.** Deploy preview, chạy smoke check, tạo gói bàn giao, mở **pull request** rồi archive: spec của change
+   được gộp vào `.aidw/specs/`. Run luôn kết thúc bằng một pull request (D12): *ready* khi mọi lớp chất lượng qua, converge
+   đủ, deploy thành công và không có gì *not built*; *draft* trong mọi trường hợp khác. Body của PR mở đầu bằng ba mục cố
+   định, theo thứ tự: **Differs from the approved package** (từng Deviation: lý do, Role tác giả, tóm tắt, scenario và
+   requirement bị bỏ, thêm, đổi kèm lý do, loại thay đổi contract), **Not built and why** (task kèm nguyên nhân, lý do,
+   các task phụ thuộc bị bỏ theo, nơi giữ phần việc bị bỏ dở; lớp chất lượng; scenario; trần Agent run nếu chạm), và
+   **Needed from the user to finish** (việc cụ thể theo nguyên nhân: thiếu key thì cung cấp gì, việc ngoài quyền thì
+   làm tay, chạm trần thì `aidw cap`, deploy lỗi, các finding review và câu hỏi còn mở từ trước cổng duyệt). Mục trống
+   ghi "Nothing.". PR mở **trước** archive vì quyền push chỉ phủ change chưa archive; nếu PR mở bằng quyền đó, lệnh
+   archive push luôn commit archive lên cùng nhánh. Deploy lỗi hay cần bạn (deploy production không bao giờ tự động)
+   không chặn PR: PR mở dạng draft và deploy nằm trong mục "Needed". PR draft thì change **không** bị archive mà ở lại
+   *delivered*; `/aidw:resume` đưa nó về executing, chạy lại task bị bỏ vì môi trường (sau khi bạn sửa) hoặc vì trần (sau
+   khi bạn nâng), chạy lại lớp chất lượng bị bỏ và deploy lỗi, rồi cập nhật chính PR đó (push lại, thay body, `gh pr
+   ready` khi đã đủ). Phần việc bị bỏ dở của một task not built được chép vào `changes/<id>/delivery/not-built/` và
+   commit cùng gói bàn giao, để người review PR trên máy khác vẫn thấy (bản gốc ở `.aidw/run/` không được commit).
 6. **Paused, not built và Escalated.** Hết quota thì change tự về *paused* và tự chạy lại. Sau cổng duyệt run không
    hỏi bạn ([ADR-0014](adr/0014-after-the-approval-gate-the-run-does-not-ask-the-user.md)): việc không làm được thì bị
    đánh dấu *not built* (kèm lý do) và phần còn lại chạy tiếp; pull request liệt kê chúng. *Escalated* chỉ còn cho
@@ -367,7 +382,11 @@ bạn bấm đồng ý ở hộp thoại thì build bắt đầu; dòng `NEXT:` 
 cũng hỏi; `aidw run` chạy nổi trong phiên, trước khi duyệt hay cho change chưa duyệt thì bị chặn.
 
 Runner chạy mọi phiên ở chế độ `auto`: sau cổng duyệt không còn gì hỏi bạn ([ADR-0014](adr/0014-after-the-approval-gate-the-run-does-not-ask-the-user.md)); việc vượt ngoài quyền đã cấp kết thúc
-bằng *not built* chứ không chờ bạn; runner chạy tiếp tới pull request.
+bằng *not built* chứ không chờ bạn; runner chạy tiếp tới pull request. Runner dừng ở đó: `DONE (archived)` sau một PR
+ready, `STOPPED (draft)` sau một PR draft, kèm link PR và dòng `NEXT:`. Nếu bạn không cấp quyền push ở cổng duyệt, phiên
+không người trông không thể trả lời câu hỏi push: nó chỉ viết body PR vào `.aidw/run/pr-<id>.md` và runner kết thúc với
+`NEXT: aidw pr <id> --create [--draft]` để bạn tự mở (lệnh đó hỏi bạn), không bao giờ treo. Chạy lại `aidw run <id>` trên
+một change đang là draft thì runner resume nó trước.
 
 Theo dõi: `tail -f .aidw/run/runner.log`; xem trạng thái: `aidw run --status`; dừng: `aidw run --stop` (rồi `/aidw:resume`
 để làm tiếp trong phiên). Nếu phiên không bật được runner (bạn từ chối hộp thoại, đã có runner khác chạy), tự gõ:
@@ -452,9 +471,10 @@ hành vi, thay vì chia theo tầng.
 | Báo "approval drift" | gói đã duyệt bị sửa | `escalated`, quay lại `analyzing`, duyệt lại |
 | `aidw: command not found` | bin chưa vào PATH | dùng đường dẫn đầy đủ `plugins/aidw/bin/aidw` |
 | Change `escalated` | việc không bao giờ tự động, bạn tự dừng, hoặc task bạn escalate bằng tay | đọc lý do ở `/aidw:status`, xử lý, `/aidw:resume` |
-| Task `not_built` | môi trường (Triage, blocker không Role nào trả lời được, máy chặn hai lần); hết 3 vòng sửa ngược; hoặc chạm trần Agent run | đọc `not_built.reason` ở `/aidw:status`; pull request liệt kê nó |
+| Task `not_built` | môi trường (Triage, blocker không Role nào trả lời được, máy chặn hai lần); hết 3 vòng sửa ngược; hoặc chạm trần Agent run | đọc mục "Needed from the user to finish" của PR draft (hoặc `not_built.reason` ở `/aidw:status`), làm theo, rồi `/aidw:resume` |
+| `aidw run` dừng `draft` | run kết thúc bằng PR draft (hoặc chỉ body PR khi chưa cấp quyền push) | làm theo dòng `NEXT:` và mục "Needed" của PR; chạm trần thì `aidw cap <id> --raise <n>`; rồi `/aidw:resume` |
 | `aidw run` dừng `no_progress` | hai session liền không đổi gì | đọc `.aidw/run/runner.log`, chạy `/aidw:status` |
-| `aidw run` dừng `needs_user` ngay phiên đầu hoặc trước deploy | `aidw doctor` có FAIL (chưa đăng nhập Vercel, project chưa có deployment nào nên lần deploy đầu là Production, Chrome CDP đóng) | làm theo dòng in ra rồi chạy lại đúng lệnh |
+| `aidw run` dừng `needs_user` ngay phiên đầu | `aidw doctor` có FAIL (chưa đăng nhập Vercel, project chưa có deployment nào nên lần deploy đầu là Production, Chrome CDP đóng) | làm theo dòng in ra rồi chạy lại đúng lệnh. Trước bước deploy, runner không dừng nữa: deploy lỗi thì PR mở dạng draft và ghi việc cần làm |
 | `vercel ... has no deployments yet` / doctor `vercel deployments` FAIL | project Vercel mới: deployment đầu tiên luôn là Production, không tạo được preview | chạy `aidw first-deploy --yes` trong terminal của bạn (deploy công khai một lần), rồi `aidw deploy`; hoặc đặt deploy target `none` |
 | `refusing to commit dependency or build output` | thiếu `.gitignore` | thêm mục ignore, `git rm -r --cached <path>`, thử lại |
 | Deploy báo cần đăng nhập Vercel | token hết hạn | chạy `vercel whoami` ở terminal của bạn, rồi chạy lại |

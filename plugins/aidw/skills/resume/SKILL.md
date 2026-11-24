@@ -1,6 +1,6 @@
 ---
 name: resume
-description: Resume an aidw change after an interruption - killed session, quota or rate limit, or an escalation the user has resolved. Use when the user runs /aidw:resume.
+description: Resume an aidw change after an interruption - killed session, quota or rate limit, an escalation the user has resolved, or a draft pull request to finish. Use when the user runs /aidw:resume.
 allowed-tools: Bash(aidw *)
 disable-model-invocation: true
 argument-hint: "[change id]"
@@ -29,6 +29,17 @@ All progress lives in `.aidw/` and git, so resuming needs no memory of the previ
        then for each task that is `escalated`, `aidw task retry <T>` (fresh attempt budget). Only on the
        user's explicit go-ahead: retrying is their decision.
      - the scope must change: `aidw transition <id> analyzing`, revise, approve again.
+   - `delivered` with a draft pull request (`aidw status` / change.yaml `run.pr`; the body's "Needed from the user to
+     finish" says what was missing): finish it (D12). `aidw transition <id> executing` reopens it: the tasks not built
+     for the environment, or at the cap once the user raised it (`aidw cap <id> --raise <runs>`, the user's command:
+     it asks), run again with the tasks that depend on them; layers not built run again; a failed deploy runs again at
+     the end. Its output lists what stays not built. A task not built after Triage or its fix rounds is retried only on
+     the user's explicit go-ahead: `aidw task retry <T>` (never headless). Then follow the run skill below; at its end
+     `aidw pr <id> --create` updates the same pull request (pushes again, replaces the body, marks it ready when
+     everything passed) and a ready Change is archived. When the transition is refused because nothing can run again,
+     what is left is the user's own action from the "Needed" section (work outside the grants, the cap): say so and stop.
+   - `delivered` without a pull request yet: the delivery was interrupted; follow
+     `$(aidw plugin-path skills/deliver/SKILL.md)`.
    - `approved`, `executing`: nothing to do here.
    - drift or anything before approval: explain (`/aidw:status`) and stop.
 3. Read `$(aidw plugin-path skills/run/SKILL.md)` and follow it from its step 1 to its last step. Do not try to invoke

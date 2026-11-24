@@ -466,7 +466,43 @@ read-only views) abandons an open upstream Deviation and marks every pending or 
 the reason, while running work (running, review, conflict) finishes; verify, integration and converge add no fix task
 and mark what fails not built; review layers still run their reviewers. The Change then goes on to verify, deploy and
 delivery: a clean end, ready for a draft pull request. The same settling marks tasks that can never run not built, and a
-check the machine refused twice (`blocked_runs`, checkpoint or resolve) is an environment cause.
+check the machine refused twice (`blocked_runs`, checkpoint or resolve) is an environment cause. Only the user raises
+the cap after the gate: `aidw cap <id> --raise <runs>` (the gate asks every time, a headless run cannot answer it; it is
+not a grant made ahead of time) adds to `approval.agent_run_cap` and appends `{ cap: { from, to }, by: user }` to
+`approval.history`. The cap is not in the approved package's hash, so this is neither drift nor a Deviation.
+
+**The pull request** (plan D12, `src/pr.ts`, `src/draft.ts`). The run always ends in one. It is **ready** when every
+layer of the approved quality profile passed, converge passed with no scenario not built, the deploy succeeded and every
+task is done; a **draft** otherwise (`prReadiness` names why). The body opens with three fixed sections, in this order,
+"Nothing." when empty, all from records, never from an Agent's summary: *Differs from the approved package* (every
+closed Deviation of `deviations.yaml`: reason, author Roles, summary, scenarios and requirements removed, added or
+changed, removals with their reasons, contract classes, tasks added, removed and run again; the plan review graded the
+package as it was approved), *Not built and why* (each task with its cause and reason, the dependants not built with it
+and where its discarded work is; layers; converge scenarios; the cap with runs used), and *Needed from the user to
+finish* (derived from the causes: what to provide for an environment cause, what to do by hand for work outside the
+envelope or never automatic, `aidw cap` for the cap, a failed deploy, the plan-review findings carried from the gate,
+the questions no Role could answer). Then the summary, tasks, evidence and merge danger as before.
+
+Order at delivery: package, check, then `aidw pr <id>` (writes `.aidw/run/pr-<id>.md`, records `run.pr` in
+change.yaml, prints ready or draft, whether the push is granted and a `NEXT:`), then `aidw pr <id> --create`, then the
+archive. The push grant (ADR-0012) covers a Change still under `changes/` (open or `delivered`, `GRANT_STATES`), so the
+pull request opens before `aidw archive`; `--create` commits `.aidw/` (the delivery package) first so the branch
+carries it, and `aidw archive` pushes its own commit to the same branch when the pull request was opened and the gate's
+own rule (`pushGrantReason`) still allows the push at that moment. A draft is not archived. Without the grant the gate
+asks for `--create`; under the runner nobody can answer, so the session only writes the body and the runner ends with
+the outcome `draft` (or `archived` for a ready Change) and a `NEXT:` naming `aidw pr <id> --create`: no hang. A deploy
+that failed does not block the pull request: `delivered` needs a deploy that ran, not one that succeeded, and the
+failure goes under "Needed". The work a not-built task left on the main checkout is saved under the machine-local,
+uncommitted `.aidw/run/evidence/`; `aidw deliver` and `aidw pr` copy it into `changes/<id>/delivery/not-built/`, which
+is committed with the package, because the pull request is read on another machine and must point at something there.
+
+**Finishing a draft.** `/aidw:resume` takes a delivered draft back to `executing` (`delivered: [executing]` in the
+Workflow's state machine, refused when nothing can run again). `reopenDraft` brings back the tasks not built for the
+environment, or at the cap once it was raised, with the tasks not built only because they depend on them; forgets the
+layers not built so verify runs them; a failed deploy runs again at the end. Tasks not built after Triage, after their
+fix rounds or outside the envelope stay so unless the user grants `aidw task retry <T>` (which accepts `not_built` and
+brings the dependants back). At the end `aidw pr <id> --create` finds `run.pr` and updates the same pull request: push
+again, `gh pr edit --body-file`, and `gh pr ready` when it became ready (`--undo` the other way).
 
 ## 8. Workflows
 
