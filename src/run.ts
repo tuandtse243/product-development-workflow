@@ -207,13 +207,13 @@ export function markNotBuilt(p: Paths, tf: TaskFile, taskId: string, reason: str
     // its half-done work on the main checkout must not ride along in the next task's commit
     const gone = tid === taskId ? discardWork(p, tf, t) : { files: [] as string[] };
     const text = gone.files.length
-      ? `${why}; its uncommitted work on the main checkout was discarded: ${gone.files.slice(0, 20).join(", ")}${gone.files.length > 20 ? ` and ${gone.files.length - 20} more` : ""}`
+      ? `${why}; its uncommitted work on the main checkout was discarded: ${gone.files.slice(0, 20).join(", ")}${gone.files.length > 20 ? ` and ${gone.files.length - 20} more` : ""} (saved in ${(gone.saved ?? []).join(" and ")})`
       : gone.skipped
         ? `${why}; ${gone.skipped}`
         : why;
     for (const f of ["worktree", "branch"]) setField(tf, i, f, null);
     setField(tf, i, "status", "not_built");
-    setField(tf, i, "not_built", { cause: kind, reason: text.slice(0, 1000), at: now(), ...(gone.files.length ? { discarded: gone.files } : {}) });
+    setField(tf, i, "not_built", { cause: kind, reason: text.slice(0, 1000), at: now(), ...(gone.files.length ? { discarded: gone.files, saved: gone.saved ?? [] } : {}) });
     setField(tf, i, "notes", text.slice(0, 500));
     marked.push(tid);
     for (const d of tf.tasks) if (list(d.depends_on).includes(tid)) queue.push([d.id, `depends on ${tid}, which is not built`, "dependency"]);
@@ -238,13 +238,37 @@ function dirtyPaths(p: Paths): string[] {
  * already dirty when the task first started (`start_dirty`) and everything under .aidw/ are left alone. Nothing is
  * touched while another task works on the main checkout.
  */
-function discardWork(p: Paths, tf: TaskFile, t: Task): { files: string[]; skipped?: string } {
+function discardWork(p: Paths, tf: TaskFile, t: Task): { files: string[]; skipped?: string; saved?: string[] } {
   if ((typeof t.worktree === "string" && t.worktree) || typeof t.base !== "string" || !isGitRepo(p.project)) return { files: [] };
   if (!["running", "failed", "review", "conflict"].includes(statusOf(t))) return { files: [] };
   const busy = tf.tasks.find((x) => x.id !== t.id && ["running", "review"].includes(statusOf(x)) && !(typeof x.worktree === "string" && x.worktree));
   if (busy) return { files: [], skipped: `its uncommitted work was left on the main checkout because ${busy.id} works there too` };
   const keep = new Set(list(t.start_dirty));
   const files = dirtyPaths(p).filter((f) => !keep.has(f));
+  if (!files.length) return { files };
+  // nothing is destroyed for good: the tracked edits as a patch, the files the task created as copies
+  const inHead = (f: string) => git(p.project, ["cat-file", "-e", `HEAD:${f}`]).ok;
+  const evidence = join(p.run, "evidence");
+  const patchFile = join(evidence, `notbuilt-${t.id}.patch`);
+  const copyDir = join(evidence, `notbuilt-${t.id}`);
+  const tracked = files.filter(inHead);
+  const created = files.filter((f) => !inHead(f));
+  const saved: string[] = [];
+  mkdirSync(evidence, { recursive: true });
+  if (tracked.length) {
+    const d = git(p.project, ["diff", "--binary", "HEAD", "--", ...tracked]);
+    if (!d.ok) return { files: [], skipped: `its uncommitted work was left on the main checkout: saving it failed (${d.err})` };
+    writeFileSync(patchFile, `${d.out}\n`);
+    saved.push(rel(p, patchFile));
+  }
+  rmSync(copyDir, { recursive: true, force: true });
+  for (const f of created) {
+    const from = join(p.project, f);
+    if (!existsSync(from) || !statSync(from).isFile()) continue;
+    mkdirSync(dirname(join(copyDir, f)), { recursive: true });
+    copyFileSync(from, join(copyDir, f));
+  }
+  if (created.length && existsSync(copyDir)) saved.push(`${rel(p, copyDir)}/`);
   for (const f of files) {
     if (git(p.project, ["cat-file", "-e", `HEAD:${f}`]).ok) git(p.project, ["checkout", "HEAD", "--", f]);
     else {
@@ -252,7 +276,7 @@ function discardWork(p: Paths, tf: TaskFile, t: Task): { files: string[]; skippe
       rmSync(join(p.project, f), { force: true });
     }
   }
-  return { files };
+  return { files, saved };
 }
 
 /**

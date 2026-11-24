@@ -462,5 +462,12 @@ describe("after re-review: change.yaml and a not-built task's work on the main c
     const nb = task(root, "T01").not_built as { reason: string; discarded: string[] };
     expect(nb.discarded.sort()).toEqual(["lib/calendar/existing.ts", "lib/calendar/half.ts"]);
     expect(nb.reason).toMatch(/uncommitted work on the main checkout was discarded: .*half\.ts/);
+    // nothing is lost: the tracked edit as a patch, the created file as a copy, both named in the record
+    const saved = (task(root, "T01").not_built as { saved: string[] }).saved;
+    expect(saved).toEqual([".aidw/run/evidence/notbuilt-T01.patch", ".aidw/run/evidence/notbuilt-T01/"]);
+    expect(nb.reason).toMatch(/saved in \.aidw\/run\/evidence\/notbuilt-T01\.patch and \.aidw\/run\/evidence\/notbuilt-T01\//);
+    g("apply", join(root, ".aidw/run/evidence/notbuilt-T01.patch"));
+    expect(readFileSync(join(root, "lib/calendar/existing.ts"), "utf8")).toBe("export const v = 2; // half done\n");
+    expect(readFileSync(join(root, ".aidw/run/evidence/notbuilt-T01/lib/calendar/half.ts"), "utf8")).toBe("export const half = 1;\n");
   });
 });

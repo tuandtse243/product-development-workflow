@@ -446,7 +446,9 @@ and verify goes on with the next layers; an integration out of fix rounds is clo
 task was not built, or whose converge task did not close it, is listed under `not_built` and the converge passes.
 A task not built after it ran on the main checkout leaves nothing behind for the next task's commit: what it left
 uncommitted outside `.aidw/` is put back as HEAD has it, files it created are removed (paths already dirty when it first
-started, `start_dirty`, are kept), and the list is recorded in `not_built.discarded`. No Agent writes `change.yaml` (the
+started, `start_dirty`, are kept), and the list is recorded in `not_built.discarded`. Nothing is lost: first the
+tracked edits are saved as `.aidw/run/evidence/notbuilt-<T>.patch` (`git apply` restores them) and the created files are
+copied under `.aidw/run/evidence/notbuilt-<T>/`; `not_built.saved` and the reason name both. No Agent writes `change.yaml` (the
 state and the approval record with `agent_run_cap`): the gate denies it, by Write, Edit or the shell.
 Everything not built ends up in the pull request (a draft), never in a question.
 

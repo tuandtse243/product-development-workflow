@@ -16018,10 +16018,10 @@ function markNotBuilt(p, tf, taskId, reason, cause) {
     if (!t || marked.includes(tid) || tid !== taskId && OPEN_WORK.has(statusOf4(t))) continue;
     if (typeof t.worktree === "string" && t.worktree) removeWorktree(p, t.worktree, typeof t.branch === "string" ? t.branch : void 0);
     const gone = tid === taskId ? discardWork(p, tf, t) : { files: [] };
-    const text2 = gone.files.length ? `${why}; its uncommitted work on the main checkout was discarded: ${gone.files.slice(0, 20).join(", ")}${gone.files.length > 20 ? ` and ${gone.files.length - 20} more` : ""}` : gone.skipped ? `${why}; ${gone.skipped}` : why;
+    const text2 = gone.files.length ? `${why}; its uncommitted work on the main checkout was discarded: ${gone.files.slice(0, 20).join(", ")}${gone.files.length > 20 ? ` and ${gone.files.length - 20} more` : ""} (saved in ${(gone.saved ?? []).join(" and ")})` : gone.skipped ? `${why}; ${gone.skipped}` : why;
     for (const f of ["worktree", "branch"]) setField2(tf, i, f, null);
     setField2(tf, i, "status", "not_built");
-    setField2(tf, i, "not_built", { cause: kind, reason: text2.slice(0, 1e3), at: now7(), ...gone.files.length ? { discarded: gone.files } : {} });
+    setField2(tf, i, "not_built", { cause: kind, reason: text2.slice(0, 1e3), at: now7(), ...gone.files.length ? { discarded: gone.files, saved: gone.saved ?? [] } : {} });
     setField2(tf, i, "notes", text2.slice(0, 500));
     marked.push(tid);
     for (const d of tf.tasks) if (list6(d.depends_on).includes(tid)) queue.push([d.id, `depends on ${tid}, which is not built`, "dependency"]);
@@ -16042,6 +16042,30 @@ function discardWork(p, tf, t) {
   if (busy) return { files: [], skipped: `its uncommitted work was left on the main checkout because ${busy.id} works there too` };
   const keep = new Set(list6(t.start_dirty));
   const files = dirtyPaths(p).filter((f) => !keep.has(f));
+  if (!files.length) return { files };
+  const inHead = (f) => git(p.project, ["cat-file", "-e", `HEAD:${f}`]).ok;
+  const evidence = (0, import_node_path41.join)(p.run, "evidence");
+  const patchFile = (0, import_node_path41.join)(evidence, `notbuilt-${t.id}.patch`);
+  const copyDir = (0, import_node_path41.join)(evidence, `notbuilt-${t.id}`);
+  const tracked = files.filter(inHead);
+  const created = files.filter((f) => !inHead(f));
+  const saved = [];
+  (0, import_node_fs36.mkdirSync)(evidence, { recursive: true });
+  if (tracked.length) {
+    const d = git(p.project, ["diff", "--binary", "HEAD", "--", ...tracked]);
+    if (!d.ok) return { files: [], skipped: `its uncommitted work was left on the main checkout: saving it failed (${d.err})` };
+    (0, import_node_fs36.writeFileSync)(patchFile, `${d.out}
+`);
+    saved.push(rel(p, patchFile));
+  }
+  (0, import_node_fs36.rmSync)(copyDir, { recursive: true, force: true });
+  for (const f of created) {
+    const from = (0, import_node_path41.join)(p.project, f);
+    if (!(0, import_node_fs36.existsSync)(from) || !(0, import_node_fs36.statSync)(from).isFile()) continue;
+    (0, import_node_fs36.mkdirSync)((0, import_node_path41.dirname)((0, import_node_path41.join)(copyDir, f)), { recursive: true });
+    (0, import_node_fs36.copyFileSync)(from, (0, import_node_path41.join)(copyDir, f));
+  }
+  if (created.length && (0, import_node_fs36.existsSync)(copyDir)) saved.push(`${rel(p, copyDir)}/`);
   for (const f of files) {
     if (git(p.project, ["cat-file", "-e", `HEAD:${f}`]).ok) git(p.project, ["checkout", "HEAD", "--", f]);
     else {
@@ -16049,7 +16073,7 @@ function discardWork(p, tf, t) {
       (0, import_node_fs36.rmSync)((0, import_node_path41.join)(p.project, f), { force: true });
     }
   }
-  return { files };
+  return { files, saved };
 }
 function settleChange(p, id) {
   let tf = loadTasks(p, id);
