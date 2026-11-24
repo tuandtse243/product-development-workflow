@@ -5,6 +5,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
 import { checkEvals, loadEvalCases, roleDigest } from "../src/evals.js";
 import { checkRoster, loadRuleTable, parseRulesTable, writeAgents } from "../src/roles.js";
+import { bareBackend } from "./fixtures.js";
 
 const plugin = join(__dirname, "..", "plugins", "aidw");
 const temps: string[] = [];
@@ -14,6 +15,7 @@ function copy(): string {
   const root = mkdtempSync(join(tmpdir(), "aidw-rules-"));
   temps.push(root);
   cpSync(plugin, root, { recursive: true, filter: (src) => !src.startsWith(join(plugin, "bin")) });
+  bareBackend(root);
   return root;
 }
 
@@ -65,7 +67,7 @@ describe("rules.md as a table (R2)", () => {
     const prose = readFileSync(join(plugin, "roles", "code-reviewer", "rules.md"), "utf8");
     expect(parseRulesTable(prose)).toEqual({ table: false, rules: [], problems: [] });
     expect(loadRuleTable(plugin, "code-reviewer")).toBeNull();
-    expect(loadRuleTable(plugin, "backend")).toBeNull(); // no rules.md at all
+    expect(loadRuleTable(plugin, "frontend")).toBeNull(); // no rules.md at all
   });
 
   it("reports a duplicate id, an empty field, a bad id, an unknown checker and a bad header", () => {

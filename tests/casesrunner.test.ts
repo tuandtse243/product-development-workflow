@@ -7,6 +7,7 @@ import { run } from "../src/cli.js";
 import { answerPrompt, buildGradePrompt, parseGrade, printResults, roleSystem, runCases, type Exec } from "../src/evalrun.js";
 import { loadEvalCases, roleDigest } from "../src/evals.js";
 import { writeAgents } from "../src/roles.js";
+import { bareBackend } from "./fixtures.js";
 
 const plugin = join(__dirname, "..", "plugins", "aidw");
 const env = { ...process.env, CLAUDE_PLUGIN_ROOT: plugin };
@@ -23,6 +24,7 @@ function copy(): string {
   const root = mkdtempSync(join(tmpdir(), "aidw-cases-"));
   temps.push(root);
   cpSync(plugin, root, { recursive: true, filter: (src) => !src.startsWith(join(plugin, "bin")) });
+  bareBackend(root);
   return root;
 }
 
