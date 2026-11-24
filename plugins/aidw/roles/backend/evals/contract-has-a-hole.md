@@ -10,7 +10,10 @@ contract the brief points at defines only two outcomes: `201` with `{ id, email,
 problem body `{ type: ".../validation-error", title, errors: [{ field, message }] }` for an email that is not valid.
 Scenario INV-1: "Given a valid email, when the admin invites it, then the invite is created." Scenario INV-3:
 "Given an email that already belongs to a member of the team, when the admin invites it, then the invite is
-refused." The Frontend Role builds the invite screen in parallel against the same contract.
+refused." The contract's shared section settles the rest: a request with no session gets `401` and a caller who
+is not an admin of the team gets `403`, both from the project's existing session and admin guards with their
+problem bodies; a body with an unknown field gets the same `422`; and an invite expires 7 days after it is created.
+The Frontend Role builds the invite screen in parallel against the same contract.
 
 Touches: `src/invites/**`, `tests/invites/**`.
 Lacking information: you may ask `api-designer` and `database-architect`; write a request to
