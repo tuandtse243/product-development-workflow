@@ -38,6 +38,30 @@ Input: `$ARGUMENTS` (an idea, a path to a PRD/JD, pasted client text, or "this c
   Follow them, but the **adapter** notes below override where their output goes: there is no issue
   tracker; `.aidw/` is the tracker. Never run `/setup-matt-pocock-skills`.
 
+## Stepping through the stages (which ones run at the same time)
+
+The steps below are the stages of the Change's Workflow. The CLI knows what each stage reads and writes, so it, not
+you, says which may run at the same time: `aidw stages <id>` lists them as `done`, `ready` or `now`, and ends with one
+`NEXT:` line.
+
+- `NEXT: stage <stage> (...)`: one stage. Do the step of this skill for it, as written.
+- `NEXT: run these N stages in parallel, one subagent each, all in one message: ...`: do the interview part of each (the
+  questions only you can ask, on one Decision Page where possible) and record its Decision Point, then spawn the drafting
+  Agent of every listed stage **in a single message** (parallel Agent calls), each with the prompt of its step below.
+- A stage that its Decision Point skips (`none`), or that you did yourself, is still done: report it.
+- When a stage's work is done (its Agent replied and its open decisions are settled), report it on its own:
+  `aidw stages --done <stage> --change <id>`. The output prints the next `NEXT:`. A gate stage is never reported: it is
+  passed by `/aidw:approve`.
+
+The CLI already leaves out a stage that reads another's output or writes the same Artifact, a second browser user (the
+`design` stage screenshots its mocks), and anything past `parallel.max`. Stages that write the same file (two sections
+of `analysis.md`, say) never run together; only the parts of `decisions.yaml` are exempt, because `aidw decide` writes
+them one at a time before you spawn. Report every stage yourself, including one a Decision Point skipped (`none`): the
+CLI never counts a stage done because its files exist. Only a Change started before `stages.yaml` existed (no such file in
+its folder) is caught up from its files: a stage whose Artifacts are all on disk and filled in (no `TODO(aidw)` left in
+its sections) counts as done; a skipped stage there is still reported with `--done`. Following the steps one by one, in order, is
+still correct; the `NEXT:` line only saves waiting.
+
 ## 0. Preconditions
 
 Run `aidw status`. If it reports no `.aidw/`, follow `$(aidw plugin-path skills/init/SKILL.md)` first (it runs `aidw init`). If a change is

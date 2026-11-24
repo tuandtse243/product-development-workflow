@@ -66,6 +66,7 @@ Các lệnh CLI hữu ích khi bạn tự gõ `aidw` (xem mục 2 để đưa n�
 | `aidw doctor [<id>]` | kiểm máy trước khi chạy: binary của các lệnh chất lượng, pnpm store, registry, Chrome CDP, đăng nhập và liên kết Vercel. Thoát mã 1 nếu có FAIL |
 | `aidw browser start\|status\|url\|stop` | trình duyệt test riêng của project cho các layer e2e, a11y, ui-ux, performance (`aidw run` tự khởi động nó trước mỗi phiên vì runner chạy ngoài sandbox): Chrome chạy headless trên cổng trống do chính Chrome chọn (không cố định 9222), mỗi project một profile. Các layer nhận `E2E_CDP_URL` và `E2E_CDP_PORT` tự động. Nếu sandbox chặn việc mở Chrome, chạy `aidw browser start` trong terminal của bạn. |
 | `aidw task reopen <T> [--revert]` | task đã xong nhưng sai: về pending; `--revert` hoàn tác commit của nó (chỉ code, `.aidw/` giữ nguyên) |
+| `aidw stages [<id>] [--done <stage>]` | các stage phân tích trước cổng duyệt: xong, sẵn sàng, và nhóm chạy song song ngay (không đọc/ghi chồng nhau, một việc dùng trình duyệt, `parallel.max`); `--done` báo một stage đã xong |
 | `aidw pr [<id>] [--create]` | sau bàn giao: in nội dung PR; `--create` push nhánh và mở PR bằng `gh` (hỏi bạn trước, trừ khi bạn đã cấp quyền push ở cổng duyệt) |
 
 **Trang quyết định (Decision Page).** Khi cần bạn chọn, aidw không in một khối chữ dài vào terminal nữa. Nó in một link
@@ -134,6 +135,12 @@ Hai trường hợp đặc biệt:
 - **Chạy song song (wave).** Các task có `touches` không giao nhau, không rủi ro cao, tối đa một task dùng
   trình duyệt thì chạy cùng lúc, mỗi task trong một git worktree riêng. Sau wave, `aidw integrate` kiểm lại
   code đã merge.
+- **Chạy song song trước cổng duyệt và khi review.** CLI tự tính việc nào chạy cùng lúc được từ các Artifact mỗi việc
+  đọc và ghi: hai stage phân tích không đọc/ghi chồng nhau (ví dụ `research` và `user-research`) được đưa ra cùng một
+  dòng `NEXT:` của `aidw stages <id>`; các reviewer của lớp chất lượng (`ui`, `security`, `performance`) được
+  `aidw verify` đưa ra cùng lúc. Reviewer luôn được ưu tiên trước stage phân tích; tối đa một việc dùng trình duyệt
+  (reviewer `ui`, stage `design`), không quá `parallel.max`. Session chính mở mỗi việc một subagent trong một tin nhắn,
+  rồi báo từng việc xong (`aidw stages --done <stage>`, `aidw layer-review <layer>`).
 - **Task chỉ thêm test** (do converge sinh ra) mà checkpoint xanh thì tự pass review, không cần reviewer.
 
 ## Task, phiên và worktree: ba khái niệm cần phân biệt

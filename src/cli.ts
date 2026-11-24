@@ -60,6 +60,7 @@ import { deploy, parseQuality, qualityFile, recordLayerReview, verify } from "./
 import { firstDeploy } from "./firstdeploy.js";
 import { reconcileDoneTasks, reopenTask } from "./run.js";
 import { autoReview, buildBrief, buildTriageBrief, checkpoint, integrateChange, nextAction, parseVerdict, recordReview, recordTriage, retryTask, startTask, triageFile, type NextAction } from "./run.js";
+import { recordStageDone, stagesNext, stagesView } from "./stages.js";
 import { VERSION } from "./version.js";
 
 function reviewLine(r: { task: string; verdict: string; status: string; commit: string | null; warning?: string; conflict?: string }, verdict: string, notes: string): string {
@@ -179,6 +180,8 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
   audit brief <lens> | report | picks <F-01,..>   the audit workflow: a brief for the reviewer of one lens, the report
                                          assembled from their answers, the picked findings as the request of a new change
   decisions [<id>]                       the Workflow's Decision Points of a change and their answers
+  stages [<id>] [--done <stage>]         the Analysis stages: done, ready, and the group that may run in parallel now
+                                         (no read/write overlap, one browser user, parallel.max); --done reports one finished
   page render <name> [--stdin]           a Decision Page from .aidw/run/pages/<name>.yaml (questions | picks | gate): prints its link
   page answers <name> [--text T]         check the text the user copied from the page (or on stdin) before recording it
   page audit [--lang vi]                 the audit findings as a pick list; its answer feeds \`aidw audit picks\`
@@ -251,7 +254,7 @@ interface Args {
   flags: Record<string, string | true>;
 }
 
-const VALUE_FLAGS = new Set(["session", "last", "root", "title", "input-type", "workflow", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude", "model", "case", "runs", "text", "lang", "weights", "to"]);
+const VALUE_FLAGS = new Set(["session", "last", "root", "title", "input-type", "workflow", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude", "model", "case", "runs", "text", "lang", "weights", "to", "done"]);
 
 export function parseArgs(argv: string[]): Args {
   const pos: string[] = [];
@@ -538,10 +541,12 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         });
         const failed = r.layers.find((l) => l.status === "fail")?.runs.find((x) => x.exit !== 0);
         const a = r.awaitingReview;
+        const group = r.awaitingReviews ?? (a ? [a] : []);
+        const reviewer = (x: typeof group[number]) => `\n${group.length > 1 ? `  layer  ${x.layer}\n` : ""}  agent  ${x.agent}\n  brief  ${x.brief}\n  prompt Layer review brief: ${x.brief}. Review the layer and reply with the verdict.\n`;
         emit(
           { change: id, ...r },
-          `${r.ok ? "PASS" : a ? "REVIEW" : "FAIL"}: ${r.summary}\n${lines.join("\n")}\n${failed ? `\n--- ${failed.command} (tail)\n${failed.tail}\n` : ""}${
-            a ? `\n  agent  ${a.agent}\n  brief  ${a.brief}\n  prompt Layer review brief: ${a.brief}. Review the layer and reply with the verdict.\n` : ""
+          `${r.ok ? "PASS" : a ? "REVIEW" : "FAIL"}: ${r.summary}\n${lines.join("\n")}\n${failed ? `\n--- ${failed.command} (tail)\n${failed.tail}\n` : ""}${group.map(reviewer).join("")}${
+            group.length > 1 ? `\nNEXT: spawn these ${group.length} reviewers in one message, one subagent each with its prompt; when each returns, run \`aidw layer-review <layer> --change ${id}\` for it, then \`aidw verify\` again\n` : ""
           }`,
         );
         return r.ok ? 0 : 1;
@@ -1211,6 +1216,20 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           rows.length
             ? `${rows.map((r) => `${r.id.padEnd(20)} ${r.recorded ? `${[r.recorded.answer].flat().join(", ")}: ${r.recorded.reason}` : `(open: ${r.options.join(" | ")}${r.required ? ", required" : ""})`}`).join("\n")}\n`
             : `workflow ${w.id} has no decision points\n`,
+        );
+        return 0;
+      }
+
+      case "stages": {
+        const p = project();
+        const id = resolveChangeId(p, str(args.flags.change) ?? rest[0]);
+        const finished = str(args.flags.done);
+        if (finished) recordStageDone(p, id, finished, pluginRoot(env));
+        const v = stagesView(p, id, pluginRoot(env));
+        const rows = v.ready.length || v.done.length ? [...v.done.map((s) => `  done   ${s}`), ...v.ready.map((s) => `  ${v.group.includes(s) ? "now  " : "ready"}  ${s.id}`)] : [];
+        emit(
+          { ...v, ...(finished ? { recorded: finished } : {}), ready: v.ready.map((s) => ({ id: s.id, title: s.title, roles: s.roles })), group: v.group.map((s) => ({ id: s.id, title: s.title, roles: s.roles, reads: s.reads, writes: s.writes, ...(s.gate ? { gate: s.gate } : {}), ...(s.browser ? { browser: true } : {}) })) },
+          `${finished ? `recorded ${finished} as done\n` : ""}${v.workflow} (${v.state}), parallel.max ${v.max}\n${rows.join("\n")}${rows.length ? "\n" : ""}${stagesNext(v)}\n`,
         );
         return 0;
       }

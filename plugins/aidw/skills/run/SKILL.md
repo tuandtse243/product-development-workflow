@@ -196,17 +196,24 @@ A task is triaged once: if the extra attempt fails too, it escalates without ano
    - `PASS`: go to section 4.
    - A layer failed and a **fix task** `Qnn` was added: the change is back in `executing`. Return to the loop
      (section 1): the fix task runs through implement, checkpoint and review like any other, then come back here.
-   - `REVIEW`: a **review layer** (`review: ui`, `review: security` or `review: performance`) passed its commands and waits for an
-     independent reviewer. The output names the agent, the brief and the prompt:
-     1. Spawn that agent (`subagent_type: "aidw:ui-ux-designer"`, `"aidw:security"` or `"aidw:performance"`, as the command names it) with exactly the
-        printed prompt: `Layer review brief: <path>. Review the layer and reply with the verdict.`
-     2. The reviewer writes its verdict to `.aidw/run/layer-review-<layer>.md` and replies with one line. Run
-        `aidw layer-review <layer> --change <id>` (no verdict argument): it reads that file and records
+   - `REVIEW`: one or more **review layers** (`review: ui`, `review: security` or `review: performance`) passed their commands and
+     wait for independent reviewers. The output names, for each, the agent, the brief and the prompt; with two or more it
+     names the layer too and ends with a `NEXT:` line (the CLI already left out a second browser user and anything past
+     `parallel.max`; the rest come in the next round):
+     1. Spawn each named agent (`subagent_type: "aidw:ui-ux-designer"`, `"aidw:security"` or `"aidw:performance"`, as the command names it), **all in
+        one message** (parallel Agent calls, one per layer), each with exactly its printed prompt:
+        `Layer review brief: <path>. Review the layer and reply with the verdict.`
+     2. Each reviewer writes its verdict to `.aidw/run/layer-review-<layer>.md` and replies with one line. For each, as it
+        returns, run `aidw layer-review <layer> --change <id>` (no verdict argument): it reads that file and records
         `pass` or `fix`, keeping the non-blocking remarks for the quality report and the handoff. No clear
         verdict: spawn a fresh reviewer once more; still unclear, record `fix` with
         `aidw layer-review <layer> fix --notes-file <file>`.
-     3. `pass` -> run `aidw verify` again for the remaining layers. `fix` -> a fix task `Qnn` was added with the
-        reviewer's notes; return to the loop (section 1), then come back here. Fix rounds exhausted -> the change
+     3. Record every verdict of the group first, also after one of them was `fix`: the `pass` verdicts first, then the
+        `fix` ones. If a `fix` verdict escalates the change (its fix rounds are exhausted), record no more verdicts: the
+        others stay in `.aidw/run/layer-review-<layer>.md`, name them to the user with the escalation, and after
+        `/aidw:resume` `aidw verify` offers those layers again. All `pass` -> run `aidw verify` again for
+        the remaining layers. A `fix` -> a fix task `Qnn` was added with the reviewer's notes; return to the loop
+        (section 1), then come back here. Fix rounds exhausted -> the change
         is `escalated`: tell the user and stop.
    - Fix rounds exhausted: the change is already `escalated`. Tell the user (section 2, step 2) and stop.
 3. Do not edit quality.yaml, skip a layer or weaken a test to get green: the package is frozen and the gate

@@ -48,7 +48,7 @@ stages:
     title: Task graph
     states: [analyzing]
     roles: [technical-planner]
-    reads: [specs, architecture, constitution, design-tokens]
+    reads: [intake, analysis-discovery-qa, analysis-scope, analysis-existing-system, specs, architecture, constitution, design-tokens]
     writes: [tasks, analysis-plan]
 
   - id: quality-profile

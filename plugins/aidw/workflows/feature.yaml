@@ -87,7 +87,7 @@ stages:
     title: Discovery interview, one conversation in stages (the job, the rules and edges, the users)
     states: [analyzing]
     roles: [product-manager, business-analyst, ux-research]
-    reads: [intake]
+    reads: [intake, analysis-existing-system, architecture]
     writes: [analysis-discovery-qa]
 
   - id: research
@@ -108,7 +108,7 @@ stages:
     title: Domain model and requirements (Product Manager), then delta specs (Business Analyst)
     states: [analyzing]
     roles: [product-manager, business-analyst]
-    reads: [intake, analysis-discovery-qa]
+    reads: [intake, analysis-discovery-qa, research-note, user-journeys]
     writes: [domain-model, decisions-domain, requirements, delta-specs, specs, analysis-scope, analysis-domain, analysis-specs]
 
   - id: design
@@ -117,6 +117,7 @@ stages:
     roles: [ui-ux-designer]
     reads: [requirements, delta-specs]
     writes: [design-direction, design-tokens, decision-design-needed, analysis-design]
+    browser: true # screenshots the mocks in the test browser (aidw mock shots); one browser user at a time
 
   - id: architecture
     title: Stack, architecture and constitution

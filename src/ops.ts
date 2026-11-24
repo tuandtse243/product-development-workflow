@@ -204,6 +204,8 @@ export function newChange(p: Paths, id: string, opts: { title?: string; inputTyp
     ].join("\n"),
   );
   writeFileSync(join(dir, "intake.md"), INTAKE(title));
+  // the analysis stages the lead reports done (src/stages.ts); its presence also turns off catching up from files
+  writeFileSync(join(dir, "stages.yaml"), "done: []\n");
   writeFileSync(join(dir, "analysis.md"), ANALYSIS(title, projectKind(p) === "brownfield", opts.scopeRound === true));
   recordBaseline(p);
   return dir;

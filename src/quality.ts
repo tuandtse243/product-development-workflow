@@ -23,6 +23,7 @@ import { firstMatch, isTier2Resource, TIER2_COMMANDS, TIER2_RESOURCES, ASK_COMMA
 import { parseGrants, type Grants } from "./grants.js";
 import { readText, rel, type Paths } from "./project.js";
 import { buildLayerBrief } from "./layers.js";
+import { pickGroup } from "./stages.js";
 import { loadTasks, saveTasksDoc, retryingShellRunner, shellRunner, type CommandRunner, type VerifyRun } from "./run.js";
 import type { Task } from "./tasks.js";
 
@@ -373,6 +374,8 @@ export interface AwaitingReview {
   /** project-relative path of the review brief */
   brief: string;
   artifacts: string[];
+  /** the reviewer drives the project's test browser (ui): one at a time */
+  browser: boolean;
 }
 
 export interface VerifyResult {
@@ -383,8 +386,12 @@ export interface VerifyResult {
   fixTask?: string;
   /** fix rounds for the failing layer are exhausted (the change is escalated) */
   escalated?: boolean;
-  /** a review layer's commands passed; verify stops until `aidw layer-review` records the verdict */
+  /** a review layer's commands passed; verify stops until `aidw layer-review` records the verdict (the first of awaitingReviews) */
   awaitingReview?: AwaitingReview;
+  /** D13: the review layers whose reviewers run now, at the same time (src/stages.ts pickGroup) */
+  awaitingReviews?: AwaitingReview[];
+  /** review layers also awaiting a reviewer, offered after this group (one browser user, parallel.max) */
+  waitingReviews?: string[];
   summary: string;
 }
 
@@ -409,14 +416,37 @@ export function requireVerifying(p: Paths, id: string, what: string): Change {
   return change;
 }
 
+/**
+ * Verdicts of a parallel review group (D13): when one reviewer's fix verdict already sent the change back to
+ * executing, the others of the group may still be recorded while their layer awaits review on unchanged code.
+ */
+function requireReviewable(p: Paths, id: string, name: string): Change {
+  const change = loadChange(p, id);
+  if (stateOf(change) === "executing" && approvalStatus(p, change).status === "valid") {
+    const prev = readSummary(change).layers[name];
+    if (prev?.status === "review" && isFresh(prev, loadTasks(p, id).tasks, headCommit(p.project))) return change;
+  }
+  return requireVerifying(p, id, "aidw layer-review");
+}
+
 const reviewAgent = (kind: ReviewKind) => AGENTS.layerReview[kind];
 
 function awaiting(layer: Layer, r: LayerResult): AwaitingReview {
-  return { layer: layer.name, kind: layer.review as ReviewKind, agent: reviewAgent(layer.review as ReviewKind), brief: r.brief ?? "", artifacts: r.artifacts ?? [] };
+  return { layer: layer.name, kind: layer.review as ReviewKind, agent: reviewAgent(layer.review as ReviewKind), brief: r.brief ?? "", artifacts: r.artifacts ?? [], browser: layer.review === "ui" };
 }
 
-const awaitingSummary = (a: AwaitingReview) =>
-  `layer "${a.layer}" awaits its ${a.kind} review: spawn ${a.agent} with the brief ${a.brief}, then \`aidw layer-review ${a.layer} pass|fix --notes-file <reply>\``;
+const awaitingSummary = (group: AwaitingReview[], waiting: string[]) => {
+  const later = waiting.length ? `; ${waiting.join(", ")} ${waiting.length === 1 ? "waits" : "wait"} for the next round` : "";
+  if (group.length > 1) return `${group.length} review layers await their reviewers, run them in parallel: ${group.map((a) => `"${a.layer}" (${a.kind})`).join(", ")}${later}`;
+  const a = group[0] as AwaitingReview;
+  return `layer "${a.layer}" awaits its ${a.kind} review: spawn ${a.agent} with the brief ${a.brief}, then \`aidw layer-review ${a.layer} pass|fix --notes-file <reply>\`${later}`;
+};
+
+/** D13: the reviewers to run at the same time (one browser user, parallel.max) and the ones offered after them. */
+function reviewGroup(reviews: AwaitingReview[], max: number): { group: AwaitingReview[]; waiting: string[] } {
+  const picked = pickGroup(reviews.map((a) => ({ id: a.layer, kind: "review" as const, reads: [], writes: [`file:run/layer-review-${a.layer}.md`], browser: a.browser, a })), max).map((x) => x.a);
+  return { group: picked, waiting: reviews.filter((a) => !picked.includes(a)).map((a) => a.layer) };
+}
 
 export function verify(
   p: Paths,
@@ -433,18 +463,19 @@ export function verify(
   const tasks = loadTasks(p, id).tasks;
   const outcomes: VerifyLayerOutcome[] = [];
   let failed: Layer | undefined;
-  let review: AwaitingReview | undefined;
+  // D13: a review layer no longer stops the run; every review layer whose commands pass waits, and the reviewers run in parallel.
+  const reviews: AwaitingReview[] = [];
   for (const layer of config.layers) {
     const wanted = opts.layer ? layer.name === opts.layer : opts.fresh || pending.includes(layer.name);
-    if (!wanted || failed || review) {
-      const reused = !failed && !review && !opts.layer && !pending.includes(layer.name);
+    if (!wanted || failed) {
+      const reused = !failed && !opts.layer && !pending.includes(layer.name);
       outcomes.push({ name: layer.name, status: "skipped", runs: [], ...(reused ? { reused: true } : {}) });
       continue;
     }
     // A review layer whose commands already passed on this code keeps waiting for its verdict; no rerun.
     const prev = summary.layers[layer.name];
     if (layer.review && prev?.status === "review" && isFresh(prev, tasks, head) && !opts.fresh) {
-      review = awaiting(layer, prev);
+      reviews.push(awaiting(layer, prev));
       outcomes.push({ name: layer.name, status: "review", runs: prev.runs });
       continue;
     }
@@ -469,14 +500,17 @@ export function verify(
       result.status = "review";
       result.brief = rel(p, brief.path);
       result.artifacts = brief.artifacts;
-      review = awaiting(layer, result);
+      reviews.push(awaiting(layer, result));
     }
     recordLayerResult(change, summary, layer.name, result);
     outcomes.push({ name: layer.name, status: result.status, runs: result.runs });
     if (!ok) failed = layer;
   }
 
-  if (review) return { ok: false, layers: outcomes, awaitingReview: review, summary: awaitingSummary(review) };
+  if (reviews.length && !failed) {
+    const { group, waiting } = reviewGroup(reviews, config.parallel.max);
+    return { ok: false, layers: outcomes, awaitingReview: group[0] as AwaitingReview, awaitingReviews: group, waitingReviews: waiting, summary: awaitingSummary(group, waiting) };
+  }
   if (!failed) {
     const left = pendingLayers(p, id).pending;
     const ok = left.length === 0;
@@ -528,7 +562,8 @@ export function addFixTask(p: Paths, id: string, config: QualityConfig, layer: L
   };
   (tf.doc.get("tasks") as YAML.YAMLSeq).add(tf.doc.createNode(task));
   saveTasksDoc(tf);
-  transition(p, id, "executing", {});
+  // another reviewer of the same parallel group may already have sent the change back to executing
+  if (stateOf(loadChange(p, id)) !== "executing") transition(p, id, "executing", {});
   return { fixTask: taskId, summary: `layer "${layer.name}" failed: fix task ${taskId} added (round ${rounds + 1}/${config.maxFixRounds}); change is executing again` };
 }
 
@@ -545,7 +580,7 @@ export interface LayerReviewResult {
 
 /** Records the independent reviewer's verdict on a review layer (the orchestrator's step after the subagent). */
 export function recordLayerReview(p: Paths, id: string, name: string, verdict: "pass" | "fix", notes: string): LayerReviewResult {
-  const change = requireVerifying(p, id, "aidw layer-review");
+  const change = requireReviewable(p, id, name);
   const config = loadQuality(p, change);
   const layer = config.layers.find((l) => l.name === name);
   if (!layer) throw new OpError(`no layer "${name}" in quality.yaml`);

@@ -113,14 +113,19 @@ describe("quality.yaml review layers", () => {
 });
 
 describe("verify with review layers (S7)", () => {
-  it("stops at a review layer with a brief, records the verdict, and finishes on pass", () => {
+  it("runs every layer, offers the review layers together with a brief each, records the verdicts, and finishes on pass", () => {
     const root = project();
     const v1 = cli(root, "verify", "--json");
     expect(v1.code).toBe(1);
     const r1 = v1.json();
-    expect(r1.layers.map((l: { status: string }) => l.status)).toEqual(["pass", "review", "skipped", "skipped"]);
+    expect(r1.layers.map((l: { status: string }) => l.status)).toEqual(["pass", "review", "review", "pass"]);
     expect(r1.awaitingReview).toMatchObject({ layer: "ui-ux", kind: "ui", agent: "aidw:ui-ux-designer", artifacts: ["test-results/shots/home-desktop-dark.png", "test-results/shots/home-mobile-light.png"] });
-    expect(cli(root, "verify").out).toMatch(/^REVIEW: layer "ui-ux" awaits its ui review[\s\S]*agent {2}aidw:ui-ux-designer\n {2}brief {2}\.aidw\/run\/briefs\/.*ui-ux\.layer-review\.md\n {2}prompt Layer review brief: /);
+    expect(r1.awaitingReviews.map((a: { layer: string }) => a.layer)).toEqual(["ui-ux", "security"]);
+    const out = cli(root, "verify").out;
+    expect(out).toMatch(/^REVIEW: 2 review layers await their reviewers, run them in parallel: "ui-ux" \(ui\), "security" \(security\)/);
+    expect(out).toMatch(/layer {2}ui-ux\n {2}agent {2}aidw:ui-ux-designer\n {2}brief {2}\.aidw\/run\/briefs\/.*ui-ux\.layer-review\.md\n {2}prompt Layer review brief: /);
+    expect(out).toMatch(/layer {2}security\n {2}agent {2}aidw:security\n/);
+    expect(out).toMatch(/NEXT: spawn these 2 reviewers in one message, one subagent each with its prompt; when each returns, run `aidw layer-review <layer> --change 2026-11-10-booking` for it, then `aidw verify` again/);
 
     const brief = readFileSync(join(root, r1.awaitingReview.brief), "utf8");
     expect(brief).toMatch(/^# Layer review brief: ui-ux \(ui review\) - Booking/);
@@ -134,18 +139,19 @@ describe("verify with review layers (S7)", () => {
     expect(brief).toMatch(/\.aidw\/design`: design direction/);
     expect(brief).toMatch(/## Checklist\n\n1\. \*\*Design compliance/);
 
-    // a second verify does not rerun the commands: the layer still waits
+    // a second verify does not rerun the commands: the layers still wait
     const again = cli(root, "verify", "--json").json();
     expect(again.layers[1]).toMatchObject({ name: "ui-ux", status: "review" });
-    expect(cli(root, "transition", ID, "converging").err).toMatch(/pending: ui-ux, security, e2e/);
+    expect(again.layers[2]).toMatchObject({ name: "security", status: "review" });
+    expect(cli(root, "transition", ID, "converging").err).toMatch(/pending: ui-ux, security/);
 
-    // the wrong layer or a non-review layer cannot take a verdict
-    expect(cli(root, "layer-review", "security", "pass").err).toMatch(/layer "security" is not awaiting review on the current code; run `aidw verify` first/);
+    // a layer not awaiting review or a non-review layer cannot take a verdict
+    expect(cli(root, "layer-review", "e2e", "pass").err).toMatch(/layer "e2e" has no "review:" kind/);
     expect(cli(root, "layer-review", "code", "pass").err).toMatch(/layer "code" has no "review:" kind/);
     expect(cli(root, "layer-review", "ui-ux", "fix").err).toMatch(/a fix verdict needs --notes or --notes-file/);
 
     const pass1 = cli(root, "layer-review", "ui-ux", "pass", "--notes-file", notes(root, "VERDICT: pass\nNon-blocking:\n- the day cells differ in height"));
-    expect(pass1.out).toMatch(/^ui-ux: ui review pass -> layer "ui-ux" passed its ui review; layers still to run: security, e2e/);
+    expect(pass1.out).toMatch(/^ui-ux: ui review pass -> layer "ui-ux" passed its ui review; layers still to run: security/);
     const sum = JSON.parse(readFileSync(join(root, ".aidw/changes", ID, "evidence/quality/summary.json"), "utf8"));
     expect(sum.layers["ui-ux"]).toMatchObject({ status: "pass", review: { verdict: "pass", notes: "VERDICT: pass\nNon-blocking:\n- the day cells differ in height" } });
 
@@ -161,7 +167,7 @@ describe("verify with review layers (S7)", () => {
 
     const v3 = cli(root, "verify", "--json").json();
     expect(v3).toMatchObject({ ok: true, summary: "all quality layers pass" });
-    expect(v3.layers.map((l: { status: string }) => l.status)).toEqual(["skipped", "skipped", "skipped", "pass"]);
+    expect(v3.layers.map((l: { status: string }) => l.status)).toEqual(["skipped", "skipped", "skipped", "skipped"]);
     expect(cli(root, "transition", ID, "converging").code).toBe(0);
 
     // the quality report shows the layer verdicts and both kinds of non-blocking remarks
@@ -210,6 +216,63 @@ describe("verify with review layers (S7)", () => {
     const r = cli(root, "verify", "--json").json();
     expect(r.awaitingReview.artifacts).toEqual([]);
     expect(readFileSync(join(root, r.awaitingReview.brief), "utf8")).toMatch(/No file matched the layer's artifact globs \(`test-results\/shots\/\*\*\/\*\.png`\)/);
+  });
+});
+
+describe("review layers in parallel (D13)", () => {
+  const A11Y = `  - name: a11y
+    run: ["node check.js e2e-ok"]
+    review: ui
+`;
+  const withA11y = (extra = "") => Q(extra).replace("deploy:\n", `${A11Y}deploy:\n`);
+
+  it("offers at most one browser-driving reviewer at a time; the next one is offered after it", () => {
+    const root = project(withA11y());
+    const r = cli(root, "verify", "--json").json();
+    expect(r.layers.map((l: { status: string }) => l.status)).toEqual(["pass", "review", "review", "pass", "review"]);
+    expect(r.awaitingReviews.map((a: { layer: string; browser: boolean }) => [a.layer, a.browser])).toEqual([["ui-ux", true], ["security", false]]);
+    expect(r.waitingReviews).toEqual(["a11y"]);
+    expect(cli(root, "verify").out).toMatch(/a11y waits for the next round/);
+    cli(root, "layer-review", "ui-ux", "pass");
+    const next = cli(root, "verify", "--json").json();
+    expect(next.awaitingReviews.map((a: { layer: string }) => a.layer)).toEqual(["security", "a11y"]);
+  });
+
+  it("keeps the single-reviewer output when only one review layer awaits", () => {
+    const root = project(Q().replace(/  - name: security\n    run: \["node check.js audit-ok"\]\n    review: security\n/, ""));
+    const r = cli(root, "verify", "--json").json();
+    expect(r.layers.map((l: { status: string }) => l.status)).toEqual(["pass", "review", "pass"]);
+    expect(r.awaitingReviews.map((a: { layer: string }) => a.layer)).toEqual(["ui-ux"]);
+    expect(r.waitingReviews).toEqual([]);
+    const out = cli(root, "verify").out;
+    expect(out).toMatch(/^REVIEW: layer "ui-ux" awaits its ui review: spawn aidw:ui-ux-designer with the brief \.aidw\/run\/briefs\/\S+ui-ux\.layer-review\.md, then `aidw layer-review ui-ux pass\|fix --notes-file <reply>`\n/);
+    expect(out).toMatch(/\n\n {2}agent {2}aidw:ui-ux-designer\n {2}brief {2}\S+\n {2}prompt Layer review brief: \S+\. Review the layer and reply with the verdict\.\n$/);
+    expect(out).not.toMatch(/layer {2}ui-ux|NEXT: spawn|next round/);
+    expect(cli(root, "layer-review", "ui-ux", "pass").code).toBe(0);
+    expect(cli(root, "verify", "--json").json()).toMatchObject({ ok: true, summary: "all quality layers pass" });
+  });
+
+  it("honours parallel.max", () => {
+    const root = project(Q("parallel:\n  max: 1\n"));
+    const r = cli(root, "verify", "--json").json();
+    expect(r.awaitingReviews.map((a: { layer: string }) => a.layer)).toEqual(["ui-ux"]);
+    expect(r.waitingReviews).toEqual(["security"]);
+    expect(cli(root, "verify").out).toMatch(/^REVIEW: layer "ui-ux" awaits its ui review/);
+  });
+
+  it("records every verdict of a group, also after one of them added a fix task", () => {
+    const root = project();
+    cli(root, "verify");
+    const fix = cli(root, "layer-review", "ui-ux", "fix", "--notes", "VERDICT: fix\n1. overflow", "--json").json();
+    expect(fix).toMatchObject({ verdict: "fix", fixTask: "Q01" });
+    expect(state(root)).toBe("executing");
+    const sec = cli(root, "layer-review", "security", "fix", "--notes", "VERDICT: fix\n1. no rate limit", "--json");
+    expect(sec.code).toBe(0);
+    expect(sec.json()).toMatchObject({ verdict: "fix", fixTask: "Q02" });
+    expect(state(root)).toBe("executing");
+    expect(tasks(root).filter((t) => t.origin === "quality").map((t) => [t.id, t.layer])).toEqual([["Q01", "ui-ux"], ["Q02", "security"]]);
+    // once a verdict is recorded the layer takes no second one
+    expect(cli(root, "layer-review", "security", "pass").err).toMatch(/runs in state verifying/);
   });
 });
 
