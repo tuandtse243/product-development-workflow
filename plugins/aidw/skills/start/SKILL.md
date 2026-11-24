@@ -56,6 +56,22 @@ you, says which may run at the same time: `aidw stages <id>` lists them as `done
   `aidw stages --done <stage> --change <id>`. The output prints the next `NEXT:`. A gate stage is never reported: it is
   passed by the approval in step 10 (or `/aidw:approve`).
 
+**A drafting Agent that asks another Role (a Consultation, ADR-0013).** An Agent whose Role declares `consults` (Product
+Manager, UX Research and Software Architect ask Research; the Technical Planner asks the Software Architect) does not
+guess a fact another Role owns: it writes `.aidw/changes/<id>/consult/<stage>-<role>.request.md` and ends its reply with
+`CONSULT <path>`. Then:
+1. `aidw consult <path> --change <id>`: it checks the pair, one level deep and at most 2 per Agent run, records `C<NN>`
+   and prints the consulted Role's brief and `SPAWN` line. Refused: go on without it, telling the asker in one line.
+2. Spawn that Agent with the printed prompt; the other stages of the group carry on meanwhile. It writes
+   `consult/C<NN>.answer.md` and replies with its `STATUS:` line.
+3. `aidw consult answer C<NN> --change <id>` writes the resume brief (original brief, progress note, answer path).
+4. `aidw consult resume C<NN> --change <id>`: while the asking Agent still runs in this session, continue it with
+   SendMessage and the printed line; otherwise spawn a fresh Agent of its Role with the resume brief. Report the stage
+   when that Agent is done.
+A question the consulted Role cannot answer goes back to the asker as an open question in its Artifact, which the
+Approval Gate shows; you do not answer it yourself. `aidw stages` prints an open or answered Consultation first, so a new
+session picks it up. Give a drafting Agent its stage id and your brief's path in the prompt, so its request can name them.
+
 The CLI already leaves out a stage that reads another's output or writes the same Artifact, a second browser user (the
 `design` stage screenshots its mocks), and anything past `parallel.max`. Stages that write the same file (two sections
 of `analysis.md`, say) never run together; only the parts of `decisions.yaml` are exempt, because `aidw decide` writes

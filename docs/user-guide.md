@@ -158,6 +158,22 @@ Hai trường hợp đặc biệt:
   (reviewer `ui`, stage `design`), không quá `parallel.max`. Session chính mở mỗi việc một subagent trong một tin nhắn,
   rồi báo từng việc xong (`aidw stages --done <stage>`, `aidw layer-review <layer>`).
 - **Task chỉ thêm test** (do converge sinh ra) mà checkpoint xanh thì tự pass review, không cần reviewer.
+- **Agent thiếu thông tin thì hỏi, không đoán (Consultation, [ADR-0013](adr/0013-agents-consult-other-roles-through-the-orchestrator.md)).**
+  Một Agent gặp lỗ hổng trong contract (chưa ai nêu status code, tên cột...) không tự đoán và cũng không hỏi bạn
+  trước: nó ghi câu hỏi vào `.aidw/changes/<id>/consult/<task>.request.md` (câu hỏi + ghi chú tiến độ: đã làm gì,
+  bước tiếp theo, file đã đụng) rồi dừng lượt với dòng `CONSULT <đường dẫn>`. Session chính chạy
+  `aidw consult <file>`: CLI kiểm cặp Role có được khai trong `consults:` của `role.md` không, chỉ một tầng (Role được
+  hỏi không được hỏi tiếp), tối đa 2 câu mỗi lần Agent chạy, và khi build thì chỉ được hỏi Role đã viết contract mà
+  task đọc (`api-designer` cho API contract, `database-architect` cho data model, `software-architect` cho kiến trúc).
+  Hợp lệ thì CLI ghi `C01` vào `changes/<id>/consultations.yaml` và in lệnh spawn Role được hỏi; Role đó ghi câu trả
+  lời vào `consult/C01.answer.md`. `aidw consult answer C01` luôn viết một *resume brief* (brief gốc + ghi chú tiến độ +
+  đường dẫn câu trả lời) để một Agent mới cùng Role làm tiếp; nếu Agent đã hỏi vẫn đang chạy trong phiên thì session
+  chính nhắn tiếp cho nó (SendMessage) cho rẻ hơn (`aidw consult resume C01` in cả hai cách). Các task khác của wave vẫn
+  chạy trong lúc đó. Với runner, `aidw next` ở phiên mới đưa Consultation đang dở lên trước mọi việc khác, nên không gì
+  bị mất. Sau cổng duyệt, câu hỏi không trả lời được hoặc câu trả lời đòi đổi thứ đã duyệt cũng không đến tay bạn
+  ([ADR-0014](adr/0014-after-the-approval-gate-the-run-does-not-ask-the-user.md)): nó được ghi lại để Role tác giả
+  quyết định như một Deviation (T9), và pull request sẽ nêu ra. Trước cổng duyệt, câu hỏi không ai trả lời được thành
+  câu hỏi mở trong Artifact, bạn thấy nó ở trang duyệt.
 
 ## Task, phiên và worktree: ba khái niệm cần phân biệt
 

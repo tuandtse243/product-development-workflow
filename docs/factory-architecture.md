@@ -95,6 +95,7 @@ tier: standard             # deep | standard | fast
 access: write              # write | artifacts | read-only: what the gate lets this Role's Agent do
 tools: [Read, Write, Edit, Glob, Grep]
 includes: [library/implement-a-task.md]   # shared procedure, appended to the generated agent
+consults: [software-architect]           # Roles its Agent may ask through the Orchestrator (a Consultation, ADR-0013)
 skills:                    # on-demand: roles/<id>/skills/<name>.md, read only when the condition holds
   - rest-contract:   when designing a new endpoint
   - breaking-change: when changing an existing contract
@@ -102,6 +103,7 @@ skills:                    # on-demand: roles/<id>/skills/<name>.md, read only w
 ## Responsibility
 ## Procedure
 ## Done when
+## Ask before you guess   (a Consultation; implementing Roles, library/implement-a-task.md)
 ## Stop and report when
 ```
 
@@ -110,6 +112,11 @@ skills:                    # on-demand: roles/<id>/skills/<name>.md, read only w
 the approved package is frozen), `read-only` writes only a verdict. `includes` appends shared text such as the
 procedure all implementing Roles follow, so it exists once. `reads` and `writes` list Artifact names from
 `artifacts.yaml`; the profile's text still names the paths for the Agent, and `aidw roster` checks the names.
+`consults` lists the Roles an Agent of this Role may ask a question while it works (section 7, Consultation);
+`aidw roster` refuses an id that is not in the Roster, a Role that is not active, and the Role itself, and the
+generated agent ends with a "Consultation" note naming them. The first pairs: `ux-research`, `product-manager` and
+`software-architect` ask `research`; `technical-planner` asks `software-architect`; `backend`, `frontend` and
+`fullstack` ask `api-designer`, `database-architect` and `software-architect`.
 
 Department, status and `carried_by` live only in `roster.yaml`, so a Planned Role can be declared before it has
 a folder and activating one is a one-line change. `aidw roster` checks the Roster, every profile and that the
@@ -300,6 +307,31 @@ guard or a check fails, a `fix` verdict, a second conflict) falls back to the ol
 branch is dropped and the task reruns sequentially on the latest code. `conflicts.yaml` keeps every conflict with its
 outcome (`open`, `resolved` once the final merge is committed, `dropped`) and reason; the `technical-planner` reads it when it plans, so the files go
 into the `touches` of both tasks (or the tasks are chained) and they stop running side by side.
+
+**Consultation (D7, [ADR-0013](adr/0013-agents-consult-other-roles-through-the-orchestrator.md)).** An Agent that lacks
+information asks; it never guesses, and the user is not the first stop. It never spawns the other Role itself: it writes
+a request and ends its turn, and the Orchestrator runs the rest through the CLI (`src/consult.ts`). Every step lives in
+files, so the lead in its session and a short runner session (`claude -p /aidw:resume`) follow the same path.
+
+| Step | Who | What happens |
+|---|---|---|
+| ask | the asking Agent | writes `.aidw/changes/<id>/consult/<name>.request.md` (the path is in its brief: `<task>.request.md` in the build, `<stage>-<role>.request.md` before the gate) with a front matter `from`, `task` or `stage`, `to` and two sections, `## Question` and `## Progress` (done so far, next step, files touched); replies `CONSULT <path>` |
+| check and record | `aidw consult <request>` | refuses a pair the asker's `consults` does not declare, a consulted Agent asking in turn (depth 1: a `consultation:` field, or the asker is the Role an open Consultation waits for), a third question of one Agent run (`task:<T>#<attempt>`, or `stage:<stage>:<role>`) and, in the build, a Role that wrote no contract the task reads (the owners in `artifacts.yaml` of the Artifacts the task's brief points at that exist in this Change: `api-designer` for the API contract, `database-architect` for the data model, `software-architect` for the architecture). Records `C<NN>` in `changes/<id>/consultations.yaml` (outside the approved package), keeps the request as `consult/C<NN>.request.md`, writes the consulted Role's brief and prints its `SPAWN` |
+| answer | the consulted Agent | writes `consult/C<NN>.answer.md`, first line `STATUS: answered`, `cannot-answer` or `changes-approved` |
+| route | `aidw consult answer C<NN>` | reads the status and always writes a resume brief (`.aidw/run/briefs/<id>/C<NN>.resume.md`): the original brief, the progress note, the question and the answer path |
+| resume | `aidw consult resume C<NN>` | marks it resumed and prints both ways on: SendMessage to the asker if it still runs in this session (an optimisation), otherwise a fresh Agent of the same Role with the resume brief (the guaranteed path) |
+
+`aidw next` and `aidw stages` put an open Consultation (get the answer) or an answered one (resume the asker) before
+anything else, so a fresh session finds it; the other tasks of a Wave and the other stages carry on meanwhile. A later
+brief of the task lists every answered Consultation of it, so the answer survives a resumed Agent that was lost too.
+After the Approval Gate the run never asks the user ([ADR-0014](adr/0014-after-the-approval-gate-the-run-does-not-ask-the-user.md)):
+an answer that cannot be given, or would change something approved, is recorded as `needs-deviation` with
+`route: deviation` and goes to the author Role as a Deviation (built by T9; until then the asker resumes, builds what the
+approved package states and reports the gap). Before the gate a question nobody could answer becomes an open question
+in the asker's Artifact, which the Approval Gate shows. The request, the answer and the resume brief are the only new
+files: the gate hook lets an implementing Agent write only its own request file under `consult/` (never a `C<NN>` file),
+an authoring Role writes its answer under its usual `.aidw/` rule, and no Agent writes `consultations.yaml`.
+`aidw consult` is a state command, so only the Orchestrator runs it.
 
 **Triage.** When a task runs out of attempts, a fresh `software-architect` Agent classifies the cause from the
 evidence. It writes only its answer (`.aidw/run/triage-<task>.md`): the gate keeps the approved package and the

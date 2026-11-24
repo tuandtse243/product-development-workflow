@@ -37,7 +37,9 @@ All progress lives in `.aidw/` and git, so resuming needs no memory of the previ
    when `aidw next` says `complete`. A wave task keeps its worktree across sessions: its brief
    points the new implementer there. `aidw next` returns the interrupted task first
    (`implement <T> (interrupted)`): its brief tells the new implementer to continue from the work already in
-   the working tree rather than start over.
+   the working tree rather than start over. A Consultation in flight comes before it (`consult`, `step: answer` or
+   `resume`): the run skill's *consult* step says what to run; the resume brief lets a fresh Agent of the asking Role
+   continue.
 4. Headless (`claude -p` from `aidw run`): never ask the user anything and never offer choices ("tell me which you
    want"): the next step is in the run skill, so do it. If a decision is really needed, escalate with the
    question and stop; the runner reports it.
