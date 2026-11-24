@@ -176,6 +176,9 @@ File names are starting points found during the interview, not a complete list; 
 - `src/pr.ts`, `src/deliver.ts`: a ready pull request when all required layers pass, a draft otherwise; the body
   opens with the three sections, filled from the Deviation record and the not-built list. `/aidw:resume`
   finishes a draft.
+- Make the push grant (T2) hold at delivery: today deliver runs `aidw archive` before `aidw pr --create`, and
+  the grant only covers Changes still under `.aidw/changes/`. Open the pull request before archiving, or let
+  the grant read the archived Change.
 
 ### Phase 3: backend Role (after wave 3; T12 first, then T13 to T17 in parallel)
 
@@ -214,9 +217,9 @@ Fastify, Hono.
 
 ## 5. Open points for the implementing session
 
-- T6: which Role does the pre-gate review (ask the owner).
+- T6: which Role does the pre-gate review. Decided 2026-11-24: `code-reviewer`, with a new `plan-review` skill.
+- T1: decided 2026-11-24: `schema-evolution` moves to `library/skills/` (done).
 - T8: how the asking Agent is resumed in runner mode.
-- T1: whether `schema-evolution` moves to `library/skills/` or the selector points at the Role's copy.
 - The cases of every other active Role have no `covers:` yet; T12 must not fail `aidw roster` for Roles that
   have not been upgraded (require coverage only once a Role's `rules.md` uses the table format).
 - The owner prefers question rounds as an HTML Decision Page with options, examples and a copy-back summary,
