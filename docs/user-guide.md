@@ -237,10 +237,13 @@ grants:
   agent_runs: 30                        # trần số lượt chạy Agent; bỏ trống = 3 lần số task trong plan
 ```
 
-Có `push`, gate cho qua không hỏi đúng các lệnh `git push [-u] <remote> <Change Branch>`,
-`gh pr create --base <base> --head <Change Branch> [--draft]` và `aidw pr <id> --create`, chỉ cho Orchestrator, chỉ khi
-change đang mở hoặc đã bàn giao và gói còn khớp hash. Nhánh khác (kể cả nhánh của Task Worktree), remote khác, base
-khác, `--force`, lệnh nối chuỗi: vẫn hỏi. Envelope và trần chỉ được ghi lại (trong brief và trang cổng duyệt) để
+Lúc `aidw approve`, aidw chốt Change Branch, remote cùng URL của nó và base vào `approval.push` (được băm cùng gói;
+trang cổng duyệt hiện nhánh này trước khi bạn duyệt, và skill approve hỏi bạn giữ hay rút quyền push). Có quyền đó,
+gate cho qua không hỏi đúng các lệnh `git push [-u] <remote> <Change Branch>`, `gh pr create --base <base> --head
+<Change Branch> [--draft]` (body chỉ từ file `aidw pr` viết) và `aidw pr <id> --create`, chỉ cho Orchestrator (mọi
+agent khác vẫn bị hỏi), không từ trong Task Worktree, chỉ khi change đang mở hoặc đã bàn giao, gói còn khớp hash và
+URL của remote chưa đổi. Nhánh khác, remote khác, base khác, `--force`, `HEAD:`, lệnh nối chuỗi: vẫn hỏi. Push nhánh
+của Task Worktree thì bị chặn hẳn. Envelope và trần chỉ được ghi lại (trong brief và trang cổng duyệt) để
 Agent và vòng chạy đọc; gate không đoán được "miễn phí". Không bao giờ tự động, dù cấp gì: credential ngoài `.env`
 của project, mọi thứ tốn tiền, deploy production, xóa dữ liệu cloud.
 

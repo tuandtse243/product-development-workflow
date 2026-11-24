@@ -37,13 +37,20 @@ grants:
   agent_runs: 30       # cap on Agent runs for the Change; leave it out for 3 per planned task
 ```
 
-- **Push.** With `push`, the gate allows without asking, for the Orchestrator only (never a subagent), while the
-  Change is open or delivered and its approval is valid: `git push [-u|--set-upstream] <remote> <branch>` (also
-  `HEAD:<branch>`), `gh pr create --base <base> --head <branch>` with only `--title`, `--body`, `--body-file`,
-  `--draft`, `--fill`, and `aidw pr <id> --create [--base <base>] [--draft]`. `<branch>` is the Change Branch
-  (`run.branch`, else `aidw/<id>`) and never the base. Any other branch (a Task Worktree branch included), remote,
-  base or flag (`--force`, `--repo`, `--no-verify`), and any command with shell chaining, substitution or globs,
-  still asks. `aidw pr` uses the granted remote and base.
+- **Push.** `aidw approve` fixes the Change Branch (the one the build will commit on: the recorded `run.branch`, the
+  feature branch the project is on, else `aidw/<id>`), the remote and its URL, and the base in `approval.push` in
+  change.yaml, hashed with the package (editing it is drift). A branch that is not a plain name, starts with `refs/`,
+  is the default branch, is the base, or is a Task Worktree branch gets no binding, and the push asks; the gate page
+  shows the branch before approval. With the binding, the gate allows without asking, only for the Orchestrator (any
+  agent, an aidw Role or not, still asks), only outside Task Worktrees, while the Change is open or delivered with a
+  valid approval and the remote still has the URL it had at approval: `git push [-u|--set-upstream] <remote> <branch>`
+  (`refs/heads/<branch>` allowed, `HEAD:` not), `gh pr create --base <base> --head <branch>` with only `--title`,
+  `--body`, `--draft`, `--fill`, `--repo <owner/repo of the remote>` and `--body-file .aidw/run/pr-<id>.md` (the body
+  `aidw pr` writes; no other file leaves the machine), and the aidw CLI's `aidw pr <id> --create [--base <base>]
+  [--draft]` (bare `aidw` or the plugin's `bin/aidw`, no other program of that name). Anything else (another branch,
+  remote or base, `--force`, `--no-verify`, `git -C`, shell chaining, substitution or globs) still asks. Pushing a Task
+  Worktree branch (`aidw/<id>.T<n>`) is denied, granted or not. `aidw pr` uses the granted remote and base and passes
+  `--repo` for a GitHub remote.
 - **Envelope.** `envelope: true` adds any free resource of a provider the project already uses, and migrations that
   change data on local and dev databases when they are reversible and were tried on seed data first. A pattern cannot
   tell "free" apart, so the gate does not enforce it: it is written into every task brief and the gate page, and work

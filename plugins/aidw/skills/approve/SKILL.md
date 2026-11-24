@@ -26,9 +26,12 @@ The user has asked to approve. This is the single human gate of the workflow (Q2
 3. The user knows what they approve from the gate page of `/aidw:start` step 9. If they pasted its answer in this
    session and every section was agreed, say so in one line. Otherwise give its link again (`aidw page render gate`,
    when `.aidw/run/pages/gate.yaml` exists) plus a recap of at most six lines: goal, stack and its source, deploy
-   strategy, permissions, number of tasks, and the grants (the gate page's "Grants for this Change": push remote and
-   base, envelope, Agent-run cap; `aidw plugin-path company/permissions.md`, "Grants at the Approval Gate"). A section the user marked for a change is not approved: stop and go back to
-   analysis.
+   strategy, permissions, number of tasks, and the grants (the gate page's "Grants for this Change": envelope and
+   Agent-run cap; `aidw plugin-path company/permissions.md`, "Grants at the Approval Gate"). A section the user marked for a change is not approved: stop and go back to
+   analysis. When `quality.yaml` grants `push`, ask the user explicitly, even if every section was agreed: "Push
+   `<branch>` to `<remote>` (`<remote URL>`) and open its pull request against `<base>` without asking: keep or
+   withdraw?" (the branch and URL are on the gate page). On "withdraw", remove `grants.push` from `quality.yaml` and
+   run `aidw validate <id>` before approving.
 4. Run `aidw approve <id>`. The aidw gate turns this into a permission prompt: the user confirms it there.
    If the user declines the prompt, do not retry.
 5. Report the approval hash. Explain that from now on:
