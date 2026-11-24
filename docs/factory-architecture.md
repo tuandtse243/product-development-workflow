@@ -159,6 +159,21 @@ generated agent files are up to date.
   a profile (name, description, tools, model from the tier map, body from `role.md` followed by `rules.md`).
   An interactive Role gets one too: it is the worker Agent that drafts or reviews for that Role. Generated files carry a "do not
   edit" header and a test fails when they are out of date.
+- **Role scripts.** `roles/<id>/scripts/` holds the Role's measuring tools (plan R1): dependency-free Node ESM
+  (`.mjs`, built-ins only, Node 20 or later), called by path through `aidw plugin-path roles/<id>/scripts/<name>.mjs`.
+  Each documents its usage at the top of the file and prints it with `--help`, writes JSON by default (`--text` for
+  a short table) and is advisory: a finding never makes it exit non-zero, only a usage or read error does (exit 2).
+  Pass/fail checks stay in the CLI. A file starting with `_` is a helper the scripts share, not a tool. The tests
+  live under `tests/` (fixture trees in temp dirs, the script run with `node <path>`). The backend Role has five:
+  `route-inventory` (routes, the tests that call each, the B2 access cases those tests assert), `env-names` (names
+  read against `.env.example`, never a value), `error-shape-probe` (error bodies against the declared error shape,
+  statically and on responses the tests captured), `query-count` (statements for 1 row and N rows; also a module a
+  test imports) and `leak-and-timeout-scan` (outbound calls with no timeout, log calls carrying secrets or whole
+  objects). `route-inventory`, `env-names`, `error-shape-probe` (its static probe) and `leak-and-timeout-scan` take
+  `--base <ref>` to look only at what a diff adds; `query-count` reads logs and takes no `--base`. Every JSON output
+  starts with `tool` and `schemaVersion: 1`; a directory scan lists under `skipped` what it did not read (`public/`
+  and `static/` output, minified or bundled files, files over 512 KB, unreadable files). `query-count --run`
+  executes a command, so a read-only reviewer does not use it.
 
 ## 4. Knowledge loading
 
