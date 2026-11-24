@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
 import { answerPrompt, buildGradePrompt, parseGrade, printResults, roleSystem, runCases, type Exec } from "../src/evalrun.js";
-import { loadEvalCases, roleDigest } from "../src/evals.js";
+import { caseDigest, loadEvalCases, roleDigest, sharedDigest } from "../src/evals.js";
 import { writeAgents } from "../src/roles.js";
 import { bareBackend } from "./fixtures.js";
 
@@ -250,7 +250,8 @@ describe("the Role case runner", () => {
       const code = run(["eval", "backend", "--model", "sonnet"], { ...process.env, AIDW_PLUGIN_ROOT: root }, process.cwd(), { out: (s) => (out += s), err: (s) => (out += s), modelExec: () => fake(true) });
       expect(code, out).toBe(0);
       const r = results(root);
-      expect(r).toMatchObject({ role: "backend", model: "sonnet", tier: "deep", runs: 3, digest: roleDigest(root, "backend") });
+      expect(r).toMatchObject({ format: 2, role: "backend", model: "sonnet", tier: "deep", runs: 3, digest: sharedDigest(root, "backend") });
+      expect(r.cases.every((c: { digest: string; date: string }) => c.digest.startsWith("sha256:") && c.date === r.date)).toBe(true);
       expect(Number.isNaN(Date.parse(r.date))).toBe(false);
       expect(r.cases.map((c: { name: string }) => c.name).sort()).toEqual(["entity-is-not-a-response", "validates-authorizes-and-does-not-leak"]);
       expect(r.cases[0]).toMatchObject({ pass: true, runs: { total: 3, passed: 3, errors: 0 } });
@@ -268,12 +269,77 @@ describe("the Role case runner", () => {
       expect(r.cases[0].failed.length).toBeGreaterThan(0);
     });
 
-    it("is not written for a run of one case: it would stand for cases that did not run", () => {
-      const root = copy();
-      let err = "";
-      run(["eval", "backend", "--case", "validates-authorizes-and-does-not-leak"], { ...process.env, AIDW_PLUGIN_ROOT: root }, process.cwd(), { out: () => {}, err: (s) => (err += s), modelExec: () => fake(true) });
-      expect(existsSync(join(root, "roles", "backend", "evals", "results.json"))).toBe(false);
-      expect(err).toMatch(/no result file written: --case runs only part/);
+    describe("a run of one case (--case)", () => {
+      const file = (root: string) => join(root, "roles", "backend", "evals", "results.json");
+      const ONE = "validates-authorizes-and-does-not-leak";
+      const OTHER = "entity-is-not-a-response";
+      const entry = (root: string, name: string) => results(root).cases.find((c: { name: string }) => c.name === name);
+      const full = () => {
+        const root = gitCopy();
+        expect(go(root, ["eval", "backend"], () => fake(true)).code).toBe(0);
+        return root;
+      };
+
+      it("replaces only that case's entry in the file of the last full run", () => {
+        const root = full();
+        const before = results(root);
+        const f = join(root, "roles", "backend", "evals", `${ONE}.md`);
+        writeFileSync(f, readFileSync(f, "utf8") + "\n- must not leak a stack trace\n");
+        const r = go(root, ["eval", "backend", "--case", ONE, "--runs", "1"], () => fake(false));
+        expect(r.code).toBe(1);
+        expect(r.out).toMatch(/wrote roles\/backend\/evals\/results\.json/);
+        const after = results(root);
+        expect(after.digest).toBe(before.digest);
+        expect(entry(root, OTHER)).toEqual(before.cases.find((c: { name: string }) => c.name === OTHER));
+        expect(entry(root, ONE)).toMatchObject({ pass: false, runs: { total: 1, passed: 0, errors: 0 }, digest: caseDigest(root, `roles/backend/evals/${ONE}.md`), date: after.date });
+        expect(after.runs).toBe(1); // the fewest runs of any entry
+        expect(after.cases.map((c: { name: string }) => c.name)).toEqual(before.cases.map((c: { name: string }) => c.name));
+      });
+
+      it("also merges with no Role named, into each Role that has the case", () => {
+        const root = full();
+        const r = go(root, ["eval", "--case", ONE], () => fake(true));
+        expect(r.code, r.out).toBe(0);
+        expect(r.out).toMatch(/wrote roles\/backend\/evals\/results\.json/);
+      });
+
+      it("is refused when the Role's shared content changed since the last full run", () => {
+        const root = full();
+        const before = readFileSync(file(root), "utf8");
+        const role = join(root, "roles", "backend", "role.md");
+        writeFileSync(role, readFileSync(role, "utf8") + "\nmore\n");
+        const r = go(root, ["eval", "backend", "--case", ONE], () => fake(true));
+        expect(r.out).toContain("no result file written for backend: the Role's shared content changed since the last full run: run `aidw eval backend` for all cases");
+        expect(readFileSync(file(root), "utf8")).toBe(before);
+      });
+
+      it("is refused on an old-format file, or with no file", () => {
+        const root = gitCopy();
+        let r = go(root, ["eval", "backend", "--case", ONE], () => fake(true));
+        expect(r.out).toContain("no result file written for backend: there is no results.json yet: run `aidw eval backend` for all cases once");
+        expect(existsSync(file(root))).toBe(false);
+        const old = JSON.stringify({ role: "backend", date: "2026-11-24T00:00:00.000Z", model: null, tier: "deep", runs: 3, digest: roleDigest(root, "backend"), cases: [] });
+        writeFileSync(file(root), old);
+        r = go(root, ["eval", "backend", "--case", ONE], () => fake(true));
+        expect(r.out).toContain("no result file written for backend: results.json is the old format: run `aidw eval backend` for all cases once");
+        expect(readFileSync(file(root), "utf8")).toBe(old);
+      });
+
+      it("is refused when the case was not graded, outside a source checkout, or on another model", () => {
+        const root = full();
+        const before = readFileSync(file(root), "utf8");
+        const boom: Exec = () => {
+          throw new Error("claude -p failed: flagged");
+        };
+        expect(go(root, ["eval", "backend", "--case", ONE], () => boom).out).toMatch(/no result file written for backend: no case was graded/);
+        // backend's tier (deep) maps to the CLI default, so any --model is not the one the file was made with
+        expect(go(root, ["eval", "backend", "--case", ONE, "--model", "haiku"], () => fake(true)).out).toContain(
+          "no result file written for backend: results.json was made with model default, this run with haiku: run `aidw eval backend` for all cases",
+        );
+        expect(readFileSync(file(root), "utf8")).toBe(before);
+        const plain = copy();
+        expect(go(plain, ["eval", "backend", "--case", ONE], () => fake(true)).out).toContain(`no result file written: ${plain} is not a source checkout`);
+      });
     });
 
     it("is not written outside a source checkout (an installed plugin)", () => {

@@ -24,7 +24,7 @@ import { defaultWorkflowId, machineOf } from "./machine.js";
 import { packsFor } from "./stackpacks.js";
 import { git } from "./git.js";
 import { checkEvals, loadEvalCases } from "./evals.js";
-import { claudeExec, printResults, runCases, writeResults, type CaseResult, type Exec } from "./evalrun.js";
+import { claudeExec, mergeResults, printResults, runCases, writeResults, type CaseResult, type Exec } from "./evalrun.js";
 import { checkWorkflows, loadWorkflow, workflowIds } from "./workflow.js";
 import { agentForTask, AGENTS, checkRoster, loadRoster, rosterTable, tierModel, writeAgents } from "./roles.js";
 import { checkChange, checkSpecs } from "./check.js";
@@ -313,7 +313,9 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
                                          both print every criterion's verdict and never write the result file
                                          --answers also prints each answer, to see why a case failed
                                          A full run from a source checkout on the tier's model writes
-                                         roles/<id>/evals/results.json (commit it with the Role's change)
+                                         roles/<id>/evals/results.json (commit it with the Role's change); --case
+                                         updates only that case's entry, while the rest of the Role is unchanged since
+                                         the last full run
   roster [--write] [--strict]            the factory's Roles; checks roster.yaml, role profiles, rules.md tables, artifacts.yaml
                                          (one owner per artifact, reads/writes of each Role), workflows/*.yaml, the cases (a Role
                                          whose rules.md is a table covers every rule and skill), and the generated agent files;
@@ -1071,17 +1073,23 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           emit({ ok: still.length === 0, ...(bare ? { bare } : { without }), results }, printResults(results, args.flags.answers === true, true) + text);
           return still.length === 0 ? 0 : 1;
         }
-        // The record of the run (C6): only a full run of a Role's cases, on its tier's model, from a source checkout.
+        // The record of the run (C6): only on the Role's tier model, from a source checkout. A full run writes the file
+        // afresh; a --case run merges its entry into a file of the same shared content (mergeResults says when not).
         const inGit = spawnSync("git", ["rev-parse", "--is-inside-work-tree"], { cwd: root, encoding: "utf8" }).stdout?.trim() === "true";
-        if (caseName) io.err("  no result file written: --case runs only part of a Role's cases\n");
-        else if (!inGit) io.err(`  no result file written: ${root} is not a source checkout\n`);
+        if (!inGit) io.err(`  no result file written: ${root} is not a source checkout\n`);
         else {
           for (const id of [...new Set(results.map((r) => r.role))]) {
             const tm = tierModel(root, id);
             const mine = results.filter((r) => r.role === id);
+            const meta = { runs, ...(modelOf.get(id) ? { model: modelOf.get(id) as string } : {}) };
             if (asked && tm && asked !== tm) io.err(`  no result file written for ${id}: --model ${asked} is not its tier's model (${tm})\n`);
             else if (mine.every((r) => r.error)) io.err(`  no result file written for ${id}: no case was graded\n`);
-            else written.push(relative(root, writeResults(root, id, results, { runs, ...(modelOf.get(id) ? { model: modelOf.get(id) as string } : {}) })));
+            else if (!caseName) written.push(relative(root, writeResults(root, id, results, meta)));
+            else {
+              const m = mergeResults(root, id, results, meta);
+              if ("refused" in m) io.err(`  no result file written for ${id}: ${m.refused}\n`);
+              else written.push(relative(root, m.file));
+            }
           }
         }
         emit({ ok, results, written }, printResults(results, args.flags.answers === true) + written.map((f) => `wrote ${f}\n`).join(""));

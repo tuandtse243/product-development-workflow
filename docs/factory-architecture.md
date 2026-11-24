@@ -733,13 +733,19 @@ In the user's project, `.aidw/` keeps its current shape and gains `roles/<id>/` 
   the Role fails for every Role. Roles still in prose are not held to coverage.
 - **Result file (plan C6).** A run of all the cases of a Role (no `--case`, no `--without`), from a source checkout
   (the plugin root is in a git work tree) and on the tier's model, writes `roles/<id>/evals/results.json`: per case
-  its runs, pass or fail and the criteria that failed, with the date, the model (`null` for the claude CLI's
-  default), the tier and a digest of the Role's content: every file under `roles/<id>/` but the result file, the
-  generated `agents/<id>.md` (so a shared procedure it includes counts) and the library skills its index lists;
-  dotfiles are left out and line endings are read as LF. A run where no case was graded writes nothing. The file is
-  committed with the change to the Role. For a table Role, `aidw roster` warns (it does not fail; `--strict` makes
-  it fail) when the file is missing, when its digest differs from the Role's content (the Role changed after the
-  run), when the run had fewer than 3 runs per case, or when it did not pass every case.
+  its runs, pass or fail, the criteria that failed, the date it ran and a digest of its case file, with the date,
+  the model (`null` for the claude CLI's default), the tier and a digest of the Role's shared content: every file
+  under `roles/<id>/` but the result file and the case files (`evals/*.md`), the generated `agents/<id>.md` (so a
+  shared procedure it includes counts) and the library skills its index lists; dotfiles are left out and line
+  endings are read as LF (`format: 2`). A case's answer depends only on the shared content and its own case file,
+  so `aidw eval <id> --case <name>` (same conditions) replaces only that case's entry, but only while the shared
+  digest still matches: after a change to the shared content, or on a file of the old format (one digest over the
+  whole Role), it writes nothing and says to run all the cases. A run where no case was graded writes nothing; entries
+  of deleted cases are dropped on each write. The file is committed with the change to the Role. For a table Role,
+  `aidw roster` warns (it does not fail; `--strict` makes it fail) when the file is missing, when its shared digest
+  differs (the Role changed after the run: run all cases), when a case has no entry or an entry older than its case
+  file (run that case), when a case had fewer than 3 runs, or when a case did not pass. A file of the old format is
+  still checked against the digest of the whole Role.
 - **End to end:** the existing fixtures (`evals/fixtures/brownfield-app`, `greenfield-jd`) and `aidw cost`,
   which already reports cost per agent type, catch coordination problems and cost regressions.
 
