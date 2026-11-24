@@ -121,10 +121,11 @@ function unique(values: string[], what: string, where: string, problems: string[
 }
 
 /**
- * Reads the data of a page. `extra` are sections the CLI adds to a gate page itself (Decision Points, plan size).
+ * Reads the data of a page. `extra` are sections the CLI adds to a gate page itself (Decision Points, plan size), after
+ * the authored ones; `lead` go before them (the open findings of the plan review).
  * Problems name the field, so the Role that wrote the data can fix it without guessing.
  */
-export function parsePage(name: string, source: string, extra: PageSection[] = []): { page: Page; problems: string[] } {
+export function parsePage(name: string, source: string, extra: PageSection[] = [], lead: PageSection[] = []): { page: Page; problems: string[] } {
   const problems: string[] = [];
   let raw: Record<string, unknown> = {};
   try {
@@ -232,6 +233,7 @@ export function parsePage(name: string, source: string, extra: PageSection[] = [
 
   if (layout === "gate") {
     page.sections = [
+      ...lead,
       ...rows(raw.sections).map((s, i) => {
         const id = text(s.id);
         const where = `sections[${id || i + 1}]`;

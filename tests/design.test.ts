@@ -11,7 +11,7 @@ import { decide } from "../src/gate.js";
 import { commitAidw } from "../src/ops.js";
 import { runStopFailure } from "../src/pause.js";
 import { pathsFor } from "../src/project.js";
-import { ANALYSIS_MD, MAIN_SPEC, QUALITY_YAML, REQ, TOKENS_YAML, tempProject, write } from "./fixtures.js";
+import { ANALYSIS_MD, MAIN_SPEC, QUALITY_YAML, REQ, TOKENS_YAML, tempProject, write, planReviewed } from "./fixtures.js";
 
 const ID = "2026-11-09-shop";
 const SCENARIO = "booking/reschedule-appointment/reschedule-appointment-works";
@@ -52,6 +52,7 @@ function packageFor(root: string, opts: { tokens?: boolean; analysis?: string; r
 function executing(role?: string): string {
   const root = tempProject();
   packageFor(root, role ? { role } : {});
+  planReviewed(root, ID);
   for (const s of ["intake", "analyzing", "awaiting_approval"]) expect(cli(root, "transition", ID, s).code).toBe(0);
   expect(cli(root, "approve", ID).code).toBe(0);
   const g = (...a: string[]) => execFileSync("git", a, { cwd: root, stdio: "ignore" });

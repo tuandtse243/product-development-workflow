@@ -4,7 +4,7 @@ import YAML from "yaml";
 import { describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
 import { parsePage } from "../src/page.js";
-import { ANALYSIS_MD, MAIN_SPEC, QUALITY_YAML, REQ, SCOPE_ROUND, TASKS_YAML, TOKENS_YAML, tempProject, write } from "./fixtures.js";
+import { ANALYSIS_MD, MAIN_SPEC, QUALITY_YAML, REQ, SCOPE_ROUND, TASKS_YAML, TOKENS_YAML, tempProject, write, planReviewed } from "./fixtures.js";
 
 const ID = "2026-11-14-notes-app";
 const BRIEF = "# Product brief: Notes\n\n## Vision\n\nA notes app for freelancers who lose track of client calls.\n\n## Scope\n\n- capture a note\n- tag it with a client\n\n## MVP\n\nCapture and tag; search comes later because the first users have few notes.\n\n## Out of scope\n\nSharing and sync.\n";
@@ -53,6 +53,7 @@ describe("the scope of a product change is a round of the discovery interview", 
 
   it("goes from analyzing straight to the one Approval Gate once the round is recorded", () => {
     const root = drafted();
+    planReviewed(root, ID);
     const r = cli(root, "transition", ID, "awaiting_approval");
     expect(r.code, r.err).toBe(0);
     const a = cli(root, "approve", ID);
@@ -66,6 +67,7 @@ describe("the scope of a product change is a round of the discovery interview", 
     const r = cli(root, "analyze", ID);
     expect(r.code).toBe(1);
     expect(r.out + r.err).toMatch(/scope round is not recorded: .*### Scope round/);
+    planReviewed(root, ID);
     expect(cli(root, "transition", ID, "awaiting_approval").code).toBe(1);
   });
 
@@ -154,6 +156,7 @@ describe("a change left at the old scope gate (awaiting_scope_approval)", () => 
 
   it("goes on to the one Approval Gate without a scope approval, its brief standing in for the scope round", () => {
     const root = legacy();
+    planReviewed(root, ID);
     const t = cli(root, "transition", ID, "awaiting_approval");
     expect(t.code, t.err).toBe(0);
     expect(change(root).state).toBe("awaiting_approval");
@@ -209,6 +212,7 @@ describe("scope round edge cases", () => {
     write(root, `.aidw/changes/${ID}/change.yaml`, String(doc));
     const r = cli(root, "analyze", ID);
     expect(r.out + r.err).not.toMatch(/scope round/);
+    planReviewed(root, ID);
     expect(cli(root, "transition", ID, "awaiting_approval").code).toBe(0);
   });
 
@@ -218,6 +222,7 @@ describe("scope round edge cases", () => {
     const doc = YAML.parseDocument(readFileSync(file, "utf8"));
     doc.delete("scope_round");
     write(root, `.aidw/changes/${ID}/change.yaml`, String(doc));
+    planReviewed(root, ID);
     expect(cli(root, "transition", ID, "awaiting_approval").code).toBe(0);
     expect(cli(root, "approve", ID).code).toBe(0);
     const d = YAML.parseDocument(readFileSync(file, "utf8"));
@@ -232,6 +237,7 @@ describe("scope round edge cases", () => {
     const root = drafted({ workflow: null });
     const r = cli(root, "analyze", ID);
     expect(r.out + r.err).not.toMatch(/scope round/);
+    planReviewed(root, ID);
     expect(cli(root, "transition", ID, "awaiting_approval").code).toBe(0);
   });
 });
@@ -255,6 +261,7 @@ describe("old scope gate states, persisted by an older aidw", () => {
     expect(cli(root, "status", ID).out).toMatch(/analyzing/);
     const v = cli(root, "validate", ID);
     expect(v.code, v.out + v.err).toBe(0);
+    planReviewed(root, ID);
     const t = cli(root, "transition", ID, "awaiting_approval");
     expect(t.code, t.err).toBe(0);
     expect(cli(root, "approve", ID).code).toBe(0);
@@ -263,6 +270,7 @@ describe("old scope gate states, persisted by an older aidw", () => {
 
   it("is written as analyzing the next time a command saves it", () => {
     const root = old({ state: "awaiting_scope_approval", scope_gate: true, scope_approval: null });
+    planReviewed(root, ID);
     expect(cli(root, "transition", ID, "awaiting_approval").code).toBe(0);
     expect(change(root).state).toBe("awaiting_approval");
     expect(readFileSync(join(root, ".aidw/changes", ID, "change.yaml"), "utf8")).not.toMatch(/awaiting_scope_approval/);
@@ -272,6 +280,7 @@ describe("old scope gate states, persisted by an older aidw", () => {
     const root = old({ state: "analyzing", scope_gate: true, scope_approval: APPROVED_SCOPE });
     const r = cli(root, "analyze", ID);
     expect(r.out + r.err).not.toMatch(/scope round/);
+    planReviewed(root, ID);
     expect(cli(root, "transition", ID, "awaiting_approval").code).toBe(0);
   });
 
@@ -280,6 +289,7 @@ describe("old scope gate states, persisted by an older aidw", () => {
     const r = cli(root, "analyze", ID);
     expect(r.code).toBe(1);
     expect(r.out + r.err).toMatch(/scope round is not recorded/);
+    planReviewed(root, ID);
     expect(cli(root, "transition", ID, "awaiting_approval").code).toBe(1);
   });
 

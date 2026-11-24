@@ -4,7 +4,7 @@ import YAML from "yaml";
 import { describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
 import { loadWorkflow } from "../src/workflow.js";
-import { ANALYSIS_MD, QUALITY_YAML, REQ, TOKENS_YAML, tempProject, write } from "./fixtures.js";
+import { ANALYSIS_MD, QUALITY_YAML, REQ, TOKENS_YAML, tempProject, write, planReviewed } from "./fixtures.js";
 
 const plugin = join(__dirname, "..", "plugins", "aidw");
 const ID = "2026-11-14-fix-cancel";
@@ -36,6 +36,7 @@ function atGate(opts: { tasks?: string; delta?: boolean; workflow?: string | nul
     write(root, `${c}/specs/booking/spec.md`, `## MODIFIED Requirements\n\n${REQ("Cancel appointment")}`);
   }
   if (opts.workflow !== undefined) write(root, `${c}/change.yaml`, readFileSync(join(root, c, "change.yaml"), "utf8").replace("skip_specs: false", "skip_specs: true")); // a change with no delta spec
+  planReviewed(root, ID);
   for (const s of ["intake", "analyzing", "awaiting_approval"]) {
     const r = cli(root, "transition", ID, s);
     expect(r.code, `${s}: ${r.err}${r.out}`).toBe(0);

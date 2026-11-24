@@ -4,7 +4,7 @@ import YAML from "yaml";
 import { describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
 import { loadWorkflow } from "../src/workflow.js";
-import { ANALYSIS_MD, MAIN_SPEC, QUALITY_YAML, REQ, TASKS_YAML, TOKENS_YAML, tempProject, write } from "./fixtures.js";
+import { ANALYSIS_MD, MAIN_SPEC, QUALITY_YAML, REQ, TASKS_YAML, TOKENS_YAML, tempProject, write, planReviewed } from "./fixtures.js";
 
 const plugin = join(__dirname, "..", "plugins", "aidw");
 const ID = "booking-v2";
@@ -57,6 +57,7 @@ describe("aidw decide", () => {
   it("is frozen with the approved package", () => {
     const root = project();
     cli(root, "decide", "design-needed", "full-design", "--reason", "x");
+    planReviewed(root, ID);
     for (const s of ["intake", "analyzing", "awaiting_approval"]) expect(cli(root, "transition", ID, s).code, s).toBe(0);
     expect(cli(root, "approve", ID).code).toBe(0);
     expect(cli(root, "decide", "design-needed", "reuse-existing", "--reason", "changed my mind").err).toMatch(/decisions are frozen with it/);

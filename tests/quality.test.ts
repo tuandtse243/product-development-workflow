@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
 import { decide, type HookInput } from "../src/gate.js";
 import { parseQuality } from "../src/quality.js";
-import { ANALYSIS_MD, TOKENS_YAML, MAIN_SPEC, QUALITY_YAML, REQ, tempProject, write } from "./fixtures.js";
+import { ANALYSIS_MD, TOKENS_YAML, MAIN_SPEC, QUALITY_YAML, REQ, tempProject, write, planReviewed } from "./fixtures.js";
 
 const ID = "2026-11-08-booking";
 const SCENARIO = "booking/reschedule-appointment/reschedule-appointment-works";
@@ -59,6 +59,7 @@ function project(quality = Q()): string {
   write(root, "check.js", "process.exit(require('fs').existsSync(process.argv[2]) ? 0 : (console.log('missing ' + process.argv[2]), 1));\n");
   write(root, "smoke.js", "process.exit(/^https:\\/\\/demo-[a-z]+\\.vercel\\.app$/.test(process.env.AIDW_DEPLOY_URL || '') ? 0 : 1);\n");
   for (const f of ["code-ok", "setup-ok", "e2e-ok"]) write(root, f, "");
+  planReviewed(root, ID);
   for (const s of ["intake", "analyzing", "awaiting_approval"]) expect(cli(root, "transition", ID, s).err).toBe("");
   expect(cli(root, "approve", ID).code).toBe(0);
   expect(cli(root, "transition", ID, "executing").code).toBe(0);

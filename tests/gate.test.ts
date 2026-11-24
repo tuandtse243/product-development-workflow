@@ -6,7 +6,7 @@ import { unexpectedChanges, runBackstop } from "../src/backstop.js";
 import { addBinToPath, run } from "../src/cli.js";
 import { AIDW_COMMAND, AIDW_STATE_COMMAND, APPROVE_COMMAND } from "../src/policy.js";
 import { decide, runGate, type HookInput } from "../src/gate.js";
-import { ANALYSIS_MD, TOKENS_YAML, MAIN_SPEC, QUALITY_YAML, REQ, TASKS_YAML, tempProject, write } from "./fixtures.js";
+import { ANALYSIS_MD, TOKENS_YAML, MAIN_SPEC, QUALITY_YAML, REQ, TASKS_YAML, tempProject, write, planReviewed } from "./fixtures.js";
 
 const ID = "app";
 let root: string;
@@ -31,6 +31,7 @@ function readyForApproval() {
   write(root, `.aidw/changes/${ID}/tasks.yaml`, TASKS_YAML);
   write(root, `.aidw/changes/${ID}/quality.yaml`, QUALITY_YAML);
   write(root, `.aidw/changes/${ID}/specs/booking/spec.md`, `## ADDED Requirements\n\n${REQ("Reschedule appointment")}`);
+  planReviewed(root, ID);
   for (const s of ["intake", "analyzing", "awaiting_approval"]) expect(cli("transition", ID, s)).toBe(0);
 }
 

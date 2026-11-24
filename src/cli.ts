@@ -61,6 +61,7 @@ import { firstDeploy } from "./firstdeploy.js";
 import { reconcileDoneTasks, reopenTask } from "./run.js";
 import { autoReview, buildBrief, buildTriageBrief, checkpoint, integrateChange, nextAction, parseVerdict, recordReview, recordTriage, retryTask, startTask, triageFile, type NextAction } from "./run.js";
 import { recordStageDone, stagesNext, stagesView } from "./stages.js";
+import { buildPlanReviewBrief, MAX_FIX_ROUNDS, openFindingsSection, recordPlanReview } from "./planreview.js";
 import { VERSION } from "./version.js";
 
 function reviewLine(r: { task: string; verdict: string; status: string; commit: string | null; warning?: string; conflict?: string }, verdict: string, notes: string): string {
@@ -193,6 +194,8 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
   merge <id> [--write]                   merge delta specs into .aidw/specs (dry run by default)
   archive <id>                           merge deltas and move a delivered change to archive/
   analyze [<id>]                         pre-gate consistency checks (analysis.md, task coverage)
+  plan-review [<id>] [--brief]           the independent review of architecture and plan before the gate: --brief writes the
+                                         code-reviewer's brief; without it, record its verdict (at most ${MAX_FIX_ROUNDS} fix rounds)
   ids [<id>]                             requirement and scenario ids (after applying the change)
   vendor-path <upstream>/<skill>         absolute path of a vendored SKILL.md (e.g. pocock/grilling)
   diff-coverage <lcov> [--min 80] [--base <ref>]  coverage of the lines added since the change's first task started
@@ -1130,7 +1133,12 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           const source = readText(pageDataFile(p, name));
           if (source === null) throw new OpError(`no page data at ${rel(p, pageDataFile(p, name))}: write it first (aidw plugin-path library/decision-pages.md says how)`);
           const first = parsePage(name, source);
-          const r = first.page.layout === "gate" && first.page.change ? parsePage(name, source, gateExtras(resolveChangeId(p, first.page.change))) : first;
+          const gateId = first.page.layout === "gate" && first.page.change ? resolveChangeId(p, first.page.change) : null;
+          const lead = (id: string): PageSection[] => {
+            const c = loadChange(p, id);
+            return [openFindingsSection(c, workflowOfChange(p, c, pluginRoot(env)))].filter((x): x is PageSection => x !== null);
+          };
+          const r = gateId ? parsePage(name, source, gateExtras(gateId), lead(gateId)) : first;
           if (r.problems.length) throw new OpError(`the data of page "${name}" (${rel(p, pageDataFile(p, name))}) has ${r.problems.length} problem(s):\n${r.problems.map((x) => `  - ${x}`).join("\n")}\nFix the file and render again.`);
           return r.page;
         };
@@ -1217,6 +1225,37 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
             ? `${rows.map((r) => `${r.id.padEnd(20)} ${r.recorded ? `${[r.recorded.answer].flat().join(", ")}: ${r.recorded.reason}` : `(open: ${r.options.join(" | ")}${r.required ? ", required" : ""})`}`).join("\n")}\n`
             : `workflow ${w.id} has no decision points\n`,
         );
+        return 0;
+      }
+
+      case "plan-review": {
+        // D4: the independent review of architecture and plan before the Approval Gate (src/planreview.ts).
+        const p = project();
+        const id = resolveChangeId(p, rest[0] ?? str(args.flags.change));
+        if (args.flags.brief === true) {
+          const b = buildPlanReviewBrief(p, id, pluginRoot(env));
+          emit({ change: id, round: b.round, agent: "aidw:code-reviewer", brief: b.path }, `${b.path}\nSPAWN aidw:code-reviewer with: Plan review brief: ${b.path}. Read it and write your verdict as it says.\nNEXT: when it replies, \`aidw plan-review ${id}\`\n`);
+          return 0;
+        }
+        const r = recordPlanReview(p, id, pluginRoot(env));
+        const findings = r.round.findings.map((f, i) => `  ${i + 1}. [item ${f.item}] ${f.target}: ${f.text} -> ${r.fixers[i]}\n`).join("");
+        let unreported = "";
+        try {
+          if (r.outcome !== "fix") recordStageDone(p, id, r.stage, pluginRoot(env));
+        } catch (e) {
+          unreported = `stage ${r.stage} is not marked done (${(e as Error).message}); the gate needs only the recorded verdict\n`;
+        }
+        const head =
+          r.outcome === "pass"
+            ? `plan review round ${r.round.round}: pass\n`
+            : r.outcome === "carried"
+              ? `plan review round ${r.round.round}: fix; the ${MAX_FIX_ROUNDS} fix rounds are used up: ${r.round.findings.length} finding(s) stay open and go to the top of the gate page\n${findings}`
+              : `plan review round ${r.round.round}: fix (${r.round.findings.length} finding(s)); fix round ${r.round.round} of ${MAX_FIX_ROUNDS}\n${findings}`;
+        const next =
+          r.outcome === "fix"
+            ? `NEXT: give each finding to the Role named after it (spawn it again with its findings; do it yourself for what you wrote), run \`aidw analyze ${id}\` until it is clean, then \`aidw plan-review ${id} --brief\` and spawn aidw:code-reviewer again\n`
+            : `NEXT: \`aidw transition ${id} awaiting_approval\`, then present the gate page\n`;
+        emit({ ok: true, change: id, round: r.round.round, verdict: r.round.verdict, outcome: r.outcome, findings: r.round.findings.map((f, i) => ({ ...f, fixer: r.fixers[i] })) }, head + unreported + next);
         return 0;
       }
 

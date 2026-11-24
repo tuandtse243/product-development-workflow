@@ -94,15 +94,15 @@ describe("readyStages: stages whose inputs are written", () => {
   };
 
   it("steps the product workflow in order", () => {
-    expect(sequence("product")).toEqual([["intake"], ["discovery"], ["research", "user-research"], ["requirements"], ["design"], ["architecture"], ["contracts"], ["plan"], ["quality-profile"], ["approval"]]);
+    expect(sequence("product")).toEqual([["intake"], ["discovery"], ["research", "user-research"], ["requirements"], ["design"], ["architecture"], ["contracts"], ["plan"], ["quality-profile"], ["plan-review"], ["approval"]]);
   });
 
   it("steps the feature workflow in order: discovery after the assessment", () => {
-    expect(sequence("feature")).toEqual([["intake"], ["assessment"], ["discovery"], ["research", "user-research"], ["requirements"], ["design"], ["architecture"], ["contracts"], ["plan"], ["quality-profile"], ["approval"]]);
+    expect(sequence("feature")).toEqual([["intake"], ["assessment"], ["discovery"], ["research", "user-research"], ["requirements"], ["design"], ["architecture"], ["contracts"], ["plan"], ["quality-profile"], ["plan-review"], ["approval"]]);
   });
 
-  it("steps the bugfix workflow in order: the plan after the diagnosis", () => {
-    expect(sequence("bugfix")).toEqual([["intake"], ["diagnosis"], ["plan"], ["quality-profile"], ["approval"]]);
+  it("steps the bugfix workflow in order: the plan after the diagnosis, the plan review before the gate", () => {
+    expect(sequence("bugfix")).toEqual([["intake"], ["diagnosis"], ["plan"], ["quality-profile"], ["plan-review"], ["approval"]]);
   });
 
   it("steps the audit workflow in order", () => {

@@ -1,6 +1,8 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import YAML from "yaml";
+import { digestOf } from "../src/planreview.js";
 
 export const MAIN_SPEC = `# Booking
 
@@ -174,3 +176,14 @@ export const TASKS_YAML = `tasks:
     verify: ["pnpm playwright test booking"]
     status: pending
 `;
+
+export const PLAN_REVIEW_PASS = "VERDICT: pass\n";
+
+/**
+ * The independent review before the gate (D4) as if it had run and passed: the code-reviewer's verdict and the CLI's
+ * record of round 1. Tests that are not about the review call it before \`transition awaiting_approval\`.
+ */
+export function planReviewed(root: string, id: string): void {
+  write(root, `.aidw/run/review-plan-${id}.md`, PLAN_REVIEW_PASS);
+  write(root, `.aidw/changes/${id}/plan-review.yaml`, YAML.stringify({ rounds: [{ round: 1, verdict: "pass", digest: digestOf(PLAN_REVIEW_PASS), at: "2026-11-24T00:00:00.000Z", findings: [] }] }));
+}

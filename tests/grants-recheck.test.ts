@@ -5,7 +5,7 @@ import YAML from "yaml";
 import { beforeEach, describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
 import { decide, type HookInput } from "../src/gate.js";
-import { ANALYSIS_MD, MAIN_SPEC, QUALITY_YAML, REQ, TASKS_YAML, TOKENS_YAML, tempProject, write } from "./fixtures.js";
+import { ANALYSIS_MD, MAIN_SPEC, QUALITY_YAML, REQ, TASKS_YAML, TOKENS_YAML, tempProject, write, planReviewed } from "./fixtures.js";
 
 const ID = "app";
 const GRANTS = "grants:\n  push:\n    remote: origin\n    base: main\n";
@@ -38,6 +38,7 @@ function approved(before?: () => void) {
   write(root, `.aidw/changes/${ID}/tasks.yaml`, TASKS_YAML);
   write(root, `.aidw/changes/${ID}/quality.yaml`, QUALITY_YAML + GRANTS);
   write(root, `.aidw/changes/${ID}/specs/booking/spec.md`, `## ADDED Requirements\n\n${REQ("Reschedule appointment")}`);
+  planReviewed(root, ID);
   for (const s of ["intake", "analyzing", "awaiting_approval"]) expect(cli("transition", ID, s).code).toBe(0);
   before?.();
   expect(cli("approve", ID).code).toBe(0);

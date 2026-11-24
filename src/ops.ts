@@ -35,7 +35,10 @@ export { OpError };
 
 const now = () => new Date().toISOString();
 
-import { machineOf } from "./machine.js";
+import { machineOf, workflowIdOf } from "./machine.js";
+import { planReviewBlocker } from "./planreview.js";
+import { bundledRoot } from "./plugin.js";
+import { loadWorkflow } from "./workflow.js";
 
 // ---------------------------------------------------------------- init
 
@@ -401,6 +404,11 @@ export function transition(p: Paths, id: string, to: string, opts: { reason?: st
     // Validate as if already in the target state, so the user is never asked to approve an incomplete package.
     const d = readinessCheck(p, id, target);
     if (d.errors.length) throw new OpError("Analysis package is not ready for approval", d);
+    // D4: after the CLI's own checks, the independent review of architecture and plan (src/planreview.ts).
+    const root = bundledRoot();
+    const w = root ? loadWorkflow(root, workflowIdOf(p, change)) : null;
+    const why = w ? planReviewBlocker(p, change, w) : null;
+    if (why) throw new OpError(`"awaiting_approval" needs ${why}`);
   }
 
   const notes: string[] = [];
