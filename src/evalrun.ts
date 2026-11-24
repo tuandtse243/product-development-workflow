@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSy
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
-import { caseDigest, loadEvalCases, RESULTS_FORMAT, resultsFile, sharedDigest, type CaseRecord, type EvalCase, type RunRecord } from "./evals.js";
+import { caseDigest, caseEntries, loadEvalCases, RESULTS_FORMAT, resultsFile, sharedDigest, type CaseRecord, type EvalCase, type RunRecord } from "./evals.js";
 import { loadRole, loadRoster, loadRuleTable, loadTiers, renderAgent, skillFile, type RoleProfile } from "./roles.js";
 
 /**
@@ -343,7 +343,7 @@ export function mergeResults(root: string, id: string, results: CaseResult[], me
   if ((old.model ?? null) !== model) return { refused: `results.json was made with model ${old.model ?? "default"}, this run with ${model ?? "default"}: ${all}` };
   const date = (meta.date ?? new Date()).toISOString();
   const fresh = new Map(caseRecords(root, id, results, date).map((c) => [c.name, c]));
-  const kept = new Map(old.cases.map((c) => [c.name, c]));
+  const kept = new Map(caseEntries(old.cases).map((c) => [c.name, c]));
   const cases = loadEvalCases(root, id)
     .cases.map((c) => fresh.get(c.name) ?? kept.get(c.name))
     .filter((c): c is CaseRecord => c !== undefined);

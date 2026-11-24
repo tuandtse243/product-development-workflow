@@ -340,6 +340,59 @@ describe("the Role case runner", () => {
         const plain = copy();
         expect(go(plain, ["eval", "backend", "--case", ONE], () => fake(true)).out).toContain(`no result file written: ${plain} is not a source checkout`);
       });
+
+      it("keeps the top-level runs at the fewest any entry had, after a full --runs 1 run", () => {
+        const root = gitCopy();
+        expect(go(root, ["eval", "backend", "--runs", "1"], () => fake(true)).code).toBe(0);
+        expect(results(root).runs).toBe(1);
+        expect(go(root, ["eval", "backend", "--case", ONE], () => fake(true)).code).toBe(0);
+        expect(results(root).runs).toBe(1); // OTHER still has 1 run
+        expect(entry(root, ONE).runs.total).toBe(3);
+        expect(go(root, ["eval", "backend", "--case", OTHER], () => fake(true)).code).toBe(0);
+        expect(results(root).runs).toBe(3);
+      });
+
+      it("drops entries of deleted cases and malformed entries, and keeps the good ones", () => {
+        const root = full();
+        const rec = results(root);
+        const other = rec.cases.find((c: { name: string }) => c.name === OTHER);
+        writeFileSync(file(root), JSON.stringify({ ...rec, cases: [null, 7, { pass: true }, { ...other, name: "gone" }, other] }));
+        const r = go(root, ["eval", "backend", "--case", ONE], () => fake(true));
+        expect(r.code, r.out).toBe(0);
+        expect(results(root).cases.map((c: { name: string }) => c.name)).toEqual([OTHER, ONE]);
+        expect(entry(root, OTHER)).toEqual(other);
+      });
+
+      it("merges into each Role that has the case when no Role is named, refusing per Role", () => {
+        const root = full();
+        const dir = join(root, "roles", "fullstack", "evals");
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(join(dir, `${ONE}.md`), readFileSync(join(root, "roles", "backend", "evals", `${ONE}.md`), "utf8"));
+        const r = go(root, ["eval", "--case", ONE, "--runs", "1"], () => fake(true));
+        expect(r.out).toMatch(/wrote roles\/backend\/evals\/results\.json/);
+        expect(r.out).toContain("no result file written for fullstack: there is no results.json yet");
+        expect(existsSync(join(dir, "results.json"))).toBe(false);
+      });
+
+      it("reports the merged file in --json, and none when refused", () => {
+        const root = full();
+        let r = go(root, ["eval", "backend", "--case", ONE, "--json"], () => fake(true));
+        expect(r.code, r.out).toBe(0);
+        const json = (s: string) => JSON.parse(s.slice(s.indexOf("{"), s.lastIndexOf("}") + 1));
+        expect(json(r.out).written).toEqual(["roles/backend/evals/results.json"]);
+        const role = join(root, "roles", "backend", "role.md");
+        writeFileSync(role, readFileSync(role, "utf8") + "\nmore\n");
+        r = go(root, ["eval", "backend", "--case", ONE, "--json"], () => fake(true));
+        expect(r.out).toContain("no result file written for backend: the Role's shared content changed");
+        expect(json(r.out).written).toEqual([]);
+      });
+
+      it("writes nothing with --bare or --without, even into a format-2 file", () => {
+        const root = full();
+        const before = readFileSync(file(root), "utf8");
+        expect(go(root, ["eval", "backend", "--case", ONE, "--bare", "--runs", "1"], () => fake(false)).out).toMatch(/no result file written: a run --bare/);
+        expect(readFileSync(file(root), "utf8")).toBe(before);
+      });
     });
 
     it("is not written outside a source checkout (an installed plugin)", () => {

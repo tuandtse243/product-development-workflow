@@ -93,6 +93,11 @@ export function loadEvalCases(root: string, id: string): { cases: EvalCase[]; di
 /** The result file of a Role's cases (C6). */
 export const resultsFile = (root: string, id: string) => join(roleDir(root, id), "evals", "results.json");
 
+/** The entries of a result file's `cases` that are objects with a name; a hand-edited file may hold anything there. */
+export function caseEntries(cases: unknown): CaseRecord[] {
+  return Array.isArray(cases) ? cases.filter((c): c is CaseRecord => !!c && typeof c === "object" && typeof (c as CaseRecord).name === "string") : [];
+}
+
 /** The format of the result file written today; a file without `format` is the old one (one digest over the whole Role). */
 export const RESULTS_FORMAT = 2;
 
@@ -205,13 +210,17 @@ function checkCoverage(root: string, id: string, cases: EvalCase[], d: Diags): v
     d.warn(rf, `not readable: run \`aidw eval ${id}\` again`);
     return;
   }
-  if (rec?.format === RESULTS_FORMAT) {
+  if (!rec || typeof rec !== "object" || Array.isArray(rec)) {
+    d.warn(rf, `not readable: run \`aidw eval ${id}\` again`);
+    return;
+  }
+  if (rec.format === RESULTS_FORMAT) {
     if (rec.digest !== sharedDigest(root, id)) {
       d.warn(rf, `older than the Role's content (it changed after the run of ${rec.date}): run \`aidw eval ${id}\` again`);
       return;
     }
     // The shared content is the same, so an entry holds as long as its own case file has not changed.
-    const entries = new Map((Array.isArray(rec.cases) ? rec.cases : []).map((c) => [c.name, c]));
+    const entries = new Map(caseEntries(rec.cases).map((c) => [c.name, c]));
     const missing: string[] = [];
     const fresh: CaseRecord[] = [];
     for (const c of cases) {
@@ -231,7 +240,7 @@ function checkCoverage(root: string, id: string, cases: EvalCase[], d: Diags): v
   if (rec.digest !== roleDigest(root, id)) d.warn(rf, `older than the Role's content (it changed after the run of ${rec.date}): run \`aidw eval ${id}\` again`);
   else {
     if (!(Number(rec.runs) >= 3)) d.warn(rf, `the last run had ${String(rec.runs)} run(s) per case; a case passes level 1 only with 3 of 3: run it again without --runs`);
-    const failed = Array.isArray(rec.cases) ? rec.cases.filter((c) => !c.pass).map((c) => c.name) : [];
+    const failed = caseEntries(rec.cases).filter((c) => !c.pass).map((c) => c.name);
     if (failed.length) d.warn(rf, `the last run did not pass ${failed.length} case(s): ${failed.join(", ")}`);
   }
 }

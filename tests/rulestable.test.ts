@@ -391,6 +391,57 @@ describe("the per-case result file (format 2)", () => {
     expect(w).toContain(`the last run did not pass 1 case(s): ${NAMES[1]}`);
   });
 
+  it("gives a CRLF case file the digest of its LF form", () => {
+    const root = copy();
+    const rel = `roles/backend/evals/${NAMES[0]}.md`;
+    const lf = caseDigest(root, rel);
+    writeFileSync(join(root, rel), readFileSync(join(root, rel), "utf8").replace(/\n/g, "\r\n"));
+    expect(caseDigest(root, rel)).toBe(lf);
+  });
+
+  it("counts subfolders of evals/, the agent file and the library skills the Role lists as shared content", () => {
+    const root = copy();
+    tableRole(root);
+    const shared = sharedDigest(root, "backend");
+    mkdirSync(join(evalsDir(root), "fixtures"));
+    writeFileSync(join(evalsDir(root), "fixtures", "input.md"), "not a case: a file a case may point to\n");
+    const withSub = sharedDigest(root, "backend");
+    expect(withSub).not.toBe(shared);
+    expect(loadEvalCases(root, "backend").cases.map((c) => c.name)).toEqual(NAMES);
+    touch(root, "agents/backend.md");
+    const withAgent = sharedDigest(root, "backend");
+    expect(withAgent).not.toBe(withSub);
+    const role = join(root, "roles", "backend", "role.md");
+    writeFileSync(role, readFileSync(role, "utf8").replace(/^skills:\n/m, "skills:\n  - library/external-api: when the task calls a third-party service\n"));
+    const withLib = sharedDigest(root, "backend");
+    expect(withLib).not.toBe(withAgent);
+    touch(root, "library/skills/external-api/SKILL.md");
+    expect(sharedDigest(root, "backend")).not.toBe(withLib);
+  });
+
+  it("treats a renamed case as a new case with no entry", () => {
+    const root = fresh();
+    const from = join(evalsDir(root), `${NAMES[0]}.md`);
+    writeFileSync(join(evalsDir(root), "renamed-case.md"), readFileSync(from, "utf8").replace(`case: ${NAMES[0]}`, "case: renamed-case"));
+    rmSync(from);
+    expect(warns(checkEvals(root))).toBe("roles/backend/evals/results.json: no result for case(s): renamed-case: run `aidw eval backend --case <name>` for each");
+  });
+
+  it("does not trip over a malformed format-2 file", () => {
+    const root = fresh();
+    const rf = join(evalsDir(root), "results.json");
+    const rec = JSON.parse(readFileSync(rf, "utf8"));
+    for (const cases of [[null, 5, "x", rec.cases[1]], "not a list", null]) {
+      writeFileSync(rf, JSON.stringify({ ...rec, cases }));
+      expect(warns(checkEvals(root))).toContain(`no result for case(s): ${NAMES[0]}`);
+    }
+    for (const bad of ["null", "5", "[]"]) {
+      writeFileSync(rf, bad);
+      expect(() => checkEvals(root), bad).not.toThrow();
+      expect(warns(checkEvals(root)), bad).toMatch(/results\.json: /);
+    }
+  });
+
   it("still reads an old-format file against the whole Role's digest", () => {
     const root = copy();
     tableRole(root);

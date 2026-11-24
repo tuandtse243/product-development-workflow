@@ -18238,6 +18238,9 @@ function loadEvalCases(root, id) {
   return { cases, diags: d };
 }
 var resultsFile = (root, id) => (0, import_node_path45.join)(roleDir(root, id), "evals", "results.json");
+function caseEntries(cases) {
+  return Array.isArray(cases) ? cases.filter((c) => !!c && typeof c === "object" && typeof c.name === "string") : [];
+}
 var RESULTS_FORMAT = 2;
 function roleFiles(root, id, noCases) {
   const files = [];
@@ -18296,12 +18299,16 @@ function checkCoverage(root, id, cases, d) {
     d.warn(rf, `not readable: run \`aidw eval ${id}\` again`);
     return;
   }
-  if (rec?.format === RESULTS_FORMAT) {
+  if (!rec || typeof rec !== "object" || Array.isArray(rec)) {
+    d.warn(rf, `not readable: run \`aidw eval ${id}\` again`);
+    return;
+  }
+  if (rec.format === RESULTS_FORMAT) {
     if (rec.digest !== sharedDigest(root, id)) {
       d.warn(rf, `older than the Role's content (it changed after the run of ${rec.date}): run \`aidw eval ${id}\` again`);
       return;
     }
-    const entries = new Map((Array.isArray(rec.cases) ? rec.cases : []).map((c) => [c.name, c]));
+    const entries = new Map(caseEntries(rec.cases).map((c) => [c.name, c]));
     const missing = [];
     const fresh = [];
     for (const c of cases) {
@@ -18320,7 +18327,7 @@ function checkCoverage(root, id, cases, d) {
   if (rec.digest !== roleDigest(root, id)) d.warn(rf, `older than the Role's content (it changed after the run of ${rec.date}): run \`aidw eval ${id}\` again`);
   else {
     if (!(Number(rec.runs) >= 3)) d.warn(rf, `the last run had ${String(rec.runs)} run(s) per case; a case passes level 1 only with 3 of 3: run it again without --runs`);
-    const failed = Array.isArray(rec.cases) ? rec.cases.filter((c) => !c.pass).map((c) => c.name) : [];
+    const failed = caseEntries(rec.cases).filter((c) => !c.pass).map((c) => c.name);
     if (failed.length) d.warn(rf, `the last run did not pass ${failed.length} case(s): ${failed.join(", ")}`);
   }
 }
@@ -18564,7 +18571,7 @@ function mergeResults(root, id, results, meta) {
   if ((old.model ?? null) !== model) return { refused: `results.json was made with model ${old.model ?? "default"}, this run with ${model ?? "default"}: ${all2}` };
   const date = (meta.date ?? /* @__PURE__ */ new Date()).toISOString();
   const fresh = new Map(caseRecords(root, id, results, date).map((c) => [c.name, c]));
-  const kept = new Map(old.cases.map((c) => [c.name, c]));
+  const kept = new Map(caseEntries(old.cases).map((c) => [c.name, c]));
   const cases = loadEvalCases(root, id).cases.map((c) => fresh.get(c.name) ?? kept.get(c.name)).filter((c) => c !== void 0);
   return { file: save(root, id, record(root, id, model, date, cases)) };
 }
