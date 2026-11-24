@@ -23,6 +23,7 @@ import { listChangeIds, loadChange, stateOf, type Change } from "./change.js";
 import { Diags } from "./diag.js";
 import { git, isDefaultBranch, isGitRepo } from "./git.js";
 import { bundledRoot, pluginRoot } from "./plugin.js";
+import { ODD_CHARACTER } from "./policy.js";
 import type { Paths } from "./project.js";
 import { parseTasks } from "./tasks.js";
 
@@ -228,7 +229,9 @@ export function envelopeBrief(change: Change): string[] {
  * that is not one plain list of words is never granted.
  */
 export function shellWords(cmd: string): string[] | null {
-  if (/[\n\r`$\\]/.test(cmd)) return null;
+  // the shell splits only on space and tab: other whitespace (NBSP, \v, U+3000) and control or format characters,
+  // which JS `\s` would split on or the eye misses, are refused rather than split on
+  if (/[\n\r`$\\]/.test(cmd) || ODD_CHARACTER.test(cmd)) return null;
   const words: string[] = [];
   let cur = "";
   let has = false;
@@ -242,7 +245,7 @@ export function shellWords(cmd: string): string[] | null {
     if (c === "'" || c === '"') {
       quote = c;
       has = true;
-    } else if (/\s/.test(c)) {
+    } else if (c === " " || c === "\t") {
       if (has) words.push(cur);
       cur = "";
       has = false;
