@@ -25,11 +25,15 @@ import {
   AIDW_STATE_COMMAND,
   FORBIDDEN_COMMANDS,
   firstMatch,
+  IMPLEMENTER_PROTECTED,
+  INLINE_CODE,
+  ODD_CHARACTER,
   SECRET_PATHS,
   SHELL_CHAINING,
   TIER2_COMMANDS,
   WRITE_COMMANDS,
-  maskQuotedAngles,
+  maskQuoted,
+  writeTargets,
   RUNNER_COMMAND,
 } from "./policy.js";
 import { installedOutside, runnerCommand } from "./buildroute.js";
@@ -107,18 +111,26 @@ function inside(parent: string, child: string): boolean {
   return r === "" || (r !== ".." && !r.startsWith(`..${sep}`) && !isAbsolute(r));
 }
 
+/**
+ * `inside` without case, for the checks that protect a path: macOS and Windows file systems take `.AIDW/Run` for
+ * `.aidw/run`. An allow keeps the exact `inside`, so a case variant never gains what the exact path is given.
+ */
+const lower = (f: string) => f.toLowerCase();
+const insideAnyCase = (parent: string, child: string) => inside(lower(parent), lower(child));
+
 function isFrozenPackageFile(p: Paths, file: string, frozen: string[]): boolean {
-  if (file === p.constitution || FROZEN_PROJECT_DIRS(p).some((d) => inside(d, file))) return frozen.length > 0;
+  const f = lower(file);
+  if (f === lower(p.constitution) || FROZEN_PROJECT_DIRS(p).some((d) => insideAnyCase(d, file))) return frozen.length > 0;
   for (const id of frozen) {
     try {
-      if (baseSpecFiles(p, loadChange(p, id)).includes(file)) return true;
+      if (baseSpecFiles(p, loadChange(p, id)).some((b) => lower(b) === f)) return true;
     } catch {
       // unreadable change: its package files are checked below
     }
-    const dir = join(p.changes, id);
-    if (!inside(dir, file)) continue;
-    const r = relative(dir, file).split(sep).join("/");
-    if ((CHANGE_PACKAGE_FILES as readonly string[]).includes(r) || r.startsWith("specs/")) return true;
+    const dir = lower(join(p.changes, id));
+    if (!inside(dir, f)) continue;
+    const r = relative(dir, f).split(sep).join("/");
+    if (CHANGE_PACKAGE_FILES.some((x) => x.toLowerCase() === r) || r.startsWith("specs/")) return true;
   }
   return false;
 }
@@ -235,8 +247,8 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
     }
     // S8: a wave task's git worktree is project code, not aidw state; its own .aidw/ is a stale copy.
     const worktrees = join(p.run, "worktrees");
-    if (inside(worktrees, file)) {
-      const parts = relative(worktrees, file).split(sep);
+    if (insideAnyCase(worktrees, file)) {
+      const parts = relative(lower(worktrees), lower(file)).split(sep);
       if (parts.length < 3) return deny("write inside a task's worktree (.aidw/run/worktrees/<change>/<task>/...)");
       if (parts[2] === AIDW_DIR) return deny("the worktree's .aidw/ is a stale copy; aidw state lives in the main checkout and is the orchestrator's");
       const st = gateState(p);
@@ -244,11 +256,11 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
     }
     if (role === "implementer" && dirname(file) === p.run && REPORT_FILE.test(basename(file))) return allow("implementer note for the reviewer");
     if (role === "implementer" && isConsultRequest(p, file)) return allow("implementer question to another Role (Consultation)");
-    if (role === "implementer" && inside(p.aidw, file) && !inside(join(p.run, "shots"), file)) {
+    if (role === "implementer" && insideAnyCase(p.aidw, file) && !inside(join(p.run, "shots"), file)) {
       return deny("implementers do not write .aidw/; the orchestrator records progress and evidence");
     }
     const st = gateState(p);
-    if (inside(p.aidw, file)) {
+    if (insideAnyCase(p.aidw, file)) {
       if (isFrozenPackageFile(p, file, st.frozen)) {
         return deny(
           "the approved Analysis package is frozen during execution. To change scope, transition the change to escalated and back to analyzing, then re-approve.",
@@ -290,7 +302,8 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
         const root = pluginRoot(env);
         const silent = installedOutside(root, p.project);
         const approved = listChangeIds(p).filter((id) => approvedForBuild(p, id));
-        if (silent && approved.some((id) => cmd.trim() === runnerCommand(id, join(root, "bin", "aidw")))) {
+        const plain = cmd.replace(/^[ \t\n]+|[ \t\n]+$/g, "");
+        if (silent && !ODD_CHARACTER.test(plain) && approved.some((id) => plain === runnerCommand(id, join(root, "bin", "aidw")))) {
           return allow("the change is approved: the detached runner builds it (`aidw approve` printed this exact command)");
         }
         // A start that names no approved Change is denied, not asked: the allowance is per Change.
@@ -320,7 +333,7 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
     if (tier2) {
       if (role) return deny(`the ${role} does not touch cloud resources; deploys are the orchestrator's step`);
       const granted = grantedResources(p, listChangeIds(p), OPEN_STATES);
-      if (granted.has(tier2.resource) && !SHELL_CHAINING.test(cmd)) {
+      if (granted.has(tier2.resource) && !SHELL_CHAINING.test(cmd) && !ODD_CHARACTER.test(cmd)) {
         return allow(`tier 2 "${tier2.resource}" is in the approved allowlist`);
       }
       return ask(
@@ -333,8 +346,16 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
     if (/\bgit\s+(?:commit|merge|push)\b[^|;&]*\s--no-verify(?:\s|$)|\bgit\s+commit\b[^|;&]*\s-[a-mo-zA-Z]*n[a-zA-Z]*(?:\s|$)|\bHUSKY=0\b/.test(cmd)) {
       return deny("skipping the git hooks (--no-verify, HUSKY=0) is not allowed: fix what the hook reports");
     }
-    if (AIDW_COMMAND.test(cmd) && !SHELL_CHAINING.test(cmd)) return null;
-    const writes = firstMatch(WRITE_COMMANDS, maskQuotedAngles(cmd));
+    // H1: code handed to an interpreter inline is a write the gate cannot see; a Role denied Bash writes may not run it.
+    // Quoted text (a commit message, a grep pattern) is masked first, so it is never read as a command.
+    const masked = maskQuoted(cmd);
+    const code = role === "reviewer" || role === "author" ? firstMatch(INLINE_CODE, masked) : undefined;
+    if (code) return deny(`the ${role} may not write by Bash, and this command ${code.why} that could write; use Read, Grep and the project's own scripts`);
+    if (AIDW_COMMAND.test(cmd) && !SHELL_CHAINING.test(masked) && !ODD_CHARACTER.test(masked)) return null;
+    const writes = firstMatch(WRITE_COMMANDS, masked);
+    if (role === "implementer" && writeTargets(cmd).some((t) => IMPLEMENTER_PROTECTED.test(t))) {
+      return deny("implementers do not write .aidw/ or a verdict, by Bash either; the orchestrator records progress and evidence");
+    }
     if (writes) {
       if (role === "reviewer") return deny(`the reviewer is read-only (this command ${writes.why})`);
       if (role === "author") return deny(`an authoring role writes its files with the Write tool, inside ${AIDW_DIR}/ (this command ${writes.why})`);
