@@ -152,6 +152,24 @@ describe("three tasks of a Wave meet in one file", () => {
     expect(r.json().checks.map((x: { task: string }) => x.task).sort()).toEqual(["T01", "T02", "T03"]);
   });
 
+  it("a partner merged after the conflict was found is briefed and checked too", () => {
+    // T02 and T03 both conflict with T01; T02 is resolved and merged first. When T03's merge is started, the change
+    // branch carries T02's README line as well, so T02 is the other side of T03's conflict too.
+    const root = wave();
+    expect(c(root, "review", "T01", "pass").code).toBe(0);
+    expect(c(root, "review", "T02", "pass").code).toBe(0);
+    expect(c(root, "review", "T03", "pass").code).toBe(0);
+    integrate(root, "T02", "# demo\nfrom T01\nfrom T02\n");
+    const text = brief(root, "T03");
+    expect(readFileSync(join(wt(root, "T03"), "README.md"), "utf8")).toMatch(/from T02/); // T02's side is in the merge
+    expect(text).toContain("Reports"); // ... so the integration Role must know T02
+    expect(text).toContain("node check.js lib/b/report.js");
+    write(wt(root, "T03"), "README.md", "# demo\nfrom T01\nfrom T02\nfrom T03\n");
+    const r = c(root, "resolve", "T03", "--json");
+    expect(r.code).toBe(0);
+    expect(r.json().checks.map((x: { task: string }) => x.task)).toContain("T02"); // ... and T02's checks run again
+  });
+
   it("the partner still in the Wave: a running task does not block the resolution, integrate waits for it", () => {
     const root = wave(["T01", "T02"]);
     expect(c(root, "task", "start", "T03", "--worktree").code).toBe(0); // T03 still being implemented
@@ -198,10 +216,13 @@ describe("a session restart in the middle of the flow", () => {
     c(root, "review", "T02", "pass");
     brief(root, "T02");
     const onto = (task(root, "T02").conflict as Record<string, unknown>).onto;
+    const mergeHead = g(wt(root, "T02"), "rev-parse", "MERGE_HEAD");
+    expect(mergeHead).toBe(onto);
     write(wt(root, "T02"), "README.md", "# demo\nfrom T01\nfrom T02\n"); // the Agent's half-done work
     const again = brief(root, "T02");
     expect(again).toContain("README.md");
     expect((task(root, "T02").conflict as Record<string, unknown>).onto).toBe(onto);
+    expect(g(wt(root, "T02"), "rev-parse", "MERGE_HEAD")).toBe(mergeHead);
     expect(readFileSync(join(wt(root, "T02"), "README.md"), "utf8")).toBe("# demo\nfrom T01\nfrom T02\n");
     expect(next(root)).toMatchObject({ action: "resolve", task: "T02" });
     expect(c(root, "resolve", "T02").code).toBe(0);
@@ -328,6 +349,24 @@ describe("what the integration Agent did with git", () => {
     expect(r.json().ok).toBe(false);
     expect(g(root, "log", "--all", "-p").includes(`AKIA${"A".repeat(16)}`)).toBe(false);
   });
+
+  it("it committed a credential itself: resolve still refuses it", () => {
+    const root = briefed();
+    write(wt(root, "T02"), "README.md", `# demo\nfrom T01\nfrom T02\nkey: AKIA${"A".repeat(16)}\n`);
+    g(wt(root, "T02"), "commit", "-qam", "resolve");
+    const r = c(root, "resolve", "T02", "--json");
+    expect(r.code).toBe(1);
+    expect(task(root, "T02")).toMatchObject({ status: "pending", sequential: true });
+  });
+
+  it("it left conflict markers in a file outside the conflict list: refused", () => {
+    const root = briefed();
+    write(wt(root, "T02"), "README.md", "# demo\nfrom T01\nfrom T02\n");
+    write(wt(root, "T02"), "lib/b/notes.md", "<<<<<<< HEAD\nfrom T01\n=======\nfrom T02\n>>>>>>> aidw\n");
+    const r = c(root, "resolve", "T02", "--json");
+    expect(r.code).toBe(1);
+    expect(r.json().reason).toMatch(/markers.*lib\/b\/notes\.md/);
+  });
 });
 
 describe("conflicts that are not two text edits", () => {
@@ -346,7 +385,7 @@ describe("conflicts that are not two text edits", () => {
     expect(r.json().checks.map((x: { task: string }) => x.task)).toEqual(["T02"]);
   });
 
-  it("a binary file both tasks changed: listed in the conflict and in the brief", () => {
+  it("a binary file both tasks changed: no marker can show it, so the brief drops the task (binary file)", () => {
     const png = (n: number) => Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 0, 0, n, 0, 1, 2, 3]);
     const root = wave(["T01", "T02"], () => ({}));
     for (const [t, n] of [["T01", 1], ["T02", 2]] as const) writeFileSync(join(wt(root, t), "logo.png"), png(n));
@@ -354,7 +393,13 @@ describe("conflicts that are not two text edits", () => {
     expect(c(root, "review", "T01", "pass").code).toBe(0);
     expect(c(root, "review", "T02", "pass", "--json").json()).toMatchObject({ status: "conflict" });
     expect(task(root, "T02").conflict).toMatchObject({ with: ["T01"], files: ["logo.png"] });
-    expect(brief(root, "T02")).toContain("logo.png");
+    const r = c(root, "brief", "T02", "--for", "conflict");
+    expect(r.code).not.toBe(0);
+    expect(r.err).toMatch(/binary file.*logo\.png/);
+    expect(task(root, "T02")).toMatchObject({ status: "pending", sequential: true });
+    expect(existsSync(wt(root, "T02"))).toBe(false);
+    expect(conflicts(root)[0]).toMatchObject({ outcome: "dropped" });
+    expect(String(conflicts(root)[0]!.reason)).toMatch(/binary file/);
   });
 });
 
@@ -389,5 +434,87 @@ describe("under the runner (aidw run)", () => {
     expect(r.code).toBe(1);
     expect(r.out).toMatch(/^DROPPED T02: conflict markers/);
     expect(r.out).toMatch(/NEXT: /);
+  });
+});
+
+describe("review findings (B1, N2, N4, N8)", () => {
+  function briefed(): string {
+    const root = wave(["T01", "T02"]);
+    c(root, "review", "T01", "pass");
+    c(root, "review", "T02", "pass");
+    brief(root, "T02");
+    return root;
+  }
+
+  it("a resolution that skips T01's scenario test is dropped by the checkpoint's guards", () => {
+    const root = briefed();
+    write(wt(root, "T02"), "README.md", "# demo\nfrom T01\nfrom T02\n");
+    write(wt(root, "T02"), "tests/a/booking.test.js", `test.skip("${SCENARIO}: works", () => {})\n`);
+    const r = c(root, "resolve", "T02", "--json");
+    expect(r.code).toBe(1);
+    expect(r.json().reason).toMatch(/skip|disabled|switched off|tests/i);
+    expect(task(root, "T02")).toMatchObject({ status: "pending", sequential: true });
+    const ev = JSON.parse(readFileSync(join(root, cdir, "evidence/merge-T02.json"), "utf8"));
+    expect(ev.guards.flatMap((x: { problems: string[] }) => x.problems).join("; ")).toMatch(/tests\/a\/booking\.test\.js/);
+  });
+
+  it("a resolution that deletes T01's scenario test is dropped", () => {
+    const root = briefed();
+    write(wt(root, "T02"), "README.md", "# demo\nfrom T01\nfrom T02\n");
+    execFileSync("git", ["rm", "-q", "-f", "tests/a/booking.test.js"], { cwd: wt(root, "T02") });
+    const r = c(root, "resolve", "T02", "--json");
+    expect(r.code).toBe(1);
+    expect(r.json().reason).toMatch(/tests\/a\/booking\.test\.js/);
+    expect(task(root, "T02")).toMatchObject({ status: "pending", sequential: true });
+  });
+
+  it("the brief's merge fails (a file in the way): dropped at once", () => {
+    const root = wave(["T01", "T02"]);
+    c(root, "review", "T01", "pass");
+    c(root, "review", "T02", "pass");
+    write(wt(root, "T02"), "tests/a/booking.test.js", "// in the way\n"); // untracked, the merge would overwrite it
+    const r = c(root, "brief", "T02", "--for", "conflict");
+    expect(r.code).not.toBe(0);
+    expect(r.err).toMatch(/could not be merged/);
+    expect(task(root, "T02")).toMatchObject({ status: "pending", sequential: true });
+    expect(conflicts(root)[0]).toMatchObject({ outcome: "dropped" });
+  });
+
+  it("a check the machine refused leaves the conflict open; resolve again after the restart passes", () => {
+    const root = briefed();
+    write(wt(root, "T02"), "README.md", "# demo\nfrom T01\nfrom T02\n");
+    const flag = join(root, "refuse.flag");
+    writeFileSync(flag, "1");
+    // T02's verify (`node check.js ...`, run in the worktree) reports an environment refusal while the flag exists
+    const check = `const fs=require('fs');if(fs.existsSync(${JSON.stringify(flag)})){console.log('EPERM: Operation not permitted');process.exit(1)}process.exit(fs.existsSync(process.argv[2])?0:1);\n`;
+    write(wt(root, "T02"), "check.js", check);
+    const r = c(root, "resolve", "T02", "--json");
+    expect(r.code).toBe(1);
+    expect(r.json()).toMatchObject({ ok: false, blocked: true });
+    const text = c(root, "next").out;
+    expect(text).toMatch(/resolve the merge conflict of T02/);
+    expect(task(root, "T02")).toMatchObject({ status: "conflict", conflict: { phase: "open" } });
+    expect(existsSync(wt(root, "T02"))).toBe(true);
+    expect(conflicts(root)[0]).toMatchObject({ outcome: "open" });
+    // the merge commit is already there (restart after the resolve commit)
+    expect(g(wt(root, "T02"), "rev-list", "--parents", "-n1", "HEAD").split(" ")).toHaveLength(3);
+    const plain = c(root, "resolve", "T02");
+    expect(plain.out).toMatch(/^BLOCKED \(environment\) T02: .*nothing dropped/);
+    expect(plain.out).toMatch(/NEXT: .*aidw resolve T02 .*outside the sandbox/);
+    execFileSync("rm", [flag]);
+    const again = c(root, "resolve", "T02", "--json");
+    expect(again.code, again.out).toBe(0);
+    expect(task(root, "T02")).toMatchObject({ conflict: { phase: "review" } });
+  });
+
+  it("the record is closed as resolved only by the commit of the final merge", () => {
+    const root = briefed();
+    write(wt(root, "T02"), "README.md", "# demo\nfrom T01\nfrom T02\n");
+    expect(c(root, "resolve", "T02").code).toBe(0);
+    expect(conflicts(root)[0]).toMatchObject({ outcome: "open" });
+    write(root, ".aidw/run/review-T02.md", "VERDICT: pass\nok\n");
+    expect(c(root, "verdict", "T02", "--json").json()).toMatchObject({ status: "done" });
+    expect(conflicts(root)[0]).toMatchObject({ outcome: "resolved" });
+    expect(g(root, "status", "--porcelain")).toBe("");
   });
 });

@@ -229,6 +229,15 @@ export function recordConflict(change: Change, entry: Omit<ConflictRecord, "at" 
   writeConflicts(change, [...readConflicts(change), { at: now(), ...entry, outcome: "open" }]);
 }
 
+/** Updates the task's latest record (the files and tasks found again when the merge is started, or reopened). */
+export function updateConflict(change: Change, taskId: string, patch: Partial<Pick<ConflictRecord, "with" | "files" | "outcome">>): void {
+  const records = readConflicts(change);
+  const last = records.map((r) => r.task).lastIndexOf(taskId);
+  if (last < 0) return;
+  records[last] = { ...(records[last] as ConflictRecord), ...patch };
+  writeConflicts(change, records);
+}
+
 /** Closes the task's latest record: resolved by integration, or dropped (the task reruns sequentially). */
 export function closeConflict(change: Change, taskId: string, outcome: Exclude<ConflictOutcome, "open">, reason?: string): void {
   const records = readConflicts(change);

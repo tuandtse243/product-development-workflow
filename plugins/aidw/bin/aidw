@@ -11568,6 +11568,13 @@ function writeConflicts(change, records) {
 function recordConflict(change, entry) {
   writeConflicts(change, [...readConflicts(change), { at: now2(), ...entry, outcome: "open" }]);
 }
+function updateConflict(change, taskId, patch) {
+  const records = readConflicts(change);
+  const last = records.map((r) => r.task).lastIndexOf(taskId);
+  if (last < 0) return;
+  records[last] = { ...records[last], ...patch };
+  writeConflicts(change, records);
+}
 function closeConflict(change, taskId, outcome, reason) {
   const records = readConflicts(change);
   const last = records.map((r) => r.task).lastIndexOf(taskId);
@@ -14332,7 +14339,6 @@ function recordReview(p, id, taskId, verdict, notes, opts = {}) {
       return { task: taskId, verdict, status: "pending", commit: null, conflict: why };
     }
     setField(tf, i, "conflict", { ...t.conflict, phase: "merged" });
-    closeConflict(tf.change, taskId, "resolved");
   }
   if (verdict === "fix") {
     const exhausted = attemptsOf(t) >= maxAttemptsOf(t);
@@ -14361,6 +14367,7 @@ function recordReview(p, id, taskId, verdict, notes, opts = {}) {
     setField(tf, i, "merged_at", now5());
     setField(tf, i, "worktree", null);
     setField(tf, i, "branch", null);
+    if (mergeReview) closeConflict(tf.change, taskId, "resolved");
   }
   setField(tf, i, "status", "done");
   setField(tf, i, "plan_sha", planSha(t));
@@ -14382,7 +14389,11 @@ function recordReview(p, id, taskId, verdict, notes, opts = {}) {
       setField(tf, i, "branch", t.branch);
       setField(tf, i, "merged_at", null);
     }
-    setField(tf, i, "status", "review");
+    setField(tf, i, "status", mergeReview ? "conflict" : "review");
+    if (mergeReview) {
+      setField(tf, i, "conflict", t.conflict);
+      updateConflict(tf.change, taskId, { outcome: "open" });
+    }
     setField(tf, i, "finished_at", null);
     saveTasks(tf);
     throw new OpError(`task ${taskId} passed review but the commit failed: ${commit.err || commit.out}`);
@@ -16163,7 +16174,9 @@ var import_node_fs39 = require("node:fs");
 var import_node_path44 = require("node:path");
 var list6 = (v) => Array.isArray(v) ? v.map(String) : [];
 var now6 = () => (/* @__PURE__ */ new Date()).toISOString();
-var MARKER = /^(?:<{7}|>{7})(?: |$)/m;
+var MARKER = /^(?:<{7}|>{7}|\|{7})(?: |$)|^={7}$/m;
+var TOOLING_TYPES2 = /* @__PURE__ */ new Set(["build", "ci", "chore"]);
+var ENV_FILE2 = /(^|\/)\.env(?:\.(?!example$)[\w.-]+)?$/;
 function openConflict(p, id, taskId, phase) {
   const tf = loadTasks(p, id);
   requireExecuting(p, tf.change);
@@ -16202,22 +16215,38 @@ function writeBrief(p, id, name, text2) {
   return path;
 }
 function buildConflictBrief(p, id, taskId) {
-  const o = openConflict(p, id, taskId, "open");
-  const { t, c, dir, partners } = o;
+  let o = openConflict(p, id, taskId, "open");
   const changeBranch = git(p.project, ["branch", "--show-current"]).out || "HEAD";
-  let onto = typeof c.onto === "string" ? c.onto : null;
+  let onto = typeof o.c.onto === "string" ? o.c.onto : null;
   if (!onto) {
-    onto = headCommit(p.project);
-    if (!onto) throw new OpError("the change branch has no commit to merge");
-    const m = git(dir, ["merge", "--no-ff", "--no-commit", "-q", onto]);
-    if (!m.ok && !mergeInProgress(dir)) {
-      const why = `the change branch could not be merged into the worktree of ${taskId} (${(m.err || m.out).split("\n")[0]})`;
+    if (mergeInProgress(o.dir)) {
+      onto = git(o.dir, ["rev-parse", "MERGE_HEAD"]).out;
+    } else {
+      onto = headCommit(p.project);
+      if (!onto) throw new OpError("the Change Branch has no commit to merge");
+      const m = git(o.dir, ["merge", "--no-ff", "--no-commit", "-q", onto]);
+      if (!m.ok && !mergeInProgress(o.dir)) {
+        const why = `the Change Branch could not be merged into the worktree of ${taskId} (${(m.err || m.out).split("\n")[0]})`;
+        dropConflictTask(p, id, taskId, why);
+        throw new OpError(`${why}; ${taskId} was dropped and reruns sequentially on the latest code`);
+      }
+    }
+    const unmerged = git(o.dir, ["diff", "--name-only", "--diff-filter=U"]).out.split("\n").filter(Boolean);
+    const conflictFiles = unmerged.length ? unmerged : list6(o.c.files);
+    const partners2 = conflictPartners(p, taskId, typeof o.t.base === "string" ? o.t.base : null, conflictFiles);
+    const from = onto;
+    const binary = conflictFiles.filter((f) => /^-\t-\t/.test(git(o.dir, ["diff", "--numstat", from, "HEAD", "--", f]).out));
+    setField(o.tf, o.i, "conflict", { ...o.c, with: partners2, files: conflictFiles, onto, branch: changeBranch });
+    saveTasksDoc(o.tf);
+    updateConflict(o.tf.change, taskId, { with: partners2, files: conflictFiles });
+    if (binary.length) {
+      const why = `binary file in the conflict (${binary.join(", ")}): no marker shows both sides`;
       dropConflictTask(p, id, taskId, why);
       throw new OpError(`${why}; ${taskId} was dropped and reruns sequentially on the latest code`);
     }
-    setField(o.tf, o.i, "conflict", { ...c, onto, branch: changeBranch });
-    saveTasksDoc(o.tf);
+    o = openConflict(p, id, taskId, "open");
   }
+  const { t, c, dir, partners } = o;
   const files = list6(c.files);
   const branch = String(t.branch ?? "");
   const text2 = [
@@ -16225,14 +16254,14 @@ function buildConflictBrief(p, id, taskId) {
     "",
     `Change \`${id}\` \xB7 a merge conflict between tasks of one Wave`,
     "",
-    "You are the integration Role in a fresh context. You did not write either side. Two tasks ran side by side in their own",
-    "worktrees; both passed their checks and their reviews, but their work meets in the same files, so the second merge",
-    "conflicts. Resolve the conflict so that **both** tasks' behaviour holds. This is not a split-Slice task: follow this brief.",
+    "You are the integration Role in a fresh context. You did not write either side. Two tasks ran side by side, each in its",
+    "own **Task Worktree**; both passed their checks and their reviews, but their work meets in the same files, so the second",
+    "merge into the **Change Branch** conflicts. Resolve the conflict so that **both** tasks' behaviour holds. This is not a split-Slice task: follow this brief.",
     "",
     "## The tasks",
     "",
     `- **${taskId}** is the task being merged, built on branch \`${branch}\` in the worktree below.`,
-    partners.length ? `- ${partners.map((x) => `**${x.id}**`).join(", ")} ${partners.length > 1 ? "are" : "is"} already merged into the change branch \`${changeBranch}\` (commit \`${onto.slice(0, 12)}\`).` : `- The other side is the change branch \`${changeBranch}\` (commit \`${onto.slice(0, 12)}\`): no task commit changed these files.`,
+    partners.length ? `- ${partners.map((x) => `**${x.id}**`).join(", ")} ${partners.length > 1 ? "are" : "is"} already merged into the Change Branch \`${changeBranch}\` (commit \`${onto.slice(0, 12)}\`).` : `- The other side is the Change Branch \`${changeBranch}\` (commit \`${onto.slice(0, 12)}\`): no task commit changed these files.`,
     "",
     ...taskLines(t),
     ...partners.flatMap(taskLines),
@@ -16242,7 +16271,7 @@ function buildConflictBrief(p, id, taskId) {
     "",
     "## Where",
     "",
-    `aidw merged \`${changeBranch}\` (\`${onto.slice(0, 12)}\`) into \`${branch}\` in the worktree \`${dir}\` and stopped at the conflicts. \`cd\` there and work only there; never edit the main checkout \`${p.project}\` nor the worktree's own \`.aidw/\`. \`git diff\` shows the conflicting hunks; \`git log --oneline ${onto.slice(0, 12)} -5\` and \`git log --oneline HEAD -5\` show each side's commits.`,
+    `aidw merged \`${changeBranch}\` (\`${onto.slice(0, 12)}\`) into \`${branch}\` in the Task Worktree \`${dir}\` and stopped at the conflicts. \`cd\` there and work only there; never edit the main checkout \`${p.project}\` nor the worktree's own \`.aidw/\`. \`git diff\` shows the conflicting hunks; \`git log --oneline ${onto.slice(0, 12)} -5\` and \`git log --oneline HEAD -5\` show each side's commits.`,
     "",
     "## Rules",
     "",
@@ -16280,17 +16309,11 @@ function resolveConflict(p, id, taskId, opts = {}) {
     dropConflictTask(p, id, taskId, `merge conflict not resolved: ${reason}`);
     return out;
   };
-  const unmerged = git(dir, ["diff", "--name-only", "--diff-filter=U"]).out.split("\n").filter(Boolean);
-  const marked = [.../* @__PURE__ */ new Set([...files, ...unmerged])].filter((f) => {
-    const file = (0, import_node_path44.join)(dir, f);
-    return (0, import_node_fs39.existsSync)(file) && MARKER.test((0, import_node_fs39.readFileSync)(file, "utf8"));
-  });
-  if (marked.length) return fail(`conflict markers are left in ${marked.join(", ")}`);
   if (mergeInProgress(dir)) {
     const add = git(dir, ["add", "-A", "--", ".", ":(exclude).aidw"]);
     if (!add.ok) return fail(`git add in the worktree failed: ${add.err}`);
-    const junk = stagedJunk(dir);
-    if (junk.length) return fail(junkMessage(junk));
+    const junk2 = stagedJunk(dir);
+    if (junk2.length) return fail(junkMessage(junk2));
     const leaked = stagedSecrets(dir);
     if (leaked.length) return fail(secretsMessage(leaked));
     const left = git(dir, ["diff", "--name-only", "--diff-filter=U"]).out;
@@ -16298,10 +16321,42 @@ function resolveConflict(p, id, taskId, opts = {}) {
     const commit = git(dir, ["commit", "-q", "--no-edit"]);
     if (!commit.ok) return fail(`the merge commit failed: ${(commit.err || commit.out).split("\n")[0]}`);
   } else if (!git(dir, ["merge-base", "--is-ancestor", onto, "HEAD"]).ok) {
-    return fail("the merge of the change branch is no longer in the worktree (was it aborted?)");
+    return fail("the merge of the Change Branch is no longer in the worktree (was it aborted?)");
   }
   const resolution = headCommit(dir);
-  const runner2 = opts.runner ?? shellRunner;
+  if (!resolution) return fail("the worktree has no commit");
+  const taskSide = git(dir, ["rev-parse", `${resolution}^1`]).out || onto;
+  const sides = [.../* @__PURE__ */ new Set([taskSide, onto])];
+  const changedBy = new Map(sides.map((side) => [side, git(dir, ["diff", "--name-only", side, resolution]).out.split("\n").filter(Boolean)]));
+  const touched = [...new Set([...changedBy.values()].flat())];
+  const marked = touched.filter((f) => {
+    const file = (0, import_node_path44.join)(dir, f);
+    if (!(0, import_node_fs39.existsSync)(file)) return false;
+    const text2 = (0, import_node_fs39.readFileSync)(file);
+    return !text2.includes(0) && MARKER.test(text2.toString("utf8"));
+  });
+  if (marked.length) return fail(`conflict markers are left in ${marked.join(", ")}`);
+  const junk = touched.filter((f) => isGeneratedPath(f) || ENV_FILE2.test(f));
+  if (junk.length) return fail(junkMessage(junk));
+  const tooling = [t, ...partners].some((x) => typeof x.type === "string" && TOOLING_TYPES2.has(x.type));
+  const guards = sides.map((side) => {
+    const changed = changedBy.get(side) ?? [];
+    const tamper = tamperEvidence(dir, side, changed, { isTest: (f) => TEST_FILE.test(f), removesTests: false });
+    const config = configEvidence(dir, side, changed, tooling ? "build" : t.type);
+    const secrets = secretsInChanges(dir, side, changed) ?? [];
+    const packages = packageEvidence(dir, side, changed);
+    const problems = [
+      ...tamperProblems(tamper),
+      ...config?.locked.length ? [`check configuration changed: ${config.locked.join(", ")}`] : [],
+      ...secrets.length ? [secretsProblem(secrets)] : [],
+      ...packageProblems(packages)
+    ];
+    return { side, changed, problems, ...tamper ? { tamper } : {}, ...config ? { config } : {}, ...secrets.length ? { secrets } : {}, ...packages ? { packages } : {} };
+  });
+  const guarded = { ...base2, resolution, guards };
+  const problem = guards.flatMap((x) => x.problems)[0];
+  if (problem) return fail(problem, guarded);
+  const runner2 = opts.runner ?? retryingShellRunner;
   const checks = [t, ...partners].map((x) => {
     const found = findScenarioTests(dir, list6(x.scenarios));
     const missing = Object.entries(found).filter(([, where]) => where.length === 0).map(([s]) => s);
@@ -16314,7 +16369,12 @@ function resolveConflict(p, id, taskId, opts = {}) {
     }
     return { task: x.id, missing_scenarios: missing, runs, ok: missing.length === 0 && runs.every((r) => r.exit === 0) };
   });
-  const result = { ...base2, resolution, checks };
+  const refused = checks.flatMap((x) => x.runs).find((r) => r.exit !== 0 && !r.timedOut && ENVIRONMENT_FAILURE.test(r.tail));
+  if (refused) {
+    const why = `environment: \`${refused.command}\` was refused by the machine (${ENVIRONMENT_FAILURE.exec(refused.tail)?.[0]}), not by the code`;
+    return record({ ...guarded, checks, ok: false, blocked: true, reason: why });
+  }
+  const result = { ...guarded, checks };
   const bad = checks.find((x) => !x.ok);
   if (bad) {
     const failed = bad.runs.find((r) => r.exit !== 0);
@@ -17041,6 +17101,8 @@ ${r.ok && r.ran ? "Previews work from now on: run aidw deploy.\n" : ""}`);
           ...c.runs.map((x) => `  ${x.exit === 0 ? "ok     " : "FAILED "} ${c.task} ${x.command}`)
         ]);
         let after = nextLine(p, id);
+        if (r.blocked) after = `NEXT: the machine refused a check, not the code. Run \`aidw resolve ${taskId} --change ${id}\` once more outside the sandbox (dangerouslyDisableSandbox: true); if it is blocked again, escalate with this line.
+`;
         if (r.ok) {
           const mb = buildMergeReviewBrief(p, id, taskId);
           after = `review brief ${mb.path}
@@ -17050,7 +17112,7 @@ Then: aidw verdict ${taskId}
         }
         emit(
           { change: id, ...r },
-          `${r.ok ? "RESOLVED" : "DROPPED"} ${taskId}: ${r.ok ? `merge ${String(r.resolution).slice(0, 8)}; both tasks' checks pass` : `${r.reason}; the task reruns sequentially on the latest code`}
+          `${r.ok ? "RESOLVED" : r.blocked ? "BLOCKED (environment)" : "DROPPED"} ${taskId}: ${r.ok ? `merge ${String(r.resolution).slice(0, 8)}; both tasks' checks pass` : r.blocked ? `${r.reason}; nothing dropped, the conflict stays open` : `${r.reason}; the task reruns sequentially on the latest code`}
 ${lines.length ? `${lines.join("\n")}
 ` : ""}${after}`
         );

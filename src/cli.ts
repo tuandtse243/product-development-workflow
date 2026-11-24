@@ -763,13 +763,14 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           ...c.runs.map((x) => `  ${x.exit === 0 ? "ok     " : "FAILED "} ${c.task} ${x.command}`),
         ]);
         let after = nextLine(p, id);
+        if (r.blocked) after = `NEXT: the machine refused a check, not the code. Run \`aidw resolve ${taskId} --change ${id}\` once more outside the sandbox (dangerouslyDisableSandbox: true); if it is blocked again, escalate with this line.\n`;
         if (r.ok) {
           const mb = buildMergeReviewBrief(p, id, taskId);
           after = `review brief ${mb.path}\nSPAWN ${AGENTS.taskReview} with: Merge review brief: ${mb.path}. Review the merge and reply with the verdict.\nThen: aidw verdict ${taskId}\n`;
         }
         emit(
           { change: id, ...r },
-          `${r.ok ? "RESOLVED" : "DROPPED"} ${taskId}: ${r.ok ? `merge ${String(r.resolution).slice(0, 8)}; both tasks' checks pass` : `${r.reason}; the task reruns sequentially on the latest code`}\n${lines.length ? `${lines.join("\n")}\n` : ""}${after}`,
+          `${r.ok ? "RESOLVED" : r.blocked ? "BLOCKED (environment)" : "DROPPED"} ${taskId}: ${r.ok ? `merge ${String(r.resolution).slice(0, 8)}; both tasks' checks pass` : r.blocked ? `${r.reason}; nothing dropped, the conflict stays open` : `${r.reason}; the task reruns sequentially on the latest code`}\n${lines.length ? `${lines.join("\n")}\n` : ""}${after}`,
         );
         return r.ok ? 0 : 1;
       }

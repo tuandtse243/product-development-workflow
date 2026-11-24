@@ -26,7 +26,7 @@ import { defaultTaskRole, implementerOf } from "./roles.js";
 import { packsFor, packsOf } from "./stackpacks.js";
 import { OpError, transition } from "./ops.js";
 import { readText, rel, walkFiles, type Paths } from "./project.js";
-import { closeConflict, conflictPartners, ensureWorktree, recordConflict, removeSnapshot, snapshotBase, integrate, mergeWorktree, parallelConfig, pendingIntegration, planWave, removeWorktree, taskDir, type IntegrateResult } from "./parallel.js";
+import { closeConflict, conflictPartners, ensureWorktree, recordConflict, updateConflict, removeSnapshot, snapshotBase, integrate, mergeWorktree, parallelConfig, pendingIntegration, planWave, removeWorktree, taskDir, type IntegrateResult } from "./parallel.js";
 import { parseQuality, qualityFile, resetQualitySummary } from "./quality.js";
 import { selectSkills, skillPath, SKILLS_WITH_NOTES, touchesUi, isSecuritySensitive, type BriefKind } from "./skills.js";
 import { configEvidence, type ConfigEvidence } from "./configlock.js";
@@ -249,7 +249,7 @@ export function retryTask(p: Paths, id: string, taskId: string): { task: string 
 // ---------------------------------------------------------------- evidence
 
 const SKIP_DIRS = new Set(["node_modules", ".git", ".aidw", ".next", ".nuxt", ".svelte-kit", ".turbo", ".vercel", "dist", "build", "out", "coverage", "playwright-report", "test-results"]);
-const TEST_FILE = /(^|\/)(__tests__|tests?|e2e|specs?)\/|\.(test|spec|e2e)\.[a-z0-9]+$/i;
+export const TEST_FILE = /(^|\/)(__tests__|tests?|e2e|specs?)\/|\.(test|spec|e2e)\.[a-z0-9]+$/i;
 const MAX_TEST_FILE = 1024 * 1024;
 
 function walkProject(dir: string, root: string, out: string[]): void {
@@ -663,7 +663,6 @@ export function recordReview(
       return { task: taskId, verdict, status: "pending", commit: null, conflict: why };
     }
     setField(tf, i, "conflict", { ...(t.conflict as Record<string, unknown>), phase: "merged" });
-    closeConflict(tf.change, taskId, "resolved");
   }
 
   if (verdict === "fix") {
@@ -696,6 +695,8 @@ export function recordReview(
     setField(tf, i, "merged_at", now());
     setField(tf, i, "worktree", null);
     setField(tf, i, "branch", null);
+    // Written before the commit so it is part of it; reopened below when the commit fails.
+    if (mergeReview) closeConflict(tf.change, taskId, "resolved");
   }
   setField(tf, i, "status", "done");
   setField(tf, i, "plan_sha", planSha(t));
@@ -719,7 +720,12 @@ export function recordReview(
       setField(tf, i, "branch", t.branch);
       setField(tf, i, "merged_at", null);
     }
-    setField(tf, i, "status", "review");
+    setField(tf, i, "status", mergeReview ? "conflict" : "review");
+    if (mergeReview) {
+      // the merge review is recorded again once the commit can be made
+      setField(tf, i, "conflict", t.conflict);
+      updateConflict(tf.change, taskId, { outcome: "open" });
+    }
     setField(tf, i, "finished_at", null);
     saveTasks(tf);
     throw new OpError(`task ${taskId} passed review but the commit failed: ${commit.err || commit.out}`);

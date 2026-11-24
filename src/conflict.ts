@@ -15,17 +15,37 @@
  */
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { git, headCommit, junkMessage, stagedJunk } from "./git.js";
+import { configEvidence } from "./configlock.js";
+import { packageEvidence, packageProblems } from "./depsafety.js";
+import { git, headCommit, isGeneratedPath, junkMessage, stagedJunk } from "./git.js";
 import { OpError } from "./ops.js";
-import { taskDir } from "./parallel.js";
+import { conflictPartners, taskDir, updateConflict } from "./parallel.js";
 import { rel, type Paths } from "./project.js";
-import { dropConflictTask, evidenceRel, findScenarioTests, loadTasks, requireExecuting, saveTasksDoc, setField, shellRunner, type CommandRunner, type TaskFile, type VerifyRun } from "./run.js";
-import { secretsMessage, stagedSecrets } from "./secrets.js";
+import {
+  dropConflictTask,
+  ENVIRONMENT_FAILURE,
+  evidenceRel,
+  findScenarioTests,
+  loadTasks,
+  requireExecuting,
+  retryingShellRunner,
+  saveTasksDoc,
+  setField,
+  TEST_FILE,
+  type CommandRunner,
+  type TaskFile,
+  type VerifyRun,
+} from "./run.js";
+import { secretsInChanges, secretsMessage, secretsProblem, stagedSecrets } from "./secrets.js";
+import { tamperEvidence, tamperProblems } from "./tamper.js";
 import type { Task } from "./tasks.js";
 
 const list = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : []);
 const now = () => new Date().toISOString();
-const MARKER = /^(?:<{7}|>{7})(?: |$)/m;
+/** Conflict markers, the diff3 base marker included. */
+const MARKER = /^(?:<{7}|>{7}|\|{7})(?: |$)|^={7}$/m;
+const TOOLING_TYPES = new Set(["build", "ci", "chore"]);
+const ENV_FILE = /(^|\/)\.env(?:\.(?!example$)[\w.-]+)?$/;
 
 interface OpenConflict {
   tf: TaskFile;
@@ -84,22 +104,42 @@ function writeBrief(p: Paths, id: string, name: string, text: string): string {
  * merge; the gate denies it), leaving the conflict markers for the Agent to resolve. Later calls rebuild the brief only.
  */
 export function buildConflictBrief(p: Paths, id: string, taskId: string): { path: string; text: string } {
-  const o = openConflict(p, id, taskId, "open");
-  const { t, c, dir, partners } = o;
+  let o = openConflict(p, id, taskId, "open");
   const changeBranch = git(p.project, ["branch", "--show-current"]).out || "HEAD";
-  let onto = typeof c.onto === "string" ? c.onto : null;
+  let onto = typeof o.c.onto === "string" ? o.c.onto : null;
   if (!onto) {
-    onto = headCommit(p.project);
-    if (!onto) throw new OpError("the change branch has no commit to merge");
-    const m = git(dir, ["merge", "--no-ff", "--no-commit", "-q", onto]);
-    if (!m.ok && !mergeInProgress(dir)) {
-      const why = `the change branch could not be merged into the worktree of ${taskId} (${(m.err || m.out).split("\n")[0]})`;
+    if (mergeInProgress(o.dir)) {
+      // a restart between starting the merge and recording it: the merge in progress is the one to resolve
+      onto = git(o.dir, ["rev-parse", "MERGE_HEAD"]).out;
+    } else {
+      onto = headCommit(p.project);
+      if (!onto) throw new OpError("the Change Branch has no commit to merge");
+      const m = git(o.dir, ["merge", "--no-ff", "--no-commit", "-q", onto]);
+      if (!m.ok && !mergeInProgress(o.dir)) {
+        const why = `the Change Branch could not be merged into the worktree of ${taskId} (${(m.err || m.out).split("\n")[0]})`;
+        dropConflictTask(p, id, taskId, why);
+        throw new OpError(`${why}; ${taskId} was dropped and reruns sequentially on the latest code`);
+      }
+    }
+    // The Change Branch may have moved since the conflict was found (another task merged): the files and the tasks on
+    // the other side are those of this merge.
+    const unmerged = git(o.dir, ["diff", "--name-only", "--diff-filter=U"]).out.split("\n").filter(Boolean);
+    const conflictFiles = unmerged.length ? unmerged : list(o.c.files);
+    const partners = conflictPartners(p, taskId, typeof o.t.base === "string" ? o.t.base : null, conflictFiles);
+    // A binary file shows no markers: left as it is, one side would silently win.
+    const from = onto;
+    const binary = conflictFiles.filter((f) => /^-\t-\t/.test(git(o.dir, ["diff", "--numstat", from, "HEAD", "--", f]).out));
+    setField(o.tf, o.i, "conflict", { ...o.c, with: partners, files: conflictFiles, onto, branch: changeBranch });
+    saveTasksDoc(o.tf);
+    updateConflict(o.tf.change, taskId, { with: partners, files: conflictFiles });
+    if (binary.length) {
+      const why = `binary file in the conflict (${binary.join(", ")}): no marker shows both sides`;
       dropConflictTask(p, id, taskId, why);
       throw new OpError(`${why}; ${taskId} was dropped and reruns sequentially on the latest code`);
     }
-    setField(o.tf, o.i, "conflict", { ...c, onto, branch: changeBranch });
-    saveTasksDoc(o.tf);
+    o = openConflict(p, id, taskId, "open");
   }
+  const { t, c, dir, partners } = o;
   const files = list(c.files);
   const branch = String(t.branch ?? "");
   const text = [
@@ -107,16 +147,16 @@ export function buildConflictBrief(p: Paths, id: string, taskId: string): { path
     "",
     `Change \`${id}\` · a merge conflict between tasks of one Wave`,
     "",
-    "You are the integration Role in a fresh context. You did not write either side. Two tasks ran side by side in their own",
-    "worktrees; both passed their checks and their reviews, but their work meets in the same files, so the second merge",
-    "conflicts. Resolve the conflict so that **both** tasks' behaviour holds. This is not a split-Slice task: follow this brief.",
+    "You are the integration Role in a fresh context. You did not write either side. Two tasks ran side by side, each in its",
+    "own **Task Worktree**; both passed their checks and their reviews, but their work meets in the same files, so the second",
+    "merge into the **Change Branch** conflicts. Resolve the conflict so that **both** tasks' behaviour holds. This is not a split-Slice task: follow this brief.",
     "",
     "## The tasks",
     "",
     `- **${taskId}** is the task being merged, built on branch \`${branch}\` in the worktree below.`,
     partners.length
-      ? `- ${partners.map((x) => `**${x.id}**`).join(", ")} ${partners.length > 1 ? "are" : "is"} already merged into the change branch \`${changeBranch}\` (commit \`${onto.slice(0, 12)}\`).`
-      : `- The other side is the change branch \`${changeBranch}\` (commit \`${onto.slice(0, 12)}\`): no task commit changed these files.`,
+      ? `- ${partners.map((x) => `**${x.id}**`).join(", ")} ${partners.length > 1 ? "are" : "is"} already merged into the Change Branch \`${changeBranch}\` (commit \`${onto.slice(0, 12)}\`).`
+      : `- The other side is the Change Branch \`${changeBranch}\` (commit \`${onto.slice(0, 12)}\`): no task commit changed these files.`,
     "",
     ...taskLines(t),
     ...partners.flatMap(taskLines),
@@ -126,7 +166,7 @@ export function buildConflictBrief(p: Paths, id: string, taskId: string): { path
     "",
     "## Where",
     "",
-    `aidw merged \`${changeBranch}\` (\`${onto.slice(0, 12)}\`) into \`${branch}\` in the worktree \`${dir}\` and stopped at the conflicts. \`cd\` there and work only there; never edit the main checkout \`${p.project}\` nor the worktree's own \`.aidw/\`. \`git diff\` shows the conflicting hunks; \`git log --oneline ${onto.slice(0, 12)} -5\` and \`git log --oneline HEAD -5\` show each side's commits.`,
+    `aidw merged \`${changeBranch}\` (\`${onto.slice(0, 12)}\`) into \`${branch}\` in the Task Worktree \`${dir}\` and stopped at the conflicts. \`cd\` there and work only there; never edit the main checkout \`${p.project}\` nor the worktree's own \`.aidw/\`. \`git diff\` shows the conflicting hunks; \`git log --oneline ${onto.slice(0, 12)} -5\` and \`git log --oneline HEAD -5\` show each side's commits.`,
     "",
     "## Rules",
     "",
@@ -152,6 +192,17 @@ export interface MergeCheck {
   ok: boolean;
 }
 
+export interface GuardCheck {
+  /** the commit the resolution is compared with: the task's side or the Change Branch */
+  side: string;
+  changed: string[];
+  problems: string[];
+  tamper?: unknown;
+  config?: unknown;
+  secrets?: unknown;
+  packages?: unknown;
+}
+
 export interface ResolveResult {
   ok: boolean;
   task: string;
@@ -159,14 +210,20 @@ export interface ResolveResult {
   files: string[];
   resolution: string | null;
   checks: MergeCheck[];
-  /** why the resolution was dropped */
+  /** the checkpoint's guards on the committed resolution, against each side it joins */
+  guards?: GuardCheck[];
+  /** a check the machine refused: nothing dropped, the conflict stays open and resolve runs again */
+  blocked?: boolean;
+  /** why the resolution was dropped (or, when blocked, why it could not be judged) */
   reason?: string;
   evidence?: string;
 }
 
 /**
  * Checks and commits the integration Role's resolution in the task's worktree, then runs the checks of both tasks again:
- * each one's verify commands and a test per scenario. Pass: the merge waits for its review. Anything else: dropped.
+ * the checkpoint's guards (markers, junk, tamper, check configuration, secrets, packages) against both sides of the merge,
+ * then each task's verify commands and a test per scenario. Pass: the merge waits for its review. A check the machine
+ * refused leaves the conflict open. Anything else: dropped.
  */
 export function resolveConflict(p: Paths, id: string, taskId: string, opts: { runner?: CommandRunner; timeoutMs?: number } = {}): ResolveResult {
   const o = openConflict(p, id, taskId, "open");
@@ -188,13 +245,6 @@ export function resolveConflict(p: Paths, id: string, taskId: string, opts: { ru
     return out;
   };
 
-  const unmerged = git(dir, ["diff", "--name-only", "--diff-filter=U"]).out.split("\n").filter(Boolean);
-  const marked = [...new Set([...files, ...unmerged])].filter((f) => {
-    const file = join(dir, f);
-    return existsSync(file) && MARKER.test(readFileSync(file, "utf8"));
-  });
-  if (marked.length) return fail(`conflict markers are left in ${marked.join(", ")}`);
-
   if (mergeInProgress(dir)) {
     const add = git(dir, ["add", "-A", "--", ".", ":(exclude).aidw"]);
     if (!add.ok) return fail(`git add in the worktree failed: ${add.err}`);
@@ -207,11 +257,48 @@ export function resolveConflict(p: Paths, id: string, taskId: string, opts: { ru
     const commit = git(dir, ["commit", "-q", "--no-edit"]);
     if (!commit.ok) return fail(`the merge commit failed: ${(commit.err || commit.out).split("\n")[0]}`);
   } else if (!git(dir, ["merge-base", "--is-ancestor", onto, "HEAD"]).ok) {
-    return fail("the merge of the change branch is no longer in the worktree (was it aborted?)");
+    return fail("the merge of the Change Branch is no longer in the worktree (was it aborted?)");
   }
   const resolution = headCommit(dir);
+  if (!resolution) return fail("the worktree has no commit");
 
-  const runner = opts.runner ?? shellRunner;
+  // The resolution is judged against each side it joins, the way a checkpoint judges a task against its base: the
+  // task's own side (first parent) and the Change Branch it was merged with. The Agent may have committed it itself,
+  // so everything here reads the committed diff, not what was staged.
+  const taskSide = git(dir, ["rev-parse", `${resolution}^1`]).out || onto;
+  const sides = [...new Set([taskSide, onto])];
+  const changedBy = new Map(sides.map((side) => [side, git(dir, ["diff", "--name-only", side, resolution]).out.split("\n").filter(Boolean)]));
+  const touched = [...new Set([...changedBy.values()].flat())];
+  const marked = touched.filter((f) => {
+    const file = join(dir, f);
+    if (!existsSync(file)) return false;
+    const text = readFileSync(file);
+    return !text.includes(0) && MARKER.test(text.toString("utf8"));
+  });
+  if (marked.length) return fail(`conflict markers are left in ${marked.join(", ")}`);
+  const junk = touched.filter((f) => isGeneratedPath(f) || ENV_FILE.test(f));
+  if (junk.length) return fail(junkMessage(junk));
+
+  const tooling = [t, ...partners].some((x) => typeof x.type === "string" && TOOLING_TYPES.has(x.type));
+  const guards: GuardCheck[] = sides.map((side) => {
+    const changed = changedBy.get(side) ?? [];
+    const tamper = tamperEvidence(dir, side, changed, { isTest: (f) => TEST_FILE.test(f), removesTests: false });
+    const config = configEvidence(dir, side, changed, tooling ? "build" : t.type);
+    const secrets = secretsInChanges(dir, side, changed) ?? [];
+    const packages = packageEvidence(dir, side, changed);
+    const problems = [
+      ...tamperProblems(tamper),
+      ...(config?.locked.length ? [`check configuration changed: ${config.locked.join(", ")}`] : []),
+      ...(secrets.length ? [secretsProblem(secrets)] : []),
+      ...packageProblems(packages),
+    ];
+    return { side, changed, problems, ...(tamper ? { tamper } : {}), ...(config ? { config } : {}), ...(secrets.length ? { secrets } : {}), ...(packages ? { packages } : {}) };
+  });
+  const guarded: ResolveResult = { ...base, resolution, guards };
+  const problem = guards.flatMap((x) => x.problems)[0];
+  if (problem) return fail(problem, guarded);
+
+  const runner = opts.runner ?? retryingShellRunner;
   const checks: MergeCheck[] = [t, ...partners].map((x) => {
     const found = findScenarioTests(dir, list(x.scenarios));
     const missing = Object.entries(found).filter(([, where]) => where.length === 0).map(([s]) => s);
@@ -224,7 +311,13 @@ export function resolveConflict(p: Paths, id: string, taskId: string, opts: { ru
     }
     return { task: x.id, missing_scenarios: missing, runs, ok: missing.length === 0 && runs.every((r) => r.exit === 0) };
   });
-  const result: ResolveResult = { ...base, resolution, checks };
+  // A check the machine refused says nothing about the resolution: the conflict stays open and resolve runs again.
+  const refused = checks.flatMap((x) => x.runs).find((r) => r.exit !== 0 && !r.timedOut && ENVIRONMENT_FAILURE.test(r.tail));
+  if (refused) {
+    const why = `environment: \`${refused.command}\` was refused by the machine (${ENVIRONMENT_FAILURE.exec(refused.tail)?.[0]}), not by the code`;
+    return record({ ...guarded, checks, ok: false, blocked: true, reason: why });
+  }
+  const result: ResolveResult = { ...guarded, checks };
   const bad = checks.find((x) => !x.ok);
   if (bad) {
     const failed = bad.runs.find((r) => r.exit !== 0);

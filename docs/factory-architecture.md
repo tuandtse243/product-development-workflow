@@ -252,12 +252,14 @@ session and the runner follow the same path:
 |---|---|---|
 | detect | `aidw verdict <task>` (pass) | aborts the merge, names the task(s) already merged that changed the files (their `Task:` footers), records the conflict in `changes/<id>/conflicts.yaml` |
 | brief | `aidw brief <task> --for conflict` | merges the Change Branch into the task's worktree, stops at the markers, briefs `integration` with both tasks, the files and both branches |
-| resolve | `aidw resolve <task>` | refuses markers, junk and secrets, commits the merge in the worktree, runs both tasks' checks again (verify, a test per scenario); evidence `evidence/merge-<task>.json` |
+| resolve | `aidw resolve <task>` | commits the merge in the worktree; against both sides of it (the task's commit and the Change Branch) refuses conflict markers in any changed file, junk, and what a checkpoint's guards refuse (tamper, check configuration, secrets, packages); runs both tasks' checks again (verify, a test per scenario); evidence `evidence/merge-<task>.json`. A check the machine refused leaves the conflict open |
 | review | `aidw brief <task> --for merge-review`, `aidw verdict <task>` | a `code-reviewer` judges only the resolution; pass merges the task as usual |
 
-Any failure (markers left, a check fails, a `fix` verdict, a second conflict) falls back to the old behaviour: the
+When the merge is started the files and the tasks on the other side are found again (the Change Branch may have moved),
+and a binary file in the conflict falls back at once: no marker can show both sides. Any failure (markers left, a
+guard or a check fails, a `fix` verdict, a second conflict) falls back to the old behaviour: the
 branch is dropped and the task reruns sequentially on the latest code. `conflicts.yaml` keeps every conflict with its
-outcome (`open`, `resolved`, `dropped`) and reason; the `technical-planner` reads it when it plans, so the files go
+outcome (`open`, `resolved` once the final merge is committed, `dropped`) and reason; the `technical-planner` reads it when it plans, so the files go
 into the `touches` of both tasks (or the tasks are chained) and they stop running side by side.
 
 **Triage.** When a task runs out of attempts, a fresh `software-architect` Agent classifies the cause from the
