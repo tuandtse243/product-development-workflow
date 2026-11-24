@@ -1,46 +1,50 @@
 {
+  "format": 2,
   "role": "backend",
-  "date": "2026-11-24T13:33:42.465Z",
+  "date": "2026-11-24T18:20:01.000Z",
   "model": null,
   "tier": "deep",
   "runs": 3,
-  "digest": "sha256:a2cf6789c0bed8f7c407aa279c206b765befcd8b046c8c359d20d73abaa5b201",
+  "digest": "sha256:7d30f517ebf167beb2cc2c06e87e960d689d16ca279b3ab41b5a7ae4fa9a4dbb",
   "cases": [
     {
       "name": "charge-once",
-      "pass": false,
+      "pass": true,
       "runs": {
         "total": 3,
-        "passed": 1,
+        "passed": 3,
         "errors": 0
       },
-      "failed": [
-        "must give the provider call an explicit timeout, retry it only a bounded number of times with backoff, on a timeout, a connection error, `429` or `5xx` and never on another `4xx`, and map provider errors to the app's own error type"
-      ]
+      "failed": [],
+      "date": "2026-11-24T18:08:14.640Z",
+      "digest": "sha256:ab5e1f39f5f2bbdab18bd7dcaae4e0114636e430224446671cfcadf1ca9a29bf",
+      "model": null
     },
     {
       "name": "contract-has-a-hole",
-      "pass": false,
+      "pass": true,
       "runs": {
         "total": 3,
-        "passed": 0,
+        "passed": 3,
         "errors": 0
       },
-      "failed": [
-        "must say in the request's Progress note which work does not wait for the answer (the `201` of INV-1 and the `422` the contract names, with their tests) and that only INV-3 is blocked"
-      ]
+      "failed": [],
+      "date": "2026-11-24T18:20:01.000Z",
+      "digest": "sha256:fdd4b887b1fb3d85104922f84d4b8c77abea79c593282b7041ad7bb0d13fbae3",
+      "model": null
     },
     {
       "name": "email-after-the-order",
-      "pass": false,
+      "pass": true,
       "runs": {
         "total": 3,
-        "passed": 1,
+        "passed": 3,
         "errors": 0
       },
-      "failed": [
-        "must test, with `Mailer` replaced by a fake at its boundary: the fake fails and the order is still saved with its outbox row pending; running the job twice calls the fake once for the order; an order whose insert fails leaves no outbox row and calls the fake zero times"
-      ]
+      "failed": [],
+      "date": "2026-11-24T18:08:14.640Z",
+      "digest": "sha256:6b339923efa13a3d0e13c0f417bd26dab82ac9bf69b5ffee9f5a951b3a02ca9d",
+      "model": null
     },
     {
       "name": "entity-is-not-a-response",
@@ -50,7 +54,10 @@
         "passed": 3,
         "errors": 0
       },
-      "failed": []
+      "failed": [],
+      "date": "2026-11-24T18:08:14.640Z",
+      "digest": "sha256:31b4cdc6a4643f55408f3f39df403e42cda1e084d489677f73e63b98c47bb495",
+      "model": null
     },
     {
       "name": "list-that-grows",
@@ -60,19 +67,23 @@
         "passed": 3,
         "errors": 0
       },
-      "failed": []
+      "failed": [],
+      "date": "2026-11-24T18:08:14.640Z",
+      "digest": "sha256:4f290ab4854da673472c2e519a53aa89575883a1345a80fc253d8521634f8b28",
+      "model": null
     },
     {
       "name": "log-with-a-token",
-      "pass": false,
+      "pass": true,
       "runs": {
         "total": 3,
-        "passed": 2,
+        "passed": 3,
         "errors": 0
       },
-      "failed": [
-        "must test, with the provider replaced by a fake that fails: the captured log line has the event name and the request id, the fake key and the IBAN appear nowhere in the captured log output, and the response body has only the contract's fields"
-      ]
+      "failed": [],
+      "date": "2026-11-24T18:08:14.640Z",
+      "digest": "sha256:25e80bf8911f689b3360ba3b29e08e9aa29e1cac1c2644f988baf3cbe6f80836",
+      "model": null
     },
     {
       "name": "server-key-stays-on-the-server",
@@ -82,7 +93,10 @@
         "passed": 3,
         "errors": 0
       },
-      "failed": []
+      "failed": [],
+      "date": "2026-11-24T18:08:14.640Z",
+      "digest": "sha256:a40f2d4f6e3379e1ae8eaf95f7d66fec1bf3ad4c048c0a6890c38f68c64f335b",
+      "model": null
     },
     {
       "name": "team-comes-from-the-session",
@@ -92,7 +106,10 @@
         "passed": 3,
         "errors": 0
       },
-      "failed": []
+      "failed": [],
+      "date": "2026-11-24T18:08:14.640Z",
+      "digest": "sha256:f1347499f5485b6b0ea773f8db5b5319850ad6fa0c9251d1b42cac8efbbabb9d",
+      "model": null
     },
     {
       "name": "two-requests-one-slot",
@@ -102,7 +119,10 @@
         "passed": 3,
         "errors": 0
       },
-      "failed": []
+      "failed": [],
+      "date": "2026-11-24T18:08:14.640Z",
+      "digest": "sha256:d395bf4660ed79743c29dae07e2ce624bf78d6f08937998df837073e55583a52",
+      "model": null
     },
     {
       "name": "validates-authorizes-and-does-not-leak",
@@ -112,7 +132,10 @@
         "passed": 3,
         "errors": 0
       },
-      "failed": []
+      "failed": [],
+      "date": "2026-11-24T18:08:14.640Z",
+      "digest": "sha256:a52ae6a399c698797dd939e91ea5263fcdbc7cd53968d27ebb9b1f39a260db43",
+      "model": null
     }
   ]
 }
