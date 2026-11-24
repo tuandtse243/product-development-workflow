@@ -24,9 +24,10 @@ describe("secret-serialization signal probes", () => {
     (title) => expect(handlesSecretSerialization(task(title))).toBe(false),
   );
 
-  it("a config path in Touches with no credential word does not load it; with a token file it does", () => {
+  it("a config path in Touches loads it only with a credential word in the title, never from Touches alone", () => {
     expect(handlesSecretSerialization(task("Theme colors", "backend", ["src/config/theme.ts"]))).toBe(false);
-    expect(handlesSecretSerialization(task("Session", "backend", ["src/auth/tokens.ts", "src/config/**"]))).toBe(true);
+    expect(handlesSecretSerialization(task("Session", "backend", ["src/auth/tokens.ts", "src/config/**"]))).toBe(false);
+    expect(handlesSecretSerialization(task("Session signing secret", "backend", ["src/auth/**", "src/config/**"]))).toBe(true);
   });
 
   it.each(["frontend", "database", "devops"])("never loads for a %s task, even on a sink", (role) => {

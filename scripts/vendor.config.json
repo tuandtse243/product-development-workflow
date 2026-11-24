@@ -80,7 +80,7 @@
   },
   "sentry": {
     "repo": "getsentry/skills",
-    "ref": "main",
+    "ref": "a582c51ee29d0f35e6ac321340796f77d43da733",
     "license": "LICENSE",
     "role": "Security review of GitHub Actions workflows; performance review of Django code; secrets leaking through serialization, logs and traces (ADR-0005)",
     "skills": {

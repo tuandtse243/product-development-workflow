@@ -10556,9 +10556,15 @@ var WORKFLOW_TOUCH = /(^|\/)\.github\/(workflows|actions)(\/|$)/;
 var PYTHON_PROJECT_TOUCH = /(^|\/)(pyproject\.toml|uv\.lock)$/;
 var MOTION_HINT = /\b(animat\w*|transitions?|motion|easing|gestures?|drag|swipe)\b/i;
 var OBSERVABILITY_HINT = /\b(logging|logs?|metrics?|tracing|traces?|telemetry|observability|monitoring|alerts?|health ?checks?)\b/i;
-var CREDENTIAL_HINT = /\b(secrets?|api ?keys?|apikeys?|credentials?|access ?keys?|private ?keys?|signing ?keys?|client ?secrets?|tokens?|passwords?|dsn|connection ?strings?)\b/i;
-var HOLDER_HINT = /\b(config|configuration|env|sdk|(api|http|sdk) ?clients?)\b/i;
-var SINK_HINT = /\b(logging|loggers?|logs|tracing|traces?|telemetry|opentelemetry|otel|error (reporting|tracking|context)|sentry|serializ\w*|redact\w*)\b/i;
+var SINK_WORDS = /\b(logging|loggers?|log(ged)? (to|with|the|failed|errors?)|logs (failed|errors?)|structured logs?|tracing|spans?|telemetry|opentelemetry|otel|instrumentation|error (reporting|tracking|context)|sentry|redact\w*)\b/i;
+var SINK_TOUCH = /(^|\/)(logging|loggers?|telemetry|tracing|instrumentation|observability|sentry)(\/|\.|$)/i;
+var CREDENTIAL_WORDS = /\b(secrets?|api ?keys?|apikeys?|credentials?|access ?keys?|private ?keys?|signing ?keys?|client ?secrets?|tokens?|passwords?)\b/i;
+var SELF_HELD_CREDENTIAL = /\b(dsn|connection ?strings?)\b/i;
+var ENV_WORDS = /\b(env|environment)\b/i;
+var HOLDER_WORDS = /\b(config|configuration)\b/i;
+var CONFIG_TOUCH = /(^|\/)(config|settings)(\/|\.\w+$)/i;
+var ENV_EXAMPLE_TOUCH = /(^|\/)\.env\.example$/;
+var ADAPTER_TOUCH = /(^|\/)(adapters?|clients?|integrations?|providers?|gateways?)(\/|[.-])/i;
 var list2 = (v) => Array.isArray(v) ? v.map(String) : [];
 function isSecuritySensitive(t) {
   if (t.risk === "high") return true;
@@ -10568,8 +10574,14 @@ function isSecuritySensitive(t) {
 function handlesSecretSerialization(t) {
   const role = String(t.role ?? "");
   if (role && role !== "backend" && role !== "fullstack") return false;
-  const text2 = [t.title ?? "", ...list2(t.touches), ...list2(t.scenarios)].join(" ").replace(/[/_.*-]/g, " ");
-  return SINK_HINT.test(text2) || CREDENTIAL_HINT.test(text2) && HOLDER_HINT.test(text2);
+  const touches = list2(t.touches);
+  const text2 = [t.title ?? "", ...list2(t.scenarios)].join(" ").replace(/[/_.-]/g, " ").replace(/\blog in\b/gi, "");
+  if (SINK_WORDS.test(text2) || touches.some((g) => SINK_TOUCH.test(g))) return true;
+  if (SELF_HELD_CREDENTIAL.test(text2)) return true;
+  const credential = CREDENTIAL_WORDS.test(text2);
+  if (credential && (HOLDER_WORDS.test(text2) || touches.some((g) => CONFIG_TOUCH.test(g)))) return true;
+  if ((credential || /\bkeys?\b/i.test(text2)) && ENV_WORDS.test(text2)) return true;
+  return touches.some((g) => ENV_EXAMPLE_TOUCH.test(g)) && touches.some((g) => ADAPTER_TOUCH.test(g));
 }
 var SECRET_SERIALIZATION = "sentry/secret-serialization";
 var SECRET_SERIALIZATION_READ = "read its SKILL.md and only the reference for the project's language (references/python.md or references/javascript-typescript.md); skip SPEC.md and SOURCES.md";

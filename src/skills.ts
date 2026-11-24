@@ -38,11 +38,20 @@ const WORKFLOW_TOUCH = /(^|\/)\.github\/(workflows|actions)(\/|$)/;
 const PYTHON_PROJECT_TOUCH = /(^|\/)(pyproject\.toml|uv\.lock)$/;
 const MOTION_HINT = /\b(animat\w*|transitions?|motion|easing|gestures?|drag|swipe)\b/i;
 const OBSERVABILITY_HINT = /\b(logging|logs?|metrics?|tracing|traces?|telemetry|observability|monitoring|alerts?|health ?checks?)\b/i;
-// sentry/secret-serialization (plan section 5, T14 S7): narrow on purpose. Either a credential goes onto a config or
-// client object, or the task is about a sink that serializes whole objects (logs, traces, error reports).
-const CREDENTIAL_HINT = /\b(secrets?|api ?keys?|apikeys?|credentials?|access ?keys?|private ?keys?|signing ?keys?|client ?secrets?|tokens?|passwords?|dsn|connection ?strings?)\b/i;
-const HOLDER_HINT = /\b(config|configuration|env|sdk|(api|http|sdk) ?clients?)\b/i;
-const SINK_HINT = /\b(logging|loggers?|logs|tracing|traces?|telemetry|opentelemetry|otel|error (reporting|tracking|context)|sentry|serializ\w*|redact\w*)\b/i;
+// sentry/secret-serialization (plan section 5, T14 S7): narrow on purpose. Either the task works on a sink that
+// serializes whole objects (logs, traces, error reports), or a credential goes onto a config or client object.
+// Title and scenarios say what the task is about; Touches only say where (never read a credential from Touches alone).
+const SINK_WORDS = /\b(logging|loggers?|log(ged)? (to|with|the|failed|errors?)|logs (failed|errors?)|structured logs?|tracing|spans?|telemetry|opentelemetry|otel|instrumentation|error (reporting|tracking|context)|sentry|redact\w*)\b/i;
+const SINK_TOUCH = /(^|\/)(logging|loggers?|telemetry|tracing|instrumentation|observability|sentry)(\/|\.|$)/i;
+const CREDENTIAL_WORDS = /\b(secrets?|api ?keys?|apikeys?|credentials?|access ?keys?|private ?keys?|signing ?keys?|client ?secrets?|tokens?|passwords?)\b/i;
+/** Values that live only on a config or client object: no holder needed. */
+const SELF_HELD_CREDENTIAL = /\b(dsn|connection ?strings?)\b/i;
+/** "the OpenAI key from the environment": a bare "key" counts only next to env or environment. */
+const ENV_WORDS = /\b(env|environment)\b/i;
+const HOLDER_WORDS = /\b(config|configuration)\b/i;
+const CONFIG_TOUCH = /(^|\/)(config|settings)(\/|\.\w+$)/i;
+const ENV_EXAMPLE_TOUCH = /(^|\/)\.env\.example$/;
+const ADAPTER_TOUCH = /(^|\/)(adapters?|clients?|integrations?|providers?|gateways?)(\/|[.-])/i;
 
 const list = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : []);
 
@@ -58,8 +67,14 @@ export function isSecuritySensitive(t: Task): boolean {
 export function handlesSecretSerialization(t: Task): boolean {
   const role = String(t.role ?? "");
   if (role && role !== "backend" && role !== "fullstack") return false;
-  const text = [t.title ?? "", ...list(t.touches), ...list(t.scenarios)].join(" ").replace(/[/_.*-]/g, " ");
-  return SINK_HINT.test(text) || (CREDENTIAL_HINT.test(text) && HOLDER_HINT.test(text));
+  const touches = list(t.touches);
+  const text = [t.title ?? "", ...list(t.scenarios)].join(" ").replace(/[/_.-]/g, " ").replace(/\blog in\b/gi, "");
+  if (SINK_WORDS.test(text) || touches.some((g) => SINK_TOUCH.test(g))) return true;
+  if (SELF_HELD_CREDENTIAL.test(text)) return true;
+  const credential = CREDENTIAL_WORDS.test(text);
+  if (credential && (HOLDER_WORDS.test(text) || touches.some((g) => CONFIG_TOUCH.test(g)))) return true;
+  if ((credential || /\bkeys?\b/i.test(text)) && ENV_WORDS.test(text)) return true;
+  return touches.some((g) => ENV_EXAMPLE_TOUCH.test(g)) && touches.some((g) => ADAPTER_TOUCH.test(g));
 }
 
 const SECRET_SERIALIZATION = "sentry/secret-serialization";

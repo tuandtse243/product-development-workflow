@@ -83,7 +83,8 @@ backend rule B14 and the security Role's review.
   sink's own serializer, assert the secret is absent) even though the skill calls a missing test "not a finding".
 - **Config objects**: keep one validated config module (rule B13), but never pass the whole config or a client
   object to a logger, a span, an error context or a response, and do not keep secrets on objects that travel.
-- **Reviewer**: its severity words map to the verdict file's shape.
+- **Reviewer**: its severity words map to the verdict file's shape. Report a sink outside the diff only when the
+  diff connects to it.
 
 Statements to check before relying on them (read-through 2026-11-24):
 

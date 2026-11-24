@@ -438,7 +438,10 @@ describe("secret-serialization signal", () => {
   it("loads when a credential goes onto a config or client object", () => {
     expect(has({ title: "Add the Stripe secret key to the config" })).toBe(true);
     expect(has({ title: "Read the mail API key", touches: ["src/config/**", ".env.example"] })).toBe(true);
-    expect(has({ title: "Payments API client with credentials" })).toBe(true);
+    expect(has({ title: "Read the OpenAI key from the environment" })).toBe(true);
+    expect(has({ title: "Rotate the database connection string" })).toBe(true);
+    expect(has({ title: "Stripe payment adapter", touches: ["src/adapters/stripe.ts", ".env.example"] })).toBe(true);
+    expect(has({ title: "Payments API client with credentials" })).toBe(false); // no config module, no env
   });
 
   it("loads when the task works on a sink that serializes whole objects", () => {
@@ -446,6 +449,7 @@ describe("secret-serialization signal", () => {
     expect(has({ touches: ["src/telemetry/**"] })).toBe(true);
     expect(has({ title: "Send errors to Sentry" })).toBe(true);
     expect(has({ title: "x", scenarios: ["ops/tracing/span-per-request"] })).toBe(true);
+    expect(has({ title: "Log failed webhook deliveries" })).toBe(true);
   });
 
   it("stays narrow: a credential word alone, a plain route, or a non-server Role does not load it", () => {
@@ -453,6 +457,9 @@ describe("secret-serialization signal", () => {
     expect(has({ title: "Refresh the session token" })).toBe(false);
     expect(has({ title: "List orders", touches: ["src/api/orders/**"] })).toBe(false);
     expect(has({ title: "Log in page" })).toBe(false);
+    expect(has({ title: "DRF serializers for orders", touches: ["app/orders/serializers.py"] })).toBe(false);
+    expect(has({ title: "Show the audit logs to admins" })).toBe(false);
+    expect(has({ title: "Stripe payment adapter", touches: ["src/adapters/stripe.ts"] })).toBe(false);
     expect(has({ role: "frontend", title: "Structured logging for the order routes" })).toBe(false);
     expect(has({ role: "database", title: "Store the API key in config" })).toBe(false);
   });
