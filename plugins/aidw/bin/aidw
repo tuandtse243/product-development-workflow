@@ -15560,18 +15560,19 @@ function frameworkPacks(root) {
     const h = head;
     const strs = (v) => Array.isArray(v) ? v.map(String) : [];
     if (typeof h?.framework === "string" && Array.isArray(h.roles)) {
-      out.push({ id: name.slice(0, -3), framework: h.framework, roles: h.roles.map(String), file: (0, import_node_path39.join)(dir, name), skills: strs(h.skills), reviewSkills: strs(h.review_skills) });
+      out.push({ id: name.slice(0, -3), framework: h.framework, roles: h.roles.map(String), file: (0, import_node_path39.join)(dir, name), skills: strs(h.skills), reviewSkills: strs(h.review_skills), detectedAs: typeof h.detected_as === "string" ? h.detected_as : "framework" });
     }
   }
   return out;
 }
 function packsOf(root, stack) {
-  const found = stack.framework ?? "";
-  return frameworkPacks(root).filter((p) => found.toLowerCase().startsWith(p.framework.toLowerCase()));
+  const all2 = frameworkPacks(root);
+  const hit = (p) => (stack[p.detectedAs] ?? "").toLowerCase().startsWith(p.framework.toLowerCase());
+  const frameworks = all2.filter((p) => p.detectedAs === "framework" && hit(p));
+  return frameworks.length ? frameworks : all2.filter((p) => p.detectedAs !== "framework" && hit(p));
 }
 function packsFor(root, stack, role) {
-  const found = stack.framework ?? "";
-  return frameworkPacks(root).filter((p) => p.roles.includes(role) && found.toLowerCase().startsWith(p.framework.toLowerCase()));
+  return packsOf(root, stack).filter((p) => p.roles.includes(role));
 }
 
 // src/configlock.ts
@@ -17267,9 +17268,15 @@ function buildBrief(p, id, taskId, kind, vendorDir) {
   const failedCheckpoint = !reviewIsLatest && lastCheckpoint && !lastCheckpoint.ok ? lastCheckpoint : void 0;
   const fixReview = reviewIsLatest && lastReview?.verdict === "fix" ? lastReview : void 0;
   const retry = kind === "implement" && (!!failedCheckpoint || !!fixReview);
-  const stackNow = detectProject(p.project).stack;
+  const detected = detectProject(p.project);
+  const stackNow = detected.stack;
   const pluginHome = (0, import_node_path42.resolve)(vendorDir, "..", "..");
-  const fromPacks = kind === "implement" ? packsFor(pluginHome, stackNow, implementerOf(pluginHome, typeof t.role === "string" ? t.role : void 0) ?? defaultTaskRole()).flatMap((k) => k.skills.map((id2) => ({ id: id2, reason: `the project is built with ${k.framework} (framework pack)` }))) : packsOf(pluginHome, stackNow).flatMap((k) => k.reviewSkills.map((id2) => ({ id: id2, reason: `review of ${k.framework} code (framework pack)` })));
+  const builder = implementerOf(pluginHome, typeof t.role === "string" ? t.role : void 0) ?? defaultTaskRole();
+  const builderPacks = packsFor(pluginHome, stackNow, builder);
+  const fromPacks = kind === "implement" ? builderPacks.flatMap((k) => k.skills.map((id2) => ({ id: id2, reason: `the project is built with ${k.framework} (framework pack)` }))) : packsOf(pluginHome, stackNow).flatMap((k) => k.reviewSkills.map((id2) => ({ id: id2, reason: `review of ${k.framework} code (framework pack)` })));
+  const ruleFiles = [builder, ...loadRole(pluginHome, builder)?.follows_rules ?? []].map((r) => ({ role: r, file: (0, import_node_path42.join)(pluginHome, "roles", r, "rules.md") })).filter((x) => (0, import_node_fs37.existsSync)(x.file)).map((x) => ({ ...x, table: loadRuleTable(pluginHome, x.role) }));
+  const exampleId = ruleFiles.find((x) => x.table?.length)?.table?.[0]?.id;
+  const followed = ruleFiles.filter((x) => x.role !== builder);
   const picked = selectSkills(t, kind, { retry, reviewFix: kind === "implement" && !!fixReview });
   const skills = [...picked, ...fromPacks.filter((s) => !picked.some((x) => x.id === s.id))].map((s) => ({ ...s, path: skillPath(vendorDir, s.id) }));
   const reqs = requirementsAfterChange(p, id);
@@ -17307,10 +17314,11 @@ ${req.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`;
     return pointer2(p, r.dir ? (0, import_node_path42.dirname)(file) : file, r.what);
   }).filter((x) => x !== null);
   const adrs = adrPointers(p);
-  const pluginDir = (0, import_node_path42.resolve)(vendorDir, "..", "..");
-  const packLines = kind === "implement" ? packsFor(pluginDir, detectProject(p.project).stack, implementerOf(pluginDir, typeof t.role === "string" ? t.role : void 0) ?? defaultTaskRole()).map(
-    (k) => `- \`${k.file}\`: how to build with ${k.framework} (framework pack)`
-  ) : [];
+  const languagePack = detected.stackPack ? (0, import_node_path42.join)(pluginHome, "stacks", `${detected.stackPack}.md`) : null;
+  const packLines = [
+    ...languagePack && (0, import_node_fs37.existsSync)(languagePack) ? [`- \`${languagePack}\`: tooling of the project's language: install, format, lint, typecheck, tests (stack pack)`] : [],
+    ...builderPacks.map((k) => `- \`${k.file}\`: how to build with ${k.framework} (framework pack)`)
+  ];
   const touches = list7(t.touches);
   const verify2 = list7(t.verify);
   const decisions = decisionsToHonor(readText((0, import_node_path42.join)(tf.change.dir, "analysis.md")) ?? "");
@@ -17407,15 +17415,19 @@ ${req.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`;
       ...h("Problem to fix", typeof t.problem === "string" ? ["```", t.problem.trim(), "```", "", "Find the root cause (debugging skill below), fix it, and make the verify commands pass. Touches is the whole project, but change only what the fix needs."] : []),
       ...h("Previous attempt", previous),
       ...h("Consultations of this task (answered; read each answer before you continue)", answers),
+      // Plan R2 from the implementer's side: the Role's own rules.md is already in its agent profile (generated), but
+      // the rules of a Role it follows (`follows_rules`: fullstack follows backend's) are not; the reviewer judges by both.
+      ...h("Rules of the Roles yours follows", followed.length ? [
+        ...followed.map((x) => `- \`${x.file}\`: rules of ${x.role}${x.table ? ", one per row with an id" : ""}.`),
+        "",
+        `Your own rules are in your agent profile. These bind the ${builder} work too: follow every rule whose "applies when" fits the part of this task it covers. The reviewer cites a broken rule's id as a blocking issue.`
+      ] : []),
       ...shared
     ];
   } else {
     const diff = base2 ? `${inWorktree ? `in the worktree \`${taskRoot}\`: ` : ""}\`git diff ${base2}\` plus untracked files (\`git status --porcelain\`)` : "the files matching Touches (no base commit was recorded)";
     const outside = lastCheckpoint?.outside_touches ?? [];
     const design = lastCheckpoint?.design;
-    const builder = implementerOf(pluginHome, typeof t.role === "string" ? t.role : void 0) ?? defaultTaskRole();
-    const ruleFiles = [builder, ...loadRole(pluginHome, builder)?.follows_rules ?? []].map((r) => ({ role: r, file: (0, import_node_path42.join)(pluginHome, "roles", r, "rules.md") })).filter((x) => (0, import_node_fs37.existsSync)(x.file)).map((x) => ({ ...x, table: loadRuleTable(pluginHome, x.role) }));
-    const exampleId = ruleFiles.find((x) => x.table?.length)?.table?.[0]?.id;
     const rulesSection = ruleFiles.length ? h(`Rules of the Role that built it (${builder})`, [
       ...ruleFiles.map(
         (x) => x.table ? `- \`${x.file}\`: rules of ${x.role}, one per row with an id.` : `- \`${x.file}\`: rules of ${x.role}.`
