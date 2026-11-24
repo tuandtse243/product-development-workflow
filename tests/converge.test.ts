@@ -4,7 +4,7 @@ import YAML from "yaml";
 import { describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
 import { parseJunit } from "../src/quality.js";
-import { ANALYSIS_MD, MAIN_SPEC, REQ, tempProject, write } from "./fixtures.js";
+import { ANALYSIS_MD, MAIN_SPEC, REQ, tempProject, write, planReviewed } from "./fixtures.js";
 
 const ID = "2026-11-08-booking";
 const S1 = "booking/reschedule-appointment/reschedule-appointment-works";
@@ -54,6 +54,7 @@ function project(quality: string): string {
     `tasks:\n  - id: T01\n    title: Reschedule and waitlist\n    role: fullstack-engineer\n    type: feat\n    scenarios: [${S1}, ${S2}]\n    touches: ["lib/**", "tests/**"]\n    verify: ['node -e "process.exit(0)"']\n    status: pending\n`,
   );
   write(root, "junit.js", "const fs=require('fs');fs.mkdirSync('test-results',{recursive:true});fs.copyFileSync('cases.xml','test-results/junit.xml');\n");
+  planReviewed(root, ID);
   for (const s of ["intake", "analyzing", "awaiting_approval"]) expect(cli(root, "transition", ID, s).err).toBe("");
   expect(cli(root, "approve", ID).code).toBe(0);
   expect(cli(root, "transition", ID, "executing").code).toBe(0);

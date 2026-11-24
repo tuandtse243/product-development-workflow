@@ -12,7 +12,7 @@ import { offBranchNote } from "../src/ops.js";
 import { globsOverlap, planWave } from "../src/parallel.js";
 import { findProject } from "../src/project.js";
 import type { Task } from "../src/tasks.js";
-import { ANALYSIS_MD, MAIN_SPEC, REQ, tempProject, write } from "./fixtures.js";
+import { ANALYSIS_MD, MAIN_SPEC, REQ, tempProject, write, planReviewed } from "./fixtures.js";
 
 const ID = "2026-11-10-wave";
 const SCENARIO = "booking/reschedule-appointment/reschedule-appointment-works";
@@ -82,6 +82,7 @@ function project(tasks = TASKS(), quality = QUALITY()): string {
   g(root, "config", "user.name", "t");
   g(root, "add", "-A");
   g(root, "commit", "-qm", "base");
+  planReviewed(root, ID);
   for (const s of ["intake", "analyzing", "awaiting_approval"]) expect(cli(root, "transition", ID, s).err).toBe("");
   expect(cli(root, "approve", ID).code).toBe(0);
   expect(cli(root, "transition", ID, "executing").code).toBe(0);
@@ -136,6 +137,7 @@ describe("change branch", () => {
     write(root, `${c}/tasks.yaml`, TASKS());
     write(root, `${c}/quality.yaml`, QUALITY());
     write(root, `${c}/specs/booking/spec.md`, `## ADDED Requirements\n\n${REQ("Reschedule appointment")}`);
+    planReviewed(root, ID);
     for (const s of ["intake", "analyzing", "awaiting_approval"]) cli(root, "transition", ID, s);
     expect(cli(root, "approve", ID).code).toBe(0);
     expect(cli(root, "transition", ID, "executing").out).toMatch(/current branch feature\/x/);

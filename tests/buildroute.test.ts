@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { buildRoute, RUNNER_THRESHOLD } from "../src/buildroute.js";
 import { run } from "../src/cli.js";
 import { decide, type HookInput } from "../src/gate.js";
-import { ANALYSIS_MD, MAIN_SPEC, QUALITY_YAML, REQ, TOKENS_YAML, tempProject, write } from "./fixtures.js";
+import { ANALYSIS_MD, MAIN_SPEC, QUALITY_YAML, REQ, TOKENS_YAML, tempProject, write, planReviewed } from "./fixtures.js";
 
 // Plan D2: after the Approval Gate the CLI says where the Change is built. More than 3 tasks start the detached
 // runner; 3 or fewer are built in the session.
@@ -56,6 +56,7 @@ function awaitingApproval(n: number) {
   write(root, `.aidw/changes/${ID}/tasks.yaml`, tasks(n));
   write(root, `.aidw/changes/${ID}/quality.yaml`, QUALITY_YAML);
   write(root, `.aidw/changes/${ID}/specs/booking/spec.md`, `## ADDED Requirements\n\n${REQ("Reschedule appointment")}`);
+  planReviewed(root, ID);
   for (const s of ["intake", "analyzing", "awaiting_approval"]) expect(cli("transition", ID, s).code).toBe(0);
 }
 

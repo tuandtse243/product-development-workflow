@@ -35,7 +35,10 @@ export { OpError };
 
 const now = () => new Date().toISOString();
 
-import { machineOf } from "./machine.js";
+import { machineOf, workflowIdOf } from "./machine.js";
+import { carriedFindings, planReviewBlocker } from "./planreview.js";
+import { bundledRoot } from "./plugin.js";
+import { loadWorkflow } from "./workflow.js";
 
 // ---------------------------------------------------------------- init
 
@@ -337,6 +340,9 @@ export function approve(p: Paths, id: string, opts: { auto?: { pluginRoot: strin
       saveChange(change);
       throw new OpError(`change "${id}" is too big to approve itself (${exceeded.join("; ")}). It is now a "${boundary.reclassify_to}" change and waits for the user: present the package and ask for /aidw:approve`);
     }
+    // D4: findings the review could not get fixed are the user's to accept, on the gate page that lists them
+    const open = carriedFindings(p, change);
+    if (open.length) throw new OpError(`the plan review ended with ${open.length} finding(s) still open: the user decides. Present the gate page (it lists them first) and ask for /aidw:approve`);
     by = `aidw (${workflow} boundary)`;
   }
   // ADR-0012: the push grant holds only for the branch, remote URL and base fixed here, hashed with the package.
@@ -350,7 +356,7 @@ export function approve(p: Paths, id: string, opts: { auto?: { pluginRoot: strin
 
 // ---------------------------------------------------------------- transition
 
-export function transition(p: Paths, id: string, to: string, opts: { reason?: string }): { from: State; to: State; commit?: string; notes?: string[] } {
+export function transition(p: Paths, id: string, to: string, opts: { reason?: string; pluginRoot?: string }): { from: State; to: State; commit?: string; notes?: string[] } {
   const change = loadChange(p, id);
   const from = stateOf(change);
   if (!from) throw new OpError(`change "${id}" has an unknown state "${String(change.data.state)}"`);
@@ -401,6 +407,11 @@ export function transition(p: Paths, id: string, to: string, opts: { reason?: st
     // Validate as if already in the target state, so the user is never asked to approve an incomplete package.
     const d = readinessCheck(p, id, target);
     if (d.errors.length) throw new OpError("Analysis package is not ready for approval", d);
+    // D4: after the CLI's own checks, the independent review of architecture and plan (src/planreview.ts).
+    const root = opts.pluginRoot ?? bundledRoot();
+    const w = root ? loadWorkflow(root, workflowIdOf(p, change)) : null;
+    const why = w ? planReviewBlocker(p, change, w) : null;
+    if (why) throw new OpError(`"awaiting_approval" needs ${why}`);
   }
 
   const notes: string[] = [];

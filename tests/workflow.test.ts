@@ -5,7 +5,7 @@ import YAML from "yaml";
 import { beforeEach, describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
 import { decide } from "../src/gate.js";
-import { ANALYSIS_MD, TOKENS_YAML, MAIN_SPEC, QUALITY_YAML, REQ, TASKS_YAML, tempProject, write } from "./fixtures.js";
+import { ANALYSIS_MD, TOKENS_YAML, MAIN_SPEC, QUALITY_YAML, REQ, TASKS_YAML, tempProject, write, planReviewed } from "./fixtures.js";
 
 const ID = "2026-11-08-booking";
 
@@ -32,6 +32,7 @@ function readyProject(): string {
   write(root, `${c}/tasks.yaml`, TASKS_YAML);
   write(root, `${c}/quality.yaml`, QUALITY_YAML);
   write(root, `${c}/specs/booking/spec.md`, `## ADDED Requirements\n\n${REQ("Reschedule appointment")}`);
+  planReviewed(root, ID);
   for (const s of ["intake", "analyzing", "awaiting_approval"]) expect(cli(root, "transition", ID, s).code).toBe(0);
   return root;
 }

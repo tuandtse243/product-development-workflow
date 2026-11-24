@@ -319,13 +319,27 @@ user can check:
    decisions. The `## Summary`
    must fit one page: goal, scope, the key decisions, and the risks and assumptions that need attention.
 2. Run `aidw analyze <id>` and `aidw validate <id>`. Fix every error and re-run until both are clean.
-3. `aidw transition <id> awaiting_approval` (it re-runs both checks).
-4. Present the package as a gate page (`layout: gate`, name `gate`, `change: <id>`): one section each for the summary
+3. **Independent review** (stage `plan-review`). Run `aidw plan-review <id> --brief` (it refuses while `aidw analyze` has
+   errors) and spawn the reviewer `aidw:code-reviewer` with exactly the printed `SPAWN` prompt. It grades the architecture, the plan
+   and the test plan against a fixed list (every approved scenario has a task, no task outside scope, the constitution is
+   followed, no needless complexity), writes `.aidw/run/review-plan-<id>.md` and replies with one line. Every round
+   needs its own brief (the CLI records only the round it briefed). Record it:
+   `aidw plan-review <id>`.
+   - `pass`: the stage is done; go on.
+   - `fix`: the output lists each finding with the Role that fixes it: the owner of what it names when this Workflow has
+     a stage for that Role, otherwise `the lead` (you). Spawn each Role
+     again with its findings, or fix what you wrote yourself, re-run step 2, then `aidw plan-review <id> --brief` again.
+     The CLI counts the rounds: after 2 fix rounds the third verdict is final, and what is still open goes to the top of
+     the gate page by itself. Never edit the verdict file or `plan-review.yaml`; the CLI refuses a verdict changed after
+     it was recorded, and the gate hook lets only the code-reviewer write the verdict.
+4. `aidw transition <id> awaiting_approval` (it re-runs both checks and refuses until the review is recorded).
+5. Present the package as a gate page (`layout: gate`, name `gate`, `change: <id>`): one section each for the summary
    and scope, the key decisions, the stack, the design (tokens as swatches in its `html` slot when there is UI), quality
-   and deploy, requested permissions, and risks and assumptions. The CLI adds the Decision Points and the plan size. Name
+   and deploy, requested permissions, and risks and assumptions. The CLI adds the Decision Points and the plan size, and
+   puts the review's open findings first. Name
    `.aidw/changes/<id>/analysis.md` in the intro. Tell the user the link, and that once they agree to every section
    (or type `/aidw:approve`) the build starts by itself.
-5. **Stop and wait for the answer.** Do not start building before it. When the user pastes the page's answer, check it:
+6. **Stop and wait for the answer.** Do not start building before it. When the user pastes the page's answer, check it:
    every section agreed (or the user says they approve) goes on to step 10; a section marked for a change is revised as
    under "Revising".
 
@@ -365,6 +379,7 @@ prompt instead of the one there:
 The task's **regression test is proven by the CLI**: at its checkpoint aidw runs the new test files against the base commit, and a
 test that passes on the old code fails the checkpoint.
 
+The independent review of step 9 runs for a bugfix too (one code-reviewer Agent on a plan of at most 3 tasks).
 There is **no approval gate** while the fix stays small. After `aidw transition <id> awaiting_approval` run
 `aidw approve <id> --auto` instead of stopping:
 
@@ -372,6 +387,8 @@ There is **no approval gate** while the fix stays small. After `aidw transition 
   one line what will be fixed, then follow its `NEXT:` line as in step 10 (a fix of at most 3 tasks is built here). A production deploy still asks.
 - It refuses when the plan has more than 3 tasks, adds a migration or needs a delta spec. The change is now a `feature`
   change: present the package as in step 9 and stop for `/aidw:approve`.
+- It refuses when the plan review ended with findings still open: present the package as in step 9 (the page lists
+  them first) and stop for `/aidw:approve`.
 
 ## Audit
 
@@ -397,4 +414,7 @@ project files for the whole change. Do not follow steps 1b to 9. Instead:
 ## Revising
 
 If the user asks for changes while the change is `awaiting_approval`: `aidw transition <id> analyzing`,
-revise, then repeat step 9.
+revise, then repeat step 9. Its step 3 depends on what changed: when the reviewed plan is untouched (tasks, specs,
+architecture, constitution, contracts, test plan; a summary edit does not count) the recorded review still counts and
+`aidw plan-review --brief` says it is finished. When any of them changed, `aidw transition <id> awaiting_approval` is
+refused ("the plan changed since the review") and a new review runs, with its own 2 fix rounds.

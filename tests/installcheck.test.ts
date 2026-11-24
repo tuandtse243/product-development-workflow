@@ -5,7 +5,7 @@ import { run } from "../src/cli.js";
 import { doctor } from "../src/doctor.js";
 import { installGuard, installProblem, installRunner, installStatus, lastProbe, packageManagerOf, probeCommand, probeInstall, useInstallRunner, type ShellResult, type ShellRun } from "../src/installcheck.js";
 import { pathsFor } from "../src/project.js";
-import { ANALYSIS_MD, TOKENS_YAML, tempProject, write } from "./fixtures.js";
+import { ANALYSIS_MD, TOKENS_YAML, tempProject, write, planReviewed } from "./fixtures.js";
 
 const ok: ShellResult = { ok: true, out: "added 1 package", timedOut: false };
 const bad = (out: string, timedOut = false): ShellResult => ({ ok: false, out, timedOut });
@@ -154,6 +154,7 @@ describe("aidw transition executing", () => {
     write(root, ".aidw/design/tokens.yaml", TOKENS_YAML);
     write(root, `${c}/quality.yaml`, `layers:\n  - name: code\n    run: ["npm run build"]\n  - name: unit\n    run: ["npx vitest run"]\ndeploy:\n  target: none\n`);
     write(root, `${c}/tasks.yaml`, `tasks:\n  - id: T01\n    title: Fix add\n    role: fullstack\n    type: fix\n    scope: math\n    touches: ["lib/**", "tests/**"]\n    verify: ["node tests/a.test.js"]\n`);
+    planReviewed(root, ID);
     for (const s of ["intake", "analyzing", "awaiting_approval"]) expect(cli(root, "transition", ID, s).code, s).toBe(0);
     expect(cli(root, "approve", ID, "--auto").code).toBe(0);
     return root;

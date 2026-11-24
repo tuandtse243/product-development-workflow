@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
 import { decide, type HookInput } from "../src/gate.js";
-import { ANALYSIS_MD, MAIN_SPEC, QUALITY_YAML, REQ, TOKENS_YAML, tempProject, write } from "./fixtures.js";
+import { ANALYSIS_MD, MAIN_SPEC, QUALITY_YAML, REQ, TOKENS_YAML, tempProject, write, planReviewed } from "./fixtures.js";
 
 // Plan D2 gate rule, read the way the shell reads it: the allowed start must run the plugin's own CLI, not whatever
 // the shell turns the words into. The gate sees the literal string; the shell then expands globs and braces and
@@ -69,6 +69,7 @@ function approved() {
   write(root, `.aidw/changes/${ID}/tasks.yaml`, TASKS);
   write(root, `.aidw/changes/${ID}/quality.yaml`, QUALITY_YAML);
   write(root, `.aidw/changes/${ID}/specs/booking/spec.md`, `## ADDED Requirements\n\n${REQ("Reschedule appointment")}`);
+  planReviewed(root, ID);
   for (const s of ["intake", "analyzing", "awaiting_approval"]) expect(cli("transition", ID, s)).toBe(0);
   expect(cli("approve", ID)).toBe(0);
 }

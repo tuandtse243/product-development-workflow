@@ -9,7 +9,7 @@ import { decide, type HookInput } from "../src/gate.js";
 import { globToRegExp, matchesAny } from "../src/glob.js";
 import { findScenarioTests } from "../src/run.js";
 import { selectSkills, skillPath } from "../src/skills.js";
-import { ANALYSIS_MD, TOKENS_YAML, MAIN_SPEC, QUALITY_YAML, REQ, tempProject, write } from "./fixtures.js";
+import { ANALYSIS_MD, TOKENS_YAML, MAIN_SPEC, QUALITY_YAML, REQ, tempProject, write, planReviewed } from "./fixtures.js";
 
 const ID = "2026-11-08-booking";
 const SCENARIO = "booking/reschedule-appointment/reschedule-appointment-works";
@@ -75,6 +75,7 @@ export function executingProject(opts: { git?: boolean; t2Verify?: string; quali
   write(root, `${c}/specs/booking/spec.md`, `## ADDED Requirements\n\n${REQ("Reschedule appointment")}`);
   write(root, ".aidw/domain/model.md", "# Domain\n");
   write(root, ".aidw/decisions/0001-supabase.md", "# Use Supabase for auth and data\n");
+  planReviewed(root, ID);
   for (const s of ["intake", "analyzing", "awaiting_approval"]) expect(cli(root, "transition", ID, s).code).toBe(0);
   expect(cli(root, "approve", ID).code).toBe(0);
   if (opts.git) gitInit(root);

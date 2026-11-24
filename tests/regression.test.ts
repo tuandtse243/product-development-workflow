@@ -3,7 +3,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
-import { ANALYSIS_MD, QUALITY_YAML, TOKENS_YAML, tempProject, write } from "./fixtures.js";
+import { ANALYSIS_MD, QUALITY_YAML, TOKENS_YAML, tempProject, write, planReviewed } from "./fixtures.js";
 
 const ID = "2026-11-14-fix-add";
 
@@ -27,6 +27,7 @@ function running(opts: { baseTest?: string } = {}): string {
   write(root, `${c}/tasks.yaml`, `tasks:\n  - id: T01\n    title: Fix add\n    role: fullstack\n    type: fix\n    scope: math\n    touches: ["lib/**", "tests/**"]\n    verify: ["node tests/regress.test.js"]\n    status: pending\n`);
   write(root, "lib/bug.js", "exports.add = (a, b) => a - b;\n");
   if (opts.baseTest) write(root, "tests/regress.test.js", opts.baseTest);
+  planReviewed(root, ID);
   for (const s of ["intake", "analyzing", "awaiting_approval"]) expect(cli(root, "transition", ID, s).code, s).toBe(0);
   expect(cli(root, "approve", ID, "--auto").code).toBe(0);
   git(root, "init", "-q");

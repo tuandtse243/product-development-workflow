@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
 import { tamperEvidence } from "../src/tamper.js";
 import { validateTasksText } from "../src/tasks.js";
-import { ANALYSIS_MD, QUALITY_YAML, tempProject, write } from "./fixtures.js";
+import { ANALYSIS_MD, QUALITY_YAML, tempProject, write, planReviewed } from "./fixtures.js";
 
 const ID = "2026-11-17-add-sum";
 
@@ -31,6 +31,7 @@ function running(taskExtra = ""): string {
   write(root, `${c}/tasks.yaml`, `tasks:\n  - id: T01\n    title: Add sum\n    role: fullstack\n    type: refactor\n    scope: math\n    touches: ["lib/**", "tests/**"]\n    verify: ["node -e 0"]\n${taskExtra}    status: pending\n`);
   write(root, "tests/old.test.js", OLD_TEST);
   write(root, "lib/legacy.js", LEGACY);
+  planReviewed(root, ID);
   for (const s of ["intake", "analyzing", "awaiting_approval"]) expect(cli(root, "transition", ID, s).code, s).toBe(0);
   expect(cli(root, "approve", ID, "--auto").code).toBe(0);
   git(root, "init", "-q");
@@ -137,6 +138,7 @@ describe("the checkpoint refuses checks that were weakened", () => {
     write(root, `${c}/quality.yaml`, QUALITY_YAML);
     write(root, `${c}/tasks.yaml`, 'tasks:\n  - id: T01\n    title: Card\n    role: fullstack\n    type: refactor\n    scope: ui\n    touches: ["**"]\n    verify: ["node -e 0"]\n    status: pending\n');
     write(root, "ui/__snapshots__/card.test.tsx.snap", "exports[`card 1`] = `<p>old</p>`;\n");
+    planReviewed(root, ID);
     for (const s of ["intake", "analyzing", "awaiting_approval"]) expect(cli(root, "transition", ID, s).code, s).toBe(0);
     expect(cli(root, "approve", ID, "--auto").code).toBe(0);
     git(root, "init", "-q");

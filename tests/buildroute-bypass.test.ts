@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
 import { decide, type HookInput } from "../src/gate.js";
-import { ANALYSIS_MD, MAIN_SPEC, QUALITY_YAML, REQ, TOKENS_YAML, tempProject, write } from "./fixtures.js";
+import { ANALYSIS_MD, MAIN_SPEC, QUALITY_YAML, REQ, TOKENS_YAML, tempProject, write, planReviewed } from "./fixtures.js";
 
 // Plan D2 gate rule: only the plain detached start the route prints is allowed without asking. These forms load code
 // the user never approved into the unsandboxed runner, or run a second command, and must not be allowed silently.
@@ -48,6 +48,7 @@ describe("gate: bypasses of the plain detached start (D2)", () => {
     write(root, `.aidw/changes/${ID}/tasks.yaml`, TASKS);
     write(root, `.aidw/changes/${ID}/quality.yaml`, QUALITY_YAML);
     write(root, `.aidw/changes/${ID}/specs/booking/spec.md`, `## ADDED Requirements\n\n${REQ("Reschedule appointment")}`);
+    planReviewed(root, ID);
     for (const s of ["intake", "analyzing", "awaiting_approval"]) expect(cli("transition", ID, s)).toBe(0);
     expect(cli("approve", ID)).toBe(0);
   });
@@ -95,6 +96,7 @@ describe("gate: the runner allowance is narrow (D2, follow-up review)", () => {
     write(root, ".aidw/specs/booking/spec.md", MAIN_SPEC);
     write(root, ".aidw/design/tokens.yaml", TOKENS_YAML);
     change(ID);
+    planReviewed(root, ID);
     for (const s of ["intake", "analyzing", "awaiting_approval"]) expect(cli("transition", ID, s)).toBe(0);
   });
 

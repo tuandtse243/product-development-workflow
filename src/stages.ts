@@ -20,6 +20,7 @@ import { loadArtifacts, type ArtifactEntry } from "./artifacts.js";
 import { readDecisions, workflowOfChange } from "./decisions.js";
 import { OpError } from "./diag.js";
 import type { Paths } from "./project.js";
+import { PLAN_REVIEW, planReviewBlocker } from "./planreview.js";
 import { DEFAULT_PARALLEL, parseQuality, qualityFile } from "./quality.js";
 import type { Stage, Workflow } from "./workflow.js";
 
@@ -181,6 +182,18 @@ export function doneStages(w: Workflow, change: Change, p?: Paths, registry: Rec
   if (p && state === "analyzing" && !existsSync(stagesFile(change))) for (const id of writtenStages(p, change, stages, registry)) done.add(id);
   const lastGate = stages.reduce((n, s, i) => (s.gate !== undefined && done.has(s.id) ? i : n), -1);
   if (lastGate > 0) for (const s of stages.slice(0, lastGate)) done.add(s.id);
+  // the review before the gate (D4) is done exactly while its recorded review counts (a changed plan reopens it)
+  const review = stages.find((s) => s.writes.includes(PLAN_REVIEW));
+  if (p && review && state === "analyzing") {
+    let open: string | null;
+    try {
+      open = planReviewBlocker(p, change, w);
+    } catch (e) {
+      open = (e as Error).message;
+    }
+    if (open) done.delete(review.id);
+    else done.add(review.id);
+  }
   return done;
 }
 
@@ -245,6 +258,9 @@ export function recordStageDone(p: Paths, id: string, stageId: string, pluginRoo
   if (done.has(stageId)) return;
   const b = blocker(stages, s, done, keyOfRegistry(registry));
   if (b) throw new OpError(`stage "${stageId}" is not ready: it waits for ${b.id}`);
+  // the review before the gate (D4) is done by its recorded verdict, never by a report
+  const open = s.writes.includes(PLAN_REVIEW) ? planReviewBlocker(p, change, w) : null;
+  if (open) throw new OpError(`stage "${stageId}" is done when its verdict is recorded (\`aidw plan-review ${id}\`); it still needs ${open}`);
   const all = [...recordedDone(change), stageId];
   writeFileSync(stagesFile(change), YAML.stringify({ done: all }));
 }
@@ -257,6 +273,7 @@ export function stagesNext(v: StagesView): string {
   if (v.group.length === 0) return v.ready.length === 0 && v.done.length ? "NEXT: every analysis stage is done; continue with the next step of the workflow" : "NEXT: no analysis stage is ready";
   if (v.group.length === 1) {
     const s = v.group[0] as Stage;
+    if (s.writes.includes(PLAN_REVIEW)) return `NEXT: stage ${label(s)}: run \`aidw plan-review ${v.change} --brief\`, spawn aidw:${s.roles[0] ?? "code-reviewer"} with the brief, then record its verdict with \`aidw plan-review ${v.change}\` (it reports the stage)`;
     return `NEXT: stage ${label(s)}: roles ${s.roles.join(", ") || "none"}${s.gate ? `; gate ${s.gate}` : `; when it is done run ${report(s.id)}`}`;
   }
   return `NEXT: run these ${v.group.length} stages in parallel, one subagent each, all in one message: ${v.group.map(label).join(", ")}. When each returns, run ${report("<stage>")} for it`;

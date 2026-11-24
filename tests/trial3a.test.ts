@@ -7,7 +7,7 @@ import { existsSync, lstatSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
-import { ANALYSIS_MD, MAIN_SPEC, QUALITY_YAML, REQ, TOKENS_YAML, tempProject, write } from "./fixtures.js";
+import { ANALYSIS_MD, MAIN_SPEC, QUALITY_YAML, REQ, TOKENS_YAML, tempProject, write, planReviewed } from "./fixtures.js";
 
 const ID = "2026-11-12-t3a";
 const SCENARIO = "booking/reschedule-appointment/reschedule-appointment-works";
@@ -48,6 +48,7 @@ function project(opts: { quality?: string; spec?: string; tasks?: string; git?: 
 }
 
 function approve(root: string) {
+  planReviewed(root, ID);
   for (const s of ["intake", "analyzing", "awaiting_approval"]) expect(cli(root, "transition", ID, s).err).toBe("");
   expect(cli(root, "approve", ID).code).toBe(0);
   expect(cli(root, "transition", ID, "executing").code).toBe(0);
@@ -154,6 +155,7 @@ describe("re-approval keeps done work and tasks can be reopened", () => {
     expect(cli(root, "transition", ID, "escalated").code).toBe(0);
     expect(cli(root, "transition", ID, "analyzing").code).toBe(0);
     write(root, `.aidw/changes/${ID}/tasks.yaml`, tasksOf(root).replace("title: Second", "title: Second, changed"));
+    planReviewed(root, ID);
     for (const s of ["awaiting_approval"]) expect(cli(root, "transition", ID, s).err).toBe("");
     const r = cli(root, "approve", ID, "--json").json();
     expect(r).toMatchObject({ kept: ["T01"], reopened: ["T02"] });

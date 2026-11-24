@@ -9,7 +9,7 @@ import { run } from "../src/cli.js";
 import { agentRole, decide, type HookInput } from "../src/gate.js";
 import { AIDW_STATE_COMMAND } from "../src/policy.js";
 import { parseQuality } from "../src/quality.js";
-import { ANALYSIS_MD, MAIN_SPEC, REQ, TOKENS_YAML, tempProject, write } from "./fixtures.js";
+import { ANALYSIS_MD, MAIN_SPEC, REQ, TOKENS_YAML, tempProject, write, planReviewed } from "./fixtures.js";
 
 const ID = "2026-11-10-booking";
 const SCENARIO = "booking/reschedule-appointment/reschedule-appointment-works";
@@ -65,6 +65,7 @@ function project(quality = Q()): string {
   write(root, "plugin/library/vendor/addy/frontend-ui-engineering/SKILL.md", "# ui\n");
   write(root, "plugin/library/vendor/addy/security-and-hardening/SKILL.md", "# sec\n");
   for (const f of ["code-ok", "audit-ok", "e2e-ok"]) write(root, f, "");
+  planReviewed(root, ID);
   for (const s of ["intake", "analyzing", "awaiting_approval"]) expect(cli(root, "transition", ID, s).err).toBe("");
   expect(cli(root, "approve", ID).code).toBe(0);
   expect(cli(root, "transition", ID, "executing").code).toBe(0);

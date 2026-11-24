@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
 import { decide, type HookInput } from "../src/gate.js";
-import { ANALYSIS_MD, MAIN_SPEC, QUALITY_YAML, REQ, TOKENS_YAML, tempProject, write } from "./fixtures.js";
+import { ANALYSIS_MD, MAIN_SPEC, QUALITY_YAML, REQ, TOKENS_YAML, tempProject, write, planReviewed } from "./fixtures.js";
 
 // Plan D2 gate rule against a real plugin directory: forms around the plain detached start, and the denials that
 // must hold whatever the form.
@@ -52,6 +52,7 @@ describe("gate: forms of the detached start against a real plugin dir (D2)", () 
     write(root, `.aidw/changes/${ID}/tasks.yaml`, TASKS);
     write(root, `.aidw/changes/${ID}/quality.yaml`, QUALITY_YAML);
     write(root, `.aidw/changes/${ID}/specs/booking/spec.md`, `## ADDED Requirements\n\n${REQ("Reschedule appointment")}`);
+    planReviewed(root, ID);
     for (const s of ["intake", "analyzing", "awaiting_approval"]) expect(cli("transition", ID, s)).toBe(0);
     base = realpathSync(mkdtempSync(join(tmpdir(), "aidw-forms-")));
     plugin = join(base, "plugin");

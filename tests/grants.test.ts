@@ -9,7 +9,7 @@ import { decide, type HookInput } from "../src/gate.js";
 import { agentRunCap, parseGrants, shellWords } from "../src/grants.js";
 import { bundledRoot, pluginRoot } from "../src/plugin.js";
 import { parseQuality } from "../src/quality.js";
-import { ANALYSIS_MD, MAIN_SPEC, QUALITY_YAML, REQ, TASKS_YAML, TOKENS_YAML, tempProject, write } from "./fixtures.js";
+import { ANALYSIS_MD, MAIN_SPEC, QUALITY_YAML, REQ, TASKS_YAML, TOKENS_YAML, tempProject, write, planReviewed } from "./fixtures.js";
 
 const ID = "app";
 const GRANTS = `grants:
@@ -49,6 +49,7 @@ function approved(quality: string, before?: () => void) {
   write(root, `.aidw/changes/${ID}/tasks.yaml`, TASKS_YAML);
   write(root, `.aidw/changes/${ID}/quality.yaml`, quality);
   write(root, `.aidw/changes/${ID}/specs/booking/spec.md`, `## ADDED Requirements\n\n${REQ("Reschedule appointment")}`);
+  planReviewed(root, ID);
   for (const s of ["intake", "analyzing", "awaiting_approval"]) expect(cli("transition", ID, s).code).toBe(0);
   before?.();
   expect(cli("approve", ID).code).toBe(0);

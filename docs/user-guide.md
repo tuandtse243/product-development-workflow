@@ -68,6 +68,7 @@ Các lệnh CLI hữu ích khi bạn tự gõ `aidw` (xem mục 2 để đưa n�
 | `aidw browser start\|status\|url\|stop` | trình duyệt test riêng của project cho các layer e2e, a11y, ui-ux, performance (`aidw run` tự khởi động nó trước mỗi phiên vì runner chạy ngoài sandbox): Chrome chạy headless trên cổng trống do chính Chrome chọn (không cố định 9222), mỗi project một profile. Các layer nhận `E2E_CDP_URL` và `E2E_CDP_PORT` tự động. Nếu sandbox chặn việc mở Chrome, chạy `aidw browser start` trong terminal của bạn. |
 | `aidw task reopen <T> [--revert]` | task đã xong nhưng sai: về pending; `--revert` hoàn tác commit của nó (chỉ code, `.aidw/` giữ nguyên) |
 | `aidw stages [<id>] [--done <stage>]` | các stage phân tích trước cổng duyệt: xong, sẵn sàng, và nhóm chạy song song ngay (không đọc/ghi chồng nhau, một việc dùng trình duyệt, `parallel.max`); `--done` báo một stage đã xong |
+| `aidw plan-review [<id>] [--brief]` | review độc lập kiến trúc và kế hoạch trước cổng duyệt: `--brief` viết brief cho code-reviewer; không có thì ghi verdict của nó thành một vòng (tối đa 2 vòng sửa) |
 | `aidw pr [<id>] [--create]` | sau bàn giao: in nội dung PR; `--create` push nhánh và mở PR bằng `gh` (hỏi bạn trước, trừ khi bạn đã cấp quyền push ở cổng duyệt) |
 
 **Trang quyết định (Decision Page).** Khi cần bạn chọn, aidw không in một khối chữ dài vào terminal nữa. Nó in một link
@@ -107,6 +108,20 @@ Sơ đồ: mở [`diagrams/lifecycle.html`](diagrams/lifecycle.html) trong trìn
    phỏng vấn). Đây là vòng câu hỏi, không phải cổng duyệt: không có gì bị đóng băng ở bước này, bạn vẫn chỉ duyệt một lần
    ở cuối ([ADR-0011](adr/0011-approval-gate-stays-after-the-plan.md)). Change tạo bởi bản aidw cũ còn ở
    `awaiting_scope_approval` được đọc như `analyzing`: phỏng vấn tiếp tục, `brief.md` của nó thay cho vòng phạm vi.
+   Trước cổng duyệt, sau khi `aidw analyze` sạch lỗi, một agent **code-reviewer** chỉ đọc (không phải người viết gói)
+   chấm kiến trúc, kế hoạch và test plan theo một danh sách cố định: (1) mọi scenario được duyệt đều có task thật sự làm
+   nó, (2) không task nào ngoài phạm vi, (3) theo đúng constitution, (4) không phức tạp thừa. Nó ghi verdict vào
+   `.aidw/run/review-plan-<id>.md`, mỗi phát hiện nêu số mục và task id, scenario id hoặc vùng (`architecture`,
+   `constitution`, `contracts`, `test-plan`, `quality`). `aidw plan-review <id> --brief` viết brief cho nó;
+   `aidw plan-review <id>` ghi verdict thành một vòng (`changes/<id>/plan-review.yaml`). `fix` thì các Role viết phần đó
+   sửa rồi agent chấm lại; tối đa 2 vòng sửa (CLI đếm), verdict thứ ba là cuối cùng. Phát hiện còn mở sau đó được đưa
+   lên **đầu trang Decision Page của cổng duyệt**, để bạn duyệt kèm chúng hoặc yêu cầu sửa. `aidw transition <id>
+   awaiting_approval` từ chối khi chưa có verdict được ghi, khi vòng sửa còn đang mở, hoặc khi file verdict bị sửa sau
+   khi ghi (D4, [ADR-0011](adr/0011-approval-gate-stays-after-the-plan.md)). Mỗi vòng cần brief riêng. Nếu bạn trả gói
+   về từ cổng duyệt và kế hoạch đã chấm (task, spec, kiến trúc, constitution, hợp đồng dữ liệu/API, test plan) thay đổi,
+   cổng từ chối và một lượt review mới chạy, với 2 vòng sửa riêng; kế hoạch không đổi thì review cũ vẫn tính. Chỉ
+   code-reviewer được ghi file verdict, không agent nào được ghi `plan-review.yaml`. Workflow `bugfix` cũng chạy bước
+   này; `aidw approve --auto` không tự duyệt khi còn phát hiện mở mà để bạn quyết ở trang cổng duyệt.
 2. **Awaiting approval.** Bạn đọc `analysis.md` và duyệt. Gói bị đóng băng: spec, thiết kế, task. Muốn đổi
    phạm vi thì phải quay lại analyzing và duyệt lại.
 3. **Executing.** Từng task chạy theo vòng lặp ở mục 5.
@@ -353,6 +368,7 @@ hành vi, thay vì chia theo tầng.
   changes/<id>/       change đang làm
     intake.md analysis.md      yêu cầu và phân tích (được duyệt)
     specs/ tasks.yaml quality.yaml
+    plan-review.yaml  các vòng review kiến trúc và kế hoạch trước cổng duyệt (CLI ghi, ngoài gói được duyệt)
     evidence/         bằng chứng từng task, từng lớp chất lượng, converge, deploy
   archive/<id>/       change đã xong, kèm delivery/ (README, handoff, báo cáo chất lượng)
   run/                brief, ảnh chụp, verdict, worktree, runner.log (trạng thái tạm)
