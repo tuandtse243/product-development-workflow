@@ -91,6 +91,13 @@ const recordFile = (root: string) => join(root, ".aidw/changes", ID, "consultati
 const records = (root: string) => (YAML.parse(readFileSync(recordFile(root), "utf8")) as { consultations: Record<string, unknown>[] }).consultations;
 const backendAsks = (root: string, question?: string) => cli(root, "consult", request(root, "T01", { from: "backend", task: "T01", to: "software-architect" }, question));
 
+/** The consulted Role answers and the asker is resumed: its run may ask again. */
+function answerAndResume(root: string, cid: string): void {
+  write(root, `.aidw/changes/${ID}/consult/${cid}.answer.md`, "STATUS: answered\n\n409.\n");
+  expect(cli(root, "consult", "answer", cid).code).toBe(0);
+  expect(cli(root, "consult", "resume", cid).code).toBe(0);
+}
+
 /** Sets fields of a task in tasks.yaml, as the CLI would have after a failed checkpoint. */
 function setTask(root: string, taskId: string, fields: Record<string, unknown>): void {
   const file = join(root, ".aidw/changes", ID, "tasks.yaml");
@@ -114,7 +121,9 @@ describe("consult budget per Agent run", () => {
   it("a new attempt is a new Agent run with its own budget; an interrupted run that restarts keeps its count", () => {
     const root = buildingProject();
     expect(backendAsks(root).code).toBe(0);
+    answerAndResume(root, "C01");
     expect(backendAsks(root, "And the retry header?").code).toBe(0);
+    answerAndResume(root, "C02");
     // the run is interrupted and restarted (same attempt): still the same run, the budget is spent
     expect(cli(root, "task", "start", "T01").code).toBe(0);
     const spent = backendAsks(root, "A third one?");
@@ -157,8 +166,8 @@ describe("consult answer and resume across restarts", () => {
     expect(bad.err).toMatch(/does not start with "STATUS: answered"/);
     expect(records(root)[0]).toMatchObject({ status: "open" });
     expect(cli(root, "consult", "resume", "C01").err).toMatch(/has no answer yet/);
-    // the session dies here; a fresh one sees the same step
-    expect(cli(root, "next", "--json").json()).toMatchObject({ action: "consult", step: "answer", consultation: "C01" });
+    // the session dies here; a fresh one is told to record the answer that is on disk, not to spawn again
+    expect(cli(root, "next", "--json").json()).toMatchObject({ action: "consult", step: "record", consultation: "C01" });
     write(root, `.aidw/changes/${ID}/consult/C01.answer.md`, "STATUS: answered\n\n409.\n");
     expect(cli(root, "consult", "answer", "C01").code).toBe(0);
     expect(cli(root, "consult", "answer", "C01").err).toMatch(/C01 is already answered/);
@@ -231,5 +240,62 @@ describe("who may ask", () => {
     const backend = renderAgent(loadRole(plugin, "backend") as RoleProfile, tiers);
     expect(backend).toMatch(/## Consultation[\s\S]*`api-designer`, `database-architect`, `software-architect`/);
     expect(renderAgent(loadRole(plugin, "research") as RoleProfile, tiers)).not.toMatch(/## Consultation/);
+  });
+});
+
+// ------------------------------------------------------------------------------------------------------------------
+// Probes from the review of T8, fixed
+
+describe("consult review probes", () => {
+  it("probe: a user-granted retry (attempts reset to 0) is a new Agent run with a fresh budget", () => {
+    const root = buildingProject();
+    expect(backendAsks(root).code).toBe(0);
+    answerAndResume(root, "C01");
+    expect(backendAsks(root, "And the retry header?").code).toBe(0);
+    answerAndResume(root, "C02");
+    setTask(root, "T01", { status: "escalated", attempts: 3 });
+    expect(cli(root, "task", "retry", "T01").code).toBe(0);
+    const start = cli(root, "task", "start", "T01");
+    expect(start.code, start.err).toBe(0);
+    // a different Agent run than the one that asked C01 and C02, yet it gets the same key task:T01#1
+    const r = backendAsks(root, "A new question in the new run");
+    expect(r.code, r.err).toBe(0);
+  });
+
+  it("probe: a second request from a run whose Consultation is still open is refused (the asker ended its turn)", () => {
+    const root = buildingProject();
+    write(root, `.aidw/changes/${ID}/data-model.md`, "# Data model\n");
+    expect(backendAsks(root).code).toBe(0);
+    // the consulted software-architect (an author: it may write under .aidw/) writes a request claiming to be backend
+    const r = cli(root, "consult", request(root, "T01", { from: "backend", task: "T01", to: "database-architect" }, "Which index?"));
+    expect(r.code).toBe(1);
+  });
+
+  it("probe: re-submitting a request already recorded as C01 does not take C01's request away", () => {
+    const root = buildingProject();
+    expect(backendAsks(root).code).toBe(0);
+    const kept = join(consultDir(root), "C01.request.md");
+    cli(root, "consult", kept);
+    expect(existsSync(kept)).toBe(true);
+    write(root, `.aidw/changes/${ID}/consult/C01.answer.md`, "STATUS: answered\n\n409.\n");
+    const a = cli(root, "consult", "answer", "C01");
+    expect(a.code, a.err).toBe(0);
+  });
+
+  it("probe: an implementer cannot overwrite the recorded C01 request through a case variant", () => {
+    const root = buildingProject();
+    // macOS and Windows take c01.request.md for C01.request.md
+    expect(writeAs(root, join(consultDir(root), "c01.request.md"), "aidw:backend")).toBe("deny");
+  });
+
+  it("probe: only the consulted Role writes the answer of its Consultation", () => {
+    const root = analyzingProject();
+    expect(cli(root, "consult", request(root, "requirements-product-manager", { from: "product-manager", stage: "requirements", to: "research" })).code).toBe(0);
+    const answer = join(consultDir(root), "C01.answer.md");
+    expect(writeAs(root, answer, "aidw:research")).toBe("allow");
+    // the asker forging its own answer
+    expect(writeAs(root, answer, "aidw:product-manager")).toBe("deny");
+    // a Role consulted elsewhere, or not at all
+    expect(writeAs(root, answer, "aidw:api-designer")).toBe("deny");
   });
 });

@@ -31,7 +31,10 @@ import { parseQuality, qualityFile, resetQualitySummary } from "./quality.js";
 import { selectSkills, skillPath, SKILLS_WITH_NOTES, touchesUi, isSecuritySensitive, type BriefKind } from "./skills.js";
 import { configEvidence, type ConfigEvidence } from "./configlock.js";
 import { envelopeBrief } from "./grants.js";
-import { MAX_CONSULTATIONS_PER_RUN, pendingConsultation, taskAnswers, taskConsultable, taskRequestPath } from "./consult.js";
+import { loadArtifacts } from "./artifacts.js";
+import { BRIEF_READS } from "./briefreads.js";
+export { BRIEF_READS } from "./briefreads.js";
+import { loadConsultations, MAX_CONSULTATIONS_PER_RUN, pendingConsultation, taskAnswers, taskConsultable, taskRequestPath } from "./consult.js";
 import { packageEvidence, packageProblems, type PackageEvidence } from "./depsafety.js";
 import { secretsInChanges, secretsMessage, secretsProblem, stagedSecrets, type SecretFinding } from "./secrets.js";
 import { tamperEvidence, tamperProblems, type TamperEvidence } from "./tamper.js";
@@ -106,7 +109,7 @@ export function requireExecuting(p: Paths, change: Change): void {
 
 // ---------------------------------------------------------------- next
 
-export type NextAction =
+export type TaskAction =
   | { action: "implement"; task: string; title: string; reason: "new" | "retry" | "interrupted" }
   | { action: "wave"; tasks: { task: string; title: string }[] }
   | { action: "integrate"; tasks: string[] }
@@ -114,24 +117,62 @@ export type NextAction =
   | { action: "resolve"; task: string; title: string; with: string[]; files: string[] }
   | { action: "review-merge"; task: string; title: string; with: string[] }
   | { action: "triage"; task: string; title: string; reason: string }
-  | { action: "consult"; step: "answer" | "resume"; consultation: string; from: string; to: string; task?: string; stage?: string; status: string; brief: string }
   | { action: "escalate"; task?: string; reason: string }
   | { action: "complete"; done: number };
+
+/**
+ * A Consultation in flight (ADR-0013): `answer` spawns the consulted Role, `record` runs `aidw consult answer` (the
+ * answer file is there), `resume` continues the asker. `meanwhile` is what the rest of the Change does at the same time.
+ */
+export type ConsultAction = {
+  action: "consult";
+  step: "answer" | "record" | "resume";
+  consultation: string;
+  from: string;
+  to: string;
+  task?: string;
+  stage?: string;
+  status: string;
+  brief: string;
+  meanwhile?: TaskAction;
+};
+
+export type NextAction = TaskAction | ConsultAction;
+
+/** Work that can run beside a Consultation; an escalation or the end of the Change waits for it. */
+const RUNS_BESIDE: ReadonlySet<string> = new Set(["implement", "wave", "review", "resolve", "review-merge", "triage", "integrate"]);
 
 export function nextAction(p: Paths, id: string): NextAction {
   const tf = loadTasks(p, id);
   requireExecuting(p, tf.change);
-  const byId = new Map(tf.tasks.map((t) => [t.id, t]));
-  const title = (t: Task) => String(t.title ?? "");
-
-  // A Consultation in flight (ADR-0013) first: its asker waits for the answer, and a fresh session must not respawn it blind.
+  // A Consultation in flight first, so a fresh session does not respawn its asker blind; the tasks that wait for one are
+  // left out of the rest, which carries on meanwhile (ADR-0013).
+  const pending = loadConsultations(tf.change).filter((c) => c.status !== "resumed");
   const c = pendingConsultation(tf.change);
+  const rest = taskAction(p, tf, new Set(pending.flatMap((x) => (x.task ? [x.task] : []))));
   if (c) {
-    return { action: "consult", step: c.status === "open" ? "answer" : "resume", consultation: c.id, from: c.from, to: c.to, ...(c.task ? { task: c.task } : {}), ...(c.stage ? { stage: c.stage } : {}), status: c.status, brief: join(p.aidw, c.brief) };
+    const step = c.status !== "open" ? "resume" : existsSync(join(tf.change.dir, c.answer)) ? "record" : "answer";
+    return {
+      action: "consult",
+      step,
+      consultation: c.id,
+      from: c.from,
+      to: c.to,
+      ...(c.task ? { task: c.task } : {}),
+      ...(c.stage ? { stage: c.stage } : {}),
+      status: c.status,
+      brief: join(p.aidw, c.brief),
+      ...(RUNS_BESIDE.has(rest.action) ? { meanwhile: rest } : {}),
+    };
   }
+  return rest;
+}
+
+function taskAction(p: Paths, tf: TaskFile, waiting: ReadonlySet<string>): TaskAction {
+  const title = (t: Task) => String(t.title ?? "");
   // Unfinished work first, in file order: a review or an interrupted task resumes before anything new.
   for (const t of tf.tasks) if (statusOf(t) === "review") return { action: "review", task: t.id, title: title(t) };
-  for (const t of tf.tasks) if (statusOf(t) === "running") return { action: "implement", task: t.id, title: title(t), reason: "interrupted" };
+  for (const t of tf.tasks) if (statusOf(t) === "running" && !waiting.has(t.id)) return { action: "implement", task: t.id, title: title(t), reason: "interrupted" };
   // T7: a wave task whose merge conflicted waits for the integration Role, then for the review of the merge.
   for (const t of tf.tasks) {
     if (statusOf(t) !== "conflict") continue;
@@ -163,8 +204,8 @@ export function nextAction(p: Paths, id: string): NextAction {
   if (wave[0]) return { action: "implement", task: wave[0].id, title: title(wave[0]), reason: "new" };
   const open = tf.tasks.filter((t) => statusOf(t) !== "done");
   if (open.length === 0) return { action: "complete", done: tf.tasks.length };
-  const waiting = open.map((t) => `${t.id} (${statusOf(t)}${list(t.depends_on).length ? `, needs ${list(t.depends_on).join(", ")}` : ""})`);
-  return { action: "escalate", reason: `no runnable task: ${waiting.join("; ")}` };
+  const stuck = open.map((t) => `${t.id} (${statusOf(t)}${list(t.depends_on).length ? `, needs ${list(t.depends_on).join(", ")}` : ""})`);
+  return { action: "escalate", reason: `no runnable task: ${stuck.join("; ")}` };
 }
 
 // ---------------------------------------------------------------- task start
@@ -231,6 +272,8 @@ export function startTask(p: Paths, id: string, taskId: string, opts: { worktree
   }
   setField(tf, i, "status", "running");
   setField(tf, i, "attempts", attempt);
+  // ADR-0013: a Consultation budget belongs to one Agent run; a new attempt (a granted retry too) is a new run.
+  setField(tf, i, "runs", resumed ? Math.max(Number.isInteger(t.runs) ? Number(t.runs) : attemptsOf(t), 1) : (Number.isInteger(t.runs) ? Number(t.runs) : attemptsOf(t)) + 1);
   if (!t.started_at) setField(tf, i, "started_at", now());
   if (base) setField(tf, i, "base", base);
   saveTasks(tf);
@@ -931,19 +974,21 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
       ])
     : [];
 
-  const pointers = [
-    pointer(p, p.constitution, "engineering principles every agent follows"),
-    pointer(p, join(p.domain, "model.md"), "glossary, entities, business rules"),
-    pointer(p, join(p.architecture, "overview.md"), "architecture, folder structure, integrations"),
-    pointer(p, join(p.requirements, `${id}.md`), "user stories and implementation/testing decisions"),
-    // What the upstream Roles designed for this Change, when they ran: binding in names and shapes.
-    pointer(p, join(tf.change.dir, "data-model.md"), "the approved data model: tables, constraints, indexes and the evolution plan (keep every name)"),
-    pointer(p, join(tf.change.dir, "api-contract.md"), "the approved API contract: operations, shapes, errors (keep every name and status code)"),
-    pointer(p, join(tf.change.dir, "openapi.yaml"), "the contract as OpenAPI 3.1, with an example per scenario"),
-    pointer(p, join(tf.change.dir, "test-plan.md"), "the test cases of each scenario and the layer that proves each"),
-    ...(touchesUi(t) ? [pointer(p, join(tf.change.dir, "journeys.md"), "user kinds, journeys and the usability requirements (U1, U2...) the UI must meet")] : []),
-    ...(touchesUi(t) ? [pointer(p, p.design, "design direction and assets (UI task)")] : []),
-  ].filter((x): x is string => x !== null);
+  // One list (src/briefreads.ts) for the pointers and for whom a Consultation may go to.
+  let registry: ReturnType<typeof loadArtifacts> = null;
+  try {
+    registry = loadArtifacts(pluginHome);
+  } catch {
+    registry = null; // `aidw roster` reports a broken registry
+  }
+  const pointers = BRIEF_READS.filter((r) => r.what && (!r.ui || touchesUi(t)))
+    .map((r) => {
+      const e = registry?.[r.name];
+      if (!e || typeof e.path !== "string") return null;
+      const file = join(p.aidw, e.path.replace(/<id>/g, id));
+      return pointer(p, r.dir ? dirname(file) : file, r.what as string);
+    })
+    .filter((x): x is string => x !== null);
   const adrs = adrPointers(p);
   // The framework pack of the stack the project uses, for the Roles that build with it (never another side's framework).
   const pluginDir = resolve(vendorDir, "..", "..");

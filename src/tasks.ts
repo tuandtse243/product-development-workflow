@@ -32,6 +32,8 @@ export const RUNTIME_FIELDS = [
   "triage",
   // T7: an open merge conflict of a wave task, resolved by the integration Role: { with, files, at, phase, onto?, resolution? }
   "conflict",
+  // ADR-0013: the Agent-run counter, raised on every new attempt and never reset; the Consultation budget counts per run
+  "runs",
 ] as const;
 
 export const DEFAULT_MAX_ATTEMPTS = 3;

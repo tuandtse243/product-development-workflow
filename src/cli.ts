@@ -60,9 +60,9 @@ import { deliver } from "./deliver.js";
 import { deploy, parseQuality, qualityFile, recordLayerReview, verify } from "./quality.js";
 import { firstDeploy } from "./firstdeploy.js";
 import { reconcileDoneTasks, reopenTask } from "./run.js";
-import { autoReview, buildBrief, buildTriageBrief, checkpoint, integrateChange, nextAction, parseVerdict, recordReview, recordTriage, retryTask, startTask, triageFile, type NextAction } from "./run.js";
+import { autoReview, buildBrief, buildTriageBrief, checkpoint, integrateChange, nextAction, parseVerdict, recordReview, recordTriage, retryTask, startTask, triageFile, type ConsultAction, type NextAction } from "./run.js";
 import { recordStageDone, stagesNext, stagesView } from "./stages.js";
-import { changeOfRequest, consultNextText, pendingConsultation, recordAnswer, requestConsultation, resumeConsultation } from "./consult.js";
+import { changeOfRequest, consultNextText, unansweredSection, pendingConsultation, recordAnswer, requestConsultation, resumeConsultation } from "./consult.js";
 import { buildPlanReviewBrief, MAX_FIX_ROUNDS, openFindingsSection, recordPlanReview } from "./planreview.js";
 import { buildConflictBrief, buildMergeReviewBrief, resolveConflict } from "./conflict.js";
 import { VERSION } from "./version.js";
@@ -115,6 +115,18 @@ function changeTasks(p: Paths): Task[][] {
   return out;
 }
 
+/** A Consultation in flight, and what the rest of the Change does meanwhile, in the same message (ADR-0013). */
+function consultText(n: ConsultAction): string {
+  const asker = `${n.from} (${n.task ?? `stage ${n.stage}`})`;
+  const step =
+    n.step === "answer"
+      ? `consultation ${n.consultation}: ${asker} asks ${n.to}; spawn aidw:${n.to} with: Consultation brief: ${n.brief}. Read it and answer as it says. (If you already spawned it and it has not replied, wait for it.) Then \`aidw consult answer ${n.consultation}\``
+      : n.step === "record"
+        ? `consultation ${n.consultation}: ${n.to} wrote its answer; run \`aidw consult answer ${n.consultation}\` (do not spawn it again)`
+        : `consultation ${n.consultation} is ${n.status}: resume ${asker} with \`aidw consult resume ${n.consultation}\``;
+  return n.meanwhile ? `${step}. Meanwhile, in the same message: ${nextText(n.meanwhile)}` : step;
+}
+
 function nextText(n: NextAction): string {
   return n.action === "implement"
     ? `implement ${n.task} (${n.reason}): ${n.title}${n.reason === "interrupted" ? " (if an implementer you spawned for it has not reported yet, it is still running: wait for it, do not spawn another)" : ""}`
@@ -125,9 +137,7 @@ function nextText(n: NextAction): string {
       : n.action === "review-merge"
         ? `review the merge of ${n.task} with ${n.with.join(", ") || "the change branch"}: \`aidw brief ${n.task} --for merge-review\`, spawn ${AGENTS.taskReview} with the brief, then \`aidw verdict ${n.task}\``
       : n.action === "consult"
-        ? n.step === "answer"
-          ? `consultation ${n.consultation}: ${n.from} (${n.task ?? `stage ${n.stage}`}) asks ${n.to}; spawn aidw:${n.to} with: Consultation brief: ${n.brief}. Read it and answer as it says. (If you already spawned it and it has not replied, wait for it.) Then \`aidw consult answer ${n.consultation}\``
-          : `consultation ${n.consultation} is ${n.status}: resume ${n.from} (${n.task ?? `stage ${n.stage}`}) with \`aidw consult resume ${n.consultation}\``
+        ? consultText(n)
       : n.action === "triage"
         ? `triage ${n.task} (${n.reason}): \`aidw brief ${n.task} --for triage\`, spawn ${AGENTS.triage} with the brief, then \`aidw triage ${n.task}\``
         : n.action === "escalate"
@@ -1190,7 +1200,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           const gateId = first.page.layout === "gate" && first.page.change ? resolveChangeId(p, first.page.change) : null;
           const lead = (id: string): PageSection[] => {
             const c = loadChange(p, id);
-            return [openFindingsSection(p, c, workflowOfChange(p, c, pluginRoot(env)))].filter((x): x is PageSection => x !== null);
+            return [openFindingsSection(p, c, workflowOfChange(p, c, pluginRoot(env))), unansweredSection(c)].filter((x): x is PageSection => x !== null);
           };
           const r = gateId ? parsePage(name, source, gateExtras(gateId), lead(gateId)) : first;
           if (r.problems.length) throw new OpError(`the data of page "${name}" (${rel(p, pageDataFile(p, name))}) has ${r.problems.length} problem(s):\n${r.problems.map((x) => `  - ${x}`).join("\n")}\nFix the file and render again.`);

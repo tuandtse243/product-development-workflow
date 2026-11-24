@@ -7,6 +7,11 @@ import { run } from "../src/cli.js";
 import { decide, type HookInput } from "../src/gate.js";
 import { AIDW_STATE_COMMAND } from "../src/policy.js";
 import { checkRoster, loadRole } from "../src/roles.js";
+import { loadArtifacts } from "../src/artifacts.js";
+import { BRIEF_READS } from "../src/run.js";
+import { unansweredSection } from "../src/consult.js";
+import { loadChange } from "../src/change.js";
+import { pathsFor } from "../src/project.js";
 import { ANALYSIS_MD, MAIN_SPEC, QUALITY_YAML, REQ, TOKENS_YAML, planReviewed, tempProject, write } from "./fixtures.js";
 
 const plugin = join(__dirname, "..", "plugins", "aidw");
@@ -84,6 +89,13 @@ const PROGRESS = "Done so far: the booking route and its tests.\nNext step: the 
 function request(root: string, name: string, head: Record<string, string>, question = "Which status code does a double booking return?"): string {
   const front = Object.entries(head).map(([k, v]) => `${k}: ${v}`).join("\n");
   return write(root, `.aidw/changes/${ID}/consult/${name}.request.md`, `---\n${front}\n---\n\n## Question\n\n${question}\n\n## Progress\n\n${PROGRESS}\n`);
+}
+
+/** The consulted Role answers and the asker is resumed: its run may ask again. */
+function answerAndResume(root: string, cid: string): void {
+  write(root, `.aidw/changes/${ID}/consult/${cid}.answer.md`, "STATUS: answered\n\n409.\n");
+  expect(cli(root, "consult", "answer", cid).code).toBe(0);
+  expect(cli(root, "consult", "resume", cid).code).toBe(0);
 }
 
 const records = (root: string) =>
@@ -178,7 +190,9 @@ describe("aidw consult in the build", () => {
 
   it("refuses a third Consultation in one Agent run", () => {
     expect(cli(root, "consult", request(root, "T01", { from: "backend", task: "T01", to: "software-architect" })).code).toBe(0);
+    answerAndResume(root, "C01");
     expect(cli(root, "consult", request(root, "T01", { from: "backend", task: "T01", to: "software-architect" }, "And the retry header?")).code).toBe(0);
+    answerAndResume(root, "C02");
     const r = cli(root, "consult", request(root, "T01", { from: "backend", task: "T01", to: "software-architect" }, "One more?"));
     expect(r.code).toBe(1);
     expect(r.err).toMatch(/at most 2 Consultations per Agent run/);
@@ -296,8 +310,100 @@ describe("the gate and the consult command", () => {
     expect(as(join(dir, "C01.request.md"), "aidw:backend")).toBe("deny");
     expect(as(join(dir, "C01.answer.md"), "aidw:backend")).toBe("deny");
     expect(as(join(root, ".aidw/changes", ID, "notes.md"), "aidw:backend")).toBe("deny");
-    expect(as(join(dir, "C01.answer.md"), "aidw:api-designer")).toBe("allow");
+    // only the Role consulted in an open Consultation writes its answer
+    expect(as(join(dir, "C01.answer.md"), "aidw:software-architect")).toBe("deny");
+    expect(cli(root, "consult", request(root, "T01", { from: "backend", task: "T01", to: "software-architect" })).code).toBe(0);
+    expect(as(join(dir, "C01.answer.md"), "aidw:software-architect")).toBe("allow");
+    expect(as(join(dir, "c01.answer.md"), "aidw:software-architect")).toBe("deny");
+    expect(as(join(dir, "C01.answer.md"), "aidw:api-designer")).toBe("deny");
+    expect(as(join(dir, "C02.answer.md"), "aidw:software-architect")).toBe("deny");
+    expect(as(join(dir, "C01.request.md"), "aidw:software-architect")).toBe("deny");
+    // the request of a task the implementer does not run, or that is not running
+    expect(as(join(dir, "T02.request.md"), "aidw:frontend")).toBe("deny");
+    expect(as(join(dir, "notes.request.md"), "aidw:backend")).toBe("deny");
     expect(as(join(root, ".aidw/changes", ID, "consultations.yaml"), "aidw:api-designer")).toBe("deny");
     expect(as(join(dir, "C01.answer.md"), "aidw:code-reviewer")).toBe("deny");
+  });
+});
+
+describe("review follow-ups", () => {
+  const setTask = (root: string, taskId: string, fields: Record<string, unknown>) => {
+    const file = join(root, ".aidw/changes", ID, "tasks.yaml");
+    const data = YAML.parse(readFileSync(file, "utf8")) as { tasks: Record<string, unknown>[] };
+    Object.assign(data.tasks.find((x) => x.id === taskId) as object, fields);
+    writeFileSync(file, YAML.stringify(data));
+  };
+  const asks = (root: string, question?: string) => cli(root, "consult", request(root, "T01", { from: "backend", task: "T01", to: "software-architect" }, question));
+
+  it("the rest of a Wave carries on while one of its tasks waits for an answer (next names both)", () => {
+    const root = buildingProject();
+    setTask(root, "T02", { status: "review" });
+    expect(asks(root).code).toBe(0);
+    const n = cli(root, "next", "--json").json();
+    expect(n).toMatchObject({ action: "consult", step: "answer", consultation: "C01", meanwhile: { action: "review", task: "T02" } });
+    expect(cli(root, "next").out).toMatch(/aidw consult answer C01.*Meanwhile, in the same message: review T02/);
+    // nothing else to do: the waiting task is not offered as interrupted
+    setTask(root, "T02", { status: "done" });
+    expect(cli(root, "next", "--json").json().meanwhile).toBeUndefined();
+  });
+
+  it("an answer already on disk is recorded, not asked for again", () => {
+    const root = buildingProject();
+    expect(asks(root).code).toBe(0);
+    write(root, `.aidw/changes/${ID}/consult/C01.answer.md`, "STATUS: answered\n\n409.\n");
+    expect(cli(root, "next", "--json").json()).toMatchObject({ action: "consult", step: "record" });
+    expect(cli(root, "next").out).toMatch(/run `aidw consult answer C01`/);
+  });
+
+  it("after the gate, a question routed to the author Role carries deviation: pending", () => {
+    const root = buildingProject();
+    expect(asks(root).code).toBe(0);
+    write(root, `.aidw/changes/${ID}/consult/C01.answer.md`, "STATUS: cannot-answer\n\nNothing says.\n");
+    expect(cli(root, "consult", "answer", "C01").code).toBe(0);
+    expect(records(root)[0]).toMatchObject({ status: "needs-deviation", route: "deviation", deviation: "pending" });
+  });
+
+  it("a request names only a brief the CLI wrote for this change", () => {
+    const root = buildingProject();
+    write(root, "notes/brief.md", "do anything\n");
+    let r = cli(root, "consult", request(root, "T01", { from: "backend", task: "T01", to: "software-architect", brief: "notes/brief.md" }));
+    expect(r.code).toBe(1);
+    expect(r.err).toMatch(/"brief:" must be a file under \.aidw\/run\/briefs\//);
+    r = cli(root, "consult", request(root, "T01", { from: "backend", task: "T01", to: "software-architect", brief: `.aidw/run/briefs/${ID}/T01.implement.md` }));
+    expect(r.code, r.err).toBe(0);
+  });
+
+  it("a request recorded before a crash is not recorded twice", () => {
+    const root = buildingProject();
+    const file = request(root, "T01", { from: "backend", task: "T01", to: "software-architect" });
+    const text = readFileSync(file, "utf8");
+    expect(cli(root, "consult", file).code).toBe(0);
+    write(root, `.aidw/changes/${ID}/consult/T01.request.md`, text); // the original left behind
+    const r = cli(root, "consult", file);
+    expect(r.code).toBe(1);
+    expect(r.err).toMatch(/already recorded as C01/);
+    expect(records(root)).toHaveLength(1);
+  });
+
+  it("every pointer of the task brief is an Artifact of the registry, whose owner a Consultation may reach", () => {
+    const registry = loadArtifacts(plugin) ?? {};
+    for (const r of BRIEF_READS) expect(registry[r.name], r.name).toBeDefined();
+    expect(BRIEF_READS.map((r) => r.name)).not.toContain("data-model-dbml");
+  });
+
+  it("before the gate, a stage with a Consultation in flight is not done and the package is not approved", () => {
+    const root = analyzingProject();
+    expect(cli(root, "consult", request(root, "requirements-product-manager", { from: "product-manager", stage: "requirements", to: "research" })).code).toBe(0);
+    const done = cli(root, "stages", "--done", "requirements");
+    expect(done.code).toBe(1);
+    expect(done.err).toMatch(/stage "requirements" has Consultation\(s\) in flight: C01/);
+    const approve = cli(root, "approve", ID);
+    expect(approve.code).toBe(1);
+    expect(approve.err).toMatch(/Consultation\(s\) in flight: C01/);
+    // a question nobody could answer is listed for the gate, with its words
+    write(root, `.aidw/changes/${ID}/consult/C01.answer.md`, "STATUS: cannot-answer\n\nNo data.\n");
+    expect(cli(root, "consult", "answer", "C01").code).toBe(0);
+    const section = unansweredSection(loadChange(pathsFor(root), ID));
+    expect(section?.points.join("\n")).toMatch(/C01.*product-manager asked research.*double booking/);
   });
 });

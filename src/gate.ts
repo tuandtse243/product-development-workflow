@@ -42,6 +42,7 @@ import { grantedResources } from "./quality.js";
 import { machineOf } from "./machine.js";
 import { bundledRoot, pluginRoot } from "./plugin.js";
 import { roleAccess } from "./roles.js";
+import { consultWrite } from "./consult.js";
 
 export interface HookInput {
   hook_event_name?: string;
@@ -151,10 +152,6 @@ const PLAN_REVIEW_RECORD = "plan-review.yaml";
 
 /** The CLI's record of Consultations (ADR-0013): no Agent writes it. */
 const CONSULT_RECORD = "consultations.yaml";
-/** An implementer's question: .aidw/changes/<id>/consult/<name>.request.md; `C<NN>.*` are the CLI's recorded copies. */
-const CONSULT_REQUEST = /^(?!C\d+\.)[A-Za-z0-9._-]+\.request\.md$/;
-const isConsultRequest = (p: Paths, file: string) =>
-  basename(dirname(file)) === "consult" && dirname(dirname(dirname(file))) === p.changes && CONSULT_REQUEST.test(basename(file));
 
 /** An audit reviewer's answer: .aidw/run/audit-<lens>.md. */
 const AUDIT_FILE = /^audit-[a-z0-9-]+\.md$/;
@@ -231,6 +228,9 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
       if (same(basename(file), CONSULT_RECORD) && same(dirname(dirname(file)), p.changes)) {
         return deny("consultations.yaml is the CLI's record of Consultations; only `aidw consult` writes it");
       }
+      // ADR-0013: the request of the Agent running a task, the answer of the consulted Role, nothing else
+      const consult = role === "reviewer" ? null : consultWrite(p, file, name, role);
+      if (consult) return consult.allow ? allow(consult.reason) : deny(consult.reason);
       if (same(dirname(file), p.run) && PLAN_REVIEW_FILE.test(basename(file)) && name !== "code-reviewer") {
         return deny("the plan review's verdict is written only by the code-reviewer that the orchestrator spawned with its brief");
       }
@@ -255,7 +255,6 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
       return st.open ? allow("analysis approved (task worktree)") : deny(closedReason(st));
     }
     if (role === "implementer" && dirname(file) === p.run && REPORT_FILE.test(basename(file))) return allow("implementer note for the reviewer");
-    if (role === "implementer" && isConsultRequest(p, file)) return allow("implementer question to another Role (Consultation)");
     if (role === "implementer" && insideAnyCase(p.aidw, file) && !inside(join(p.run, "shots"), file)) {
       return deny("implementers do not write .aidw/; the orchestrator records progress and evidence");
     }

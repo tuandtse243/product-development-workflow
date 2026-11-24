@@ -13,15 +13,17 @@
  * Every step is in files, so a fresh session (the runner's `claude -p /aidw:resume`) picks up where the last one
  * stopped: `aidw next` and `aidw stages` surface an open or answered Consultation before anything else.
  */
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import YAML from "yaml";
 import { loadArtifacts } from "./artifacts.js";
 import { loadChange, stateOf, type Change } from "./change.js";
 import { workflowOfChange } from "./decisions.js";
 import { OpError } from "./diag.js";
 import { machineOf } from "./machine.js";
-import { readText, rel, type Paths } from "./project.js";
+import { BRIEF_READS } from "./briefreads.js";
+import type { PageSection } from "./page.js";
+import { readText, rel, walkFiles, type Paths } from "./project.js";
 import { defaultTaskRole, implementerOf, loadRole, loadRoster } from "./roles.js";
 import { touchesUi } from "./skills.js";
 import { parseTasks, type Task } from "./tasks.js";
@@ -47,7 +49,11 @@ export interface Consultation {
   to: string;
   task?: string;
   stage?: string;
-  /** the Agent run that asked: `task:<T>#<attempt>` or `stage:<stage>:<role>`; the budget counts per run */
+  /**
+   * the Agent run that asked: `task:<T>#<run>` (the task's `runs` counter, raised on every new attempt and never reset,
+   * so a retry the user grants is a new run) or `stage:<stage>:<role>` (not reset across plan-review fix rounds: one
+   * budget per stage and Role, on purpose); the budget counts per run
+   */
   run: string;
   /** paths relative to the Change folder (request, answer) and to `.aidw/` (brief, resume) */
   request: string;
@@ -61,6 +67,8 @@ export interface Consultation {
   resume?: string;
   /** after the gate: where the question goes when it is not answered (T9 builds the Deviation path) */
   route?: "deviation";
+  /** with route deviation: `pending` until the Deviation path (T9) records it as `recorded` */
+  deviation?: "pending" | "recorded";
   at: string;
   answered_at?: string;
   resumed_at?: string;
@@ -100,26 +108,24 @@ export function pendingConsultation(change: Change): Consultation | null {
 /** The Roles a Role declares under `consults:` in its role.md. */
 export const consultsOf = (pluginRoot: string, role: string): string[] => loadRole(pluginRoot, role)?.consults ?? [];
 
-/**
- * The Artifacts the brief of an implementing task points at (src/run.ts, buildBrief): what the task builds against.
- * UI Artifacts count only for a task that touches the UI.
- */
-const BRIEF_READS = ["constitution", "domain-model", "architecture", "decisions-architecture", "decisions-domain", "requirements", "data-model-notes", "data-model-dbml", "api-contract-notes", "api-contract-openapi", "test-plan"];
-const UI_READS = ["user-journeys", "design-direction", "design-tokens"];
+/** The CLI's copies in consult/: `C<NN>.request.md`, `C<NN>.answer.md` (any case: macOS and Windows ignore it). */
+export const RECORDED_FILE = /^c\d+\./i;
+
+/** The task's Agent-run counter: raised by `aidw task start` on every new attempt, never reset (a granted retry included). */
+export const taskRun = (t: Task): number =>
+  Number.isInteger(t.runs) ? Number(t.runs) : Number.isInteger(t.attempts) && Number(t.attempts) > 0 ? Number(t.attempts) : 1;
 
 /** Whether an Artifact of the registry exists for this Change (a family such as `decisions/NNNN-<slug>.md` when any member does). */
 function artifactExists(p: Paths, id: string, path: string): boolean {
-  const filled = path.replace(/<id>/g, id);
-  if (/<[^>]+>|NNNN/.test(filled)) {
-    const dir = join(p.aidw, dirname(filled));
-    return existsSync(dir) && readdirSync(dir).some((f) => f.endsWith(".md"));
-  }
-  return existsSync(join(p.aidw, filled));
+  const parts = path.replace(/<id>/g, id).split("/");
+  const at = parts.findIndex((x) => /<[^>]+>|NNNN/.test(x));
+  if (at < 0) return existsSync(join(p.aidw, ...parts));
+  return walkFiles(join(p.aidw, ...parts.slice(0, at))).some((f) => f.endsWith(".md"));
 }
 
 /**
  * The Roles that wrote the contracts a task builds against (ADR-0013): the owners, in artifacts.yaml, of the Artifacts
- * its brief points at that exist in this Change (api-designer for the API contract, database-architect for the data
+ * its brief reads (src/briefreads.ts) that exist in this Change (api-designer for the API contract, database-architect for the data
  * model, software-architect for the architecture).
  */
 export function contractAuthors(p: Paths, id: string, task: Task, pluginRoot: string): string[] {
@@ -130,7 +136,7 @@ export function contractAuthors(p: Paths, id: string, task: Task, pluginRoot: st
     registry = null;
   }
   if (!registry) return [];
-  const names = [...BRIEF_READS, ...(touchesUi(task) ? UI_READS : [])];
+  const names = BRIEF_READS.filter((r) => !r.ui || touchesUi(task)).map((r) => r.name);
   const owners = new Set<string>();
   for (const n of names) {
     const e = registry[n];
@@ -226,13 +232,22 @@ const who = (c: Pick<Consultation, "from" | "task" | "stage">) => `${c.from} (${
 export function requestConsultation(p: Paths, id: string, requestFile: string, pluginRoot: string): ConsultResult {
   const change = loadChange(p, id);
   const file = resolve(p.project, requestFile);
+  // `C<NN>.*` are the CLI's own copies: submitting one again would take a recorded request away from its Consultation.
+  if (RECORDED_FILE.test(basename(file))) throw new OpError(`${rel(p, file)} is the recorded copy of a Consultation, not a new request: the asker writes its own request file (<task>.request.md or <stage>-<role>.request.md)`);
   const text = readText(file);
   if (text === null) throw new OpError(`no request at ${file}`);
   const req = parseRequest(text, rel(p, file));
   const list = loadConsultations(change);
+  // A crash after the record was saved but before the request was removed leaves it behind: never record it twice.
+  const same = list.find((c) => readText(join(change.dir, c.request))?.trim() === text.trim());
+  if (same) {
+    rmSync(file, { force: true });
+    throw new OpError(`this request is already recorded as ${same.id} (${same.status}); continue with \`aidw next\``);
+  }
   const roster = loadRoster(pluginRoot);
 
-  // Depth 1 first: whatever else the request says, a consulted Agent does not ask in turn.
+  // Depth 1 first: whatever else the request says, a consulted Agent does not ask in turn. The check is by Role: with
+  // today's stage order no Role answers a Consultation while an Agent of it runs its own work.
   const answering = list.find((c) => c.status === "open" && c.to === req.from);
   if (req.consultation || answering) {
     throw new OpError(`a consulted Agent cannot consult (depth 1, ADR-0013): ${req.from} is answering ${req.consultation ?? answering?.id}. It answers from what exists, or writes STATUS: cannot-answer`);
@@ -260,7 +275,7 @@ export function requestConsultation(p: Paths, id: string, requestFile: string, p
     if (!contractAuthors(p, id, task, pluginRoot).includes(req.to)) {
       throw new OpError(`${req.to} wrote no contract that ${req.task} builds against: in the build ${req.from} asks only the authors of the Artifacts its brief reads (${contractAuthors(p, id, task, pluginRoot).join(", ") || "none"})`);
     }
-    run = `task:${req.task}#${Number.isInteger(task.attempts) ? Number(task.attempts) : 1}`;
+    run = `task:${req.task}#${taskRun(task)}`;
     const brief = join(briefsDir(p, id), `${req.task}.implement.md`);
     if (existsSync(brief)) origin = relative(p.aidw, brief).split(sep).join("/");
   } else {
@@ -271,7 +286,16 @@ export function requestConsultation(p: Paths, id: string, requestFile: string, p
     if (!stage.roles.includes(req.from)) throw new OpError(`${req.from} has no part in stage ${req.stage} (its roles: ${stage.roles.join(", ")})`);
     run = `stage:${req.stage}:${req.from}`;
   }
-  if (req.brief) origin = req.brief;
+  if (req.brief) {
+    // only a brief the CLI wrote for this Change: the resume brief copies its text
+    const b = resolve(p.project, req.brief);
+    const r = relative(briefsDir(p, id), b);
+    if (!r || r.startsWith("..") || isAbsolute(r)) throw new OpError(`${rel(p, file)}: "brief:" must be a file under ${rel(p, briefsDir(p, id))}/`);
+    origin = relative(p.aidw, b).split(sep).join("/");
+  }
+  // The asker ends its turn with its question: a second request of a run whose Consultation is still open is not from it.
+  const waiting = list.find((c) => c.run === run && c.status === "open");
+  if (waiting) throw new OpError(`the Agent run ${run} is waiting for ${waiting.id}: it ended its turn with that question, so this request is not from it`);
   const used = list.filter((c) => c.run === run).length;
   if (used >= MAX_CONSULTATIONS_PER_RUN) {
     throw new OpError(`${req.from} already asked ${used} question(s) in this run (${run}): at most ${MAX_CONSULTATIONS_PER_RUN} Consultations per Agent run (ADR-0013). It goes on from what it has and says what is still open`);
@@ -282,8 +306,6 @@ export function requestConsultation(p: Paths, id: string, requestFile: string, p
   const dir = join(change.dir, CONSULT_DIR);
   mkdirSync(dir, { recursive: true });
   const kept = join(dir, `${cid}.request.md`);
-  // Kept under the Consultation's id, so the asker's next request may use the same path.
-  if (file !== kept) renameSync(file, kept);
   const c: Consultation = {
     id: cid,
     from: req.from,
@@ -299,8 +321,12 @@ export function requestConsultation(p: Paths, id: string, requestFile: string, p
     status: "open",
     at: now(),
   };
+  // Kept under the Consultation's id, so the asker's next request may use the same path. Copy, record, then remove:
+  // a crash leaves at worst an unrecorded copy (overwritten by the next C<NN>) or the original (refused as recorded).
+  writeFileSync(kept, text);
   const brief = consultBrief(p, change, c, req, used, pluginRoot);
   saveConsultations(change, [...list, c]);
+  rmSync(file, { force: true });
   return { consultation: c, brief, agent: `aidw:${req.to}` };
 }
 
@@ -399,7 +425,7 @@ export function recordAnswer(p: Paths, id: string, cid: string, pluginRoot: stri
     resume: `run/briefs/${id}/${cid}.resume.md`,
     // TODO(T9): a Consultation routed to "deviation" is where the author Role changes its Artifact and the CLI records a
     // Deviation and reruns the affected tasks (ADR-0014). Until T9, the asker resumes and builds what was approved.
-    ...(status === "needs-deviation" ? { route: "deviation" as const } : {}),
+    ...(status === "needs-deviation" ? { route: "deviation" as const, deviation: "pending" as const } : {}),
   };
   writeResumeBrief(p, change, updated, pluginRoot);
   list[i] = updated;
@@ -495,7 +521,73 @@ export function taskAnswers(change: Change, taskId: string): Consultation[] {
 
 /** The NEXT text for a pending Consultation (aidw next, aidw stages). */
 export function consultNextText(p: Paths, id: string, c: Consultation): string {
+  if (c.status === "open" && existsSync(join(p.changes, id, c.answer))) return `consultation ${c.id}: ${c.to} wrote its answer; run \`aidw consult answer ${c.id} --change ${id}\` (do not spawn it again)`;
   return c.status === "open"
     ? `consultation ${c.id}: ${who(c)} asks ${c.to}; spawn aidw:${c.to} with: Consultation brief: ${join(p.aidw, c.brief)}. Read it and answer as it says. (If you already spawned it and it has not replied, wait.) Then \`aidw consult answer ${c.id} --change ${id}\``
     : `consultation ${c.id} is ${c.status}: resume ${who(c)} with \`aidw consult resume ${c.id} --change ${id}\``;
+}
+
+// ---------------------------------------------------------------- the gate on consult/
+
+/**
+ * What an Agent may write under `changes/<id>/consult/` (src/gate.ts), or null when the file is not there. Compared
+ * without case where it protects (macOS and Windows take `c01.answer.md` for `C01.answer.md`); an allow needs the exact path.
+ *   - `C<NN>.answer.md`: only the consulted Role (`to`) of that open Consultation
+ *   - any other `C<NN>.*`: nobody (the CLI's copies)
+ *   - an implementer: only `<task>.request.md` of a task running in that Change
+ *   - an author: its request under the normal `.aidw/` rule (null)
+ */
+export function consultWrite(p: Paths, file: string, agent: string, role: string | null): { allow: boolean; reason: string } | null {
+  const low = (x: string) => x.toLowerCase();
+  const dir = dirname(file);
+  if (low(basename(dir)) !== CONSULT_DIR || low(dirname(dirname(dir))) !== low(p.changes)) return null;
+  const id = basename(dirname(dir));
+  const exact = existsSync(join(p.changes, id)) && dir === join(p.changes, id, CONSULT_DIR);
+  const name = basename(file);
+  let change: Change | null = null;
+  try {
+    change = exact ? loadChange(p, id) : null;
+  } catch {
+    change = null;
+  }
+  if (RECORDED_FILE.test(name)) {
+    const m = /^(C\d+)\.answer\.md$/.exec(name);
+    const c = m && change ? loadConsultations(change).find((x) => x.id === m[1] && x.status === "open") : undefined;
+    if (c && c.to === agent) return { allow: true, reason: `the consulted Role's answer to ${c.id}` };
+    return { allow: false, reason: "only the Role consulted in an open Consultation writes its answer (C<NN>.answer.md); the other C<NN> files are the CLI's" };
+  }
+  if (role === "implementer") {
+    const m = /^(.+)\.request\.md$/.exec(name);
+    const text = change && m ? readText(join(change.dir, "tasks.yaml")) : null;
+    const task = text && m ? parseTasks(text).tasks.find((t) => t.id === m[1]) : undefined;
+    if (task && String(task.status ?? "pending") === "running") return { allow: true, reason: "implementer question to another Role (Consultation)" };
+    return { allow: false, reason: "an implementer writes only <task>.request.md, for the task it runs, directly in consult/ of its change" };
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------- before the gate
+
+/** Consultations of the stages before the gate that the Orchestrator has not finished (not yet resumed). */
+export const stageConsultationsInFlight = (change: Change, stage?: string): Consultation[] =>
+  loadConsultations(change).filter((c) => c.stage && c.status !== "resumed" && (!stage || c.stage === stage));
+
+/** The questions no consulted Role could answer before the gate: shown on the gate's Decision Page beside the open findings. */
+export function unansweredSection(change: Change): PageSection | null {
+  const list = loadConsultations(change).filter((c) => !c.after_gate && c.outcome === "cannot-answer");
+  if (!list.length) return null;
+  const question = (c: Consultation) => {
+    try {
+      return parseRequest(readText(join(change.dir, c.request)) ?? "", c.request).question.replace(/\s+/g, " ").trim();
+    } catch {
+      return "(the request could not be read)";
+    }
+  };
+  return {
+    id: "unanswered-consultations",
+    title: "Questions no Role could answer",
+    body: "An Agent asked another Role these questions while drafting the package and got no answer. Each is recorded as an open question in the asker's Artifact. Approve with them, or mark this section for a change.",
+    points: list.map((c) => `**${c.id}** ${c.from} asked ${c.to} (stage \`${c.stage}\`): ${question(c)}`),
+    html: "",
+  };
 }
