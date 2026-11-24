@@ -33,7 +33,11 @@ _Avoid_: Stub, placeholder
 
 **Orchestrator**:
 The coordinator of a run: the main session together with the CLI. It is not a Role and is not in the Roster.
-_Avoid_: Manager agent, supervisor
+_Avoid_: Manager agent, supervisor, master agent
+
+**Consultation**:
+One question an Agent puts to another Role through the Orchestrator while it works; the answer comes back as an Artifact.
+_Avoid_: Agent call, delegation, handoff
 
 **Run mode**:
 How a Role's Agent runs: interactive (in the main session, talking with the user) or worker (in a fresh context).
@@ -81,6 +85,22 @@ _Avoid_: Debugging, post-mortem
 The tasks that together deliver one behavior end to end; the Technical Planner gives it to one Agent or
 splits it by Role along a contract.
 _Avoid_: Feature, story
+
+**Deviation**:
+A change made after the Approval Gate to something that was approved, decided by the Role that wrote it and listed in the pull request.
+_Avoid_: Drift (that is an approved file changed with no recorded decision), override
+
+**Change Branch**:
+The one branch that carries a Change; every task's work is merged into it and it is the only branch that is ever pushed.
+_Avoid_: Main branch (that is the project's default branch), feature branch
+
+**Wave**:
+The pieces of work of one Change that run at the same time because none of them writes what another reads or writes.
+_Avoid_: Batch, parallel group
+
+**Task Worktree**:
+The private working copy one task of a Wave is built in; its branch is merged into the Change Branch and never pushed.
+_Avoid_: Agent branch, sandbox
 
 ### Knowledge
 
