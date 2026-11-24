@@ -222,6 +222,10 @@ Fastify, Hono.
 
 - T6: which Role does the pre-gate review. Decided 2026-11-24: `code-reviewer`, with a new `plan-review` skill.
 - T1: decided 2026-11-24: `schema-evolution` moves to `library/skills/` (done).
+- T14 S7: decided 2026-11-24: vendor getsentry `secret-serialization` (@a582c51, Apache-2.0) word for word with a
+  `vendored-skill-notes.md` entry; it loads for backend only on a narrow signal (a credential field added to a class
+  or config, or a logger/span/error-context call taking whole objects), only the project's language reference; the
+  security Role loads it in Phase 4; S5 names it as a source.
 - T8: how the asking Agent is resumed in runner mode. Decided 2026-11-24: the asker writes its question and a
   progress note into the request file; the CLI always writes a resume brief (original brief + note + answer
   path), so a fresh Agent of the same Role is the guaranteed path; continuing the live Agent with SendMessage is
