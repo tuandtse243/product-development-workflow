@@ -7,6 +7,10 @@ import { run } from "../src/cli.js";
 import { classifyDbml, classifyOpenApi } from "../src/contractdiff.js";
 import { decide, type HookInput } from "../src/gate.js";
 import { AIDW_STATE_COMMAND } from "../src/policy.js";
+import { computeApprovalHash } from "../src/approval.js";
+import { loadChange } from "../src/change.js";
+import { readGrants } from "../src/grants.js";
+import { pathsFor } from "../src/project.js";
 import { ANALYSIS_MD, MAIN_SPEC, QUALITY_YAML, TOKENS_YAML, planReviewed, tempProject, write } from "./fixtures.js";
 
 const ID = "app";
@@ -293,7 +297,7 @@ describe("aidw deviation close", () => {
     write(root, `${C}/quality.yaml`, `${QUALITY_YAML}grants:\n  agent_runs: 99\n`);
     const r = cli("deviation", "close", ID);
     expect(r.code).toBe(1);
-    expect(r.err).toMatch(/grants .* no Role changes them/);
+    expect(r.err).toMatch(/`grants` and `permissions` .* no Role changes them/);
   });
 
   it("classifies an additive contract difference and reruns no done task for it", () => {
@@ -309,11 +313,16 @@ describe("aidw deviation close", () => {
     expect(task("T01").status).toBe("done");
   });
 
-  it("classifies a breaking contract difference, lists the affected tasks and resets the done ones", () => {
+  it("classifies a breaking contract difference, waits for a task in flight, lists the affected tasks and resets the done ones", () => {
     setStatus({ T01: "done", T02: "done", T03: "running" });
     expect(open("--role", "api-designer", "--files", `${C}/openapi.yaml`, "--reason", "`at` moves to the slot").code).toBe(0);
     write(root, `${C}/openapi.yaml`, OPENAPI(""));
-    const r = cli("deviation", "close", ID);
+    let r = cli("deviation", "close", ID);
+    expect(r.code).toBe(1);
+    expect(r.err).toMatch(/T03 \(running\) must run again but is still in flight: wait for T03 to settle/);
+    expect(deviations()[0]?.status).toBe("open");
+    setStatus({ T03: "failed" });
+    r = cli("deviation", "close", ID);
     expect(r.code, r.all).toBe(0);
     expect(r.out).toMatch(/openapi\.yaml: breaking \(breaking: schema Booking\.at: property removed/);
     const d = deviations()[0] as { rerun: string[]; reset: string[] };
@@ -321,7 +330,7 @@ describe("aidw deviation close", () => {
     expect(d.reset).toEqual(["T01", "T02"]);
     expect(task("T01")).toMatchObject({ status: "pending", attempts: 0 });
     expect(String(task("T01").notes)).toMatch(/Deviation D01/);
-    expect(task("T03").status).toBe("running");
+    expect(task("T03").status).toBe("failed");
   });
 
   it("reruns the tasks of a changed scenario and the tasks built on them, not the others", () => {
@@ -450,4 +459,138 @@ it("the deviations record sits outside the approved package", () => {
   expect(existsSync(join(root, `${C}/deviations.yaml`))).toBe(true);
   const covered = (JSON.parse(cli("approval", "check", ID, "--json").out) as { files?: string[] }).files ?? [];
   expect(covered.some((f) => f.includes("deviations"))).toBe(false);
+});
+
+describe("review findings", () => {
+  beforeEach(() => building());
+
+  it("an approval of the old package list (no `package`) stays valid, opens a Deviation and closes as version 2", () => {
+    // a Change approved before the contracts joined the package: its hash covers the old list only
+    const data = YAML.parse(read(`${C}/change.yaml`)) as Record<string, any>;
+    delete data.approval.package;
+    writeFileSync(join(root, `${C}/change.yaml`), YAML.stringify(data));
+    const p = pathsFor(root);
+    data.approval.hash = computeApprovalHash(p, loadChange(p, ID), undefined, { version: 1 }).hash;
+    writeFileSync(join(root, `${C}/change.yaml`), YAML.stringify(data));
+    expect(cli("approval", "check", ID).code).toBe(0);
+    write(root, `${C}/openapi.yaml`, OPENAPI("")); // not in the old list: no drift, and not frozen
+    expect(cli("approval", "check", ID).code).toBe(0);
+    expect(writeAs(undefined, `${C}/openapi.yaml`)).toBe("allow");
+    expect(open("--role", "api-designer", "--files", `${C}/openapi.yaml`, "--reason", "x").code).toBe(1); // not part of its package
+    expect(open("--role", "product-manager", "--files", `${C}/analysis.md`, "--reason", "a decision is reworded").code).toBe(0);
+    write(root, `${C}/analysis.md`, ANALYSIS_MD.replace("Assumes one clinic", "Assumes a single clinic"));
+    const r = cli("deviation", "close", ID);
+    expect(r.code, r.all).toBe(0);
+    expect((change().approval as Record<string, unknown>).package).toBe(2);
+    expect(cli("approval", "check", ID).code).toBe(0);
+    expect(writeAs(undefined, `${C}/openapi.yaml`)).toBe("deny"); // frozen with version 2
+  });
+
+  it("refuses a change to the tier 2 permissions, and reads the approved grants while quality.yaml is open", () => {
+    expect(open("--role", "qa", "--files", `${C}/quality.yaml`, "--reason", "x").code).toBe(0);
+    write(root, `${C}/quality.yaml`, `${QUALITY_YAML}grants:\n  envelope: true\n`);
+    expect(readGrants(loadChange(pathsFor(root), ID)).envelope).toBe(false); // half-edited: the approved grants hold
+    write(root, `${C}/quality.yaml`, QUALITY_YAML.replace("permissions: [vercel-preview]", "permissions: [vercel-preview, vercel-production]"));
+    const r = cli("deviation", "close", ID);
+    expect(r.code).toBe(1);
+    expect(r.err).toMatch(/`grants` and `permissions`/);
+  });
+
+  it("returns no meanwhile beside a Deviation of the task list", () => {
+    setStatus({ T03: "review" });
+    expect(open("--role", "technical-planner", "--files", `${C}/tasks.yaml`, "--reason", "x").code).toBe(0);
+    expect(JSON.parse(cli("next", "--json").out).meanwhile).toBeUndefined();
+    expect(cli("deviation", "abandon", ID).code).toBe(0);
+    expect(open("--role", "api-designer", "--files", `${C}/openapi.yaml`, "--reason", "x").code).toBe(0);
+    expect(JSON.parse(cli("next", "--json").out).meanwhile).toMatchObject({ action: "review", task: "T03" });
+  });
+
+  it("refuses a new requirement without a scope reason, records it with one", () => {
+    expect(open("--role", "business-analyst,technical-planner", "--files", `${C}/specs/booking/spec.md,${C}/tasks.yaml`, "--reason", "x").code).toBe(0);
+    write(root, `${C}/specs/booking/spec.md`, `${DELTA()}\n### Requirement: Waiting list\nThe system SHALL keep a waiting list.\n\n#### Scenario: Join the list\n- **WHEN** a slot is full\n- **THEN** the patient joins the waiting list\n`);
+    write(root, `${C}/tasks.yaml`, TASKS(`[${S1}, ${S2}, booking/waiting-list/join-the-list]`).replace("specs: [booking/reschedule-appointment]", "specs: [booking/reschedule-appointment, booking/waiting-list]"));
+    let r = cli("deviation", "close", ID);
+    expect(r.code, r.all).toBe(1);
+    expect(r.err).toMatch(/adds requirement\(s\) booking\/waiting-list/);
+    r = cli("deviation", "close", ID, "--scope-reason", "the approved booking flow needs it for a full day", "--summary", "split the full-day case out");
+    expect(r.code, r.all).toBe(0);
+    expect(deviations()[0]).toMatchObject({ requirements: { added: ["booking/waiting-list"] }, scope_reason: "the approved booking flow needs it for a full day", summary: "split the full-day case out" });
+  });
+
+  it("takes a reason per removed scenario and names the one missing", () => {
+    expect(open("--role", "business-analyst,technical-planner", "--files", `${C}/specs/booking/spec.md,${C}/tasks.yaml`, "--reason", "x").code).toBe(0);
+    write(root, `${C}/specs/booking/spec.md`, DELTA().replace(/\n#### Scenario: Reschedule too late[\s\S]*$/, "\n"));
+    write(root, `${C}/tasks.yaml`, TASKS(`[${S1}]`));
+    let r = cli("deviation", "close", ID, "--remove-reason", "booking/other=nothing");
+    expect(r.code).toBe(1);
+    expect(r.err).toMatch(new RegExp(`${S2} with no recorded reason`));
+    r = cli("deviation", "close", ID, "--remove-reason", `${S2}=the desk enforces it`);
+    expect(r.code, r.all).toBe(0);
+    expect((deviations()[0] as any).scenarios.removed).toEqual([{ scenario: S2, reason: "the desk enforces it" }]);
+  });
+
+  it("reruns only the Roles that build against a breaking data model, and records an additive one's readers", () => {
+    setStatus({ T01: "done", T02: "done", T03: "done" });
+    expect(open("--role", "database-architect", "--files", `${C}/data-model.dbml`, "--reason", "x").code).toBe(0);
+    write(root, `${C}/data-model.dbml`, "Table bookings {\n  id uuid [pk]\n  starts_at date [not null]\n}\n");
+    const r = cli("deviation", "close", ID);
+    expect(r.code, r.all).toBe(0);
+    const d = deviations()[0] as any;
+    expect(d.contracts[0]).toMatchObject({ class: "breaking", readers: ["T01", "T03"] });
+    expect(d.rerun).toEqual(["T01", "T02", "T03"]); // T02 (frontend) only because it depends on T01
+    expect(open("--role", "api-designer", "--files", `${C}/openapi.yaml`, "--reason", "y").code).toBe(0);
+    setStatus({ T01: "done", T02: "done", T03: "done" });
+    write(root, `${C}/openapi.yaml`, OPENAPI("        at: {type: string}\n        note: {type: string}\n"));
+    expect(cli("deviation", "close", ID).code).toBe(0);
+    expect(deviations()[1]).toMatchObject({ contracts: [{ class: "additive", readers: ["T01", "T02", "T03"] }], rerun: [] });
+  });
+
+  it("classifies a text change with no difference as unclassified and reruns its readers", () => {
+    setStatus({ T01: "done", T02: "done", T03: "done" });
+    expect(open("--role", "api-designer", "--files", `${C}/openapi.yaml`, "--reason", "x").code).toBe(0);
+    write(root, `${C}/openapi.yaml`, `# reworded\n${OPENAPI()}`);
+    expect(cli("deviation", "close", ID).code).toBe(0);
+    expect(deviations()[0]).toMatchObject({ contracts: [{ class: "unclassified" }], rerun: ["T01", "T02", "T03"] });
+  });
+
+  it("records a removed task that was already done", () => {
+    setStatus({ T03: "done" });
+    expect(open("--role", "technical-planner", "--files", `${C}/tasks.yaml`, "--reason", "mails move to the next change").code).toBe(0);
+    const data = YAML.parse(read(`${C}/tasks.yaml`)) as { tasks: Record<string, unknown>[] };
+    data.tasks = data.tasks.filter((t) => t.id !== "T03");
+    writeFileSync(join(root, `${C}/tasks.yaml`), YAML.stringify(data));
+    const r = cli("deviation", "close", ID);
+    expect(r.code, r.all).toBe(0);
+    expect((deviations()[0] as any).tasks).toMatchObject({ removed: ["T03"], removed_done: ["T03"] });
+  });
+
+  it("aidw status shows an open Deviation", () => {
+    expect(open("--role", "api-designer", "--files", `${C}/openapi.yaml`, "--reason", "x").code).toBe(0);
+    expect(cli("status").out).toMatch(/Deviation D01 open \(api-designer\): .*openapi\.yaml/);
+  });
+
+  it("not-built takes the cause environment", () => {
+    expect(cli("not-built", "T03", "--reason", "no SMTP key in .env", "--cause", "environment").code).toBe(0);
+    expect(task("T03")).toMatchObject({ status: "not_built", not_built: { cause: "environment" } });
+    expect(cli("not-built", "T01", "--reason", "x", "--cause", "other").code).toBe(2);
+  });
+});
+
+describe("a Consultation whose Deviation is abandoned", () => {
+  it("cannot resume while its Deviation is open, and records it abandoned", () => {
+    building();
+    expect(cli("task", "start", "T01").code).toBe(0);
+    write(root, `${C}/consult/T01.request.md`, "---\nfrom: backend\ntask: T01\nto: api-designer\n---\n\n## Question\n\nWhich code?\n\n## Progress\n\nThe route.\n");
+    expect(cli("consult", `${C}/consult/T01.request.md`).code).toBe(0);
+    write(root, `${C}/consult/C01.answer.md`, "STATUS: changes-approved\n\nIt needs a 409.\n");
+    expect(cli("consult", "answer", "C01").code).toBe(0);
+    expect(open("--role", "api-designer", "--files", `${C}/openapi.yaml`, "--reason", "x", "--consultation", "C01").code).toBe(0);
+    const r = cli("consult", "resume", "C01");
+    expect(r.code).toBe(1);
+    expect(r.err).toMatch(/Deviation D01 for C01 is still open/);
+    expect(cli("deviation", "abandon", ID).code).toBe(0);
+    const c = (YAML.parse(read(`${C}/consultations.yaml`)) as { consultations: Record<string, unknown>[] }).consultations[0];
+    expect(c).toMatchObject({ deviation: "abandoned", deviation_id: "D01" });
+    expect(cli("consult", "resume", "C01").code).toBe(0);
+  });
 });

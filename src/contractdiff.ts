@@ -215,6 +215,17 @@ export function parseDbml(text: string): { tables: Map<string, Map<string, Colum
   return { tables, enums };
 }
 
+/** Why a DBML file cannot be read as written (unbalanced braces: still being edited), or null. */
+export function dbmlProblem(text: string): string | null {
+  const clean = text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "").replace(/'[^'\n]*'|"[^"\n]*"/g, "");
+  let depth = 0;
+  for (const ch of clean) {
+    if (ch === "{") depth++;
+    else if (ch === "}" && --depth < 0) return "not valid DBML (a closing brace with no opening one)";
+  }
+  return depth === 0 ? null : "not valid DBML (a block is not closed)";
+}
+
 export function classifyDbml(beforeText: string | null, afterText: string | null): Classified {
   const c = new Collector();
   const before = parseDbml(beforeText ?? "");

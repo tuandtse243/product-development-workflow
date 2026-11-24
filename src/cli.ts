@@ -238,13 +238,14 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
   deviation open [<id>] --role R --files a,b --reason R [--consultation C01] [--task T]
                                          after the gate, something approved must change (ADR-0014): only Role R, the
                                          author of every file named, may edit those files until it closes
-  deviation close [<id>] [--remove-reason R]
+  deviation close [<id>] [--remove-reason R] [--scope-reason R] [--summary S]
                                          check the change (no other drift, still valid, no approved scenario removed
                                          without a reason, grants untouched, new tasks serve an approved scenario,
                                          contracts additive or breaking), rehash the package, rerun the affected tasks
   deviation abandon [<id>] | list [<id>] put the files back as they were | the Deviations of a change
-  not-built <task> --reason R            work outside what the user granted (the permission envelope): the task and
-                                         the tasks that depend on it are marked not built, never done
+  not-built <task> --reason R [--cause envelope|environment]
+                                         work outside what the user granted (the permission envelope) or blocked by the
+                                         environment: the task and the tasks that depend on it are marked not built
   ids [<id>]                             requirement and scenario ids (after applying the change)
   vendor-path <upstream>/<skill>         absolute path of a vendored SKILL.md (e.g. pocock/grilling)
   diff-coverage <lcov> [--min 80] [--base <ref>]  coverage of the lines added since the change's first task started
@@ -310,7 +311,7 @@ interface Args {
   flags: Record<string, string | true>;
 }
 
-const VALUE_FLAGS = new Set(["role", "files", "consultation", "remove-reason", "task", "session", "last", "root", "title", "input-type", "workflow", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude", "model", "case", "runs", "text", "lang", "weights", "to", "done"]);
+const VALUE_FLAGS = new Set(["role", "files", "consultation", "remove-reason", "scope-reason", "summary", "cause", "task", "session", "last", "root", "title", "input-type", "workflow", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude", "model", "case", "runs", "text", "lang", "weights", "to", "done"]);
 
 export function parseArgs(argv: string[]): Args {
   const pos: string[] = [];
@@ -1113,7 +1114,8 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
             const tasks = c.tasks ? `tasks ${c.tasks.done}/${c.tasks.total}` : "no tasks";
             const paused = c.paused ? `  paused(${c.paused.reason ?? "?"})` : "";
             const appr = c.approval === "drift" ? "APPROVAL DRIFT" : `approval ${c.approval}`;
-            return `  ${c.id}  [${c.state}]  ${appr}  ${tasks}  deltas ${c.deltas}${paused}`;
+            const dev = c.deviation ? `\n    Deviation ${c.deviation.id} open (${c.deviation.roles.join(", ")}): ${c.deviation.files.join(", ")}` : "";
+            return `  ${c.id}  [${c.state}]  ${appr}  ${tasks}  deltas ${c.deltas}${paused}${dev}`;
           }),
         ];
         emit(s, `${lines.join("\n")}\n`);
@@ -1422,11 +1424,14 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         }
         if (sub === "close") {
           const removeReason = str(args.flags["remove-reason"]);
-          const d = closeDeviation(p, id, { ...(removeReason ? { removeReason } : {}), pluginRoot: pluginRoot(env) });
+          const scopeReason = str(args.flags["scope-reason"]);
+          const summary = str(args.flags.summary);
+          const d = closeDeviation(p, id, { ...(removeReason ? { removeReason } : {}), ...(scopeReason ? { scopeReason } : {}), ...(summary ? { summary } : {}), pluginRoot: pluginRoot(env) });
           const lines = [
             `${d.id} recorded: ${d.roles.join(", ")} changed ${(d.changed ?? []).join(", ")}`,
             `  approval ${d.previous} -> ${d.hash}`,
-            ...(d.scenarios?.removed.length ? [`  approved scenario(s) removed: ${d.scenarios.removed.map((x) => x.scenario).join(", ")} (${d.scenarios.removed[0]?.reason})`] : []),
+            ...(d.scenarios?.removed.length ? [`  approved scenario(s) removed: ${d.scenarios.removed.map((x) => `${x.scenario} (${x.reason})`).join(", ")}`] : []),
+            ...(d.requirements?.added.length ? [`  requirement(s) added: ${d.requirements.added.join(", ")} (${d.scope_reason})`] : []),
             ...(d.scenarios?.added.length ? [`  scenario(s) added: ${d.scenarios.added.join(", ")}`] : []),
             ...(d.contracts ?? []).map((c) => `  ${c.file}: ${c.class}${c.changes.length ? ` (${c.changes.slice(0, 5).join("; ")}${c.changes.length > 5 ? `; and ${c.changes.length - 5} more` : ""})` : ""}`),
             ...(d.tasks?.added.length ? [`  task(s) added: ${d.tasks.added.join(", ")}`] : []),
@@ -1453,7 +1458,9 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         // D10: work outside the permission envelope is marked not built, never done.
         const p = project();
         const id = resolveChangeId(p, str(args.flags.change));
-        const marked = markNotBuilt(p, id, need(rest[0], "task id"), str(args.flags.reason) ?? "");
+        const cause = str(args.flags.cause) ?? "envelope";
+        if (cause !== "envelope" && cause !== "environment") throw new UsageError("--cause is envelope (outside what the user granted) or environment (a missing key, the network)");
+        const marked = markNotBuilt(p, id, need(rest[0], "task id"), str(args.flags.reason) ?? "", cause);
         emit({ ok: true, change: id, not_built: marked }, `not built: ${marked.join(", ")}\n${nextLine(p, id)}`);
         return 0;
       }

@@ -3979,10 +3979,10 @@ var require_resolve_block_map = __commonJS({
       let offset = bm.offset;
       let commentEnd = null;
       for (const collItem of bm.items) {
-        const { start, key, sep: sep11, value } = collItem;
+        const { start, key, sep: sep12, value } = collItem;
         const keyProps = resolveProps.resolveProps(start, {
           indicator: "explicit-key-ind",
-          next: key ?? sep11?.[0],
+          next: key ?? sep12?.[0],
           offset,
           onError,
           parentIndent: bm.indent,
@@ -3996,7 +3996,7 @@ var require_resolve_block_map = __commonJS({
             else if ("indent" in key && key.indent !== bm.indent)
               onError(offset, "BAD_INDENT", startColMsg);
           }
-          if (!keyProps.anchor && !keyProps.tag && !sep11) {
+          if (!keyProps.anchor && !keyProps.tag && !sep12) {
             commentEnd = keyProps.end;
             if (keyProps.comment) {
               if (map.comment)
@@ -4020,7 +4020,7 @@ var require_resolve_block_map = __commonJS({
         ctx.atKey = false;
         if (utilMapIncludes.mapIncludes(ctx, map.items, keyNode))
           onError(keyStart, "DUPLICATE_KEY", "Map keys must be unique");
-        const valueProps = resolveProps.resolveProps(sep11 ?? [], {
+        const valueProps = resolveProps.resolveProps(sep12 ?? [], {
           indicator: "map-value-ind",
           next: value,
           offset: keyNode.range[2],
@@ -4036,7 +4036,7 @@ var require_resolve_block_map = __commonJS({
             if (ctx.options.strict && keyProps.start < valueProps.found.offset - 1024)
               onError(keyNode.range, "KEY_OVER_1024_CHARS", "The : indicator must be at most 1024 chars after the start of an implicit block mapping key");
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep11, null, valueProps, onError);
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep12, null, valueProps, onError);
           if (ctx.schema.compat)
             utilFlowIndentCheck.flowIndentCheck(bm.indent, value, onError);
           offset = valueNode.range[2];
@@ -4127,7 +4127,7 @@ var require_resolve_end = __commonJS({
       let comment = "";
       if (end) {
         let hasSpace = false;
-        let sep11 = "";
+        let sep12 = "";
         for (const token of end) {
           const { source, type } = token;
           switch (type) {
@@ -4141,13 +4141,13 @@ var require_resolve_end = __commonJS({
               if (!comment)
                 comment = cb;
               else
-                comment += sep11 + cb;
-              sep11 = "";
+                comment += sep12 + cb;
+              sep12 = "";
               break;
             }
             case "newline":
               if (comment)
-                sep11 += source;
+                sep12 += source;
               hasSpace = true;
               break;
             default:
@@ -4190,18 +4190,18 @@ var require_resolve_flow_collection = __commonJS({
       let offset = fc.offset + fc.start.source.length;
       for (let i = 0; i < fc.items.length; ++i) {
         const collItem = fc.items[i];
-        const { start, key, sep: sep11, value } = collItem;
+        const { start, key, sep: sep12, value } = collItem;
         const props = resolveProps.resolveProps(start, {
           flow: fcName,
           indicator: "explicit-key-ind",
-          next: key ?? sep11?.[0],
+          next: key ?? sep12?.[0],
           offset,
           onError,
           parentIndent: fc.indent,
           startOnNewline: false
         });
         if (!props.found) {
-          if (!props.anchor && !props.tag && !sep11 && !value) {
+          if (!props.anchor && !props.tag && !sep12 && !value) {
             if (i === 0 && props.comma)
               onError(props.comma, "UNEXPECTED_TOKEN", `Unexpected , in ${fcName}`);
             else if (i < fc.items.length - 1)
@@ -4255,8 +4255,8 @@ var require_resolve_flow_collection = __commonJS({
             }
           }
         }
-        if (!isMap && !sep11 && !props.found) {
-          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep11, null, props, onError);
+        if (!isMap && !sep12 && !props.found) {
+          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep12, null, props, onError);
           coll.items.push(valueNode);
           offset = valueNode.range[2];
           if (isBlock(value))
@@ -4268,7 +4268,7 @@ var require_resolve_flow_collection = __commonJS({
           if (isBlock(key))
             onError(keyNode.range, "BLOCK_IN_FLOW", blockMsg);
           ctx.atKey = false;
-          const valueProps = resolveProps.resolveProps(sep11 ?? [], {
+          const valueProps = resolveProps.resolveProps(sep12 ?? [], {
             flow: fcName,
             indicator: "map-value-ind",
             next: value,
@@ -4279,8 +4279,8 @@ var require_resolve_flow_collection = __commonJS({
           });
           if (valueProps.found) {
             if (!isMap && !props.found && ctx.options.strict) {
-              if (sep11)
-                for (const st of sep11) {
+              if (sep12)
+                for (const st of sep12) {
                   if (st === valueProps.found)
                     break;
                   if (st.type === "newline") {
@@ -4297,7 +4297,7 @@ var require_resolve_flow_collection = __commonJS({
             else
               onError(valueProps.start, "MISSING_CHAR", `Missing , or : between ${fcName} items`);
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep11, null, valueProps, onError) : null;
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep12, null, valueProps, onError) : null;
           if (valueNode) {
             if (isBlock(value))
               onError(valueNode.range, "BLOCK_IN_FLOW", blockMsg);
@@ -4477,7 +4477,7 @@ var require_resolve_block_scalar = __commonJS({
           chompStart = i + 1;
       }
       let value = "";
-      let sep11 = "";
+      let sep12 = "";
       let prevMoreIndented = false;
       for (let i = 0; i < contentStart; ++i)
         value += lines[i][0].slice(trimIndent) + "\n";
@@ -4494,24 +4494,24 @@ var require_resolve_block_scalar = __commonJS({
           indent = "";
         }
         if (type === Scalar.Scalar.BLOCK_LITERAL) {
-          value += sep11 + indent.slice(trimIndent) + content;
-          sep11 = "\n";
+          value += sep12 + indent.slice(trimIndent) + content;
+          sep12 = "\n";
         } else if (indent.length > trimIndent || content[0] === "	") {
-          if (sep11 === " ")
-            sep11 = "\n";
-          else if (!prevMoreIndented && sep11 === "\n")
-            sep11 = "\n\n";
-          value += sep11 + indent.slice(trimIndent) + content;
-          sep11 = "\n";
+          if (sep12 === " ")
+            sep12 = "\n";
+          else if (!prevMoreIndented && sep12 === "\n")
+            sep12 = "\n\n";
+          value += sep12 + indent.slice(trimIndent) + content;
+          sep12 = "\n";
           prevMoreIndented = true;
         } else if (content === "") {
-          if (sep11 === "\n")
+          if (sep12 === "\n")
             value += "\n";
           else
-            sep11 = "\n";
+            sep12 = "\n";
         } else {
-          value += sep11 + content;
-          sep11 = " ";
+          value += sep12 + content;
+          sep12 = " ";
           prevMoreIndented = false;
         }
       }
@@ -4693,25 +4693,25 @@ var require_resolve_flow_scalar = __commonJS({
       if (!match)
         return source;
       let res = match[1];
-      let sep11 = " ";
+      let sep12 = " ";
       let pos = first.lastIndex;
       line.lastIndex = pos;
       while (match = line.exec(source)) {
         if (match[1] === "") {
-          if (sep11 === "\n")
-            res += sep11;
+          if (sep12 === "\n")
+            res += sep12;
           else
-            sep11 = "\n";
+            sep12 = "\n";
         } else {
-          res += sep11 + match[1];
-          sep11 = " ";
+          res += sep12 + match[1];
+          sep12 = " ";
         }
         pos = line.lastIndex;
       }
       const last = /[ \t]*(.*)/sy;
       last.lastIndex = pos;
       match = last.exec(source);
-      return res + sep11 + (match?.[1] ?? "");
+      return res + sep12 + (match?.[1] ?? "");
     }
     function doubleQuotedValue(source, onError) {
       let res = "";
@@ -5513,14 +5513,14 @@ var require_cst_stringify = __commonJS({
         }
       }
     }
-    function stringifyItem({ start, key, sep: sep11, value }) {
+    function stringifyItem({ start, key, sep: sep12, value }) {
       let res = "";
       for (const st of start)
         res += st.source;
       if (key)
         res += stringifyToken(key);
-      if (sep11)
-        for (const st of sep11)
+      if (sep12)
+        for (const st of sep12)
           res += st.source;
       if (value)
         res += stringifyToken(value);
@@ -6670,18 +6670,18 @@ var require_parser = __commonJS({
         if (this.type === "map-value-ind") {
           const prev = getPrevProps(this.peek(2));
           const start = getFirstKeyStartProps(prev);
-          let sep11;
+          let sep12;
           if (scalar.end) {
-            sep11 = scalar.end;
-            sep11.push(this.sourceToken);
+            sep12 = scalar.end;
+            sep12.push(this.sourceToken);
             delete scalar.end;
           } else
-            sep11 = [this.sourceToken];
+            sep12 = [this.sourceToken];
           const map = {
             type: "block-map",
             offset: scalar.offset,
             indent: scalar.indent,
-            items: [{ start, key: scalar, sep: sep11 }]
+            items: [{ start, key: scalar, sep: sep12 }]
           };
           this.onKeyLine = true;
           this.stack[this.stack.length - 1] = map;
@@ -6834,15 +6834,15 @@ var require_parser = __commonJS({
                 } else if (isFlowToken(it.key) && !includesToken(it.sep, "newline")) {
                   const start2 = getFirstKeyStartProps(it.start);
                   const key = it.key;
-                  const sep11 = it.sep;
-                  sep11.push(this.sourceToken);
+                  const sep12 = it.sep;
+                  sep12.push(this.sourceToken);
                   delete it.key;
                   delete it.sep;
                   this.stack.push({
                     type: "block-map",
                     offset: this.offset,
                     indent: this.indent,
-                    items: [{ start: start2, key, sep: sep11 }]
+                    items: [{ start: start2, key, sep: sep12 }]
                   });
                 } else if (start.length > 0) {
                   it.sep = it.sep.concat(start, this.sourceToken);
@@ -7036,13 +7036,13 @@ var require_parser = __commonJS({
             const prev = getPrevProps(parent);
             const start = getFirstKeyStartProps(prev);
             fixFlowSeqItems(fc);
-            const sep11 = fc.end.splice(1, fc.end.length);
-            sep11.push(this.sourceToken);
+            const sep12 = fc.end.splice(1, fc.end.length);
+            sep12.push(this.sourceToken);
             const map = {
               type: "block-map",
               offset: fc.offset,
               indent: fc.indent,
-              items: [{ start, key: fc, sep: sep11 }]
+              items: [{ start, key: fc, sep: sep12 }]
             };
             this.onKeyLine = true;
             this.stack[this.stack.length - 1] = map;
@@ -8729,21 +8729,39 @@ function openDeviationDigests(change) {
   if (!open || !isRecord(open.before)) return null;
   return new Map(Object.entries(open.before).map(([k, v]) => [k, typeof v === "string" ? v : null]));
 }
+function approvedText(change, file) {
+  const read4 = (f) => {
+    try {
+      return (0, import_node_fs5.readFileSync)(f, "utf8");
+    } catch {
+      return null;
+    }
+  };
+  const open = openDeviation(change);
+  if (open) {
+    const project = (0, import_node_path7.resolve)(change.dir, "..", "..", "..");
+    const r = (0, import_node_path7.relative)(project, file).split(import_node_path7.sep).join("/");
+    if (open.files.includes(r)) return open.before?.[r] === null ? null : read4((0, import_node_path7.join)(change.dir, DEVIATIONS_DIR, open.id, "files", r));
+  }
+  return read4(file);
+}
 
 // src/approval.ts
-var CHANGE_PACKAGE_FILES = [
-  "intake.md",
-  "analysis.md",
-  "design.md",
-  "quality.yaml",
-  "decisions.yaml",
-  "brief.md",
+var PACKAGE_FILES_V1 = ["intake.md", "analysis.md", "design.md", "quality.yaml", "decisions.yaml", "brief.md"];
+var PACKAGE_FILES_V2 = [
+  ...PACKAGE_FILES_V1,
   // the contracts the build is held to (api-designer, database-architect): a later change to one is a Deviation
   "openapi.yaml",
   "api-contract.md",
   "data-model.md",
   "data-model.dbml"
 ];
+var PACKAGE_VERSION = 2;
+function packageVersionOf(change) {
+  const v = change.data.approval?.package;
+  return v === 2 ? 2 : 1;
+}
+var packageFilesFor = (version) => version >= 2 ? PACKAGE_FILES_V2 : PACKAGE_FILES_V1;
 var FROZEN_PROJECT_DIRS = (p) => [p.design, p.domain, p.architecture, p.requirements];
 function baseSpecFiles(p, change) {
   const out = /* @__PURE__ */ new Set();
@@ -8758,16 +8776,16 @@ function baseSpecFiles(p, change) {
 var sha256 = (s) => (0, import_node_crypto3.createHash)("sha256").update(s).digest("hex");
 var normalize = (s) => s.replace(/\r\n?/g, "\n");
 function computeApprovalHash(p, change, push, opts = {}) {
-  return hashOf(packageDigests(p, change, opts.as), push === void 0 ? change.data.approval?.push : push);
+  return hashOf(packageDigests(p, change, opts.as, opts.version), push === void 0 ? change.data.approval?.push : push);
 }
-function packageDigests(p, change, as) {
+function packageDigests(p, change, as, version = packageVersionOf(change)) {
   const entries = [];
   const add = (file, content) => {
     if (!(0, import_node_fs6.existsSync)(file)) return;
     const text2 = content ?? normalize((0, import_node_fs6.readFileSync)(file, "utf8"));
     entries.push({ path: rel(p, file), digest: sha256(text2) });
   };
-  for (const name of CHANGE_PACKAGE_FILES) add((0, import_node_path8.join)(change.dir, name));
+  for (const name of packageFilesFor(version)) add((0, import_node_path8.join)(change.dir, name));
   for (const f of walkFiles((0, import_node_path8.join)(change.dir, "specs"))) add(f);
   for (const f of baseSpecFiles(p, change)) add(f);
   const tasksFile = (0, import_node_path8.join)(change.dir, "tasks.yaml");
@@ -8775,11 +8793,24 @@ function packageDigests(p, change, as) {
   add(p.constitution);
   for (const dir of FROZEN_PROJECT_DIRS(p)) for (const f of walkFiles(dir)) add(f);
   const out = new Map(entries.map((e) => [e.path, e.digest]));
+  const listed = (path) => out.has(path) || isPackageRel(p, change, path, version);
   for (const [path, digest] of as ?? []) {
+    if (!listed(path)) continue;
     if (digest === null) out.delete(path);
     else out.set(path, digest);
   }
   return out;
+}
+function isPackageRel(p, change, path, version = packageVersionOf(change)) {
+  const low = (x) => x.toLowerCase();
+  const file = low(path);
+  const under = (dir2) => file.startsWith(`${low(rel(p, dir2))}/`);
+  if (file === low(rel(p, p.constitution)) || FROZEN_PROJECT_DIRS(p).some(under)) return true;
+  if (baseSpecFiles(p, change).some((b) => low(rel(p, b)) === file)) return true;
+  const dir = low(rel(p, change.dir));
+  if (!file.startsWith(`${dir}/`)) return false;
+  const r = file.slice(dir.length + 1);
+  return r === "tasks.yaml" || packageFilesFor(version).includes(r) || r.startsWith("specs/") && r.endsWith(".md");
 }
 function hashOf(digests, bound) {
   const files = [...digests.keys()].sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
@@ -9760,7 +9791,9 @@ function parseGrants(raw, file, d) {
 function readGrants(change) {
   let data;
   try {
-    data = import_yaml7.default.parse((0, import_node_fs11.readFileSync)((0, import_node_path13.join)(change.dir, "quality.yaml"), "utf8"));
+    const text2 = approvedText(change, (0, import_node_path13.join)(change.dir, "quality.yaml"));
+    if (text2 === null) return { ...NO_GRANTS };
+    data = import_yaml7.default.parse(text2);
   } catch {
     return { ...NO_GRANTS };
   }
@@ -10844,11 +10877,19 @@ ${d.roles.join(" and ")} changed ${files} after this question (${d.reason}). The
 `
   );
 }
+function deviationAbandoned(p, id, cid, did) {
+  const change = loadChange(p, id);
+  const { list: list8, i, c } = find(change, cid);
+  list8[i] = { ...c, deviation: "abandoned", deviation_id: did };
+  saveConsultations(change, list8);
+}
 function resumeConsultation(p, id, cid) {
   const change = loadChange(p, id);
   const { list: list8, i, c } = find(change, cid);
   if (c.status === "open") throw new OpError(`${cid} has no answer yet: run \`aidw consult answer ${cid}\` after ${c.to} wrote it`);
   if (c.status === "resumed") throw new OpError(`${cid} was already resumed`);
+  const deviating = openDeviation(change);
+  if (deviating?.consultation === cid) throw new OpError(`Deviation ${deviating.id} for ${cid} is still open: \`aidw deviation close\` (or abandon) before the asker resumes`);
   const updated = { ...c, status: "resumed", resumed_at: now() };
   list8[i] = updated;
   saveConsultations(change, list8);
@@ -10961,7 +11002,13 @@ function isFrozenPackageFile(p, file, frozen) {
     const dir = lower((0, import_node_path19.join)(p.changes, id));
     if (!inside2(dir, f)) continue;
     const r = (0, import_node_path19.relative)(dir, f).split(import_node_path19.sep).join("/");
-    if (CHANGE_PACKAGE_FILES.some((x) => x.toLowerCase() === r) || r.startsWith("specs/")) return true;
+    let version = 1;
+    try {
+      version = packageVersionOf(loadChange(p, id));
+    } catch {
+      version = PACKAGE_VERSION;
+    }
+    if (packageFilesFor(version).some((x) => x.toLowerCase() === r) || r.startsWith("specs/")) return true;
   }
   return false;
 }
@@ -10974,10 +11021,30 @@ function deviationEdit(p, file, agent, frozen) {
       d = null;
     }
     if (!d || !d.files.some((f2) => lower((0, import_node_path19.join)(p.project, f2)) === lower(file))) continue;
-    const f = d.files.find((x) => (0, import_node_path19.join)(p.project, x) === file);
+    const f = d.files.find((x) => lower((0, import_node_path19.join)(p.project, x)) === lower(file));
     const author = f ? d.authors?.[f] : void 0;
-    if (author && agent === author) return allow(`Deviation ${d.id}: ${author} changes what it wrote`);
+    if (author && agent === author && f && (0, import_node_path19.join)(p.project, f) === file) return allow(`Deviation ${d.id}: ${author} changes what it wrote`);
     return deny(`Deviation ${d.id} of ${id} lets only ${author ?? "its author Role"} edit ${rel(p, file)}: no other Agent and not the Orchestrator edits it while it is open`);
+  }
+  return null;
+}
+function deviationBashWrite(p, cmd2, frozen) {
+  const text2 = lower(cmd2);
+  if (!text2.includes(".aidw") && !text2.includes("changes/") && !/(?:architecture|domain|design|requirements|specs)\//.test(text2) && !text2.includes("constitution")) return null;
+  for (const id of frozen) {
+    let d = null;
+    try {
+      d = openDeviation(loadChange(p, id));
+    } catch {
+      d = null;
+    }
+    if (!d) continue;
+    const hit = d.files.find((f) => text2.includes(lower((0, import_node_path19.relative)(p.aidw, (0, import_node_path19.join)(p.project, f)).split(import_node_path19.sep).join("/"))));
+    if (!hit) continue;
+    const masked = maskQuoted(cmd2);
+    if (firstMatch(WRITE_COMMANDS, masked) || firstMatch(INLINE_CODE, masked) || firstMatch(WRITE_COMMANDS, cmd2)) {
+      return `Deviation ${d.id} of ${id} is open: only ${d.authors?.[hit] ?? "its author Role"} edits ${hit}, with the Write tool; no Bash write by the Orchestrator or any Agent`;
+    }
   }
   return null;
 }
@@ -11102,6 +11169,10 @@ function decide(input, env) {
     if (forbidden) return deny(`command ${forbidden.why}; forbidden (tier x)`);
     const taskPush = taskBranchPush(cmd2);
     if (taskPush) return deny(taskPush);
+    if (!AIDW_COMMAND.test(cmd2) || SHELL_CHAINING.test(cmd2)) {
+      const devWrite = deviationBashWrite(p, cmd2, gateState(p).frozen);
+      if (devWrite) return deny(devWrite);
+    }
     if (role && AIDW_STATE_COMMAND.test(cmd2)) {
       return deny(`the ${role} does not change aidw state (no self-verification); report back to the orchestrator`);
     }
@@ -13436,8 +13507,8 @@ function approve(p, id, opts = {}) {
     by = `aidw (${workflow} boundary)`;
   }
   const push = bindPush(p, change).binding;
-  const { hash, files } = computeApprovalHash(p, change, push);
-  change.doc.set("approval", change.doc.createNode({ hash, at: now4(), by, ...push ? { push } : {} }));
+  const { hash, files } = computeApprovalHash(p, change, push, { version: PACKAGE_VERSION });
+  change.doc.set("approval", change.doc.createNode({ hash, at: now4(), by, package: PACKAGE_VERSION, ...push ? { push } : {} }));
   change.doc.set("state", "approved");
   saveChange(change);
   return { hash, files, by };
@@ -13631,7 +13702,8 @@ function projectStatus(p, only) {
         approval: approvalStatus(p, c).status,
         tasks,
         paused,
-        deltas: deltaFiles(p, c, new Diags()).length
+        deltas: deltaFiles(p, c, new Diags()).length,
+        ...((d) => d ? { deviation: { id: d.id, files: d.files, roles: d.roles } } : {})(openDeviation(c))
       };
     } catch (e) {
       if (e instanceof ChangeError) {
@@ -14098,7 +14170,7 @@ function grantedResources(p, ids, openStates) {
       const c = loadChange(p, id);
       const state = stateOf(c);
       if (!state || !openStates.has(state) || approvalStatus(p, c).status !== "valid") continue;
-      const text2 = readText(qualityFile(c));
+      const text2 = approvedText(c, qualityFile(c));
       if (text2 === null) continue;
       for (const r of parseQuality(text2, "quality.yaml").config?.permissions ?? []) out.add(r);
     } catch {
@@ -15145,7 +15217,8 @@ function nextAction(p, id) {
   const rest = taskAction(p, tf, waitingIds);
   const dev = openDeviation(tf.change);
   if (dev) {
-    const inFlight = ["review", "resolve", "review-merge", "integrate", "triage"].includes(rest.action) || rest.action === "implement" && rest.reason !== "new";
+    const tasksOpen = dev.files.includes(rel(p, (0, import_node_path39.join)(tf.change.dir, "tasks.yaml")));
+    const inFlight = !tasksOpen && (["review", "resolve", "review-merge", "integrate", "triage"].includes(rest.action) || rest.action === "implement" && rest.reason !== "new");
     return { action: "deviation", deviation: dev.id, authors: dev.authors, brief: (0, import_node_path39.join)(p.run, "briefs", id, `${dev.id}.deviation.md`), ...inFlight ? { meanwhile: rest } : {} };
   }
   if (c) {
@@ -17197,8 +17270,8 @@ function fingerprint(p, id) {
   if (archived(p, id)) return "archived";
   try {
     const c = loadChange(p, id);
-    const parts = [String(c.data.state)];
-    for (const f of ["tasks.yaml", "evidence/quality/summary.json", "evidence/converge.json", "evidence/deploy.json", "evidence/integration.json", "consultations.yaml"]) {
+    const parts = [String(c.data.state), String(c.data.approval?.hash ?? "-")];
+    for (const f of ["tasks.yaml", "evidence/quality/summary.json", "evidence/converge.json", "evidence/deploy.json", "evidence/integration.json", "consultations.yaml", "deviations.yaml"]) {
       const file = (0, import_node_path47.join)(c.dir, f);
       parts.push((0, import_node_fs42.existsSync)(file) ? (0, import_node_crypto7.createHash)("sha1").update((0, import_node_fs42.readFileSync)(file, "utf8").replace(ISO_TIME, "")).digest("hex").slice(0, 12) : "-");
     }
@@ -17567,6 +17640,15 @@ function parseDbml(text2) {
   }
   return { tables, enums };
 }
+function dbmlProblem(text2) {
+  const clean = text2.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "").replace(/'[^'\n]*'|"[^"\n]*"/g, "");
+  let depth = 0;
+  for (const ch of clean) {
+    if (ch === "{") depth++;
+    else if (ch === "}" && --depth < 0) return "not valid DBML (a closing brace with no opening one)";
+  }
+  return depth === 0 ? null : "not valid DBML (a block is not closed)";
+}
 function classifyDbml(beforeText, afterText) {
   const c = new Collector();
   const before = parseDbml(beforeText ?? "");
@@ -17613,17 +17695,23 @@ var list6 = (v) => Array.isArray(v) ? v.map(String) : [];
 var statusOf4 = (t) => String(t.status ?? "pending");
 var snapshotDir = (change, did) => (0, import_node_path48.join)(change.dir, DEVIATIONS_DIR, did);
 var deviationBriefPath = (p, id, did) => (0, import_node_path48.join)(p.run, "briefs", id, `${did}.deviation.md`);
-function isPackagePath(p, change, file) {
-  const low = (x) => x.toLowerCase();
-  const inside3 = (parent, child) => {
-    const r2 = (0, import_node_path48.relative)(low(parent), low(child));
-    return r2 !== "" && r2 !== ".." && !r2.startsWith(`..${import_node_path48.sep}`) && !(0, import_node_path48.isAbsolute)(r2);
-  };
-  if (low(file) === low(p.constitution) || FROZEN_PROJECT_DIRS(p).some((d) => inside3(d, file))) return true;
-  if (baseSpecFiles(p, change).some((b) => low(b) === low(file))) return true;
-  if (!inside3(change.dir, file)) return false;
-  const r = (0, import_node_path48.relative)(change.dir, file).split(import_node_path48.sep).join("/");
-  return r === "tasks.yaml" || CHANGE_PACKAGE_FILES.includes(r) || r.startsWith("specs/") && r.endsWith(".md");
+var isPackagePath = (p, change, file) => isPackageRel(p, change, rel(p, file));
+function realPath(p, abs) {
+  const parts = (0, import_node_path48.relative)(p.project, abs).split(import_node_path48.sep).filter(Boolean);
+  let cur = p.project;
+  for (let i = 0; i < parts.length; i++) {
+    const seg = parts[i];
+    let names2 = [];
+    try {
+      names2 = (0, import_node_fs43.readdirSync)(cur);
+    } catch {
+      return (0, import_node_path48.join)(cur, ...parts.slice(i));
+    }
+    const hit = names2.includes(seg) ? seg : names2.find((n) => n.toLowerCase() === seg.toLowerCase());
+    if (!hit) return (0, import_node_path48.join)(cur, ...parts.slice(i));
+    cur = (0, import_node_path48.join)(cur, hit);
+  }
+  return cur;
 }
 function registryPattern(path, id) {
   const esc2 = path.replace(/<id>/g, "\0ID\0").replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\u0000ID\u0000/g, id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).replace(/<capability>/g, "[^/]+(?:/[^/]+)*").replace(/NNNN-<slug>/g, "\\d{4}-[^/]+").replace(/<[^>]+>/g, "[^/]+");
@@ -17644,12 +17732,16 @@ function authorsOf(pluginRoot2, id, fromAidw) {
   return [...new Set(entries.filter((e) => e.path.split("/")[0] === top && e.path.includes("/")).map((e) => e.owner))].sort();
 }
 function specIndex(p, id) {
-  const out = { scenarios: {}, requirements: {} };
+  const out = { scenarios: {}, requirements: {}, incomplete: [] };
   for (const [cap, text2] of specsAfterChange(p, id).specs) {
     for (const r of parseSpec(text2).requirements) {
       out.requirements[reqId(cap, r.name)] = sha(r.raw.replace(/\s+/g, " ").trim());
       const parts = r.raw.split(/^####\s+Scenario:\s*/m).slice(1);
-      r.scenarios.forEach((s, i) => out.scenarios[scenarioId(cap, r.name, s.name)] = sha((parts[i] ?? s.name).replace(/\s+/g, " ").trim()));
+      r.scenarios.forEach((s, i) => {
+        const sid = scenarioId(cap, r.name, s.name);
+        out.scenarios[sid] = sha((parts[i] ?? s.name).replace(/\s+/g, " ").trim());
+        if (!s.hasTrigger || !s.hasOutcome) out.incomplete?.push(sid);
+      });
     }
   }
   return out;
@@ -17658,10 +17750,25 @@ var planned = (text2) => text2 === null ? [] : parseTasks(text2).tasks.filter((t
 function grantsOf(text2) {
   try {
     const data = text2 === null ? null : import_yaml22.default.parse(text2);
-    return JSON.stringify(data?.grants ?? null);
+    return JSON.stringify({ grants: data?.grants ?? null, permissions: data?.permissions ?? null });
   } catch {
     return "invalid";
   }
+}
+var roleOf = (t) => typeof t.role === "string" && t.role ? t.role : defaultTaskRole();
+var hasRole = (t, roles) => roles.some((r) => roleOf(t) === r || roleOf(t).startsWith(`${r}-`));
+var API_ROLES = ["backend", "frontend", "fullstack", "integration"];
+var DATA_ROLES = ["database", "backend", "fullstack", "integration"];
+function removeReasons(raw, removed) {
+  const text2 = raw?.trim() ?? "";
+  const reasons = {};
+  if (text2 && !/^[^\s=;]+=/.test(text2)) for (const s of removed) reasons[s] = text2;
+  else
+    for (const part of text2.split(/[;\n]/)) {
+      const m = /^\s*([^=\s]+)\s*=\s*(\S.*?)\s*$/.exec(part);
+      if (m) reasons[m[1]] = m[2];
+    }
+  return { reasons, missing: removed.filter((s) => !reasons[s]) };
 }
 function openDeviationFor(p, id, o) {
   const change = loadChange(p, id);
@@ -17680,7 +17787,7 @@ function openDeviationFor(p, id, o) {
   const files = [];
   const authors = {};
   for (const raw of o.files) {
-    const abs = (0, import_node_path48.resolve)(o.cwd ?? p.project, raw);
+    const abs = realPath(p, (0, import_node_path48.resolve)(o.cwd ?? p.project, raw));
     const fromAidw = (0, import_node_path48.relative)(p.aidw, abs).split(import_node_path48.sep).join("/");
     if (!isPackagePath(p, change, abs)) throw new OpError(`${rel(p, abs)} is not part of the approved package of "${id}": only approved Artifacts change by Deviation`);
     const owners = authorsOf(o.pluginRoot, id, fromAidw);
@@ -17758,14 +17865,18 @@ function writeBrief(p, change, d, answer) {
     "",
     "1. **Keep the purpose** of every requirement. Change how it is met, not what it is for.",
     "2. **Make the smallest change** that lets the work go on. Rewrite nothing that does not have to move.",
-    "3. **Add no new scope.** A new task or a contract addition is allowed only when it serves a scenario that was already approved; name that scenario in the task's `scenarios:`.",
+    "3. **Add no new scope.** No new requirement; a new scenario only under an approved requirement; a new task or a contract addition only when it serves a scenario that was already approved (name that scenario in the task's `scenarios:`).",
+    "",
+    "The first two are your judgment and the reviewers'; the CLI checks what it can of the third.",
     "",
     "## What the CLI checks when the lead closes it",
     "",
     "- nothing outside these files changed;",
+    "- every contract parses and every scenario has its WHEN and its THEN (nothing is left half written);",
     "- the package still passes `aidw validate` and `aidw analyze`;",
-    "- no approved scenario is removed unless the lead records a reason (`--remove-reason`): say in your reply why one had to go;",
-    "- the grants in quality.yaml are the user's: never change them;",
+    "- no approved scenario is removed unless the lead records a reason (`--remove-reason`): say in your reply why each one had to go;",
+    "- no new requirement unless the lead records why (`--scope-reason`);",
+    "- `grants` and `permissions` in quality.yaml are the user's: never change them;",
     "- a new task in tasks.yaml lists at least one approved scenario under `scenarios:`;",
     "- a change to openapi.yaml or data-model.dbml is classified additive or breaking; prefer additive.",
     "",
@@ -17779,15 +17890,33 @@ function writeBrief(p, change, d, answer) {
   (0, import_node_fs43.writeFileSync)(path, lines.join("\n"));
   return path;
 }
-function readersOf(p, change, file, contract, honorChanged) {
+var RERUN_CLASSES = /* @__PURE__ */ new Set(["breaking", "prose", "unclassified"]);
+function readersOf(p, change, file, contracts, honorChanged) {
   const abs = (0, import_node_path48.join)(p.project, file);
   const low = (x) => x.toLowerCase();
   const under = (dir) => low(abs).startsWith(low(dir) + import_node_path48.sep);
-  if (contract) return contract.class === "additive" || contract.class === "none" ? "none" : "all";
-  if (low(abs) === low((0, import_node_path48.join)(change.dir, "analysis.md"))) return honorChanged ? "all" : "none";
-  if (low(abs) === low(p.constitution) || under(p.domain) || under(p.architecture) || under(p.requirements)) return "all";
-  if (under(p.design) || low(abs) === low((0, import_node_path48.join)(change.dir, "design.md"))) return "ui";
-  return "none";
+  const contract = contracts.find((c) => c.file === file);
+  if (contract) {
+    if (!RERUN_CLASSES.has(contract.class)) return null;
+    return contract.kind === "dbml" || (0, import_node_path48.basename)(file) === "data-model.md" ? (t) => hasRole(t, DATA_ROLES) : (t) => hasRole(t, API_ROLES);
+  }
+  if (low(abs) === low((0, import_node_path48.join)(change.dir, "analysis.md"))) return honorChanged ? () => true : null;
+  if (low(abs) === low(p.constitution) || under(p.domain) || under(p.architecture) || under(p.requirements)) return () => true;
+  if (under(p.design) || low(abs) === low((0, import_node_path48.join)(change.dir, "design.md"))) return (t) => touchesUi(t);
+  return null;
+}
+function contractProblem(name, text2) {
+  if (text2 === null) return null;
+  if (name === "openapi.yaml") {
+    try {
+      import_yaml22.default.parse(text2);
+      return null;
+    } catch (e) {
+      return `not valid YAML (${e.message.split("\n")[0]})`;
+    }
+  }
+  if (name === "data-model.dbml") return dbmlProblem(text2);
+  return null;
 }
 function closeDeviation(p, id, o) {
   let change = loadChange(p, id);
@@ -17806,23 +17935,42 @@ function closeDeviation(p, id, o) {
   if (!changed.length) throw new OpError(`Deviation ${d.id}: ${d.roles.join(", ")} changed none of ${d.files.join(", ")}; spawn it with the brief, or \`aidw deviation abandon\` when nothing needs to change`);
   const beforeText = (f) => readText((0, import_node_path48.join)(dir, "files", f));
   const afterText = (f) => readText((0, import_node_path48.join)(p.project, f));
-  const diags = readinessCheck(p, id);
-  if (diags.errors.length) throw new OpError(`Deviation ${d.id}: the changed package does not validate; ${d.roles.join(", ")} fix it before it closes`, diags);
-  const qualityRel = rel(p, (0, import_node_path48.join)(change.dir, "quality.yaml"));
-  if (changed.includes(qualityRel) && grantsOf(beforeText(qualityRel)) !== grantsOf(afterText(qualityRel))) {
-    throw new OpError(`Deviation ${d.id}: the grants in quality.yaml were granted by the user at the Approval Gate; no Role changes them`);
+  const refuse = (why, diags2) => {
+    throw new OpError(`Deviation ${d.id}: ${why}`, diags2);
+  };
+  for (const f of changed) {
+    const problem = contractProblem((0, import_node_path48.basename)(f), afterText(f));
+    if (problem) refuse(`${f} is ${problem}: is it still being edited? ${d.roles.join(", ")} finish it before it closes`);
   }
   const after = specIndex(p, id);
-  const removed = Object.keys(approved.scenarios).filter((s) => !(s in after.scenarios));
-  const removeReason = o.removeReason?.trim() ?? "";
-  if (removed.length && !removeReason) {
-    throw new OpError(`Deviation ${d.id} removes approved scenario(s) ${removed.join(", ")}: record why with --remove-reason "...", or the author keeps them`);
+  const incomplete = (after.incomplete ?? []).filter((s) => after.scenarios[s] !== approved.scenarios[s]);
+  if (incomplete.length) refuse(`scenario(s) ${incomplete.join(", ")} lack a WHEN or a THEN: is the spec still being edited?`);
+  const qualityRel = rel(p, (0, import_node_path48.join)(change.dir, "quality.yaml"));
+  if (changed.includes(qualityRel) && grantsOf(beforeText(qualityRel)) !== grantsOf(afterText(qualityRel))) {
+    refuse("`grants` and `permissions` in quality.yaml were granted by the user at the Approval Gate; no Role changes them");
   }
+  const diags = readinessCheck(p, id);
+  if (diags.errors.length) refuse(`the changed package does not validate; ${d.roles.join(", ")} fix it before it closes`, diags);
+  const removed = Object.keys(approved.scenarios).filter((s) => !(s in after.scenarios));
+  const { reasons, missing } = removeReasons(o.removeReason, removed);
+  if (missing.length) refuse(`removes approved scenario(s) ${missing.join(", ")} with no recorded reason: --remove-reason "..." (one for all, or "<scenario>=<why>; ..."), or the author keeps them`);
   const added = Object.keys(after.scenarios).filter((s) => !(s in approved.scenarios));
   const changedScenarios = Object.keys(approved.scenarios).filter((s) => s in after.scenarios && after.scenarios[s] !== approved.scenarios[s]);
-  const changedReqs = Object.keys(approved.requirements).filter((r) => after.requirements[r] !== approved.requirements[r]);
+  const requirements = {
+    added: Object.keys(after.requirements).filter((r) => !(r in approved.requirements)),
+    removed: Object.keys(approved.requirements).filter((r) => !(r in after.requirements)),
+    changed: Object.keys(approved.requirements).filter((r) => r in after.requirements && after.requirements[r] !== approved.requirements[r])
+  };
+  const scopeReason = o.scopeReason?.trim() ?? "";
+  if (requirements.added.length && !scopeReason) {
+    refuse(`adds requirement(s) ${requirements.added.join(", ")}: new scope is not a Deviation (ADR-0014). Record why it is not new scope with --scope-reason "...", or the author takes it out`);
+  }
+  const orphan = added.filter((s) => !(s.split("/").slice(0, -1).join("/") in approved.requirements));
+  if (orphan.length && !scopeReason) refuse(`adds scenario(s) ${orphan.join(", ")} under no approved requirement`);
+  const changedReqs = [...requirements.changed, ...requirements.removed];
   const tasksRel = rel(p, (0, import_node_path48.join)(change.dir, "tasks.yaml"));
-  const taskDiff = { added: [], removed: [], changed: [] };
+  const tf = loadTasks(p, id);
+  const taskDiff = { added: [], removed: [], removed_done: [], changed: [] };
   if (changed.includes(tasksRel)) {
     const was = new Map(planned(beforeText(tasksRel)).map((t) => [t.id, t]));
     const is = planned(afterText(tasksRel));
@@ -17830,35 +17978,46 @@ function closeDeviation(p, id, o) {
       const old = was.get(t.id);
       if (!old) {
         const serves = list6(t.scenarios).filter((s) => s in approved.scenarios);
-        if (!serves.length) {
-          throw new OpError(`Deviation ${d.id}: new task ${t.id} serves no approved scenario (its scenarios: ${list6(t.scenarios).join(", ") || "none"}); a task that adds scope is not a Deviation (ADR-0014)`);
-        }
+        if (!serves.length) refuse(`new task ${t.id} serves no approved scenario (its scenarios: ${list6(t.scenarios).join(", ") || "none"}); a task that adds scope is not a Deviation (ADR-0014)`);
         taskDiff.added.push(t.id);
       } else if (planSha(old) !== planSha(t)) taskDiff.changed.push(t.id);
     }
-    for (const id0 of was.keys()) if (!is.some((t) => t.id === id0)) taskDiff.removed.push(id0);
+    for (const [tid, old] of was) {
+      if (is.some((t) => t.id === tid)) continue;
+      taskDiff.removed.push(tid);
+      if (statusOf4(old) === "done") taskDiff.removed_done.push(tid);
+    }
   }
   const contracts = [];
+  const has = (name) => (0, import_node_fs43.existsSync)((0, import_node_path48.join)(change.dir, name));
   for (const f of changed) {
     const name = (0, import_node_path48.basename)(f);
-    if (name === "openapi.yaml") contracts.push({ file: f, kind: "openapi", ...classifyOpenApi(beforeText(f), afterText(f)) });
-    else if (name === "data-model.dbml") contracts.push({ file: f, kind: "dbml", ...classifyDbml(beforeText(f), afterText(f)) });
-    else if (name === "api-contract.md" || name === "data-model.md") contracts.push({ file: f, kind: "prose", class: "prose", changes: ["changed (prose: compared by the reviewers, not the CLI)"] });
+    let c = null;
+    if (name === "openapi.yaml") c = { file: f, kind: "openapi", ...classifyOpenApi(beforeText(f), afterText(f)) };
+    else if (name === "data-model.dbml") c = { file: f, kind: "dbml", ...classifyDbml(beforeText(f), afterText(f)) };
+    else if (name === "api-contract.md" || name === "data-model.md") {
+      const decided = name === "api-contract.md" ? has("openapi.yaml") : has("data-model.dbml");
+      c = decided ? { file: f, kind: "prose", class: "none", changes: [`notes changed; ${name === "api-contract.md" ? "openapi.yaml" : "data-model.dbml"} decides what the build must change`] } : { file: f, kind: "prose", class: "prose", changes: ["changed (prose: compared by the reviewers, not the CLI)"] };
+    }
+    if (!c) continue;
+    if (c.class === "none" && c.kind !== "prose") c = { ...c, class: "unclassified", changes: ["the text changed with no difference the CLI can classify; the reviewers judge it"] };
+    contracts.push(c);
   }
-  const tf = loadTasks(p, id);
   const live = tf.tasks.filter((t) => statusOf4(t) !== "not_built");
   const analysisRel = rel(p, (0, import_node_path48.join)(change.dir, "analysis.md"));
   const honorChanged = changed.includes(analysisRel) && JSON.stringify(decisionsToHonor(beforeText(analysisRel) ?? "")) !== JSON.stringify(decisionsToHonor(afterText(analysisRel) ?? ""));
+  const readers = new Map(changed.map((f) => [f, readersOf(p, change, f, contracts, honorChanged)]));
+  for (const c of contracts) {
+    const kindRoles = c.kind === "dbml" || (0, import_node_path48.basename)(c.file) === "data-model.md" ? DATA_ROLES : API_ROLES;
+    c.readers = live.filter((t) => hasRole(t, kindRoles)).map((t) => t.id);
+  }
   const rerun = /* @__PURE__ */ new Set();
   if (d.task && live.some((t) => t.id === d.task)) rerun.add(d.task);
   for (const t of live) {
     if (taskDiff.changed.includes(t.id)) rerun.add(t.id);
     if (list6(t.scenarios).some((s) => removed.includes(s) || changedScenarios.includes(s))) rerun.add(t.id);
     if (list6(t.specs).some((r) => changedReqs.includes(r))) rerun.add(t.id);
-    for (const f of changed) {
-      const who2 = readersOf(p, change, f, contracts.find((c) => c.file === f), honorChanged);
-      if (who2 === "all" || who2 === "ui" && touchesUi(t)) rerun.add(t.id);
-    }
+    for (const who2 of readers.values()) if (who2?.(t)) rerun.add(t.id);
   }
   for (let grew = true; grew; ) {
     grew = false;
@@ -17869,31 +18028,38 @@ function closeDeviation(p, id, o) {
     }
   }
   const order = live.map((t) => t.id).filter((x) => rerun.has(x) && !taskDiff.added.includes(x));
+  const busy = live.filter((t) => order.includes(t.id) && t.id !== d.task && ["running", "review", "conflict"].includes(statusOf4(t)));
+  if (busy.length) refuse(`${busy.map((t) => `${t.id} (${statusOf4(t)})`).join(", ")} must run again but ${busy.length > 1 ? "are" : "is"} still in flight: wait for ${busy.map((t) => t.id).join(", ")} to settle, then close`);
+  const reset = order.filter((x) => statusOf4(live.find((t) => t.id === x)) === "done");
   change = loadChange(p, id);
-  const { hash } = computeApprovalHash(p, change);
+  const { hash } = computeApprovalHash(p, change, void 0, { version: PACKAGE_VERSION });
   const approval = change.data.approval ?? {};
   const history = Array.isArray(approval.history) ? approval.history : [];
-  const entry = { deviation: d.id, previous: String(approval.hash), hash, reason: d.reason, roles: d.roles, files: changed, at: now7() };
-  change.doc.setIn(["approval", "hash"], hash);
-  change.doc.setIn(["approval", "history"], change.doc.createNode([...history, entry]));
-  saveChange(change);
-  const reset = rerunTasks(p, id, order, `Deviation ${d.id} (${d.roles.join(", ")}) changed ${changed.join(", ")}; runs again`);
+  const at2 = now7();
+  const entry = { deviation: d.id, previous: String(approval.hash), hash, reason: d.reason, roles: d.roles, files: changed, at: at2 };
   const closed = {
     ...d,
     status: "closed",
-    closed_at: now7(),
+    closed_at: at2,
     hash,
     changed,
-    scenarios: { removed: removed.map((s) => ({ scenario: s, reason: removeReason })), added, changed: changedScenarios },
+    ...o.summary?.trim() ? { summary: o.summary.trim() } : {},
+    scenarios: { removed: removed.map((s) => ({ scenario: s, reason: reasons[s] })), added, changed: changedScenarios },
+    requirements,
+    ...scopeReason ? { scope_reason: scopeReason } : {},
     contracts,
     tasks: taskDiff,
     rerun: order,
     reset
   };
-  const fresh = loadChange(p, id);
-  const list22 = loadDeviations(fresh);
+  const list22 = loadDeviations(change);
   list22[list22.findIndex((x) => x.id === d.id)] = closed;
-  saveDeviations(fresh, list22);
+  saveDeviations(change, list22);
+  change.doc.setIn(["approval", "hash"], hash);
+  change.doc.setIn(["approval", "package"], PACKAGE_VERSION);
+  change.doc.setIn(["approval", "history"], change.doc.createNode([...history, entry]));
+  saveChange(change);
+  rerunTasks(p, id, reset, `Deviation ${d.id} (${d.roles.join(", ")}) changed ${changed.join(", ")}; runs again`);
   if (d.consultation) deviationRecorded(p, id, d.consultation, closed);
   return closed;
 }
@@ -17904,10 +18070,12 @@ function abandonDeviation(p, id) {
   if (at < 0) throw new OpError(`change "${id}" has no open Deviation`);
   const d = all2[at];
   const dir = snapshotDir(change, d.id);
+  const tasksRel = rel(p, (0, import_node_path48.join)(change.dir, "tasks.yaml"));
   for (const f of d.files) {
     const abs = (0, import_node_path48.join)(p.project, f);
     const copy = (0, import_node_path48.join)(dir, "files", f);
     if (d.before[f] === null) (0, import_node_fs43.rmSync)(abs, { force: true });
+    else if (f === tasksRel && (0, import_node_fs43.existsSync)(copy)) (0, import_node_fs43.writeFileSync)(abs, restorePlanned((0, import_node_fs43.readFileSync)(copy, "utf8"), readText(abs)));
     else if ((0, import_node_fs43.existsSync)(copy)) {
       (0, import_node_fs43.mkdirSync)((0, import_node_path48.dirname)(abs), { recursive: true });
       (0, import_node_fs43.copyFileSync)(copy, abs);
@@ -17916,7 +18084,29 @@ function abandonDeviation(p, id) {
   const done = { ...d, status: "abandoned", closed_at: now7() };
   all2[at] = done;
   saveDeviations(change, all2);
+  if (d.consultation) deviationAbandoned(p, id, d.consultation, d.id);
   return done;
+}
+function restorePlanned(approvedText2, currentText) {
+  const approvedTasks = parseTasks(approvedText2).tasks;
+  const current = currentText === null ? [] : parseTasks(currentText).tasks;
+  const byId = new Map(current.filter((t) => t && typeof t.id === "string").map((t) => [t.id, t]));
+  const out = approvedTasks.map((t) => {
+    const now0 = byId.get(t.id);
+    const copy = { ...t };
+    if (now0) for (const k of RUNTIME_FIELDS) k in now0 ? copy[k] = now0[k] : delete copy[k];
+    return copy;
+  });
+  const ids = new Set(approvedTasks.map((t) => t.id));
+  for (const t of current) if (t && !ids.has(t.id) && ADDED_ORIGINS.includes(String(t.origin))) out.push(t);
+  let top = {};
+  try {
+    const data = import_yaml22.default.parse(currentText ?? approvedText2);
+    if (data && typeof data === "object" && !Array.isArray(data)) top = data;
+  } catch {
+    top = {};
+  }
+  return import_yaml22.default.stringify({ ...top, tasks: out });
 }
 function markNotBuilt(p, id, taskId, reason, cause = "envelope") {
   if (!reason.trim()) throw new OpError('say why it is not built (--reason "...")');
@@ -18350,13 +18540,14 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
   deviation open [<id>] --role R --files a,b --reason R [--consultation C01] [--task T]
                                          after the gate, something approved must change (ADR-0014): only Role R, the
                                          author of every file named, may edit those files until it closes
-  deviation close [<id>] [--remove-reason R]
+  deviation close [<id>] [--remove-reason R] [--scope-reason R] [--summary S]
                                          check the change (no other drift, still valid, no approved scenario removed
                                          without a reason, grants untouched, new tasks serve an approved scenario,
                                          contracts additive or breaking), rehash the package, rerun the affected tasks
   deviation abandon [<id>] | list [<id>] put the files back as they were | the Deviations of a change
-  not-built <task> --reason R            work outside what the user granted (the permission envelope): the task and
-                                         the tasks that depend on it are marked not built, never done
+  not-built <task> --reason R [--cause envelope|environment]
+                                         work outside what the user granted (the permission envelope) or blocked by the
+                                         environment: the task and the tasks that depend on it are marked not built
   ids [<id>]                             requirement and scenario ids (after applying the change)
   vendor-path <upstream>/<skill>         absolute path of a vendored SKILL.md (e.g. pocock/grilling)
   diff-coverage <lcov> [--min 80] [--base <ref>]  coverage of the lines added since the change's first task started
@@ -18416,7 +18607,7 @@ Hooks:
 States: ${STATES.join(", ")}
 Exit codes: 0 ok, 1 failed check or refused operation, 2 usage error
 `;
-var VALUE_FLAGS = /* @__PURE__ */ new Set(["role", "files", "consultation", "remove-reason", "task", "session", "last", "root", "title", "input-type", "workflow", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude", "model", "case", "runs", "text", "lang", "weights", "to", "done"]);
+var VALUE_FLAGS = /* @__PURE__ */ new Set(["role", "files", "consultation", "remove-reason", "scope-reason", "summary", "cause", "task", "session", "last", "root", "title", "input-type", "workflow", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude", "model", "case", "runs", "text", "lang", "weights", "to", "done"]);
 function parseArgs(argv) {
   const pos = [];
   const flags = {};
@@ -19240,7 +19431,9 @@ ${r.errors.map((e) => `failed: ${e}
             const tasks = c.tasks ? `tasks ${c.tasks.done}/${c.tasks.total}` : "no tasks";
             const paused = c.paused ? `  paused(${c.paused.reason ?? "?"})` : "";
             const appr = c.approval === "drift" ? "APPROVAL DRIFT" : `approval ${c.approval}`;
-            return `  ${c.id}  [${c.state}]  ${appr}  ${tasks}  deltas ${c.deltas}${paused}`;
+            const dev = c.deviation ? `
+    Deviation ${c.deviation.id} open (${c.deviation.roles.join(", ")}): ${c.deviation.files.join(", ")}` : "";
+            return `  ${c.id}  [${c.state}]  ${appr}  ${tasks}  deltas ${c.deltas}${paused}${dev}`;
           })
         ];
         emit(s, `${lines.join("\n")}
@@ -19566,11 +19759,14 @@ Then: aidw deviation close
         }
         if (sub === "close") {
           const removeReason = str(args.flags["remove-reason"]);
-          const d = closeDeviation(p, id, { ...removeReason ? { removeReason } : {}, pluginRoot: pluginRoot(env) });
+          const scopeReason = str(args.flags["scope-reason"]);
+          const summary = str(args.flags.summary);
+          const d = closeDeviation(p, id, { ...removeReason ? { removeReason } : {}, ...scopeReason ? { scopeReason } : {}, ...summary ? { summary } : {}, pluginRoot: pluginRoot(env) });
           const lines = [
             `${d.id} recorded: ${d.roles.join(", ")} changed ${(d.changed ?? []).join(", ")}`,
             `  approval ${d.previous} -> ${d.hash}`,
-            ...d.scenarios?.removed.length ? [`  approved scenario(s) removed: ${d.scenarios.removed.map((x) => x.scenario).join(", ")} (${d.scenarios.removed[0]?.reason})`] : [],
+            ...d.scenarios?.removed.length ? [`  approved scenario(s) removed: ${d.scenarios.removed.map((x) => `${x.scenario} (${x.reason})`).join(", ")}`] : [],
+            ...d.requirements?.added.length ? [`  requirement(s) added: ${d.requirements.added.join(", ")} (${d.scope_reason})`] : [],
             ...d.scenarios?.added.length ? [`  scenario(s) added: ${d.scenarios.added.join(", ")}`] : [],
             ...(d.contracts ?? []).map((c) => `  ${c.file}: ${c.class}${c.changes.length ? ` (${c.changes.slice(0, 5).join("; ")}${c.changes.length > 5 ? `; and ${c.changes.length - 5} more` : ""})` : ""}`),
             ...d.tasks?.added.length ? [`  task(s) added: ${d.tasks.added.join(", ")}`] : [],
@@ -19599,7 +19795,9 @@ ${nextLine(p, id)}`);
       case "not-built": {
         const p = project();
         const id = resolveChangeId(p, str(args.flags.change));
-        const marked = markNotBuilt(p, id, need(rest[0], "task id"), str(args.flags.reason) ?? "");
+        const cause = str(args.flags.cause) ?? "envelope";
+        if (cause !== "envelope" && cause !== "environment") throw new UsageError("--cause is envelope (outside what the user granted) or environment (a missing key, the network)");
+        const marked = markNotBuilt(p, id, need(rest[0], "task id"), str(args.flags.reason) ?? "", cause);
         emit({ ok: true, change: id, not_built: marked }, `not built: ${marked.join(", ")}
 ${nextLine(p, id)}`);
         return 0;

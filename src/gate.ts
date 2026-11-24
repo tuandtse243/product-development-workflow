@@ -15,7 +15,7 @@
  * Fails closed inside an aidw project: an internal error denies the call.
  */
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { approvalStatus, baseSpecFiles, CHANGE_PACKAGE_FILES, FROZEN_PROJECT_DIRS } from "./approval.js";
+import { approvalStatus, baseSpecFiles, FROZEN_PROJECT_DIRS, PACKAGE_VERSION, packageFilesFor, packageVersionOf } from "./approval.js";
 import { listChangeIds, loadChange, stateOf, type State } from "./change.js";
 import { AIDW_DIR, findProject, pathsFor, rel, type Paths } from "./project.js";
 import {
@@ -132,7 +132,13 @@ function isFrozenPackageFile(p: Paths, file: string, frozen: string[]): boolean 
     const dir = lower(join(p.changes, id));
     if (!inside(dir, f)) continue;
     const r = relative(dir, f).split(sep).join("/");
-    if (CHANGE_PACKAGE_FILES.some((x) => x.toLowerCase() === r) || r.startsWith("specs/")) return true;
+    let version = 1;
+    try {
+      version = packageVersionOf(loadChange(p, id));
+    } catch {
+      version = PACKAGE_VERSION; // unreadable: freeze the widest list
+    }
+    if (packageFilesFor(version).some((x) => x.toLowerCase() === r) || r.startsWith("specs/")) return true;
   }
   return false;
 }
@@ -150,10 +156,36 @@ function deviationEdit(p: Paths, file: string, agent: string, frozen: string[]):
       d = null;
     }
     if (!d || !d.files.some((f) => lower(join(p.project, f)) === lower(file))) continue;
-    const f = d.files.find((x) => join(p.project, x) === file);
+    const f = d.files.find((x) => lower(join(p.project, x)) === lower(file));
     const author = f ? d.authors?.[f] : undefined;
-    if (author && agent === author) return allow(`Deviation ${d.id}: ${author} changes what it wrote`);
+    // found without case, allowed only at the exact path: a case variant never gains what the exact path is given
+    if (author && agent === author && f && join(p.project, f) === file) return allow(`Deviation ${d.id}: ${author} changes what it wrote`);
     return deny(`Deviation ${d.id} of ${id} lets only ${author ?? "its author Role"} edit ${rel(p, file)}: no other Agent and not the Orchestrator edits it while it is open`);
+  }
+  return null;
+}
+
+/**
+ * ADR-0014: a Bash command that could write a file an open Deviation names (in any case, by its path inside `.aidw/` or
+ * from the project): only the author Role edits it, and the Orchestrator's edit would close as the author's change.
+ */
+function deviationBashWrite(p: Paths, cmd: string, frozen: string[]): string | null {
+  const text = lower(cmd);
+  if (!text.includes(".aidw") && !text.includes("changes/") && !/(?:architecture|domain|design|requirements|specs)\//.test(text) && !text.includes("constitution")) return null;
+  for (const id of frozen) {
+    let d: ReturnType<typeof openDeviation> = null;
+    try {
+      d = openDeviation(loadChange(p, id));
+    } catch {
+      d = null;
+    }
+    if (!d) continue;
+    const hit = d.files.find((f) => text.includes(lower(relative(p.aidw, join(p.project, f)).split(sep).join("/"))));
+    if (!hit) continue;
+    const masked = maskQuoted(cmd);
+    if (firstMatch(WRITE_COMMANDS, masked) || firstMatch(INLINE_CODE, masked) || firstMatch(WRITE_COMMANDS, cmd)) {
+      return `Deviation ${d.id} of ${id} is open: only ${d.authors?.[hit] ?? "its author Role"} edits ${hit}, with the Write tool; no Bash write by the Orchestrator or any Agent`;
+    }
   }
   return null;
 }
@@ -320,6 +352,10 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
     if (forbidden) return deny(`command ${forbidden.why}; forbidden (tier x)`);
     const taskPush = taskBranchPush(cmd);
     if (taskPush) return deny(taskPush);
+    if (!AIDW_COMMAND.test(cmd) || SHELL_CHAINING.test(cmd)) {
+      const devWrite = deviationBashWrite(p, cmd, gateState(p).frozen);
+      if (devWrite) return deny(devWrite);
+    }
     if (role && AIDW_STATE_COMMAND.test(cmd)) {
       return deny(`the ${role} does not change aidw state (no self-verification); report back to the orchestrator`);
     }

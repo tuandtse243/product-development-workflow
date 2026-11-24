@@ -12,20 +12,32 @@ export interface ApprovalHash {
   files: string[];
 }
 
-/** Change-level files of the approved package (besides specs/** and the planned part of tasks.yaml). */
-export const CHANGE_PACKAGE_FILES = [
-  "intake.md",
-  "analysis.md",
-  "design.md",
-  "quality.yaml",
-  "decisions.yaml",
-  "brief.md",
+/**
+ * Change-level files of the approved package (besides specs/** and the planned part of tasks.yaml), by package version.
+ * The version is written into the approval record (`approval.package`); an approval without one is version 1, so a
+ * Change approved before the contracts joined the package keeps the list it was hashed with (no drift on upgrade).
+ */
+export const PACKAGE_FILES_V1 = ["intake.md", "analysis.md", "design.md", "quality.yaml", "decisions.yaml", "brief.md"] as const;
+export const PACKAGE_FILES_V2 = [
+  ...PACKAGE_FILES_V1,
   // the contracts the build is held to (api-designer, database-architect): a later change to one is a Deviation
   "openapi.yaml",
   "api-contract.md",
   "data-model.md",
   "data-model.dbml",
 ] as const;
+/** The version `aidw approve` and a Deviation's close write. */
+export const PACKAGE_VERSION = 2;
+/** The newest list (kept for readers that name every package file). */
+export const CHANGE_PACKAGE_FILES = PACKAGE_FILES_V2;
+
+/** The package version a Change was approved with (1 when the record names none). */
+export function packageVersionOf(change: Change): number {
+  const v = (change.data.approval as { package?: unknown } | null | undefined)?.package;
+  return v === 2 ? 2 : 1;
+}
+
+export const packageFilesFor = (version: number): readonly string[] => (version >= 2 ? PACKAGE_FILES_V2 : PACKAGE_FILES_V1);
 
 /** Project-level directories that belong to the approved package (with constitution.md). */
 export const FROZEN_PROJECT_DIRS = (p: Paths): string[] => [p.design, p.domain, p.architecture, p.requirements];
@@ -62,12 +74,15 @@ const normalize = (s: string) => s.replace(/\r\n?/g, "\n");
  * is read from the recorded approval. `opts.as` replaces the digests of some files: while a Deviation is open its files
  * count as they were when it opened (src/deviation.ts).
  */
-export function computeApprovalHash(p: Paths, change: Change, push?: unknown, opts: { as?: Map<string, string | null> } = {}): ApprovalHash {
-  return hashOf(packageDigests(p, change, opts.as), push === undefined ? (change.data.approval as { push?: unknown } | null | undefined)?.push : push);
+export function computeApprovalHash(p: Paths, change: Change, push?: unknown, opts: { as?: Map<string, string | null>; version?: number } = {}): ApprovalHash {
+  return hashOf(packageDigests(p, change, opts.as, opts.version), push === undefined ? (change.data.approval as { push?: unknown } | null | undefined)?.push : push);
 }
 
-/** The project-relative files of the approved package and the digest each is hashed with. */
-export function packageDigests(p: Paths, change: Change, as?: Map<string, string | null>): Map<string, string> {
+/**
+ * The project-relative files of the approved package and the digest each is hashed with. `version`: the package version
+ * (default: the one the approval record names).
+ */
+export function packageDigests(p: Paths, change: Change, as?: Map<string, string | null>, version = packageVersionOf(change)): Map<string, string> {
   const entries: { path: string; digest: string }[] = [];
   const add = (file: string, content?: string) => {
     if (!existsSync(file)) return;
@@ -75,7 +90,7 @@ export function packageDigests(p: Paths, change: Change, as?: Map<string, string
     entries.push({ path: rel(p, file), digest: sha256(text) });
   };
 
-  for (const name of CHANGE_PACKAGE_FILES) add(join(change.dir, name));
+  for (const name of packageFilesFor(version)) add(join(change.dir, name));
   for (const f of walkFiles(join(change.dir, "specs"))) add(f);
   for (const f of baseSpecFiles(p, change)) add(f);
   const tasksFile = join(change.dir, "tasks.yaml");
@@ -86,11 +101,27 @@ export function packageDigests(p: Paths, change: Change, as?: Map<string, string
   const out = new Map(entries.map((e) => [e.path, e.digest]));
   // An open Deviation (src/deviation.ts): its files count as they were when it opened, so the author's edit is not
   // drift while every other approved file still is.
+  // Only a file of this version's list is replaced: a name outside it never enters the hash.
+  const listed = (path: string) => out.has(path) || isPackageRel(p, change, path, version);
   for (const [path, digest] of as ?? []) {
+    if (!listed(path)) continue;
     if (digest === null) out.delete(path);
     else out.set(path, digest);
   }
   return out;
+}
+
+/** Whether a project-relative path is (or, when new, would be) a file of the package of this version. */
+export function isPackageRel(p: Paths, change: Change, path: string, version = packageVersionOf(change)): boolean {
+  const low = (x: string) => x.toLowerCase();
+  const file = low(path);
+  const under = (dir: string) => file.startsWith(`${low(rel(p, dir))}/`);
+  if (file === low(rel(p, p.constitution)) || FROZEN_PROJECT_DIRS(p).some(under)) return true;
+  if (baseSpecFiles(p, change).some((b) => low(rel(p, b)) === file)) return true;
+  const dir = low(rel(p, change.dir));
+  if (!file.startsWith(`${dir}/`)) return false;
+  const r = file.slice(dir.length + 1);
+  return r === "tasks.yaml" || packageFilesFor(version).includes(r) || (r.startsWith("specs/") && r.endsWith(".md"));
 }
 
 function hashOf(digests: Map<string, string>, bound: unknown): ApprovalHash {

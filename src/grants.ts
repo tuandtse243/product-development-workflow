@@ -19,6 +19,7 @@ import { lstatSync, readFileSync, realpathSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import YAML from "yaml";
 import { approvalStatus } from "./approval.js";
+import { approvedText } from "./deviationrecord.js";
 import { listChangeIds, loadChange, stateOf, type Change } from "./change.js";
 import { Diags } from "./diag.js";
 import { git, isDefaultBranch, isGitRepo } from "./git.js";
@@ -83,7 +84,10 @@ export function parseGrants(raw: unknown, file: string, d: Diags): Grants {
 export function readGrants(change: Change): Grants {
   let data: unknown;
   try {
-    data = YAML.parse(readFileSync(join(change.dir, "quality.yaml"), "utf8"));
+    // while a Deviation has quality.yaml open, the grants are the approved ones (src/deviationrecord.ts)
+    const text = approvedText(change, join(change.dir, "quality.yaml"));
+    if (text === null) return { ...NO_GRANTS };
+    data = YAML.parse(text);
   } catch {
     return { ...NO_GRANTS };
   }

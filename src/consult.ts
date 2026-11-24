@@ -27,6 +27,7 @@ import { readText, rel, walkFiles, type Paths } from "./project.js";
 import { defaultTaskRole, implementerOf, loadRole, loadRoster } from "./roles.js";
 import { touchesUi } from "./skills.js";
 import { parseTasks, type Task } from "./tasks.js";
+import { openDeviation } from "./deviationrecord.js";
 
 /** One Agent run asks at most this many questions (ADR-0013): the worst-case cost is known beforehand. */
 export const MAX_CONSULTATIONS_PER_RUN = 2;
@@ -68,7 +69,7 @@ export interface Consultation {
   /** after the gate: where the question goes when it is not answered (T9 builds the Deviation path) */
   route?: "deviation";
   /** with route deviation: `pending` until the Deviation path (T9) records it as `recorded` */
-  deviation?: "pending" | "recorded";
+  deviation?: "pending" | "recorded" | "abandoned";
   /** the Deviation that recorded it (src/deviation.ts) */
   deviation_id?: string;
   at: string;
@@ -523,6 +524,14 @@ export function deviationRecorded(p: Paths, id: string, cid: string, d: { id: st
   );
 }
 
+/** The Deviation opened for this Consultation was abandoned: nothing approved changed, the asker builds what was approved. */
+export function deviationAbandoned(p: Paths, id: string, cid: string, did: string): void {
+  const change = loadChange(p, id);
+  const { list, i, c } = find(change, cid);
+  list[i] = { ...c, deviation: "abandoned", deviation_id: did };
+  saveConsultations(change, list);
+}
+
 // ---------------------------------------------------------------- aidw consult resume C<NN>
 
 export function resumeConsultation(p: Paths, id: string, cid: string): { consultation: Consultation; resume: string; agent: string } {
@@ -530,6 +539,8 @@ export function resumeConsultation(p: Paths, id: string, cid: string): { consult
   const { list, i, c } = find(change, cid);
   if (c.status === "open") throw new OpError(`${cid} has no answer yet: run \`aidw consult answer ${cid}\` after ${c.to} wrote it`);
   if (c.status === "resumed") throw new OpError(`${cid} was already resumed`);
+  const deviating = openDeviation(change);
+  if (deviating?.consultation === cid) throw new OpError(`Deviation ${deviating.id} for ${cid} is still open: \`aidw deviation close\` (or abandon) before the asker resumes`);
   const updated: Consultation = { ...c, status: "resumed", resumed_at: now() };
   list[i] = updated;
   saveConsultations(change, list);

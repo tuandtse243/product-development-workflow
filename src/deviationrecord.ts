@@ -5,7 +5,7 @@
  * record, so the approval hash, the gate hook and `aidw next` can read it without importing the whole Deviation path.
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative, resolve, sep } from "node:path";
 import YAML from "yaml";
 import type { Change } from "./change.js";
 
@@ -13,13 +13,16 @@ export const DEVIATIONS_FILE = "deviations.yaml";
 /** Copies of the files of each Deviation as they were when it opened: `deviations/D<NN>/<project-relative path>`. */
 export const DEVIATIONS_DIR = "deviations";
 
-export type ContractClass = "none" | "additive" | "breaking" | "prose";
+/** unclassified: the text changed and the CLI found no difference it can classify; handled like prose (rerun) */
+export type ContractClass = "none" | "additive" | "breaking" | "prose" | "unclassified";
 
 export interface ContractDiff {
   file: string;
   kind: "openapi" | "dbml" | "prose";
   class: ContractClass;
   changes: string[];
+  /** the tasks that build against it (recorded for an additive change too, which reruns none of them) */
+  readers?: string[];
 }
 
 export interface DeviationRecord {
@@ -50,9 +53,15 @@ export interface DeviationRecord {
   hash?: string;
   /** files that really changed */
   changed?: string[];
+  /** the author's account, given at close (`--summary`) */
+  summary?: string;
   scenarios?: { removed: { scenario: string; reason: string }[]; added: string[]; changed: string[] };
+  requirements?: { added: string[]; removed: string[]; changed: string[] };
+  /** why a new requirement is not new scope (`--scope-reason`) */
+  scope_reason?: string;
   contracts?: ContractDiff[];
-  tasks?: { added: string[]; removed: string[]; changed: string[] };
+  /** removed_done: removed tasks that were already done (their code stays) */
+  tasks?: { added: string[]; removed: string[]; removed_done: string[]; changed: string[] };
   /** tasks to run again, and the done ones among them that were reset to pending */
   rerun?: string[];
   reset?: string[];
@@ -86,4 +95,26 @@ export function openDeviationDigests(change: Change): Map<string, string | null>
   const open = openDeviation(change);
   if (!open || !isRecord(open.before)) return null;
   return new Map(Object.entries(open.before).map(([k, v]) => [k, typeof v === "string" ? v : null]));
+}
+
+/**
+ * A file of the package as the user approved it: while an open Deviation names it, its copy from when it opened (null
+ * when it did not exist), so a half-edited quality.yaml never widens the grants or the tier 2 permissions meanwhile;
+ * otherwise the file on disk.
+ */
+export function approvedText(change: Change, file: string): string | null {
+  const read = (f: string) => {
+    try {
+      return readFileSync(f, "utf8");
+    } catch {
+      return null;
+    }
+  };
+  const open = openDeviation(change);
+  if (open) {
+    const project = resolve(change.dir, "..", "..", "..");
+    const r = relative(project, file).split(sep).join("/");
+    if (open.files.includes(r)) return open.before?.[r] === null ? null : read(join(change.dir, DEVIATIONS_DIR, open.id, "files", r));
+  }
+  return read(file);
 }

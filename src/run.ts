@@ -194,7 +194,9 @@ export function nextAction(p: Paths, id: string): NextAction {
   // ADR-0014: an open Deviation before anything new; work already in flight goes on beside it.
   const dev = openDeviation(tf.change);
   if (dev) {
-    const inFlight = ["review", "resolve", "review-merge", "integrate", "triage"].includes(rest.action) || (rest.action === "implement" && rest.reason !== "new");
+    // nothing beside a Deviation of the task list: the CLI would record progress in the file its author is editing
+    const tasksOpen = dev.files.includes(rel(p, join(tf.change.dir, "tasks.yaml")));
+    const inFlight = !tasksOpen && (["review", "resolve", "review-merge", "integrate", "triage"].includes(rest.action) || (rest.action === "implement" && rest.reason !== "new"));
     return { action: "deviation", deviation: dev.id, authors: dev.authors, brief: join(p.run, "briefs", id, `${dev.id}.deviation.md`), ...(inFlight ? { meanwhile: rest } : {}) };
   }
   if (c) {
