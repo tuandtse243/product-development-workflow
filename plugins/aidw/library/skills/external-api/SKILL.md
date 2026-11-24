@@ -9,7 +9,9 @@ description: Call a third-party service behind an interface, with a timeout, bou
   not on the vendor's SDK types. One adapter implements it for the real service.
 - **Timeout on every call.** Never wait forever; pick a number from the architecture or a short default (a few seconds).
 - **Bounded retry.** Retry only calls that are safe to repeat (a read, or a write with an idempotency key), at most 2 or 3
-  times, with backoff. Never retry a 4xx other than 429; honor `Retry-After`.
+  times, with backoff, on a timeout, a connection error, `429` (honor `Retry-After`) or a `5xx`. Never retry a `4xx` that
+  rejects the request (`400`, `402`, `422`); a provider's `409` for the same idempotency key still being processed may
+  be retried with the same key.
 - **Map errors.** Turn the vendor's errors into the application's own error type, so the caller handles "unavailable" and "rejected"
   differently and no vendor message reaches the user.
 - **Secrets by name.** The key comes from an environment variable named in `.env.example`; never in code, in a log or in a test.

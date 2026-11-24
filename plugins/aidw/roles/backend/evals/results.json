@@ -1,0 +1,118 @@
+{
+  "role": "backend",
+  "date": "2026-11-24T13:33:42.465Z",
+  "model": null,
+  "tier": "deep",
+  "runs": 3,
+  "digest": "sha256:a2cf6789c0bed8f7c407aa279c206b765befcd8b046c8c359d20d73abaa5b201",
+  "cases": [
+    {
+      "name": "charge-once",
+      "pass": false,
+      "runs": {
+        "total": 3,
+        "passed": 1,
+        "errors": 0
+      },
+      "failed": [
+        "must give the provider call an explicit timeout, retry it only a bounded number of times with backoff, on a timeout, a connection error, `429` or `5xx` and never on another `4xx`, and map provider errors to the app's own error type"
+      ]
+    },
+    {
+      "name": "contract-has-a-hole",
+      "pass": false,
+      "runs": {
+        "total": 3,
+        "passed": 0,
+        "errors": 0
+      },
+      "failed": [
+        "must say in the request's Progress note which work does not wait for the answer (the `201` of INV-1 and the `422` the contract names, with their tests) and that only INV-3 is blocked"
+      ]
+    },
+    {
+      "name": "email-after-the-order",
+      "pass": false,
+      "runs": {
+        "total": 3,
+        "passed": 1,
+        "errors": 0
+      },
+      "failed": [
+        "must test, with `Mailer` replaced by a fake at its boundary: the fake fails and the order is still saved with its outbox row pending; running the job twice calls the fake once for the order; an order whose insert fails leaves no outbox row and calls the fake zero times"
+      ]
+    },
+    {
+      "name": "entity-is-not-a-response",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": []
+    },
+    {
+      "name": "list-that-grows",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": []
+    },
+    {
+      "name": "log-with-a-token",
+      "pass": false,
+      "runs": {
+        "total": 3,
+        "passed": 2,
+        "errors": 0
+      },
+      "failed": [
+        "must test, with the provider replaced by a fake that fails: the captured log line has the event name and the request id, the fake key and the IBAN appear nowhere in the captured log output, and the response body has only the contract's fields"
+      ]
+    },
+    {
+      "name": "server-key-stays-on-the-server",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": []
+    },
+    {
+      "name": "team-comes-from-the-session",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": []
+    },
+    {
+      "name": "two-requests-one-slot",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": []
+    },
+    {
+      "name": "validates-authorizes-and-does-not-leak",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": []
+    }
+  ]
+}

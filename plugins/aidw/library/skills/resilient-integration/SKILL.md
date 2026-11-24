@@ -11,8 +11,9 @@ A call across a boundary has three outcomes: it worked, it failed, or you do not
 
 - **Timeout on every call**, shorter than the caller's own deadline. No client default: set it.
 - **Retry only what is safe to repeat**: reads, and writes that carry an idempotency key. Bounded (three tries),
-  with backoff and jitter. Retry on a timeout, a connection error, `429` (honor `Retry-After`) and `5xx`; never on
-  other `4xx`.
+  with backoff and jitter. Retry on a timeout, a connection error, `429` (honor `Retry-After`) and `5xx`; never on a
+  `4xx` that rejects the request (`400`, `402`, `422`). A provider's `409` for the same idempotency key still being
+  processed may be retried with the same key.
 - **Idempotency key for a write**: generated once per user intent (the order, the payment attempt), stored with
   the record before the call, and sent again unchanged on a retry. A new key per try defeats it.
 - **Write the intent first.** Save "payment requested" with the key, call, then save the result. A crash between

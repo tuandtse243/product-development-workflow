@@ -713,9 +713,21 @@ In the user's project, `.aidw/` keeps its current shape and gains `roles/<id>/` 
   `expect: ask` for a case whose right answer is a question (a hole in the contract: ask, do not guess). For an
   `expect: ask` case the runner drops the "do not stop to ask" line from the prompt and grades a short answer instead
   of calling it no deliverable; an empty reply or a refusal is still an ERROR.
-- **A case fails without what it covers (plan C3).** `aidw eval <role> --without <rule-id|skill>` takes that rule row
-  or skill out of the instructions and runs only the cases covering it; each must fail, and one that still passes is
-  printed as STILL PASSES (exit 1): rewrite or drop it. Such a run never writes the result file.
+- **A case fails without what it covers (plan C3).** `aidw eval <role> --without <id>[,<id>...]` takes those rule rows
+  and skills out of the instructions and runs only the cases covering any of them (with `--case`, that case: pass all
+  of its `covers` to test the case as a whole, since a rule and the skill that serves it say the same thing twice); each
+  must fail, and one that still passes is printed as STILL PASSES (exit 1): rewrite or drop it. `aidw eval <role>
+  --bare` is the baseline: the cases are answered with none of the Role's instructions, only the shared procedures it
+  includes (`library/implement-a-task.md`, so the protocol for asking does not decide a case), and a case that passes is
+  printed as PASSES BARE (exit 1). Both print every criterion's verdict, so a run is read per criterion, and never write
+  the result file.
+- **What C3 showed on the deep tier (owner decision 2026-11-24).** The first backend run (one run each, the claude
+  CLI's default model) passed 4 of its 10 cases bare, with only `library/implement-a-task.md`, and the other 6 failed
+  only on details (one missing test, one field of a log line), mostly the same ones with and without their covers; a
+  rule and the skill that serves it are also restated in role.md, which `--without` never removes. On the deep tier the
+  bare and `--without` runs are therefore a diagnostic, not a gate. "Fails without what it covers" is required on the
+  tier a Role would be lowered to (before `tiers.yaml` maps it to a cheaper model) and at level 2 (C4, task T18), where
+  a real task with tools gives the Role's knowledge room to matter.
 - **Coverage (level 0, no tokens; plan C1).** For a Role whose `rules.md` is a table, `aidw roster` fails when a rule
   id or a skill of the Role has no case covering it. A `covers:` entry that names neither a rule id nor a skill of
   the Role fails for every Role. Roles still in prose are not held to coverage.
