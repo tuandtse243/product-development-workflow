@@ -247,11 +247,11 @@ describe("the Role case runner", () => {
       const before = repoResults();
       const root = gitCopy();
       let out = "";
-      const code = run(["eval", "backend", "--model", "sonnet"], { ...process.env, AIDW_PLUGIN_ROOT: root }, process.cwd(), { out: (s) => (out += s), err: (s) => (out += s), modelExec: () => fake(true) });
+      const code = run(["eval", "backend"], { ...process.env, AIDW_PLUGIN_ROOT: root }, process.cwd(), { out: (s) => (out += s), err: (s) => (out += s), modelExec: () => fake(true) });
       expect(code, out).toBe(0);
       const r = results(root);
-      expect(r).toMatchObject({ format: 2, role: "backend", model: "sonnet", tier: "deep", runs: 3, digest: sharedDigest(root, "backend") });
-      expect(r.cases.every((c: { digest: string; date: string }) => c.digest.startsWith("sha256:") && c.date === r.date)).toBe(true);
+      expect(r).toMatchObject({ format: 2, role: "backend", model: null, tier: "deep", runs: 3, digest: sharedDigest(root, "backend") });
+      expect(r.cases.every((c: { digest: string; date: string; model: unknown }) => c.digest.startsWith("sha256:") && c.date === r.date && c.model === null)).toBe(true);
       expect(Number.isNaN(Date.parse(r.date))).toBe(false);
       expect(r.cases.map((c: { name: string }) => c.name).sort()).toEqual(["entity-is-not-a-response", "validates-authorizes-and-does-not-leak"]);
       expect(r.cases[0]).toMatchObject({ pass: true, runs: { total: 3, passed: 3, errors: 0 } });
@@ -332,9 +332,9 @@ describe("the Role case runner", () => {
           throw new Error("claude -p failed: flagged");
         };
         expect(go(root, ["eval", "backend", "--case", ONE], () => boom).out).toMatch(/no result file written for backend: no case was graded/);
-        // backend's tier (deep) maps to the CLI default, so any --model is not the one the file was made with
+        // backend's tier (deep) uses the session's model, so any --model is refused (M1)
         expect(go(root, ["eval", "backend", "--case", ONE, "--model", "haiku"], () => fake(true)).out).toContain(
-          "no result file written for backend: results.json was made with model default, this run with haiku: run `aidw eval backend` for all cases",
+          "no result file written for backend: its tier uses the session's model; run without --model",
         );
         expect(readFileSync(file(root), "utf8")).toBe(before);
         const plain = copy();
@@ -585,3 +585,55 @@ function go(root: string, argv: string[], exec: (m?: string) => Exec, seen: (str
   const code = run(argv, { ...process.env, AIDW_PLUGIN_ROOT: root }, process.cwd(), { out: (s) => (out += s), err: (s) => (out += s), modelExec: (m) => (seen.push(m), exec(m)) });
   return { code, out };
 }
+
+describe("review fixes for the result file", () => {
+  const resultsPath = (root: string) => join(root, "roles", "backend", "evals", "results.json");
+
+  it("refuses --model for a Role whose tier uses the session's model, full run or --case (M1)", () => {
+    const root = gitCopy();
+    const r = go(root, ["eval", "backend", "--model", "sonnet"], () => fake(true));
+    expect(r.out).toContain("no result file written for backend: its tier uses the session's model; run without --model");
+    expect(existsSync(resultsPath(root))).toBe(false);
+  });
+
+  it("leaves a dot file in skills/ out of the Role's system prompt (L1)", () => {
+    const root = copy();
+    const dir = join(root, "roles", "backend", "skills");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, ".draft.md"), "---\nname: draft\n---\nHIDDEN-DRAFT-TEXT\n");
+    writeFileSync(join(dir, "visible.md"), "---\nname: visible\n---\nVISIBLE-SKILL-TEXT\n");
+    const s = roleSystem(root, "backend");
+    expect(s).toContain("VISIBLE-SKILL-TEXT");
+    expect(s).not.toContain("HIDDEN-DRAFT-TEXT");
+  });
+
+  it("takes the digests before the run, and writes nothing when the Role changes during it (L3)", () => {
+    const root = gitCopy();
+    const role = join(root, "roles", "backend", "role.md");
+    let edited = false;
+    const editing: Exec = (p, system) => {
+      if (!edited) writeFileSync(role, readFileSync(role, "utf8") + "\nedited during the run\n");
+      edited = true;
+      return fake(true)(p, system);
+    };
+    const r = go(root, ["eval", "backend"], () => editing);
+    expect(r.out).toContain("no result file written for backend: the Role changed during the run: run it again");
+    expect(existsSync(resultsPath(root))).toBe(false);
+
+    // A case file edited during the run: its entry keeps the digest of the file the run started from, so it shows stale.
+    const root2 = gitCopy();
+    const caseFile = "roles/backend/evals/entity-is-not-a-response.md";
+    const start = caseDigest(root2, caseFile);
+    let once = false;
+    const editCase: Exec = (p, system) => {
+      if (!once) writeFileSync(join(root2, caseFile), readFileSync(join(root2, caseFile), "utf8") + "\n- must also be edited\n");
+      once = true;
+      return fake(true)(p, system);
+    };
+    expect(go(root2, ["eval", "backend"], () => editCase).code).toBe(0);
+    const rec = JSON.parse(readFileSync(resultsPath(root2), "utf8"));
+    const entry = rec.cases.find((c: { name: string }) => c.name === "entity-is-not-a-response");
+    expect(entry.digest).toBe(start);
+    expect(entry.digest).not.toBe(caseDigest(root2, caseFile));
+  });
+});

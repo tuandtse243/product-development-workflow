@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
-import { writeResults as writeRecord, type CaseResult } from "../src/evalrun.js";
+import { takeDigests, writeResults as writeRecord, type CaseResult } from "../src/evalrun.js";
 import { caseDigest, checkEvals, loadEvalCases, roleDigest, sharedDigest } from "../src/evals.js";
 import { checkRoster, loadRuleTable, parseRulesTable, writeAgents } from "../src/roles.js";
 import { bareBackend } from "./fixtures.js";
@@ -346,7 +346,7 @@ describe("the per-case result file (format 2)", () => {
     expect(warns(checkEvals(root))).toBe("");
     touch(root, `roles/backend/evals/${NAMES[0]}.md`);
     expect(warns(checkEvals(root))).toBe(
-      `roles/backend/evals/results.json: older than its case file roles/backend/evals/${NAMES[0]}.md: run \`aidw eval backend --case ${NAMES[0]}\``,
+      `roles/backend/evals/results.json: made from another version of its case file roles/backend/evals/${NAMES[0]}.md: run \`aidw eval backend --case ${NAMES[0]}\``,
     );
   });
 
@@ -451,5 +451,50 @@ describe("the per-case result file (format 2)", () => {
     expect(warns(checkEvals(root))).toBe("");
     touch(root, `roles/backend/evals/${NAMES[0]}.md`);
     expect(warns(checkEvals(root))).toMatch(/older than the Role's content/);
+  });
+});
+
+describe("review fixes: model and shared content of the result file", () => {
+  const NAMES = ["entity-is-not-a-response", "validates-authorizes-and-does-not-leak"];
+  const result = (name: string): CaseResult => ({ role: "backend", name, pass: true, criteria: [], answer: "", runs: { total: 3, passed: 3, errors: 0 } });
+  const file = (root: string) => join(root, "roles", "backend", "evals", "results.json");
+
+  it("warns when the file was made on a model other than its tier's, top level or per case (M1)", () => {
+    const root = copy();
+    tableRole(root);
+    writeRecord(root, "backend", NAMES.map(result), { runs: 3, model: "sonnet" });
+    expect(warns(checkEvals(root))).toContain("made with model sonnet, not its tier's model (default): run `aidw eval backend` again");
+    writeRecord(root, "backend", NAMES.map(result), { runs: 3 });
+    expect(warns(checkEvals(root))).toBe("");
+    const rec = JSON.parse(readFileSync(file(root), "utf8"));
+    rec.cases[0].model = "haiku";
+    writeFileSync(file(root), JSON.stringify(rec));
+    expect(warns(checkEvals(root))).toBe(
+      `roles/backend/evals/results.json: case ${NAMES[0]} was made with model haiku, not its tier's model (default): run \`aidw eval backend --case ${NAMES[0]}\``,
+    );
+  });
+
+  it("covers the included shared procedures and tiers.yaml directly, without regenerating the agent file (L2)", () => {
+    const root = copy();
+    tableRole(root);
+    const shared = sharedDigest(root, "backend");
+    const whole = roleDigest(root, "backend");
+    const inc = join(root, "library", "implement-a-task.md");
+    writeFileSync(inc, readFileSync(inc, "utf8") + "\nmore\n");
+    expect(sharedDigest(root, "backend")).not.toBe(shared);
+    expect(roleDigest(root, "backend")).not.toBe(whole);
+    const again = sharedDigest(root, "backend");
+    const tiers = join(root, "tiers.yaml");
+    writeFileSync(tiers, readFileSync(tiers, "utf8") + "# a comment\n");
+    expect(sharedDigest(root, "backend")).not.toBe(again);
+  });
+
+  it("refuses to write when the shared content differs from the digests taken at the start (L3)", () => {
+    const root = copy();
+    tableRole(root);
+    const digests = takeDigests(root, "backend");
+    const role = join(root, "roles", "backend", "role.md");
+    writeFileSync(role, readFileSync(role, "utf8") + "\nmore\n");
+    expect(writeRecord(root, "backend", NAMES.map(result), { runs: 3, digests })).toEqual({ refused: "the Role changed during the run: run it again" });
   });
 });

@@ -24,7 +24,7 @@ import { defaultWorkflowId, machineOf } from "./machine.js";
 import { packsFor } from "./stackpacks.js";
 import { git } from "./git.js";
 import { checkEvals, loadEvalCases } from "./evals.js";
-import { claudeExec, mergeResults, printResults, runCases, writeResults, type CaseResult, type Exec } from "./evalrun.js";
+import { claudeExec, mergeResults, printResults, runCases, takeDigests, writeResults, type CaseResult, type Exec, type RunDigests } from "./evalrun.js";
 import { checkWorkflows, loadWorkflow, workflowIds } from "./workflow.js";
 import { agentForTask, AGENTS, checkRoster, loadRoster, rosterTable, tierModel, writeAgents } from "./roles.js";
 import { checkChange, checkSpecs } from "./check.js";
@@ -313,9 +313,10 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
                                          both print every criterion's verdict and never write the result file
                                          --answers also prints each answer, to see why a case failed
                                          A full run from a source checkout on the tier's model writes
-                                         roles/<id>/evals/results.json (commit it with the Role's change); --case
-                                         updates only that case's entry, while the rest of the Role is unchanged since
-                                         the last full run
+                                         roles/<id>/evals/results.json (commit it with the Role's change); --model is
+                                         refused for a tier that uses the session's model. --case updates only that
+                                         case's entry, and needs an existing format-2 file from a full run, the same
+                                         shared content (all of the Role but its case files) and the same model
   roster [--write] [--strict]            the factory's Roles; checks roster.yaml, role profiles, rules.md tables, artifacts.yaml
                                          (one owner per artifact, reads/writes of each Role), workflows/*.yaml, the cases (a Role
                                          whose rules.md is a table covers every rule and skill), and the generated agent files;
@@ -1043,6 +1044,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         // One Role at a time: each answers with the model its tier maps to, unless --model names one.
         const results: CaseResult[] = [];
         const modelOf = new Map<string, string | undefined>();
+        const digestsOf = new Map<string, RunDigests>();
         try {
           if (without !== undefined && !rest[0]) throw new Error("--without needs a Role: rule ids and skills belong to one Role");
           if (bare && !rest[0]) throw new Error("--bare needs a Role: it runs that Role's cases with none of its instructions");
@@ -1053,6 +1055,8 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           for (const id of ids) {
             const model = asked ?? (roster.roles[id] ? tierModel(root, id) : undefined);
             modelOf.set(id, model);
+            // The digests the result file records are those of the content the run started from.
+            if (roster.roles[id] && !without && !bare) digestsOf.set(id, takeDigests(root, id));
             results.push(...runCases(root, id, caseName, (io.modelExec ?? claudeExec)(model), progress, runs, without, bare));
           }
         } catch (e) {
@@ -1081,12 +1085,13 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           for (const id of [...new Set(results.map((r) => r.role))]) {
             const tm = tierModel(root, id);
             const mine = results.filter((r) => r.role === id);
-            const meta = { runs, ...(modelOf.get(id) ? { model: modelOf.get(id) as string } : {}) };
-            if (asked && tm && asked !== tm) io.err(`  no result file written for ${id}: --model ${asked} is not its tier's model (${tm})\n`);
+            const digests = digestsOf.get(id);
+            const meta = { runs, ...(modelOf.get(id) ? { model: modelOf.get(id) as string } : {}), ...(digests ? { digests } : {}) };
+            if (asked && !tm) io.err(`  no result file written for ${id}: its tier uses the session's model; run without --model\n`);
+            else if (asked && asked !== tm) io.err(`  no result file written for ${id}: --model ${asked} is not its tier's model (${tm})\n`);
             else if (mine.every((r) => r.error)) io.err(`  no result file written for ${id}: no case was graded\n`);
-            else if (!caseName) written.push(relative(root, writeResults(root, id, results, meta)));
             else {
-              const m = mergeResults(root, id, results, meta);
+              const m = caseName ? mergeResults(root, id, results, meta) : writeResults(root, id, results, meta);
               if ("refused" in m) io.err(`  no result file written for ${id}: ${m.refused}\n`);
               else written.push(relative(root, m.file));
             }

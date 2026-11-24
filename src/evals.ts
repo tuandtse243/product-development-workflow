@@ -3,7 +3,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import YAML from "yaml";
 import { Diags } from "./diag.js";
-import { LIBRARY_SKILL, loadRole, loadRoster, loadRuleTable, roleDir, skillFile } from "./roles.js";
+import { LIBRARY_SKILL, loadRole, loadRoster, loadRuleTable, parseRoleText, roleDir, skillFile, tierModel } from "./roles.js";
 
 /**
  * Per-Role evals (docs/factory-architecture.md, section 11): an active Role ships at least one case in
@@ -112,6 +112,8 @@ export interface CaseRecord {
   digest?: string;
   /** format 2: ISO time of the run that made this entry */
   date?: string;
+  /** format 2: the model asked for in the run that made this entry; null is the claude CLI's default at `date` */
+  model?: string | null;
 }
 /**
  * `roles/<id>/evals/results.json`. Format 2 (`format: 2`): `digest` is the sharedDigest of the Role (all its content but
@@ -119,15 +121,18 @@ export interface CaseRecord {
  * ran. A case's answer depends only on the shared content and its own case file, so a case whose file changed is run
  * again alone (`aidw eval <id> --case <name>`), which replaces only its entry. A full run writes a fresh file. Top-level
  * `date` is the time of the last write (a full run or one case); `runs` is the fewest runs any entry had. Entries of
- * cases that no longer exist are dropped on each write. A file without `format` is the old format: `digest` is the
- * roleDigest of the whole Role, and only a full run replaces it.
+ * cases that no longer exist are dropped on each write. Each entry also records the model asked for (`model`, null for
+ * the claude CLI's default); a merge needs the same model, but null means the default at that entry's date, so a file
+ * merged over time can mix the defaults of different dates (the actual model is not detected). Digests are taken
+ * before the run starts. A file without `format` is the old format: `digest` is the roleDigest of the whole Role, and
+ * only a full run replaces it.
  */
 export interface RunRecord {
   format?: number;
   role: string;
   /** ISO time of the last write */
   date: string;
-  /** the model asked for with --model; null when the claude CLI's default answered */
+  /** the model asked for at the last write (its tier's model); null for the claude CLI's default at that date */
   model: string | null;
   tier: string;
   /** runs per case (format 2: the fewest any entry had) */
@@ -139,8 +144,9 @@ export interface RunRecord {
 
 /**
  * Plugin-relative files of a Role's content: every file under `roles/<id>/` but the result file (and with `noCases` the
- * case files `roles/<id>/evals/*.md`), its generated agent file (which also carries the shared procedures it includes) and
- * the shared library skills its index lists. Dotfiles (`.DS_Store`) are left out.
+ * case files `roles/<id>/evals/*.md`), its generated agent file, the shared procedures its `includes` names, the shared
+ * library skills its index lists and `tiers.yaml`. Dotfiles (`.DS_Store`) are left out. The runner's own prompts (the
+ * answer and grading prompts in src/evalrun.ts) are not Role content and are not in it.
  */
 function roleFiles(root: string, id: string, noCases: boolean): string[] {
   const files: string[] = [];
@@ -156,7 +162,15 @@ function roleFiles(root: string, id: string, noCases: boolean): string[] {
   };
   walk(`roles/${id}`);
   walk(`agents/${id}.md`);
-  for (const sk of loadRole(root, id)?.skills ?? []) if (LIBRARY_SKILL.test(sk.name)) walk(skillFile(id, sk.name));
+  // role.md read with LF line endings, so a CRLF checkout lists the same files.
+  const roleMd = join(root, "roles", id, "role.md");
+  const head = existsSync(roleMd) ? parseRoleText(readFileSync(roleMd, "utf8").replace(/\r\n/g, "\n"))?.header : undefined;
+  const skills = Array.isArray(head?.skills) ? head.skills.flatMap((e) => (e && typeof e === "object" ? Object.keys(e) : [])) : [];
+  for (const sk of skills) if (LIBRARY_SKILL.test(sk)) walk(skillFile(id, sk));
+  // The shared procedures it includes and the tier map, read directly: the agent file may not have been regenerated.
+  const includes = Array.isArray(head?.includes) ? head.includes.map(String) : [];
+  for (const f of includes) if (!f.split("/").includes("..")) walk(f);
+  walk("tiers.yaml");
   return files;
 }
 
@@ -214,10 +228,19 @@ function checkCoverage(root: string, id: string, cases: EvalCase[], d: Diags): v
     d.warn(rf, `not readable: run \`aidw eval ${id}\` again`);
     return;
   }
+  // Graded on its tier's model (null: the session's default) or not level 1 at all.
+  const tm = tierModel(root, id) ?? null;
+  const name = (m: unknown) => (typeof m === "string" ? m : "default");
+  const modelOk = (rec.model ?? null) === tm;
+  if (!modelOk) d.warn(rf, `made with model ${name(rec.model)}, not its tier's model (${name(tm)}): run \`aidw eval ${id}\` again`);
   if (rec.format === RESULTS_FORMAT) {
     if (rec.digest !== sharedDigest(root, id)) {
-      d.warn(rf, `older than the Role's content (it changed after the run of ${rec.date}): run \`aidw eval ${id}\` again`);
+      d.warn(rf, `older than the Role's content (it changed after ${rec.date}): run \`aidw eval ${id}\` again`);
       return;
+    }
+    if (modelOk) {
+      const other = caseEntries(rec.cases).filter((c) => c.model !== undefined && (c.model ?? null) !== tm);
+      for (const c of other) d.warn(rf, `case ${c.name} was made with model ${name(c.model)}, not its tier's model (${name(tm)}): run \`aidw eval ${id} --case ${c.name}\``);
     }
     // The shared content is the same, so an entry holds as long as its own case file has not changed.
     const entries = new Map(caseEntries(rec.cases).map((c) => [c.name, c]));
@@ -226,7 +249,7 @@ function checkCoverage(root: string, id: string, cases: EvalCase[], d: Diags): v
     for (const c of cases) {
       const e = entries.get(c.name);
       if (!e) missing.push(c.name);
-      else if (e.digest !== caseDigest(root, c.file)) d.warn(rf, `older than its case file ${c.file}: run \`aidw eval ${id} --case ${c.name}\``);
+      else if (e.digest !== caseDigest(root, c.file)) d.warn(rf, `made from another version of its case file ${c.file}: run \`aidw eval ${id} --case ${c.name}\``);
       else fresh.push(e);
     }
     if (missing.length) d.warn(rf, `no result for case(s): ${missing.join(", ")}: run \`aidw eval ${id} --case <name>\` for each`);
@@ -237,7 +260,7 @@ function checkCoverage(root: string, id: string, cases: EvalCase[], d: Diags): v
     return;
   }
   // The old format: one digest over the whole Role.
-  if (rec.digest !== roleDigest(root, id)) d.warn(rf, `older than the Role's content (it changed after the run of ${rec.date}): run \`aidw eval ${id}\` again`);
+  if (rec.digest !== roleDigest(root, id)) d.warn(rf, `older than the Role's content (it changed after ${rec.date}): run \`aidw eval ${id}\` again`);
   else {
     if (!(Number(rec.runs) >= 3)) d.warn(rf, `the last run had ${String(rec.runs)} run(s) per case; a case passes level 1 only with 3 of 3: run it again without --runs`);
     const failed = caseEntries(rec.cases).filter((c) => !c.pass).map((c) => c.name);

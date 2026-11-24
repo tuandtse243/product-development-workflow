@@ -18256,7 +18256,13 @@ function roleFiles(root, id, noCases) {
   };
   walk(`roles/${id}`);
   walk(`agents/${id}.md`);
-  for (const sk of loadRole(root, id)?.skills ?? []) if (LIBRARY_SKILL.test(sk.name)) walk(skillFile(id, sk.name));
+  const roleMd = (0, import_node_path45.join)(root, "roles", id, "role.md");
+  const head = (0, import_node_fs40.existsSync)(roleMd) ? parseRoleText((0, import_node_fs40.readFileSync)(roleMd, "utf8").replace(/\r\n/g, "\n"))?.header : void 0;
+  const skills = Array.isArray(head?.skills) ? head.skills.flatMap((e) => e && typeof e === "object" ? Object.keys(e) : []) : [];
+  for (const sk of skills) if (LIBRARY_SKILL.test(sk)) walk(skillFile(id, sk));
+  const includes = Array.isArray(head?.includes) ? head.includes.map(String) : [];
+  for (const f of includes) if (!f.split("/").includes("..")) walk(f);
+  walk("tiers.yaml");
   return files;
 }
 function digestOf2(root, files) {
@@ -18303,10 +18309,18 @@ function checkCoverage(root, id, cases, d) {
     d.warn(rf, `not readable: run \`aidw eval ${id}\` again`);
     return;
   }
+  const tm = tierModel(root, id) ?? null;
+  const name = (m) => typeof m === "string" ? m : "default";
+  const modelOk = (rec.model ?? null) === tm;
+  if (!modelOk) d.warn(rf, `made with model ${name(rec.model)}, not its tier's model (${name(tm)}): run \`aidw eval ${id}\` again`);
   if (rec.format === RESULTS_FORMAT) {
     if (rec.digest !== sharedDigest(root, id)) {
-      d.warn(rf, `older than the Role's content (it changed after the run of ${rec.date}): run \`aidw eval ${id}\` again`);
+      d.warn(rf, `older than the Role's content (it changed after ${rec.date}): run \`aidw eval ${id}\` again`);
       return;
+    }
+    if (modelOk) {
+      const other = caseEntries(rec.cases).filter((c) => c.model !== void 0 && (c.model ?? null) !== tm);
+      for (const c of other) d.warn(rf, `case ${c.name} was made with model ${name(c.model)}, not its tier's model (${name(tm)}): run \`aidw eval ${id} --case ${c.name}\``);
     }
     const entries = new Map(caseEntries(rec.cases).map((c) => [c.name, c]));
     const missing = [];
@@ -18314,7 +18328,7 @@ function checkCoverage(root, id, cases, d) {
     for (const c of cases) {
       const e = entries.get(c.name);
       if (!e) missing.push(c.name);
-      else if (e.digest !== caseDigest(root, c.file)) d.warn(rf, `older than its case file ${c.file}: run \`aidw eval ${id} --case ${c.name}\``);
+      else if (e.digest !== caseDigest(root, c.file)) d.warn(rf, `made from another version of its case file ${c.file}: run \`aidw eval ${id} --case ${c.name}\``);
       else fresh.push(e);
     }
     if (missing.length) d.warn(rf, `no result for case(s): ${missing.join(", ")}: run \`aidw eval ${id} --case <name>\` for each`);
@@ -18324,7 +18338,7 @@ function checkCoverage(root, id, cases, d) {
     if (failed.length) d.warn(rf, `the last run did not pass ${failed.length} case(s): ${failed.join(", ")}`);
     return;
   }
-  if (rec.digest !== roleDigest(root, id)) d.warn(rf, `older than the Role's content (it changed after the run of ${rec.date}): run \`aidw eval ${id}\` again`);
+  if (rec.digest !== roleDigest(root, id)) d.warn(rf, `older than the Role's content (it changed after ${rec.date}): run \`aidw eval ${id}\` again`);
   else {
     if (!(Number(rec.runs) >= 3)) d.warn(rf, `the last run had ${String(rec.runs)} run(s) per case; a case passes level 1 only with 3 of 3: run it again without --runs`);
     const failed = caseEntries(rec.cases).filter((c) => !c.pass).map((c) => c.name);
@@ -18377,7 +18391,7 @@ function roleSystem(root, id, without) {
     body = strip((0, import_node_fs41.readFileSync)(file, "utf8"));
   }
   const dir = (0, import_node_path46.join)(root, "roles", id, "skills");
-  const own = (0, import_node_fs41.existsSync)(dir) ? (0, import_node_fs41.readdirSync)(dir).filter((n) => n.endsWith(".md")).map((n) => n.slice(0, -3)) : [];
+  const own = (0, import_node_fs41.existsSync)(dir) ? (0, import_node_fs41.readdirSync)(dir).filter((n) => !n.startsWith(".") && n.endsWith(".md")).map((n) => n.slice(0, -3)) : [];
   const names2 = [...index, ...own.filter((n) => !index.includes(n) && !out.includes(n)).sort()];
   const skills = names2.map((n) => ({ n, file: (0, import_node_path46.join)(root, skillFile(id, n)) })).filter((x) => (0, import_node_fs41.existsSync)(x.file)).map((x) => `### Skill: ${x.n}
 
@@ -18521,7 +18535,10 @@ function runCases(root, role, caseName, exec, onCase, runs = 1, without, bare = 
   if (dropped.length && !out.length) throw new Error(`no case of ${role} covers ${dropped.map((x) => `"${x}"`).join(" or ")}`);
   return out;
 }
-function caseRecords(root, id, results, date) {
+function takeDigests(root, id) {
+  return { shared: sharedDigest(root, id), cases: new Map(loadEvalCases(root, id).cases.map((c) => [c.name, caseDigest(root, c.file)])) };
+}
+function caseRecords(root, id, results, date, model, digests) {
   const fileOf = new Map(loadEvalCases(root, id).cases.map((c) => [c.name, c.file]));
   return results.filter((r) => r.role === id && fileOf.has(r.name)).map((r) => ({
     name: r.name,
@@ -18529,11 +18546,12 @@ function caseRecords(root, id, results, date) {
     runs: r.runs ?? { total: 1, passed: r.pass ? 1 : 0, errors: r.error ? 1 : 0 },
     failed: r.criteria.filter((x) => !x.pass).map((x) => x.criterion),
     ...r.error ? { error: r.error } : {},
-    digest: caseDigest(root, fileOf.get(r.name)),
-    date
+    digest: digests.cases.get(r.name) ?? caseDigest(root, fileOf.get(r.name)),
+    date,
+    model
   }));
 }
-function record(root, id, model, date, cases) {
+function record(root, id, model, date, shared, cases) {
   return {
     format: RESULTS_FORMAT,
     role: id,
@@ -18541,10 +18559,11 @@ function record(root, id, model, date, cases) {
     model,
     tier: loadRole(root, id)?.tier ?? "",
     runs: cases.length ? Math.min(...cases.map((c) => c.runs.total)) : 0,
-    digest: sharedDigest(root, id),
+    digest: shared,
     cases
   };
 }
+var CHANGED = "the Role changed during the run: run it again";
 function save(root, id, rec) {
   const file = resultsFile(root, id);
   (0, import_node_fs41.writeFileSync)(file, `${JSON.stringify(rec, null, 2)}
@@ -18552,8 +18571,11 @@ function save(root, id, rec) {
   return file;
 }
 function writeResults(root, id, results, meta) {
+  const digests = meta.digests ?? takeDigests(root, id);
+  if (sharedDigest(root, id) !== digests.shared) return { refused: CHANGED };
   const date = (meta.date ?? /* @__PURE__ */ new Date()).toISOString();
-  return save(root, id, record(root, id, meta.model ?? null, date, caseRecords(root, id, results, date)));
+  const model = meta.model ?? null;
+  return { file: save(root, id, record(root, id, model, date, digests.shared, caseRecords(root, id, results, date, model, digests))) };
 }
 function mergeResults(root, id, results, meta) {
   const file = resultsFile(root, id);
@@ -18566,14 +18588,16 @@ function mergeResults(root, id, results, meta) {
     return { refused: `results.json is not readable: ${all2}` };
   }
   if (old?.format !== RESULTS_FORMAT || !Array.isArray(old.cases)) return { refused: `results.json is the old format: ${all2} once` };
-  if (old.digest !== sharedDigest(root, id)) return { refused: `the Role's shared content changed since the last full run: ${all2}` };
+  const digests = meta.digests ?? takeDigests(root, id);
+  if (sharedDigest(root, id) !== digests.shared) return { refused: CHANGED };
+  if (old.digest !== digests.shared) return { refused: `the Role's shared content changed since the last full run: ${all2}` };
   const model = meta.model ?? null;
   if ((old.model ?? null) !== model) return { refused: `results.json was made with model ${old.model ?? "default"}, this run with ${model ?? "default"}: ${all2}` };
   const date = (meta.date ?? /* @__PURE__ */ new Date()).toISOString();
-  const fresh = new Map(caseRecords(root, id, results, date).map((c) => [c.name, c]));
+  const fresh = new Map(caseRecords(root, id, results, date, model, digests).map((c) => [c.name, c]));
   const kept = new Map(caseEntries(old.cases).map((c) => [c.name, c]));
   const cases = loadEvalCases(root, id).cases.map((c) => fresh.get(c.name) ?? kept.get(c.name)).filter((c) => c !== void 0);
-  return { file: save(root, id, record(root, id, model, date, cases)) };
+  return { file: save(root, id, record(root, id, model, date, digests.shared, cases)) };
 }
 function printResults(rs, showAnswers = false, every = false) {
   const lines = [];
@@ -19933,9 +19957,10 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
                                          both print every criterion's verdict and never write the result file
                                          --answers also prints each answer, to see why a case failed
                                          A full run from a source checkout on the tier's model writes
-                                         roles/<id>/evals/results.json (commit it with the Role's change); --case
-                                         updates only that case's entry, while the rest of the Role is unchanged since
-                                         the last full run
+                                         roles/<id>/evals/results.json (commit it with the Role's change); --model is
+                                         refused for a tier that uses the session's model. --case updates only that
+                                         case's entry, and needs an existing format-2 file from a full run, the same
+                                         shared content (all of the Role but its case files) and the same model
   roster [--write] [--strict]            the factory's Roles; checks roster.yaml, role profiles, rules.md tables, artifacts.yaml
                                          (one owner per artifact, reads/writes of each Role), workflows/*.yaml, the cases (a Role
                                          whose rules.md is a table covers every rule and skill), and the generated agent files;
@@ -20663,6 +20688,7 @@ ${lines.length ? `${lines.join("\n")}
 `);
         const results = [];
         const modelOf = /* @__PURE__ */ new Map();
+        const digestsOf = /* @__PURE__ */ new Map();
         try {
           if (without !== void 0 && !rest[0]) throw new Error("--without needs a Role: rule ids and skills belong to one Role");
           if (bare && !rest[0]) throw new Error("--bare needs a Role: it runs that Role's cases with none of its instructions");
@@ -20673,6 +20699,7 @@ ${lines.length ? `${lines.join("\n")}
           for (const id of ids) {
             const model = asked ?? (roster.roles[id] ? tierModel(root, id) : void 0);
             modelOf.set(id, model);
+            if (roster.roles[id] && !without && !bare) digestsOf.set(id, takeDigests(root, id));
             results.push(...runCases(root, id, caseName, (io.modelExec ?? claudeExec)(model), progress, runs, without, bare));
           }
         } catch (e) {
@@ -20697,14 +20724,16 @@ ${lines.length ? `${lines.join("\n")}
           for (const id of [...new Set(results.map((r) => r.role))]) {
             const tm = tierModel(root, id);
             const mine = results.filter((r) => r.role === id);
-            const meta = { runs, ...modelOf.get(id) ? { model: modelOf.get(id) } : {} };
-            if (asked && tm && asked !== tm) io.err(`  no result file written for ${id}: --model ${asked} is not its tier's model (${tm})
+            const digests = digestsOf.get(id);
+            const meta = { runs, ...modelOf.get(id) ? { model: modelOf.get(id) } : {}, ...digests ? { digests } : {} };
+            if (asked && !tm) io.err(`  no result file written for ${id}: its tier uses the session's model; run without --model
+`);
+            else if (asked && asked !== tm) io.err(`  no result file written for ${id}: --model ${asked} is not its tier's model (${tm})
 `);
             else if (mine.every((r) => r.error)) io.err(`  no result file written for ${id}: no case was graded
 `);
-            else if (!caseName) written.push((0, import_node_path52.relative)(root, writeResults(root, id, results, meta)));
             else {
-              const m = mergeResults(root, id, results, meta);
+              const m = caseName ? mergeResults(root, id, results, meta) : writeResults(root, id, results, meta);
               if ("refused" in m) io.err(`  no result file written for ${id}: ${m.refused}
 `);
               else written.push((0, import_node_path52.relative)(root, m.file));
