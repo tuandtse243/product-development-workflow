@@ -459,7 +459,6 @@ export function offBranchNote(cwd: string, env: NodeJS.ProcessEnv): string | nul
   return `AIDW: HEAD is on ${current || "a detached commit"}, but unmerged change branch(es) ${open.join(", ")} hold newer aidw state. Before /aidw:run, /aidw:resume or /aidw:status, run \`git switch ${open[0]}\` (or merge it).`;
 }
 
-export { isDefaultBranch };
 
 /**
  * Keeps task commits off the default branch (permissions.md: "commit on the change branch"). The first time

@@ -15,8 +15,8 @@
  * written into the briefs and the gate page for the Agents and the run to read; the cap is enforced by the run.
  * Never automatic, whatever is granted: see NEVER_AUTOMATIC.
  */
-import { readFileSync } from "node:fs";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { lstatSync, readFileSync, realpathSync } from "node:fs";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import YAML from "yaml";
 import { approvalStatus } from "./approval.js";
 import { listChangeIds, loadChange, stateOf, type Change } from "./change.js";
@@ -105,10 +105,31 @@ export interface PushBinding {
 /** A Task Worktree branch (`aidw/<change>.<task>`, src/parallel.ts): never pushed (ADR-0012). */
 const TASK_BRANCH = /\.T\d+$/;
 
+/** The URL `git push <remote>` sends to (pushurl and pushInsteadOf included); null when there is no such remote. */
 const remoteUrl = (p: Paths, remote: string): string | null => {
-  const r = git(p.project, ["remote", "get-url", remote]);
+  const r = git(p.project, ["remote", "get-url", "--push", remote]);
   return r.ok && r.out ? r.out : null;
 };
+
+/**
+ * Why git could send `git push <remote> <branch>` somewhere the binding does not say, or null: a configured push
+ * refspec or mirror for the remote maps the branch elsewhere, and a pushInsteadOf rewrite changes the URL.
+ */
+function pushConfigProblem(p: Paths, remote: string): string | null {
+  if (git(p.project, ["config", "--get-all", `remote.${remote}.push`]).out) return `remote.${remote}.push is set`;
+  if (git(p.project, ["config", "--get", `remote.${remote}.mirror`]).out) return `remote.${remote}.mirror is set`;
+  if (git(p.project, ["config", "--get-regexp", "^url\\..*\\.pushinsteadof$"]).out) return "a url.<base>.pushInsteadOf rewrite is set";
+  return null;
+}
+
+/** Why a name cannot be the Change Branch the push grant covers, or null. Checked at approval and again at push time. */
+function branchProblem(p: Paths, branch: string, base: string): string | null {
+  if (!BRANCH_NAME.test(branch) || branch.startsWith("refs/") || branch === "HEAD" || branch === "@" || branch.endsWith(".lock") || branch.includes("..")) return `"${branch}" is not a plain branch name`;
+  if (TASK_BRANCH.test(branch)) return `"${branch}" is a Task Worktree branch, never pushed`;
+  if (branch === base) return `the Change Branch "${branch}" is the base itself`;
+  if (isDefaultBranch(p.project, branch)) return `"${branch}" is the project's default branch`;
+  return null;
+}
 
 /** `owner/repo` of a GitHub remote URL, for `gh pr create --repo`; null for any other host. */
 export function githubSlug(url: string | null): string | null {
@@ -132,24 +153,17 @@ export function bindPush(p: Paths, change: Change): { binding: PushBinding | nul
   const grant = readGrants(change).push;
   if (!grant) return { binding: null, problem: null };
   const branch = plannedBranch(p, change);
-  const problem = !BRANCH_NAME.test(branch) || branch.startsWith("refs/")
-    ? `"${branch}" is not a plain branch name`
-    : TASK_BRANCH.test(branch)
-      ? `"${branch}" is a Task Worktree branch, never pushed`
-      : branch === grant.base
-        ? `the Change Branch "${branch}" is the base itself`
-        : isDefaultBranch(p.project, branch)
-          ? `"${branch}" is the project's default branch`
-          : null;
+  const problem = branchProblem(p, branch, grant.base);
   if (problem) return { binding: null, problem };
   return { binding: { branch, remote: grant.remote, url: remoteUrl(p, grant.remote), base: grant.base }, problem: null };
 }
 
-/** The binding recorded at approval, when it still agrees with the frozen grant. */
-function boundPush(change: Change): PushBinding | null {
+/** The binding recorded at approval, when it still agrees with the frozen grant and the branch rules (checked again here). */
+export function boundPush(p: Paths, change: Change): PushBinding | null {
   const grant = readGrants(change).push;
   const b = (change.data.approval as { push?: Partial<PushBinding> } | null | undefined)?.push;
   if (!grant || !b || typeof b.branch !== "string" || b.remote !== grant.remote || b.base !== grant.base) return null;
+  if (branchProblem(p, b.branch, b.base)) return null;
   return { branch: b.branch, remote: b.remote, url: typeof b.url === "string" ? b.url : null, base: b.base };
 }
 
@@ -185,7 +199,7 @@ export function grantsSection(p: Paths, change: Change): { id: string; title: st
   } catch {
     return null;
   }
-  const bound = boundPush(change);
+  const bound = boundPush(p, change);
   return {
     id: "grants",
     title: "Grants for this Change",
@@ -319,6 +333,48 @@ export function taskBranchPush(cmd: string): string | null {
   return "a Task Worktree branch is merged into the Change Branch and never pushed (ADR-0012)";
 }
 
+const real = (f: string): string | null => {
+  try {
+    return realpathSync(f);
+  } catch {
+    return null;
+  }
+};
+
+const insideDir = (parent: string, child: string): boolean => {
+  const r = relative(parent, child);
+  return r === "" || (r !== ".." && !r.startsWith(`..${sep}`) && !isAbsolute(r));
+};
+
+/**
+ * The command runs in the project's own repository and not in a Task Worktree: the cwd is inside the project (the
+ * hook finds the project from CLAUDE_PROJECT_DIR whatever the cwd), and git resolves it to the project's toplevel,
+ * not another or a nested repository. Every git question the grant asks is then about the project.
+ */
+function runsInProject(p: Paths, cwd: string): boolean {
+  const project = real(p.project);
+  const here = real(resolve(cwd));
+  if (!project || !here || !insideDir(project, here)) return false;
+  const run = real(join(p.run, "worktrees"));
+  if (run && insideDir(run, here)) return false;
+  const top = (dir: string) => {
+    const r = git(dir, ["rev-parse", "--show-toplevel"]);
+    return r.ok && r.out ? real(r.out) : null;
+  };
+  return top(here) === top(project);
+}
+
+/** `aidw pr`'s own body file: a regular file (not a symlink) whose real path is `.aidw/run/pr-<id>.md`. */
+function isPrBodyFile(p: Paths, id: string, file: string): boolean {
+  const want = join(p.run, `pr-${id}.md`);
+  try {
+    if (!lstatSync(file).isFile() || !lstatSync(want).isFile()) return false;
+  } catch {
+    return false;
+  }
+  return real(file) !== null && real(file) === real(want);
+}
+
 /**
  * The reason a push or pull-request command passes without asking, or null. It passes only when a Change with a
  * valid approval, in one of `states`, grants push and its approval fixed the branch, remote (with its URL) and base,
@@ -326,18 +382,15 @@ export function taskBranchPush(cmd: string): string | null {
  * only for the Orchestrator (no agent_type).
  */
 export function pushGrantReason(p: Paths, cmd: string, states: ReadonlySet<string>, cwd: string, env: NodeJS.ProcessEnv): string | null {
-  const worktrees = join(p.run, "worktrees");
-  const fromWorktree = relative(worktrees, resolve(cwd));
-  if (fromWorktree === "" || (!fromWorktree.startsWith("..") && !isAbsolute(fromWorktree))) return null;
   const req = requestOf(cmd, env);
-  if (!req) return null;
+  if (!req || !runsInProject(p, cwd)) return null;
   for (const id of listChangeIds(p)) {
     try {
       const c = loadChange(p, id);
       const state = stateOf(c);
       if (!state || !states.has(state) || approvalStatus(p, c).status !== "valid") continue;
-      const b = boundPush(c);
-      if (!b || remoteUrl(p, b.remote) !== b.url) continue;
+      const b = boundPush(p, c);
+      if (!b || remoteUrl(p, b.remote) !== b.url || pushConfigProblem(p, b.remote)) continue;
       const by = `granted at the Approval Gate of ${id}`;
       if (req.kind === "push" && req.remote === b.remote && refIsBranch(req.ref, b.branch)) return `push of the Change Branch ${b.branch} to ${b.remote} was ${by}`;
       if (
@@ -345,11 +398,13 @@ export function pushGrantReason(p: Paths, cmd: string, states: ReadonlySet<strin
         req.head === b.branch &&
         req.base === b.base &&
         (req.repo === null || req.repo === githubSlug(b.url)) &&
-        (req.bodyFile === null || resolve(cwd, req.bodyFile) === join(p.run, `pr-${id}.md`))
+        (req.bodyFile === null || isPrBodyFile(p, id, resolve(cwd, req.bodyFile)))
       ) {
         return `the pull request of ${b.branch} against ${b.base} was ${by}`;
       }
-      if (req.kind === "aidw-pr" && req.id === id && (req.base ?? b.base) === b.base) return `pushing ${b.branch} to ${b.remote} and its pull request against ${b.base} were ${by}`;
+      // `aidw pr` pushes what planPr names: the binding, and only while change.yaml still says the same branch
+      const recorded = (c.data.run as { branch?: unknown } | undefined)?.branch;
+      if (req.kind === "aidw-pr" && req.id === id && (req.base ?? b.base) === b.base && (recorded === undefined || recorded === null || recorded === b.branch)) return `pushing ${b.branch} to ${b.remote} and its pull request against ${b.base} were ${by}`;
     } catch {
       // an unreadable change grants nothing
     }

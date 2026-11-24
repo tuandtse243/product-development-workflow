@@ -126,6 +126,7 @@ describe("gate with the push grant", () => {
   });
 
   it("lets the one pull request against the granted base be opened, draft included", () => {
+    write(root, ".aidw/run/pr-app.md", "body"); // aidw pr writes it before gh reads it
     for (const c of [
       'gh pr create --base main --head aidw/app --title "feat(booking): reschedule" --body-file .aidw/run/pr-app.md',
       "gh pr create -B main -H aidw/app --fill --draft",
@@ -273,6 +274,7 @@ describe("the Change Branch is fixed at approval", () => {
     expect(bash("gh pr create --base main --head aidw/app --repo someone/app")).toBe("ask");
     const r = JSON.parse(cli("pr", ID, "--json").out) as { commands: string[] };
     expect(r.commands[1]).toMatch(/--repo acme\/app/);
+    write(root, ".aidw/run/pr-app.md", "body");
     for (const c of r.commands) expect([c, bash(c)]).toEqual([c, "allow"]);
     execFileSync("git", ["remote", "set-url", "origin", "https://github.com/evil/app.git"], { cwd: root });
     expect(bash("git push -u origin aidw/app")).toBe("ask");
@@ -294,6 +296,7 @@ describe("aidw pr with the push grant", () => {
     expect(r.base).toBe("develop");
     expect(r.commands[0]).toBe("git push -u upstream aidw/app");
     expect(r.commands[1]).toMatch(/^gh pr create --base develop --head aidw\/app /);
+    write(root, ".aidw/run/pr-app.md", "body");
     for (const c of r.commands) expect([c, bash(c)]).toEqual([c, "allow"]);
   });
 

@@ -42,15 +42,17 @@ grants:
   change.yaml, hashed with the package (editing it is drift). A branch that is not a plain name, starts with `refs/`,
   is the default branch, is the base, or is a Task Worktree branch gets no binding, and the push asks; the gate page
   shows the branch before approval. With the binding, the gate allows without asking, only for the Orchestrator (any
-  agent, an aidw Role or not, still asks), only outside Task Worktrees, while the Change is open or delivered with a
-  valid approval and the remote still has the URL it had at approval: `git push [-u|--set-upstream] <remote> <branch>`
+  agent, an aidw Role or not, still asks), only in the project's own repository (not another or a nested one) and
+  outside Task Worktrees, while the Change is open or delivered with a valid approval, the remote's push URL is still
+  the one recorded at approval, and no `remote.<name>.push`, `remote.<name>.mirror` or `pushInsteadOf` could send the
+  branch elsewhere: `git push [-u|--set-upstream] <remote> <branch>`
   (`refs/heads/<branch>` allowed, `HEAD:` not), `gh pr create --base <base> --head <branch>` with only `--title`,
   `--body`, `--draft`, `--fill`, `--repo <owner/repo of the remote>` and `--body-file .aidw/run/pr-<id>.md` (the body
-  `aidw pr` writes; no other file leaves the machine), and the aidw CLI's `aidw pr <id> --create [--base <base>]
+  `aidw pr` writes, a regular file and not a symlink; no other file leaves the machine), and the aidw CLI's `aidw pr <id> --create [--base <base>]
   [--draft]` (bare `aidw` or the plugin's `bin/aidw`, no other program of that name). Anything else (another branch,
   remote or base, `--force`, `--no-verify`, `git -C`, shell chaining, substitution or globs) still asks. Pushing a Task
-  Worktree branch (`aidw/<id>.T<n>`) is denied, granted or not. `aidw pr` uses the granted remote and base and passes
-  `--repo` for a GitHub remote.
+  Worktree branch (`aidw/<id>.T<n>`) is denied, granted or not. `aidw pr` pushes the branch, remote and base fixed at
+  approval and passes `--repo` for a GitHub remote; its grant holds only while `run.branch` still names that branch.
 - **Envelope.** `envelope: true` adds any free resource of a provider the project already uses, and migrations that
   change data on local and dev databases when they are reversible and were tried on seed data first. A pattern cannot
   tell "free" apart, so the gate does not enforce it: it is written into every task brief and the gate page, and work

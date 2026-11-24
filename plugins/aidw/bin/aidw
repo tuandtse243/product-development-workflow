@@ -3979,10 +3979,10 @@ var require_resolve_block_map = __commonJS({
       let offset = bm.offset;
       let commentEnd = null;
       for (const collItem of bm.items) {
-        const { start, key, sep: sep7, value } = collItem;
+        const { start, key, sep: sep8, value } = collItem;
         const keyProps = resolveProps.resolveProps(start, {
           indicator: "explicit-key-ind",
-          next: key ?? sep7?.[0],
+          next: key ?? sep8?.[0],
           offset,
           onError,
           parentIndent: bm.indent,
@@ -3996,7 +3996,7 @@ var require_resolve_block_map = __commonJS({
             else if ("indent" in key && key.indent !== bm.indent)
               onError(offset, "BAD_INDENT", startColMsg);
           }
-          if (!keyProps.anchor && !keyProps.tag && !sep7) {
+          if (!keyProps.anchor && !keyProps.tag && !sep8) {
             commentEnd = keyProps.end;
             if (keyProps.comment) {
               if (map.comment)
@@ -4020,7 +4020,7 @@ var require_resolve_block_map = __commonJS({
         ctx.atKey = false;
         if (utilMapIncludes.mapIncludes(ctx, map.items, keyNode))
           onError(keyStart, "DUPLICATE_KEY", "Map keys must be unique");
-        const valueProps = resolveProps.resolveProps(sep7 ?? [], {
+        const valueProps = resolveProps.resolveProps(sep8 ?? [], {
           indicator: "map-value-ind",
           next: value,
           offset: keyNode.range[2],
@@ -4036,7 +4036,7 @@ var require_resolve_block_map = __commonJS({
             if (ctx.options.strict && keyProps.start < valueProps.found.offset - 1024)
               onError(keyNode.range, "KEY_OVER_1024_CHARS", "The : indicator must be at most 1024 chars after the start of an implicit block mapping key");
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep7, null, valueProps, onError);
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep8, null, valueProps, onError);
           if (ctx.schema.compat)
             utilFlowIndentCheck.flowIndentCheck(bm.indent, value, onError);
           offset = valueNode.range[2];
@@ -4127,7 +4127,7 @@ var require_resolve_end = __commonJS({
       let comment = "";
       if (end) {
         let hasSpace = false;
-        let sep7 = "";
+        let sep8 = "";
         for (const token of end) {
           const { source, type } = token;
           switch (type) {
@@ -4141,13 +4141,13 @@ var require_resolve_end = __commonJS({
               if (!comment)
                 comment = cb;
               else
-                comment += sep7 + cb;
-              sep7 = "";
+                comment += sep8 + cb;
+              sep8 = "";
               break;
             }
             case "newline":
               if (comment)
-                sep7 += source;
+                sep8 += source;
               hasSpace = true;
               break;
             default:
@@ -4190,18 +4190,18 @@ var require_resolve_flow_collection = __commonJS({
       let offset = fc.offset + fc.start.source.length;
       for (let i = 0; i < fc.items.length; ++i) {
         const collItem = fc.items[i];
-        const { start, key, sep: sep7, value } = collItem;
+        const { start, key, sep: sep8, value } = collItem;
         const props = resolveProps.resolveProps(start, {
           flow: fcName,
           indicator: "explicit-key-ind",
-          next: key ?? sep7?.[0],
+          next: key ?? sep8?.[0],
           offset,
           onError,
           parentIndent: fc.indent,
           startOnNewline: false
         });
         if (!props.found) {
-          if (!props.anchor && !props.tag && !sep7 && !value) {
+          if (!props.anchor && !props.tag && !sep8 && !value) {
             if (i === 0 && props.comma)
               onError(props.comma, "UNEXPECTED_TOKEN", `Unexpected , in ${fcName}`);
             else if (i < fc.items.length - 1)
@@ -4255,8 +4255,8 @@ var require_resolve_flow_collection = __commonJS({
             }
           }
         }
-        if (!isMap && !sep7 && !props.found) {
-          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep7, null, props, onError);
+        if (!isMap && !sep8 && !props.found) {
+          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep8, null, props, onError);
           coll.items.push(valueNode);
           offset = valueNode.range[2];
           if (isBlock(value))
@@ -4268,7 +4268,7 @@ var require_resolve_flow_collection = __commonJS({
           if (isBlock(key))
             onError(keyNode.range, "BLOCK_IN_FLOW", blockMsg);
           ctx.atKey = false;
-          const valueProps = resolveProps.resolveProps(sep7 ?? [], {
+          const valueProps = resolveProps.resolveProps(sep8 ?? [], {
             flow: fcName,
             indicator: "map-value-ind",
             next: value,
@@ -4279,8 +4279,8 @@ var require_resolve_flow_collection = __commonJS({
           });
           if (valueProps.found) {
             if (!isMap && !props.found && ctx.options.strict) {
-              if (sep7)
-                for (const st of sep7) {
+              if (sep8)
+                for (const st of sep8) {
                   if (st === valueProps.found)
                     break;
                   if (st.type === "newline") {
@@ -4297,7 +4297,7 @@ var require_resolve_flow_collection = __commonJS({
             else
               onError(valueProps.start, "MISSING_CHAR", `Missing , or : between ${fcName} items`);
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep7, null, valueProps, onError) : null;
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep8, null, valueProps, onError) : null;
           if (valueNode) {
             if (isBlock(value))
               onError(valueNode.range, "BLOCK_IN_FLOW", blockMsg);
@@ -4477,7 +4477,7 @@ var require_resolve_block_scalar = __commonJS({
           chompStart = i + 1;
       }
       let value = "";
-      let sep7 = "";
+      let sep8 = "";
       let prevMoreIndented = false;
       for (let i = 0; i < contentStart; ++i)
         value += lines[i][0].slice(trimIndent) + "\n";
@@ -4494,24 +4494,24 @@ var require_resolve_block_scalar = __commonJS({
           indent = "";
         }
         if (type === Scalar.Scalar.BLOCK_LITERAL) {
-          value += sep7 + indent.slice(trimIndent) + content;
-          sep7 = "\n";
+          value += sep8 + indent.slice(trimIndent) + content;
+          sep8 = "\n";
         } else if (indent.length > trimIndent || content[0] === "	") {
-          if (sep7 === " ")
-            sep7 = "\n";
-          else if (!prevMoreIndented && sep7 === "\n")
-            sep7 = "\n\n";
-          value += sep7 + indent.slice(trimIndent) + content;
-          sep7 = "\n";
+          if (sep8 === " ")
+            sep8 = "\n";
+          else if (!prevMoreIndented && sep8 === "\n")
+            sep8 = "\n\n";
+          value += sep8 + indent.slice(trimIndent) + content;
+          sep8 = "\n";
           prevMoreIndented = true;
         } else if (content === "") {
-          if (sep7 === "\n")
+          if (sep8 === "\n")
             value += "\n";
           else
-            sep7 = "\n";
+            sep8 = "\n";
         } else {
-          value += sep7 + content;
-          sep7 = " ";
+          value += sep8 + content;
+          sep8 = " ";
           prevMoreIndented = false;
         }
       }
@@ -4693,25 +4693,25 @@ var require_resolve_flow_scalar = __commonJS({
       if (!match)
         return source;
       let res = match[1];
-      let sep7 = " ";
+      let sep8 = " ";
       let pos = first.lastIndex;
       line.lastIndex = pos;
       while (match = line.exec(source)) {
         if (match[1] === "") {
-          if (sep7 === "\n")
-            res += sep7;
+          if (sep8 === "\n")
+            res += sep8;
           else
-            sep7 = "\n";
+            sep8 = "\n";
         } else {
-          res += sep7 + match[1];
-          sep7 = " ";
+          res += sep8 + match[1];
+          sep8 = " ";
         }
         pos = line.lastIndex;
       }
       const last = /[ \t]*(.*)/sy;
       last.lastIndex = pos;
       match = last.exec(source);
-      return res + sep7 + (match?.[1] ?? "");
+      return res + sep8 + (match?.[1] ?? "");
     }
     function doubleQuotedValue(source, onError) {
       let res = "";
@@ -5513,14 +5513,14 @@ var require_cst_stringify = __commonJS({
         }
       }
     }
-    function stringifyItem({ start, key, sep: sep7, value }) {
+    function stringifyItem({ start, key, sep: sep8, value }) {
       let res = "";
       for (const st of start)
         res += st.source;
       if (key)
         res += stringifyToken(key);
-      if (sep7)
-        for (const st of sep7)
+      if (sep8)
+        for (const st of sep8)
           res += st.source;
       if (value)
         res += stringifyToken(value);
@@ -6670,18 +6670,18 @@ var require_parser = __commonJS({
         if (this.type === "map-value-ind") {
           const prev = getPrevProps(this.peek(2));
           const start = getFirstKeyStartProps(prev);
-          let sep7;
+          let sep8;
           if (scalar.end) {
-            sep7 = scalar.end;
-            sep7.push(this.sourceToken);
+            sep8 = scalar.end;
+            sep8.push(this.sourceToken);
             delete scalar.end;
           } else
-            sep7 = [this.sourceToken];
+            sep8 = [this.sourceToken];
           const map = {
             type: "block-map",
             offset: scalar.offset,
             indent: scalar.indent,
-            items: [{ start, key: scalar, sep: sep7 }]
+            items: [{ start, key: scalar, sep: sep8 }]
           };
           this.onKeyLine = true;
           this.stack[this.stack.length - 1] = map;
@@ -6834,15 +6834,15 @@ var require_parser = __commonJS({
                 } else if (isFlowToken(it.key) && !includesToken(it.sep, "newline")) {
                   const start2 = getFirstKeyStartProps(it.start);
                   const key = it.key;
-                  const sep7 = it.sep;
-                  sep7.push(this.sourceToken);
+                  const sep8 = it.sep;
+                  sep8.push(this.sourceToken);
                   delete it.key;
                   delete it.sep;
                   this.stack.push({
                     type: "block-map",
                     offset: this.offset,
                     indent: this.indent,
-                    items: [{ start: start2, key, sep: sep7 }]
+                    items: [{ start: start2, key, sep: sep8 }]
                   });
                 } else if (start.length > 0) {
                   it.sep = it.sep.concat(start, this.sourceToken);
@@ -7036,13 +7036,13 @@ var require_parser = __commonJS({
             const prev = getPrevProps(parent);
             const start = getFirstKeyStartProps(prev);
             fixFlowSeqItems(fc);
-            const sep7 = fc.end.splice(1, fc.end.length);
-            sep7.push(this.sourceToken);
+            const sep8 = fc.end.splice(1, fc.end.length);
+            sep8.push(this.sourceToken);
             const map = {
               type: "block-map",
               offset: fc.offset,
               indent: fc.indent,
-              items: [{ start, key: fc, sep: sep7 }]
+              items: [{ start, key: fc, sep: sep8 }]
             };
             this.onKeyLine = true;
             this.stack[this.stack.length - 1] = map;
@@ -9408,9 +9408,22 @@ function readGrants(change) {
 var agentRunCap = (g, plannedTasks) => g.agentRuns ?? AGENT_RUNS_PER_TASK * Math.max(1, plannedTasks);
 var TASK_BRANCH = /\.T\d+$/;
 var remoteUrl = (p, remote) => {
-  const r = git(p.project, ["remote", "get-url", remote]);
+  const r = git(p.project, ["remote", "get-url", "--push", remote]);
   return r.ok && r.out ? r.out : null;
 };
+function pushConfigProblem(p, remote) {
+  if (git(p.project, ["config", "--get-all", `remote.${remote}.push`]).out) return `remote.${remote}.push is set`;
+  if (git(p.project, ["config", "--get", `remote.${remote}.mirror`]).out) return `remote.${remote}.mirror is set`;
+  if (git(p.project, ["config", "--get-regexp", "^url\\..*\\.pushinsteadof$"]).out) return "a url.<base>.pushInsteadOf rewrite is set";
+  return null;
+}
+function branchProblem(p, branch, base2) {
+  if (!BRANCH_NAME.test(branch) || branch.startsWith("refs/") || branch === "HEAD" || branch === "@" || branch.endsWith(".lock") || branch.includes("..")) return `"${branch}" is not a plain branch name`;
+  if (TASK_BRANCH.test(branch)) return `"${branch}" is a Task Worktree branch, never pushed`;
+  if (branch === base2) return `the Change Branch "${branch}" is the base itself`;
+  if (isDefaultBranch(p.project, branch)) return `"${branch}" is the project's default branch`;
+  return null;
+}
 function githubSlug(url) {
   const m = url ? /^(?:https:\/\/(?:[^@/]+@)?github\.com\/|(?:ssh:\/\/)?git@github\.com[:/])([\w.-]+\/[\w.-]+?)(?:\.git)?\/?$/.exec(url) : null;
   return m ? m[1] : null;
@@ -9425,14 +9438,15 @@ function bindPush(p, change) {
   const grant = readGrants(change).push;
   if (!grant) return { binding: null, problem: null };
   const branch = plannedBranch(p, change);
-  const problem = !BRANCH_NAME.test(branch) || branch.startsWith("refs/") ? `"${branch}" is not a plain branch name` : TASK_BRANCH.test(branch) ? `"${branch}" is a Task Worktree branch, never pushed` : branch === grant.base ? `the Change Branch "${branch}" is the base itself` : isDefaultBranch(p.project, branch) ? `"${branch}" is the project's default branch` : null;
+  const problem = branchProblem(p, branch, grant.base);
   if (problem) return { binding: null, problem };
   return { binding: { branch, remote: grant.remote, url: remoteUrl(p, grant.remote), base: grant.base }, problem: null };
 }
-function boundPush(change) {
+function boundPush(p, change) {
   const grant = readGrants(change).push;
   const b = change.data.approval?.push;
   if (!grant || !b || typeof b.branch !== "string" || b.remote !== grant.remote || b.base !== grant.base) return null;
+  if (branchProblem(p, b.branch, b.base)) return null;
   return { branch: b.branch, remote: b.remote, url: typeof b.url === "string" ? b.url : null, base: b.base };
 }
 var plannedTaskCount = (change) => {
@@ -9457,7 +9471,7 @@ function grantsSection(p, change) {
   } catch {
     return null;
   }
-  const bound = boundPush(change);
+  const bound = boundPush(p, change);
   return {
     id: "grants",
     title: "Grants for this Change",
@@ -9564,25 +9578,55 @@ function taskBranchPush(cmd2) {
   if (!/\bgit\b[^;&|]*\spush\b|\bgh\s+pr\s+create\b/.test(cmd2) || !TASK_BRANCH_REF.test(cmd2)) return null;
   return "a Task Worktree branch is merged into the Change Branch and never pushed (ADR-0012)";
 }
+var real = (f) => {
+  try {
+    return (0, import_node_fs8.realpathSync)(f);
+  } catch {
+    return null;
+  }
+};
+var insideDir = (parent, child) => {
+  const r = (0, import_node_path10.relative)(parent, child);
+  return r === "" || r !== ".." && !r.startsWith(`..${import_node_path10.sep}`) && !(0, import_node_path10.isAbsolute)(r);
+};
+function runsInProject(p, cwd) {
+  const project = real(p.project);
+  const here = real((0, import_node_path10.resolve)(cwd));
+  if (!project || !here || !insideDir(project, here)) return false;
+  const run2 = real((0, import_node_path10.join)(p.run, "worktrees"));
+  if (run2 && insideDir(run2, here)) return false;
+  const top = (dir) => {
+    const r = git(dir, ["rev-parse", "--show-toplevel"]);
+    return r.ok && r.out ? real(r.out) : null;
+  };
+  return top(here) === top(project);
+}
+function isPrBodyFile(p, id, file) {
+  const want = (0, import_node_path10.join)(p.run, `pr-${id}.md`);
+  try {
+    if (!(0, import_node_fs8.lstatSync)(file).isFile() || !(0, import_node_fs8.lstatSync)(want).isFile()) return false;
+  } catch {
+    return false;
+  }
+  return real(file) !== null && real(file) === real(want);
+}
 function pushGrantReason(p, cmd2, states, cwd, env) {
-  const worktrees = (0, import_node_path10.join)(p.run, "worktrees");
-  const fromWorktree = (0, import_node_path10.relative)(worktrees, (0, import_node_path10.resolve)(cwd));
-  if (fromWorktree === "" || !fromWorktree.startsWith("..") && !(0, import_node_path10.isAbsolute)(fromWorktree)) return null;
   const req = requestOf(cmd2, env);
-  if (!req) return null;
+  if (!req || !runsInProject(p, cwd)) return null;
   for (const id of listChangeIds(p)) {
     try {
       const c = loadChange(p, id);
       const state = stateOf(c);
       if (!state || !states.has(state) || approvalStatus(p, c).status !== "valid") continue;
-      const b = boundPush(c);
-      if (!b || remoteUrl(p, b.remote) !== b.url) continue;
+      const b = boundPush(p, c);
+      if (!b || remoteUrl(p, b.remote) !== b.url || pushConfigProblem(p, b.remote)) continue;
       const by = `granted at the Approval Gate of ${id}`;
       if (req.kind === "push" && req.remote === b.remote && refIsBranch(req.ref, b.branch)) return `push of the Change Branch ${b.branch} to ${b.remote} was ${by}`;
-      if (req.kind === "pr" && req.head === b.branch && req.base === b.base && (req.repo === null || req.repo === githubSlug(b.url)) && (req.bodyFile === null || (0, import_node_path10.resolve)(cwd, req.bodyFile) === (0, import_node_path10.join)(p.run, `pr-${id}.md`))) {
+      if (req.kind === "pr" && req.head === b.branch && req.base === b.base && (req.repo === null || req.repo === githubSlug(b.url)) && (req.bodyFile === null || isPrBodyFile(p, id, (0, import_node_path10.resolve)(cwd, req.bodyFile)))) {
         return `the pull request of ${b.branch} against ${b.base} was ${by}`;
       }
-      if (req.kind === "aidw-pr" && req.id === id && (req.base ?? b.base) === b.base) return `pushing ${b.branch} to ${b.remote} and its pull request against ${b.base} were ${by}`;
+      const recorded = c.data.run?.branch;
+      if (req.kind === "aidw-pr" && req.id === id && (req.base ?? b.base) === b.base && (recorded === void 0 || recorded === null || recorded === b.branch)) return `pushing ${b.branch} to ${b.remote} and its pull request against ${b.base} were ${by}`;
     } catch {
     }
   }
@@ -15570,10 +15614,11 @@ function loadAny(p, id) {
 function planPr(p, id, opts = {}) {
   const change = loadAny(p, id);
   const run2 = change.data.run ?? {};
-  const head = run2.branch ?? `aidw/${id}`;
+  const bound = boundPush(p, change);
   const grant = readGrants(change).push;
-  const base2 = opts.base ?? grant?.base ?? run2.base_branch ?? "main";
-  const remote = grant?.remote ?? "origin";
+  const head = bound?.branch ?? run2.branch ?? `aidw/${id}`;
+  const base2 = opts.base ?? bound?.base ?? grant?.base ?? run2.base_branch ?? "main";
+  const remote = bound?.remote ?? grant?.remote ?? "origin";
   const url = git(p.project, ["remote", "get-url", remote]);
   const repo = url.ok ? githubSlug(url.out) : null;
   const tasks = parseTasks(readText((0, import_node_path41.join)(change.dir, "tasks.yaml")) ?? "").tasks;

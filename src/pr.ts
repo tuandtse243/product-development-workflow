@@ -9,7 +9,7 @@ import { join } from "node:path";
 import YAML from "yaml";
 import { ChangeError, loadChange, stateOf, type Change } from "./change.js";
 import { header, scopeOf } from "./commit.js";
-import { githubSlug, readGrants } from "./grants.js";
+import { boundPush, githubSlug, readGrants } from "./grants.js";
 import { lastDeploy, readSummary } from "./quality.js";
 import { git } from "./git.js";
 import { OpError } from "./ops.js";
@@ -68,10 +68,12 @@ function loadAny(p: Paths, id: string): Change {
 export function planPr(p: Paths, id: string, opts: { base?: string } = {}): PrPlan {
   const change = loadAny(p, id);
   const run = (change.data.run ?? {}) as { branch?: string; base_branch?: string };
-  const head = run.branch ?? `aidw/${id}`;
+  // With a push grant, the branch, remote and base fixed at approval (ADR-0012), never a change.yaml edited since.
+  const bound = boundPush(p, change);
   const grant = readGrants(change).push;
-  const base = opts.base ?? grant?.base ?? run.base_branch ?? "main";
-  const remote = grant?.remote ?? "origin";
+  const head = bound?.branch ?? run.branch ?? `aidw/${id}`;
+  const base = opts.base ?? bound?.base ?? grant?.base ?? run.base_branch ?? "main";
+  const remote = bound?.remote ?? grant?.remote ?? "origin";
   const url = git(p.project, ["remote", "get-url", remote]);
   const repo = url.ok ? githubSlug(url.out) : null;
   const tasks = parseTasks(readText(join(change.dir, "tasks.yaml")) ?? "").tasks;
