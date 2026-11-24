@@ -99,6 +99,8 @@ consults: [software-architect]           # Roles its Agent may ask through the O
 skills:                    # on-demand: roles/<id>/skills/<name>.md, read only when the condition holds
   - rest-contract:   when designing a new endpoint
   - breaking-change: when changing an existing contract
+  - library/external-api: when calling an outside service   # shared: library/skills/<name>/SKILL.md
+follows_rules: [backend]   # other Roles' rules.md that also bind this Role's work (listed in its review brief)
 ---
 ## Responsibility
 ## Procedure
@@ -127,13 +129,19 @@ generated agent ends with a "Consultation" note naming them. The first pairs: `u
 | B13 | Every environment variable the diff reads is listed in `.env.example`. | the diff reads an environment variable | script, reviewer |
 ```
 
-An id is capital letters then a number, unique in the Role; `checked by` is one or more of `reviewer`, `script`
-(the Role's own measuring tool in `scripts/`) and `CLI` (a deterministic check), comma-separated. Text may stand
-before and after the table. `aidw roster` refuses a duplicate id, an empty field, a row with the wrong number of
-cells and an unknown checker. A `rules.md` with no `| id |` header row is the older prose format and is left as it
-is; the Roles move to the table one at a time (backend first). The review brief of a task points at the
-`rules.md` of the Role that built it, and when that file is a table it asks the reviewer to cite the rule id in
-each finding that breaks a rule (`1. B7: src/orders.ts: ...`).
+An id is capital letters then a number with no leading zero (`B1`, never `B01`), unique in the Role; `checked by`
+is one or more of `reviewer`, `script` (the Role's own measuring tool in `scripts/`) and `CLI` (a deterministic
+check), comma-separated. Text may stand before and after the table; a file holds one rules table. `aidw roster`
+refuses a duplicate id, an empty field, a row with the wrong number of cells, an unknown checker and a second
+table. A `rules.md` with no `| id |` header row is the older prose format and is left as it is; the Roles move to
+the table one at a time (backend first). The review brief of a task points at the `rules.md` of the Role that
+built it, and at those of the Roles its `follows_rules` lists (`aidw roster` checks each is a Role with a
+`rules.md`). A rule checked only by the CLI is already proven by the checkpoint; the reviewer judges the others,
+counts a rule whose right action is to ask as kept when the implementer asked, and cites the rule id in each
+finding that breaks a rule (`1. B7: src/orders.ts: ...`).
+
+A skill in the index is the Role's own (`<name>`, `roles/<id>/skills/<name>.md`) or a shared one
+(`library/<name>`, `library/skills/<name>/SKILL.md`) that several Roles list; `aidw roster` checks the file exists.
 
 Department, status and `carried_by` live only in `roster.yaml`, so a Planned Role can be declared before it has
 a folder and activating one is a one-line change. `aidw roster` checks the Roster, every profile and that the
@@ -650,8 +658,9 @@ In the user's project, `.aidw/` keeps its current shape and gains `roles/<id>/` 
 
 - **Per Role:** an active Role ships at least one case in `roles/<id>/evals/` (an input and grading
   criteria). Editing a Role's knowledge is checked against its own cases without running a whole Workflow.
-  `aidw eval [<role>] [--case <name>]` runs them: the Role's agent instructions are the system prompt, the case input is the
-  task, and a second call grades the answer against each criterion (a missing verdict fails). It costs tokens, so it is run on
+  `aidw eval [<role>] [--case <name>]` runs them: the Role's agent instructions (with every skill of its index inlined) are
+  the system prompt, the case input is the task, and a second call grades the answer against each criterion (a missing
+  verdict fails). The answering model is the one the Role's tier maps to in `tiers.yaml` (`--model` overrides it). It costs tokens, so it is run on
   demand and not part of `npm test`. One run is one sample of a model, so each case runs 3 times by default
   (`--runs <n>` changes it) and passes only when every run passes: a case that passes only some runs is FLAKY and
   counts as not passed (plan C2). A reply that is no deliverable (a refusal, a filtered reply) is an ERROR, not a FAIL.
@@ -659,16 +668,22 @@ In the user's project, `.aidw/` keeps its current shape and gains `roles/<id>/` 
   ids of the Role's `rules.md` table and the skill names of its `role.md` index that the case checks, and
   `expect: ask` for a case whose right answer is a question (a hole in the contract: ask, do not guess). For an
   `expect: ask` case the runner drops the "do not stop to ask" line from the prompt and grades a short answer instead
-  of calling it no deliverable.
+  of calling it no deliverable; an empty reply or a refusal is still an ERROR.
+- **A case fails without what it covers (plan C3).** `aidw eval <role> --without <rule-id|skill>` takes that rule row
+  or skill out of the instructions and runs only the cases covering it; each must fail, and one that still passes is
+  printed as STILL PASSES (exit 1): rewrite or drop it. Such a run never writes the result file.
 - **Coverage (level 0, no tokens; plan C1).** For a Role whose `rules.md` is a table, `aidw roster` fails when a rule
   id or a skill of the Role has no case covering it. A `covers:` entry that names neither a rule id nor a skill of
   the Role fails for every Role. Roles still in prose are not held to coverage.
-- **Result file (plan C6).** A run of all the cases of a Role (no `--case`) writes `roles/<id>/evals/results.json`:
-  per case its runs, pass or fail and the criteria that failed, with the date, the model (`null` for the claude CLI's
-  default), the tier and a digest of the Role's content (`role.md`, `rules.md`, `skills/`, `references/`,
-  `scripts/`, `evals/*.md`). The file is committed with the change to the Role. For a table Role, `aidw roster`
-  warns (it does not fail) when the file is missing, when its digest differs from the Role's content (the Role
-  changed after the run), or when the run recorded did not pass every case.
+- **Result file (plan C6).** A run of all the cases of a Role (no `--case`, no `--without`), from a source checkout
+  (the plugin root is in a git work tree) and on the tier's model, writes `roles/<id>/evals/results.json`: per case
+  its runs, pass or fail and the criteria that failed, with the date, the model (`null` for the claude CLI's
+  default), the tier and a digest of the Role's content: every file under `roles/<id>/` but the result file, the
+  generated `agents/<id>.md` (so a shared procedure it includes counts) and the library skills its index lists;
+  dotfiles are left out and line endings are read as LF. A run where no case was graded writes nothing. The file is
+  committed with the change to the Role. For a table Role, `aidw roster` warns (it does not fail; `--strict` makes
+  it fail) when the file is missing, when its digest differs from the Role's content (the Role changed after the
+  run), when the run had fewer than 3 runs per case, or when it did not pass every case.
 - **End to end:** the existing fixtures (`evals/fixtures/brownfield-app`, `greenfield-jd`) and `aidw cost`,
   which already reports cost per agent type, catch coordination problems and cost regressions.
 
