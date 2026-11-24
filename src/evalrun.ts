@@ -1,9 +1,9 @@
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
-import { loadEvalCases, type EvalCase } from "./evals.js";
-import { loadRoster } from "./roles.js";
+import { loadEvalCases, resultsFile, roleDigest, type EvalCase, type RunRecord } from "./evals.js";
+import { loadRole, loadRoster } from "./roles.js";
 
 /**
  * Runner for the Role cases. For each case of a Role: the Role's own instructions (its generated agent file) are given to a
@@ -122,7 +122,8 @@ export function answerPrompt(c: EvalCase): string {
     "the command, and put the full content of each file you write inline: the test code, the changes, the configuration or the",
     "review verdict, exactly as you would hand them over. Nothing can be run here, so for a command say what you expect it to print.",
     "## Reply: the exact message you send back when you are done, in the format your role asks for.",
-    "The brief above is complete and nothing is blocked: do not stop to ask a question or to report a missing input.",
+    // A case that expects a question (`expect: ask`) tests whether the Role asks: telling it not to would decide the case.
+    ...(c.expect === "ask" ? [] : ["The brief above is complete and nothing is blocked: do not stop to ask a question or to report a missing input."]),
     "Do not summarize and do not leave parts out.",
   ].join("\n");
 }
@@ -132,15 +133,16 @@ const MIN_ANSWER = 300;
 
 export function runCase(root: string, id: string, c: EvalCase, exec: Exec): CaseResult {
   const system = roleSystem(root, id);
+  // A case that expects a question is graded whatever its length: a short question is the right answer there.
+  const short = (a: string) => c.expect !== "ask" && a.trim().length < MIN_ANSWER;
   let answer = exec(answerPrompt(c), system);
-  if (answer.trim().length < MIN_ANSWER) answer = exec(answerPrompt(c), system); // a filtered reply is often a one-off
+  if (short(answer)) answer = exec(answerPrompt(c), system); // a filtered reply is often a one-off
   // Not graded: grading a missing deliverable would blame the Role for what the model refused to write.
-  if (answer.trim().length < MIN_ANSWER) throw new Error(`no deliverable (the model replied: ${answer.trim().replace(/\s+/g, " ").slice(0, 160)})`);
+  if (short(answer)) throw new Error(`no deliverable (the model replied: ${answer.trim().replace(/\s+/g, " ").slice(0, 160)})`);
   const criteria = parseGrade(exec(buildGradePrompt(c, answer)), c.criteria);
   return { role: id, name: c.name, pass: criteria.every((x) => x.pass), criteria, answer };
 }
 
-/** Runs the cases of one Role (or of every active Role when `role` is omitted), optionally only the named case. */
 /** One attempt at a case: a failed model call is an ERROR result, so one refusal never ends a run over many Roles. */
 function attempt(root: string, id: string, c: EvalCase, exec: Exec): CaseResult {
   try {
@@ -172,6 +174,7 @@ function attempts(root: string, id: string, c: EvalCase, exec: Exec, n: number):
   };
 }
 
+/** Runs the cases of one Role (or of every active Role when `role` is omitted), optionally only the named case. */
 export function runCases(root: string, role: string | undefined, caseName: string | undefined, exec: Exec, onCase?: (r: CaseResult) => void, runs = 1): CaseResult[] {
   const roster = loadRoster(root);
   const ids = role
@@ -191,6 +194,33 @@ export function runCases(root: string, role: string | undefined, caseName: strin
   }
   if (caseName && !out.length) throw new Error(`no case "${caseName}"${role ? ` for ${role}` : ""}`);
   return out;
+}
+
+/**
+ * The record of a run of all the cases of one Role (C6), written to `roles/<id>/evals/results.json` and committed with the
+ * Role's change; `aidw roster` compares its digest with the Role's content. Returns the file written.
+ */
+export function writeResults(root: string, id: string, results: CaseResult[], meta: { model?: string; runs: number; date?: Date }): string {
+  const record: RunRecord = {
+    role: id,
+    date: (meta.date ?? new Date()).toISOString(),
+    model: meta.model ?? null,
+    tier: loadRole(root, id)?.tier ?? "",
+    runs: meta.runs,
+    digest: roleDigest(root, id),
+    cases: results
+      .filter((r) => r.role === id)
+      .map((r) => ({
+        name: r.name,
+        pass: r.pass,
+        runs: r.runs ?? { total: 1, passed: r.pass ? 1 : 0, errors: r.error ? 1 : 0 },
+        failed: r.criteria.filter((x) => !x.pass).map((x) => x.criterion),
+        ...(r.error ? { error: r.error } : {}),
+      })),
+  };
+  const file = resultsFile(root, id);
+  writeFileSync(file, `${JSON.stringify(record, null, 2)}\n`);
+  return file;
 }
 
 export function printResults(rs: CaseResult[], showAnswers = false): string {

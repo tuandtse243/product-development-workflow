@@ -1,5 +1,5 @@
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { stringify as toYaml } from "yaml";
 import { answersText, PAGE_NAME, pageDataFile, pageHtmlFile, pagesDir, pageSummary, parseAnswers, parsePage, picksData, renderPage, triageData, type PageSection } from "./page.js";
@@ -23,7 +23,7 @@ import { defaultWorkflowId, machineOf } from "./machine.js";
 import { packsFor } from "./stackpacks.js";
 import { git } from "./git.js";
 import { checkEvals } from "./evals.js";
-import { claudeExec, printResults, runCases, type Exec } from "./evalrun.js";
+import { claudeExec, printResults, runCases, writeResults, type Exec } from "./evalrun.js";
 import { checkWorkflows, loadWorkflow, workflowIds } from "./workflow.js";
 import { agentForTask, AGENTS, checkRoster, rosterTable, writeAgents } from "./roles.js";
 import { checkChange, checkSpecs } from "./check.js";
@@ -302,11 +302,14 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
   eval [<role>] [--case <name>] [--model <m>] [--runs <n>] [--answers]
                                          run a Role's cases with claude -p (no tools) and grade each answer against its
                                          criteria; without a Role, every active Role. Costs tokens; exits 1 when a case fails.
-                                         --runs <n> runs each case n times (1-10): a case that passes only some runs is FLAKY
+                                         --runs <n> runs each case n times (1-10, default 3): a case passes only when every run
+                                         passes; one that passes only some runs is FLAKY and not passed
                                          --answers also prints each answer, to see why a case failed
-  roster [--write]                       the factory's Roles; checks roster.yaml, role profiles, artifacts.yaml (one owner
-                                         per artifact, reads/writes of each Role), workflows/*.yaml and the generated agent files
-                                         (--write regenerates agents/ from roles/)
+                                         without --case, writes roles/<id>/evals/results.json (commit it with the Role's change)
+  roster [--write]                       the factory's Roles; checks roster.yaml, role profiles, rules.md tables, artifacts.yaml
+                                         (one owner per artifact, reads/writes of each Role), workflows/*.yaml, the cases (a Role
+                                         whose rules.md is a table covers every rule and skill), and the generated agent files;
+                                         warns when such a Role's results.json is missing or stale (--write regenerates agents/)
 
 Execution (state executing; add --change <id> when several changes are active):
   next                                   what the orchestrator does next (implement | review | triage | upstream | complete ...);
@@ -1018,7 +1021,8 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
 
       case "eval": {
         const root = pluginRoot(env);
-        const runs = args.flags.runs === undefined ? 1 : Number(args.flags.runs);
+        // Level 1 (plan C2): a case passes only when it passes 3 runs of 3; a FLAKY case is not passed.
+        const runs = args.flags.runs === undefined ? 3 : Number(args.flags.runs);
         if (!Number.isInteger(runs) || runs < 1 || runs > 10) throw new OpError("--runs takes a whole number from 1 to 10");
         let results;
         try {
@@ -1027,7 +1031,12 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           throw new OpError((e as Error).message);
         }
         const ok = results.every((r) => r.pass);
-        emit({ ok, results }, printResults(results, args.flags.answers === true));
+        // The record of the run (C6): only a run of all a Role's cases stands for the Role.
+        const model = str(args.flags.model);
+        const written: string[] = [];
+        if (str(args.flags.case)) io.err("  no result file written: --case runs only part of a Role's cases\n");
+        else for (const id of [...new Set(results.map((r) => r.role))]) written.push(relative(root, writeResults(root, id, results, { runs, ...(model ? { model } : {}) })));
+        emit({ ok, results, written }, printResults(results, args.flags.answers === true) + written.map((f) => `wrote ${f}\n`).join(""));
         return ok ? 0 : 1;
       }
 

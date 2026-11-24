@@ -143,6 +143,76 @@ export function loadRole(root: string, id: string): RoleProfile | null {
   };
 }
 
+/**
+ * A Role's `rules.md` as a table (plan R2): one row per rule that can be answered pass or fail.
+ *
+ *   | id | rule | applies when | checked by |
+ *   |---|---|---|---|
+ *   | B7 | A write that changes more than one table runs in one transaction. | the task writes more than one table | reviewer |
+ *
+ * `id` is capital letters then a number, unique in the Role; `checked by` is one or more of RULE_CHECKERS, comma-separated.
+ * Text may stand before and after the table. A `rules.md` with no `| id |` header row is prose (the format before R2) and
+ * is left as it is: no ids, no coverage check.
+ */
+export const RULE_CHECKERS = ["reviewer", "script", "CLI"] as const;
+export type RuleChecker = (typeof RULE_CHECKERS)[number];
+export interface RoleRule {
+  id: string;
+  rule: string;
+  appliesWhen: string;
+  checkedBy: RuleChecker[];
+}
+const RULES_HEADER = ["id", "rule", "applies when", "checked by"];
+const RULE_ID = /^[A-Z]+[0-9]+$/;
+
+/** The cells of one table row; `\|` is a pipe inside a cell. */
+function cells(line: string): string[] {
+  const inner = line.trim().replace(/^\|/, "").replace(/(?<!\\)\|$/, "");
+  return inner.split(/(?<!\\)\|/).map((c) => c.trim().replace(/\\\|/g, "|"));
+}
+
+export function parseRulesTable(text: string): { table: boolean; rules: RoleRule[]; problems: string[] } {
+  const lines = text.split("\n");
+  const start = lines.findIndex((l) => /^\s*\|\s*id\s*\|/i.test(l));
+  if (start < 0) return { table: false, rules: [], problems: [] };
+  const problems: string[] = [];
+  const header = cells(lines[start] as string).map((c) => c.toLowerCase());
+  if (header.join("|") !== RULES_HEADER.join("|")) problems.push(`the header must be | ${RULES_HEADER.join(" | ")} |`);
+  if (!/^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$/.test(lines[start + 1] ?? "")) problems.push("the header must be followed by a | --- | separator row");
+  const rules: RoleRule[] = [];
+  const seen = new Set<string>();
+  for (const line of lines.slice(start + 2)) {
+    if (!line.trim().startsWith("|")) break;
+    const c = cells(line);
+    const id = c[0] ?? "";
+    const label = id || "a row";
+    if (c.length !== RULES_HEADER.length) {
+      problems.push(`${label}: a row has ${c.length} cells, expected ${RULES_HEADER.length}`);
+      continue;
+    }
+    const [, rule, appliesWhen, checker] = c as [string, string, string, string];
+    if (!RULE_ID.test(id)) problems.push(`id "${id}" must be capital letters then a number (B1, FE12)`);
+    else if (seen.has(id)) problems.push(`id "${id}" is used twice`);
+    seen.add(id);
+    if (!rule) problems.push(`${label}: the rule is empty`);
+    if (!appliesWhen) problems.push(`${label}: "applies when" is empty`);
+    const checkedBy = checker ? checker.split(/\s*,\s*/) : [];
+    if (!checkedBy.length) problems.push(`${label}: "checked by" is empty`);
+    for (const k of checkedBy) if (!(RULE_CHECKERS as readonly string[]).includes(k)) problems.push(`${label}: checked by "${k}" is not one of ${RULE_CHECKERS.join(", ")}`);
+    rules.push({ id, rule, appliesWhen, checkedBy: checkedBy as RuleChecker[] });
+  }
+  if (!rules.length && !problems.length) problems.push("the table has no rules");
+  return { table: true, rules, problems };
+}
+
+/** The rules of a Role whose `rules.md` is a table, or null (no rules.md, or one in prose). */
+export function loadRuleTable(root: string, id: string): RoleRule[] | null {
+  const file = join(roleDir(root, id), "rules.md");
+  if (!existsSync(file)) return null;
+  const t = parseRulesTable(read(file));
+  return t.table ? t.rules : null;
+}
+
 /** `skills: [{ name: when }]` -> a list; anything else is reported by checkRoster. */
 function skillIndex(raw: unknown): { name: string; when: string }[] {
   if (!Array.isArray(raw)) return [];
@@ -307,6 +377,8 @@ export function checkRoster(root: string): Diags {
         if (new Set(h.consults).size !== h.consults.length) d.error(file, "consults lists a role twice");
       }
     }
+    const rulesPath = join(roleDir(root, id), "rules.md");
+    if (existsSync(rulesPath)) for (const problem of parseRulesTable(read(rulesPath)).problems) d.error(`roles/${id}/rules.md`, problem);
     // Department, status and carried_by have one home: roster.yaml.
     for (const k of ["department", "status", "carried_by"]) if (k in h) d.error(file, `"${k}" belongs in roster.yaml, not in the profile`);
   }

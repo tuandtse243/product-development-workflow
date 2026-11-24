@@ -1,11 +1,22 @@
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
 import { answerPrompt, buildGradePrompt, parseGrade, printResults, roleSystem, runCases, type Exec } from "../src/evalrun.js";
-import { loadEvalCases } from "../src/evals.js";
+import { loadEvalCases, roleDigest } from "../src/evals.js";
 
 const plugin = join(__dirname, "..", "plugins", "aidw");
 const env = { ...process.env, CLAUDE_PLUGIN_ROOT: plugin };
+const temps: string[] = [];
+afterAll(() => temps.forEach((t) => rmSync(t, { recursive: true, force: true })));
+/** A copy of the plugin: `aidw eval` writes a result file into the Role's folder, never into the repo's during a test. */
+function copy(): string {
+  const root = mkdtempSync(join(tmpdir(), "aidw-cases-"));
+  temps.push(root);
+  cpSync(plugin, root, { recursive: true, filter: (src) => !src.startsWith(join(plugin, "bin")) });
+  return root;
+}
 
 /** A model that answers "ANSWER" and grades every criterion with `pass`. */
 const fake = (pass: boolean, seen: string[] = []): Exec => (prompt, system) => {
@@ -161,9 +172,10 @@ describe("the Role case runner", () => {
   });
 
   it("is the `aidw eval` command: exit 0 on pass, 1 on a failed case, JSON on request", () => {
+    const root = copy();
     const go = (pass: boolean, extra: string[] = []) => {
       let out = "";
-      const code = run(["eval", "backend", ...extra], env, process.cwd(), { out: (s) => (out += s), err: () => {}, modelExec: () => fake(pass) });
+      const code = run(["eval", "backend", ...extra], { ...process.env, AIDW_PLUGIN_ROOT: root }, process.cwd(), { out: (s) => (out += s), err: () => {}, modelExec: () => fake(pass) });
       return { code, out };
     };
     expect(go(true).code).toBe(0);
@@ -172,5 +184,84 @@ describe("the Role case runner", () => {
     expect(bad.code).toBe(1);
     expect(bad.out).toMatch(/FAIL {2}backend\//);
     expect(JSON.parse(go(true, ["--json"]).out).ok).toBe(true);
+  });
+
+  it("runs each case 3 times by default, and a case passes only 3 of 3 (C2)", () => {
+    const root = copy();
+    const seen: string[] = [];
+    let out = "";
+    const code = run(["eval", "backend", "--case", "validates-authorizes-and-does-not-leak"], { ...process.env, AIDW_PLUGIN_ROOT: root }, process.cwd(), {
+      out: (s) => (out += s),
+      err: () => {},
+      modelExec: () => fake(true, seen),
+    });
+    expect(code, out).toBe(0);
+    expect(seen).toHaveLength(6); // 3 answers, 3 gradings
+    expect(out).toMatch(/PASS {2}backend\/validates-authorizes-and-does-not-leak \(3\/3 runs\)/);
+  });
+
+  describe("a case that expects a question (expect: ask)", () => {
+    const askCase = (root: string) => {
+      const f = join(root, "roles", "backend", "evals", "validates-authorizes-and-does-not-leak.md");
+      writeFileSync(f, readFileSync(f, "utf8").replace("case: validates-authorizes-and-does-not-leak\n", "case: validates-authorizes-and-does-not-leak\nexpect: ask\n"));
+      return loadEvalCases(root, "backend").cases.find((c) => c.name === "validates-authorizes-and-does-not-leak")!;
+    };
+
+    it("drops the line that forbids asking", () => {
+      const root = copy();
+      const c = askCase(root);
+      expect(c.expect).toBe("ask");
+      const p = answerPrompt(c);
+      expect(p).not.toMatch(/do not stop to ask/);
+      expect(p).not.toMatch(/nothing is blocked/);
+      expect(p).toMatch(/## Reply/);
+    });
+
+    it("grades a short answer (the question itself) instead of calling it no deliverable", () => {
+      const root = copy();
+      askCase(root);
+      let answers = 0;
+      const asks: Exec = (p, system) => (system ? (answers++, "Which status does the contract give a duplicate invite?") : fake(true)(p, system));
+      const [r] = runCases(root, "backend", "validates-authorizes-and-does-not-leak", asks);
+      expect(r).toMatchObject({ pass: true });
+      expect(r!.error).toBeUndefined();
+      expect(answers).toBe(1); // no retry either
+    });
+  });
+
+  describe("the result file (C6)", () => {
+    const results = (root: string) => JSON.parse(readFileSync(join(root, "roles", "backend", "evals", "results.json"), "utf8"));
+
+    it("is written into the Role's folder after a run of all its cases", () => {
+      const root = copy();
+      let out = "";
+      const code = run(["eval", "backend", "--model", "sonnet"], { ...process.env, AIDW_PLUGIN_ROOT: root }, process.cwd(), { out: (s) => (out += s), err: (s) => (out += s), modelExec: () => fake(true) });
+      expect(code, out).toBe(0);
+      const r = results(root);
+      expect(r).toMatchObject({ role: "backend", model: "sonnet", tier: "deep", runs: 3, digest: roleDigest(root, "backend") });
+      expect(Number.isNaN(Date.parse(r.date))).toBe(false);
+      expect(r.cases.map((c: { name: string }) => c.name).sort()).toEqual(["entity-is-not-a-response", "validates-authorizes-and-does-not-leak"]);
+      expect(r.cases[0]).toMatchObject({ pass: true, runs: { total: 3, passed: 3, errors: 0 } });
+      expect(out).toMatch(/wrote roles\/backend\/evals\/results\.json/);
+      expect(existsSync(join(plugin, "roles", "backend", "evals", "results.json"))).toBe(false); // tests never write the repo's
+    });
+
+    it("records a failed case with the criteria that failed", () => {
+      const root = copy();
+      const code = run(["eval", "backend", "--runs", "1"], { ...process.env, AIDW_PLUGIN_ROOT: root }, process.cwd(), { out: () => {}, err: () => {}, modelExec: () => fake(false) });
+      expect(code).toBe(1);
+      const r = results(root);
+      expect(r).toMatchObject({ runs: 1, model: null });
+      expect(r.cases[0]).toMatchObject({ pass: false, runs: { total: 1, passed: 0, errors: 0 } });
+      expect(r.cases[0].failed.length).toBeGreaterThan(0);
+    });
+
+    it("is not written for a run of one case: it would stand for cases that did not run", () => {
+      const root = copy();
+      let err = "";
+      run(["eval", "backend", "--case", "validates-authorizes-and-does-not-leak"], { ...process.env, AIDW_PLUGIN_ROOT: root }, process.cwd(), { out: () => {}, err: (s) => (err += s), modelExec: () => fake(true) });
+      expect(existsSync(join(root, "roles", "backend", "evals", "results.json"))).toBe(false);
+      expect(err).toMatch(/no result file written: --case runs only part/);
+    });
   });
 });
