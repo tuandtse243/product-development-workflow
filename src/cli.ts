@@ -41,6 +41,7 @@ import {
   OpError,
   planMerge,
   projectStatus,
+  raiseCap,
   transition,
   writeMerge,
 } from "./ops.js";
@@ -51,7 +52,7 @@ import { converge } from "./converge.js";
 import { formatCost, parallelSavings, readSessions } from "./cost.js";
 import { detectProject } from "./detect.js";
 import { doctor, doctorText, drivesBrowser } from "./doctor.js";
-import { createPr, planPr } from "./pr.js";
+import { createPr, planPr, prNext, writePrBody } from "./pr.js";
 import { grantsSection } from "./grants.js";
 import { planAdvice, planShape, planSummary } from "./plan.js";
 import { buildRoute, installedOutside, tasksLeft } from "./buildroute.js";
@@ -61,7 +62,7 @@ import { deploy, parseQuality, qualityFile, recordLayerReview, verify } from "./
 import { firstDeploy } from "./firstdeploy.js";
 import { markNotBuilt, recordBlocked, reconcileDoneTasks, reopenTask, settleChange } from "./run.js";
 import { autoReview, buildBrief, buildTriageBrief, buildUpstreamBrief, checkpoint, integrateChange, MAX_UPSTREAM_ROUNDS, nextAction, parseVerdict, recordReview, recordTriage, recordUpstream, retryTask, startTask, triageFile, type ConsultAction, type DeviationAction, type NextAction } from "./run.js";
-import { countAgentRun, type AgentRunKind } from "./agentruns.js";
+import { agentRunStatus, countAgentRun, type AgentRunKind } from "./agentruns.js";
 import { recordStageDone, stagesNext, stagesView } from "./stages.js";
 import { changeOfRequest, consultNextText, unansweredSection, pendingConsultation, recordAnswer, requestConsultation, resumeConsultation } from "./consult.js";
 import { abandonDeviation, closeDeviation, finishDeviations, openDeviationFor } from "./deviation.js";
@@ -261,7 +262,17 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
   approval check <id>                    exit 1 when the approved package drifted
   transition <id> <state|resume> [--reason R]
   merge <id> [--write]                   merge delta specs into .aidw/specs (dry run by default)
-  archive <id>                           merge deltas and move a delivered change to archive/
+  archive <id>                           merge deltas and move a delivered change to archive/; when its pull request
+                                         was opened with the push grant, the archive commit is pushed to it too
+  pr [<id>] [--create [--draft]] [--base B]
+                                         the pull request the run ends in (D12): ready when everything passed, a draft
+                                         otherwise; the body opens with what differs from the approved package, what
+                                         was not built and why, and what is needed from the user. Without --create it
+                                         writes the body (.aidw/run/pr-<id>.md); --create pushes the Change Branch and
+                                         opens it, or updates the one already opened (body, ready). Open it before
+                                         archiving: the push grant covers a delivered Change, not an archived one
+  cap <id> --raise <runs>                the user raises the cap on Agent runs after the gate (asks; recorded in the
+                                         approval record), then /aidw:resume builds what the cap left not built
   analyze [<id>]                         pre-gate consistency checks (analysis.md, task coverage)
   plan-review [<id>] [--brief]           the independent review of architecture and plan before the gate: --brief writes the
                                          code-reviewer's brief; without it, record its verdict (at most ${MAX_FIX_ROUNDS} fix rounds)
@@ -316,7 +327,8 @@ Unattended (in your own terminal, not inside Claude Code):
                                          it, at most ${MAX_UPSTREAM_ROUNDS} rounds; environment, or past the rounds -> not built with its dependants)
   brief <task> --for upstream            the author Role's brief for an upstream round, and the Deviation to open first
   upstream <task> [--cannot "<why>"]     the author fixed its Artifact: the task runs again (--cannot: it is not built)
-  task retry <task>                      user-granted fresh attempt budget for an escalated/failed task
+  task retry <task>                      user-granted fresh attempt budget for an escalated, failed or not-built task
+                                         (a not-built one comes back with the tasks not built because they depend on it)
   task reopen <task> [--revert]          a done task was wrong: back to pending (and git revert its commit with --revert)
   brief <task> [--for implement|review]  write the context packet for a fresh subagent; prints its path
   skills <task> [--for implement|review] vendored skills selected for the task
@@ -351,7 +363,7 @@ interface Args {
   flags: Record<string, string | true>;
 }
 
-const VALUE_FLAGS = new Set(["role", "files", "consultation", "remove-reason", "scope-reason", "summary", "cause", "task", "session", "last", "root", "title", "input-type", "workflow", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude", "model", "case", "runs", "text", "lang", "weights", "to", "done", "cannot"]);
+const VALUE_FLAGS = new Set(["role", "files", "consultation", "remove-reason", "scope-reason", "summary", "cause", "task", "session", "last", "root", "title", "input-type", "workflow", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude", "model", "case", "runs", "text", "lang", "weights", "to", "done", "cannot", "raise"]);
 
 export function parseArgs(argv: string[]): Args {
   const pos: string[] = [];
@@ -561,7 +573,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         }
         if (rest[0] === "retry") {
           const r = retryTask(p, id, need(rest[1], "task id"));
-          emit({ ok: true, change: id, ...r }, `${r.task}: retry granted (fresh attempt budget)\n`);
+          emit({ ok: true, change: id, ...r }, `${r.task}: retry granted (fresh attempt budget)${r.revived && r.revived.length > 1 ? `; back with it: ${r.revived.slice(1).join(", ")}` : ""}\n`);
           return 0;
         }
         const r = startTask(p, id, need(rest[1], "task id"), { worktree: args.flags.worktree === true });
@@ -781,7 +793,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
             }
           },
           onFinish: (outcome) => {
-            if (startedBrowser && outcome === "archived") stopBrowser(p); // "denied" cannot happen here: the runner started it
+            if (startedBrowser && (outcome === "archived" || outcome === "draft")) stopBrowser(p); // "denied" cannot happen here: the runner started it
           },
           preflight: () => {
             const bad = doctor(p, id, env, undefined, { run: installRunner() }).filter((c) => c.status === "fail");
@@ -793,7 +805,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           log: json || env.AIDW_RUN_DETACHED === "1" ? () => {} : (line) => io.out(`[aidw run] ${line}\n`),
         });
         emit({ change: id, ...r }, `${r.outcome === "archived" ? "DONE" : "STOPPED"} (${r.outcome}) after ${r.runs} session(s), ${r.waits} wait(s): ${r.message}\n`);
-        return r.outcome === "archived" ? 0 : r.outcome === "escalated" || r.outcome === "needs_user" ? 2 : 1;
+        return r.outcome === "archived" ? 0 : r.outcome === "draft" || r.outcome === "escalated" || r.outcome === "needs_user" ? 2 : 1;
       }
 
       case "integrate": {
@@ -1086,12 +1098,39 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const id = resolveChangeId(p, str(args.flags.change) ?? rest[0]);
         const base = str(args.flags.base);
         if (args.flags.create === true) {
-          const r = createPr(p, id, { ...(base ? { base } : {}), draft: args.flags.draft === true });
-          emit({ ok: true, change: id, url: r.url, title: r.plan.title }, `pull request opened: ${r.url}\n`);
+          const r = createPr(p, id, { ...(base ? { base } : {}), draft: args.flags.draft === true, env });
+          emit(
+            { ok: true, change: id, url: r.url, title: r.plan.title, draft: r.draft, updated: r.updated, why: r.plan.why },
+            `pull request ${r.updated ? "updated" : "opened"}${r.draft ? " (draft)" : " (ready for review)"}: ${r.url}\n${r.draft ? `draft because: ${r.plan.why.join("; ")}\nNEXT: the Change stays delivered; /aidw:resume ${id} finishes it after the user acted on "Needed from the user to finish"\n` : `NEXT: aidw archive ${id}\n`}`,
+          );
           return 0;
         }
-        const plan = planPr(p, id, base ? { base } : {});
-        emit({ ok: true, change: id, title: plan.title, head: plan.head, base: plan.base, body: plan.body, commands: plan.commands }, `title: ${plan.title}\n\n${plan.body}\nTo open it (asks first): aidw pr --create [--base <branch>] [--draft]\n`);
+        // delivered (or archived): the body is written for the user, and a delivered Change records that it is
+        const st = (() => {
+          try {
+            return stateOf(loadChange(p, id));
+          } catch {
+            return "archived";
+          }
+        })();
+        const plan = st === "delivered" || st === "archived" ? writePrBody(p, id, { ...(base ? { base } : {}), env }) : planPr(p, id, { ...(base ? { base } : {}), env });
+        const next = prNext(p, id, plan, env.AIDW_RUNNER === "1");
+        emit(
+          { ok: true, change: id, title: plan.title, head: plan.head, base: plan.base, ready: plan.ready, why: plan.why, granted: plan.granted, url: plan.record?.url ?? null, body: plan.body, body_file: rel(p, plan.bodyFile), commands: plan.commands, next },
+          `title: ${plan.title}\n${plan.ready ? "ready for review" : `draft: ${plan.why.join("; ")}`}\npush: ${plan.granted ? "granted at the Approval Gate" : "not granted (the gate asks)"}\nbody: ${rel(p, plan.bodyFile)}\n\n${plan.body}\n${next}\n`,
+        );
+        return 0;
+      }
+
+      case "cap": {
+        const p = project();
+        const id = resolveChangeId(p, str(args.flags.change) ?? rest[0]);
+        const raw = str(args.flags.raise);
+        if (raw === undefined) throw new UsageError("usage: aidw cap <id> --raise <runs>");
+        if (!/^\d+$/.test(raw)) throw new OpError("--raise takes a positive whole number of Agent runs");
+        const r = raiseCap(p, id, Number(raw));
+        const used = agentRunStatus(p, loadChange(p, id)).used;
+        emit({ ok: true, change: id, ...r, used }, `cap on Agent runs raised: ${r.from} -> ${r.to} (${used} used); recorded in the approval record\nNEXT: /aidw:resume ${id}\n`);
         return 0;
       }
 
@@ -1636,12 +1675,12 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
       case "archive": {
         const p = project();
         const id = resolveChangeId(p, rest[0]);
-        const { target, merges, commit } = archiveChange(p, id);
+        const { target, merges, commit, pushed, pushError } = archiveChange(p, id, env);
         // The archive commit also carries the project files the delivery wrote (README.md, .env.example): say so, they are not left uncommitted.
         const alsoCommitted = commit ? git(p.project, ["show", "--name-only", "--format=", commit]).out.split("\n").filter((f) => f && !f.startsWith(".aidw/")) : [];
         emit(
-          { ok: true, id, archived: rel(p, target), capabilities: merges.map((m) => m.capability), commit: commit ?? null, also_committed: alsoCommitted },
-          `archived ${id} -> ${rel(p, target)} (${merges.length} capability spec(s) updated)${commit ? `, committed ${commit.slice(0, 8)}` : ""}\n${alsoCommitted.length ? `also committed with it: ${alsoCommitted.join(", ")}\n` : ""}`,
+          { ok: true, id, archived: rel(p, target), capabilities: merges.map((m) => m.capability), commit: commit ?? null, also_committed: alsoCommitted, pushed: pushed ?? null, ...(pushError ? { push_error: pushError } : {}) },
+          `archived ${id} -> ${rel(p, target)} (${merges.length} capability spec(s) updated)${commit ? `, committed ${commit.slice(0, 8)}` : ""}\n${alsoCommitted.length ? `also committed with it: ${alsoCommitted.join(", ")}\n` : ""}${pushed ? `pushed ${pushed}: the pull request carries the archive commit\n` : ""}${pushError ? `WARNING: ${pushError}\n` : ""}`,
         );
         return 0;
       }

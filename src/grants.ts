@@ -20,7 +20,7 @@ import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import YAML from "yaml";
 import { approvalStatus } from "./approval.js";
 import { approvedText } from "./deviationrecord.js";
-import { listChangeIds, loadChange, stateOf, type Change } from "./change.js";
+import { listChangeIds, loadChange, stateOf, type Change, type State } from "./change.js";
 import { Diags } from "./diag.js";
 import { git, isDefaultBranch, isGitRepo } from "./git.js";
 import { bundledRoot, pluginRoot } from "./plugin.js";
@@ -51,6 +51,12 @@ export const ENVELOPE = [
 
 /** D14: never automatic, whatever else is granted. None of them lies on the way to a pull request. */
 export const NEVER_AUTOMATIC = ["credentials outside the project's own `.env`", "anything that costs money", "production deploys", "deleting cloud data"];
+
+/**
+ * States in which a push granted at the Approval Gate holds: while the Change is built, and delivered (the pull request
+ * opens then, before the archive: an archived Change is no longer covered). The same set as the gate's open states.
+ */
+export const GRANT_STATES: ReadonlySet<State> = new Set<State>(["approved", "executing", "verifying", "converging", "deploying", "delivered"]);
 
 const REMOTE_NAME = /^[A-Za-z0-9][\w.-]{0,63}$/;
 const BRANCH_NAME = /^(?![-/])(?!.*(?:\.\.|\/\/|@\{))[\w./-]{1,200}(?<![./])$/;

@@ -24,7 +24,8 @@ import { capabilityOf, findProject, isDir, KEBAB_SEGMENT, pathsFor, projectKind,
 import { applyDelta, type MergeSummary } from "./spec/merge.js";
 import { parseSpec } from "./spec/parse.js";
 import { git, headCommit, isDefaultBranch, isGitRepo } from "./git.js";
-import { agentRunCap, bindPush, plannedAgentRuns, readGrants } from "./grants.js";
+import { agentRunCap, bindPush, boundPush, changeAgentRunCap, GRANT_STATES, plannedAgentRuns, pushGrantReason, readGrants } from "./grants.js";
+import { nothingToFinish, reopenDraft } from "./draft.js";
 import { checkDelivery } from "./deliver.js";
 import { transitionGuard } from "./guards.js";
 import { parseTasks } from "./tasks.js";
@@ -404,6 +405,13 @@ export function transition(p: Paths, id: string, to: string, opts: { reason?: st
     }
   }
 
+  // D12: /aidw:resume finishes a draft pull request: back from delivered to executing, only when something is left
+  const reopening = from === "delivered" && target === "executing";
+  if (reopening) {
+    const why = nothingToFinish(p, change);
+    if (why) throw new OpError(why);
+  }
+
   if (from !== "paused") {
     const refused = transitionGuard(p, id, target);
     if (refused) throw new OpError(refused);
@@ -441,6 +449,7 @@ export function transition(p: Paths, id: string, to: string, opts: { reason?: st
   }
   change.doc.set("state", target);
   saveChange(change);
+  if (reopening) notes.push(...reopenDraft(p, id));
   if (target === "delivered") {
     // Quality and deploy evidence plus the final state belong in history; only .aidw/ is committed.
     const commit = commitAidw(p, aidwCommitMessage(`${id} delivered`, `Evidence: .aidw/changes/${id}/evidence/`));
@@ -522,6 +531,26 @@ export function commitAidw(p: Paths, message: string, opts: { delivery?: boolean
   return git(p.project, ["commit", "-q", "-m", message, "--", ...paths]).ok ? headCommit(p.project) : null;
 }
 
+/**
+ * `aidw cap <id> --raise <runs>`: the user raises the cap on Agent runs after the gate (D5, D10). The cap lives in the
+ * approval record (fixed at `aidw approve`), not in the frozen quality.yaml, so raising it is no Deviation and no drift;
+ * each raise is kept in `approval.history`. The gate asks for this command every time: it is the user's decision.
+ */
+export function raiseCap(p: Paths, id: string, by: number): { from: number; to: number } {
+  if (!Number.isInteger(by) || by < 1) throw new OpError("--raise takes a positive whole number of Agent runs");
+  const change = loadChange(p, id);
+  const approval = change.data.approval as Record<string, unknown> | null | undefined;
+  if (!approval || typeof approval.hash !== "string") throw new OpError(`change "${id}" is not approved: the cap is set at the Approval Gate (grants.agent_runs in quality.yaml)`);
+  if (stateOf(change) === "archived") throw new OpError(`change "${id}" is archived`);
+  const from = changeAgentRunCap(change);
+  const to = from + by;
+  const history = Array.isArray(approval.history) ? (approval.history as unknown[]) : [];
+  change.doc.setIn(["approval", "agent_run_cap"], to);
+  change.doc.setIn(["approval", "history"], change.doc.createNode([...history, { cap: { from, to }, by: "user", at: now() }]));
+  saveChange(change);
+  return { from, to };
+}
+
 // ---------------------------------------------------------------- merge / archive
 
 export interface CapabilityMerge {
@@ -557,7 +586,7 @@ export function writeMerge(merges: CapabilityMerge[]): void {
   }
 }
 
-export function archiveChange(p: Paths, id: string): { target: string; merges: CapabilityMerge[]; commit?: string } {
+export function archiveChange(p: Paths, id: string, env: NodeJS.ProcessEnv = process.env): { target: string; merges: CapabilityMerge[]; commit?: string; pushed?: string; pushError?: string } {
   const change = loadChange(p, id);
   if (stateOf(change) !== "delivered") {
     throw new OpError(`change "${id}" is in state "${String(change.data.state)}"; only "delivered" changes can be archived`);
@@ -568,6 +597,11 @@ export function archiveChange(p: Paths, id: string): { target: string; merges: C
   const delivery = "deploying" in machineOf(p, change).transitions ? checkDelivery(p, id) : new Diags();
   if (delivery.errors.length) throw new OpError(`the delivery package of "${id}" is incomplete; run \`aidw deliver\` and complete it`, delivery);
   const merges = planMerge(p, id);
+  // D12: the pull request opened before the archive, while the push grant covered the Change; the archive commit
+  // follows it to the same branch, decided now by the gate's own rule (after the move the Change is no longer covered).
+  const pr = (change.data.run as { pr?: { url?: unknown } } | undefined)?.pr;
+  const bound = boundPush(p, change);
+  const follow = typeof pr?.url === "string" && pr.url && bound && pushGrantReason(p, `git push ${bound.remote} ${bound.branch}`, GRANT_STATES, p.project, env) ? bound : null;
 
   const date = now().slice(0, 10);
   const name = /^\d{4}-\d{2}-\d{2}-/.test(id) ? id : `${date}-${id}`;
@@ -581,6 +615,11 @@ export function archiveChange(p: Paths, id: string): { target: string; merges: C
   mkdirSync(p.archive, { recursive: true });
   renameSync(change.dir, target);
   const commit = commitAidw(p, aidwCommitMessage(`archive ${id}`, `Moved-to: ${rel(p, target)}`), { delivery: true });
+  if (commit && follow) {
+    const r = git(p.project, ["push", follow.remote, follow.branch]);
+    if (r.ok) return { target, merges, commit, pushed: `${follow.branch} to ${follow.remote}` };
+    return { target, merges, commit, pushError: `pushing the archive commit failed (${(r.err || r.out).split("\n")[0]}); the pull request lacks it until \`git push ${follow.remote} ${follow.branch}\`` };
+  }
   return { target, merges, ...(commit ? { commit } : {}) };
 }
 

@@ -41,8 +41,10 @@ export function transitionGuard(p: Paths, id: string, target: string): string | 
     if (!c.ok) return `"deploying" needs a passing converge on the current code: ${c.reason}`;
   }
   if (target === "delivered") {
+    // D12, D14: a deploy that failed or needs the user does not block the pull request; it opens as a draft that
+    // lists the deploy under "Needed from the user to finish". The deploy must have been tried.
     const d = lastDeploy(loadChange(p, id));
-    if (!d?.ok) return `"delivered" needs a successful \`aidw deploy\`${d ? ` (last: ${d.error ?? "failed"})` : ""}`;
+    if (!d) return `"delivered" needs \`aidw deploy\` to have run (a failed deploy is listed in the pull request)`;
   }
   return null;
 }

@@ -184,7 +184,7 @@ describe("execution loop (exit criterion [4])", () => {
     expect(cli(root, "transition", ID, "executing").code).toBe(0);
 
     // a retry the user grants by hand still gives a fresh attempt budget
-    expect(cli(root, "task", "retry", "T01").err).toMatch(/only escalated or failed tasks can be retried/);
+    expect(cli(root, "task", "retry", "T01").err).toMatch(/only escalated, failed or not built tasks can be retried/);
     expect(cli(root, "task", "retry", "T02").code).toBe(0);
     expect(cli(root, "next", "--json").json()).toMatchObject({ action: "implement", task: "T02", reason: "retry" });
     expect(cli(root, "task", "start", "T02", "--json").json().attempt).toBe(1);

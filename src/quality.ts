@@ -271,6 +271,13 @@ export function resetQualitySummary(change: Change): void {
   writeJson(summaryFile(change), { layers: {} });
 }
 
+/** Forgets the results of some layers (a draft reopened by /aidw:resume runs them again); their history files stay. */
+export function forgetLayers(change: Change, names: string[]): void {
+  const summary = readSummary(change);
+  for (const n of names) delete summary.layers[n];
+  writeJson(summaryFile(change), summary);
+}
+
 export function readSummary(change: Change): QualitySummary {
   const f = summaryFile(change);
   if (!existsSync(f)) return { layers: {} };

@@ -184,7 +184,8 @@ describe("verify -> fix -> deploy (exit criterion [6])", () => {
     expect(cli(root, "transition", ID, "deploying").err).toMatch(/needs a passing converge on the current code: run `aidw converge` first/);
     expect(cli(root, "converge").out).toMatch(/^PASS \(presence\): all 1 scenario\(s\) have a passing test/);
     expect(cli(root, "transition", ID, "deploying").code).toBe(0);
-    expect(cli(root, "transition", ID, "delivered").err).toMatch(/needs a successful `aidw deploy`/);
+    // T11 (D12): "delivered" needs a deploy that ran; a failed one does not block the pull request (it becomes a draft)
+    expect(cli(root, "transition", ID, "delivered").err).toMatch(/needs `aidw deploy` to have run/);
 
     restore = fakeVercel(null);
     const bad = cli(root, "deploy");

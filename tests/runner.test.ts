@@ -93,11 +93,18 @@ describe("aidw run host-side preparation", () => {
 });
 
 describe("aidw run preflight", () => {
-  it("stops before spending a session when the machine check fails, and filters settings noise from the log", () => {
-    const t = setup("deploying", [{ state: "deploying", progress: true }]);
-    const r = t.go({ preflight: () => "vercel deployments: none yet" });
-    expect(r).toMatchObject({ outcome: "needs_user", runs: 0, message: "vercel deployments: none yet" });
+  it("stops before spending a session when the machine check fails", () => {
+    const t = setup("executing", [{ state: "executing", progress: true }]);
+    const r = t.go({ preflight: () => "pnpm store: unreachable" });
+    expect(r).toMatchObject({ outcome: "needs_user", runs: 0, message: "pnpm store: unreachable" });
     expect(t.calls()).toEqual([]);
+  });
+  it("does not stop a deploy that needs the user: the pull request opens as a draft that lists it (T11, D12)", () => {
+    const t = setup("deploying", [{ state: "delivered", progress: true, archive: true }]);
+    const r = t.go({ preflight: () => "vercel deployments: none yet" });
+    expect(r.outcome).toBe("archived");
+    expect(t.calls()).toHaveLength(1);
+    expect(t.lines.join("\n")).toMatch(/vercel deployments: none yet; the deploy will likely fail/);
   });
   it("checks once at the start, and again only before deploy sessions", () => {
     const t = setup("executing", [{ state: "executing", progress: true }, { state: "deploying", progress: true }, { state: "archived", progress: true, archive: true }]);

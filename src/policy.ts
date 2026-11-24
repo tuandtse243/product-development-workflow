@@ -361,6 +361,12 @@ export function firstMatch<R extends Rule>(rules: R[], text: string): R | undefi
 export const APPROVE_COMMAND = /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+approve\b/;
 
 /**
+ * `aidw cap <id> --raise <runs>`: raising the cap on Agent runs after the gate is the user's decision, like approving; it
+ * is not a grant made ahead of time, so the gate asks every time (and a headless run cannot answer).
+ */
+export const CAP_COMMAND = /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+cap\b/;
+
+/**
  * `aidw run`: the headless auto-resume runner (S9); it spawns `claude -p`, so it never runs inside a session.
  * `aidw run --status` and `--stop` only read or stop the runner, so they are not matched.
  */
@@ -374,4 +380,4 @@ export const SHELL_CHAINING = /[;&|`<>\n\r]|\$\(/;
 
 /** aidw commands that record progress or change state: the orchestrator's job, never a subagent's. */
 export const AIDW_STATE_COMMAND =
-  /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+(?:task|checkpoint|review|layer-review|verify|integrate|resolve|converge|deploy|first-deploy|deliver|transition|approve|archive|merge|init|change|brief|plan-review|consult|deviation|not-built|pr|stages(?=[^;&|]*--done))\b/;
+  /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+(?:task|checkpoint|review|layer-review|verify|integrate|resolve|converge|deploy|first-deploy|deliver|transition|approve|archive|merge|init|change|brief|plan-review|consult|deviation|not-built|pr|cap|stages(?=[^;&|]*--done))\b/;

@@ -7,7 +7,9 @@
  * user (escalated, before approval, tier-3 question), or stops making progress. After the Approval Gate the run
  * itself does not escalate (ADR-0014): a task that fails after Triage, an environment cause, a layer out of fix rounds
  * and the Agent-run cap all end in "not built" and the Change carries on towards its pull request, so the runner keeps
- * driving it; `escalated` is left for what is never automatic (plan D14) and for a stop the user makes. When a session ends on a
+ * driving it until the pull request: archived after a ready one, or `draft` when it ended in a draft (or only its body,
+ * when the push was not granted: a headless session cannot answer the push question, so it writes the body and the
+ * user gets a NEXT, never a wait); `escalated` is left for what is never automatic (plan D14) and for a stop the user makes. When a session ends on a
  * usage or rate limit (the StopFailure hook paused the change, or the output says so), it waits until the
  * stated reset time, or backs off (5, 10, 20, 40, 60 minutes), then resumes.
  *
@@ -18,6 +20,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import YAML from "yaml";
 import { listChangeIds, loadChange, stateOf } from "./change.js";
 import type { Paths } from "./project.js";
 
@@ -31,6 +34,7 @@ export interface RunnerOptions {
   /**
    * Machine check before the first session and before every deploy session: a message means the run needs the user
    * (a failed `aidw doctor` check), so no session is spent finding that out (trial-3C: six sessions at "deploying").
+   * Before a deploy it is only logged (T11): a deploy that fails now ends in a draft pull request, not a loop.
    */
   preflight?: (state: string) => string | null;
   /**
@@ -51,7 +55,8 @@ export interface RunnerOptions {
   env?: NodeJS.ProcessEnv;
 }
 
-export type RunnerOutcome = "archived" | "escalated" | "needs_user" | "no_progress" | "max_runs" | "claude_failed";
+/** draft: the run ended in a draft pull request (or its body, when the push was not granted); /aidw:resume finishes it */
+export type RunnerOutcome = "archived" | "draft" | "escalated" | "needs_user" | "no_progress" | "max_runs" | "claude_failed";
 
 export interface RunnerResult {
   outcome: RunnerOutcome;
@@ -111,6 +116,33 @@ export function waitMs(reason: string, attempt: number, now: Date = new Date()):
 
 function archived(p: Paths, id: string): boolean {
   return !listChangeIds(p).includes(id) && existsSync(p.archive) && readdirNames(p.archive).some((n) => n.endsWith(id));
+}
+
+/** The pull request recorded for the Change (`run.pr`, src/pr.ts), read from the active or the archived change.yaml. */
+function prOf(p: Paths, id: string): { url: string | null; draft: boolean } | null {
+  const dirs = [join(p.changes, id), ...readdirNames(p.archive).filter((n) => n.endsWith(id)).map((n) => join(p.archive, n))];
+  for (const dir of dirs) {
+    const file = join(dir, "change.yaml");
+    if (!existsSync(file)) continue;
+    try {
+      const pr = (YAML.parse(readFileSync(file, "utf8")) as { run?: { pr?: { url?: unknown; draft?: unknown } } } | null)?.run?.pr;
+      return pr && typeof pr === "object" ? { url: typeof pr.url === "string" && pr.url ? pr.url : null, draft: pr.draft === true } : null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+/** The end of the run in words, with the NEXT for the user (D12: the run always ends in a pull request). */
+function prEnding(p: Paths, id: string, pr: { url: string | null; draft: boolean } | null): string {
+  const body = `.aidw/run/pr-${id}.md`;
+  if (!pr) return `no pull request was recorded: run \`aidw pr ${id}\` for its body`;
+  const open = pr.url ? `pull request ${pr.url}${pr.draft ? " (draft)" : ""}` : `the pull request is not opened (the push was not granted at the Approval Gate); its body is in ${body}`;
+  const create = pr.url ? "" : `open it with \`aidw pr ${id} --create${pr.draft ? " --draft" : ""}\` (it asks you); `;
+  return pr.draft
+    ? `${open}. NEXT: ${create}act on its "Needed from the user to finish", then \`/aidw:resume ${id}\` (or \`aidw run ${id}\`) finishes it and updates the same pull request`
+    : `${open}${pr.url ? "" : `. NEXT: ${create.replace(/; $/, "")}`}`;
 }
 
 function readdirNames(dir: string): string[] {
@@ -173,9 +205,13 @@ export function runLoop(p: Paths, id: string, opts: RunnerOptions = {}): RunnerR
   };
 
   for (;;) {
-    if (archived(p, id)) return result("archived", "archived", `change ${id} is archived; the delivery package is in .aidw/archive/`);
+    if (archived(p, id)) return result("archived", "archived", `change ${id} is archived; the delivery package is in .aidw/archive/; ${prEnding(p, id, prOf(p, id))}`);
     const change = loadChange(p, id);
     const state = stateOf(change) ?? String(change.data.state);
+    // D12: a delivered Change whose pull request is a draft is where this run ends: the rest needs the user. A run
+    // started on such a draft first resumes it (the session below), and ends here again once it is delivered.
+    const pr = prOf(p, id);
+    if (state === "delivered" && pr?.draft && runs > 0) return result("draft", state, `change ${id} is delivered as a draft; ${prEnding(p, id, pr)}`);
     // Only what is never automatic (D14) or a stop the user made escalates after the gate: not-built work does not (ADR-0014).
     if (state === "escalated") return result("escalated", state, "the change is escalated and needs your decision: open Claude Code and run /aidw:status");
     if (!DRIVABLE.has(state)) return result("needs_user", state, `state "${state}" needs you (approval or analysis); the runner continues only approved work`);
@@ -193,11 +229,14 @@ export function runLoop(p: Paths, id: string, opts: RunnerOptions = {}): RunnerR
     }
     if (opts.preflight && (runs === 0 || state === "deploying")) {
       const problem = opts.preflight(state);
-      if (problem) return result("needs_user", state, problem);
+      // D12, D14: a deploy that needs the user does not block the pull request: the session deploys, the deploy fails
+      // with its hint, and the Change goes on to a draft that lists it under "Needed from the user to finish".
+      if (problem && state === "deploying") record(`machine check before the deploy: ${problem}; the deploy will likely fail and the pull request opens as a draft that lists it`);
+      else if (problem) return result("needs_user", state, problem);
     }
     if (runs >= maxRuns) return result("max_runs", state, `${runs} sessions ran; raise --max-runs to continue`);
 
-    const prompt = state === "delivered" ? `/aidw:deliver ${id}` : `/aidw:resume ${id}`;
+    const prompt = state === "delivered" && !pr?.draft ? `/aidw:deliver ${id}` : `/aidw:resume ${id}`;
     const args = ["-p", prompt, "--permission-mode", mode, ...(opts.keepMcp ? [] : ["--strict-mcp-config"]), ...(opts.extraArgs ?? [])];
     record(`session ${runs + 1}: ${claude} ${args.map((a) => (/\s/.test(a) ? JSON.stringify(a) : a)).join(" ")}`);
     const r = spawnSync(claude, args, {

@@ -22,6 +22,7 @@ import {
   AIDW_COMMAND,
   APPROVE_COMMAND,
   ASK_COMMANDS,
+  CAP_COMMAND,
   AIDW_STATE_COMMAND,
   FORBIDDEN_COMMANDS,
   firstMatch,
@@ -37,7 +38,7 @@ import {
   RUNNER_COMMAND,
 } from "./policy.js";
 import { installedOutside, runnerCommand } from "./buildroute.js";
-import { pushGrantReason, taskBranchPush } from "./grants.js";
+import { GRANT_STATES, pushGrantReason, taskBranchPush } from "./grants.js";
 import { grantedResources } from "./quality.js";
 import { machineOf } from "./machine.js";
 import { bundledRoot, pluginRoot } from "./plugin.js";
@@ -58,8 +59,6 @@ export type Decision = { decision: "allow" | "deny" | "ask"; reason: string } | 
 /** States in which code may be written: approved and actively executing. */
 export const OPEN_STATES: ReadonlySet<State> = new Set<State>(["approved", "executing", "verifying", "converging", "deploying"]);
 
-/** States in which a push granted at the Approval Gate holds: open, or delivered (the pull request is opened then). */
-const GRANT_STATES: ReadonlySet<State> = new Set<State>([...OPEN_STATES, "delivered"]);
 
 export interface GateState {
   open: boolean;
@@ -401,6 +400,9 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
       return deny(
         "`aidw run` starts Claude Code headless in a loop: only the main session of an approved change starts it, in the background (`aidw run <id> --detach --permission-mode auto`); otherwise the user runs it in their own terminal",
       );
+    }
+    if (CAP_COMMAND.test(cmd)) {
+      return ask("raising the cap on Agent runs is the user's decision (D5); it is recorded in the approval record");
     }
     if (APPROVE_COMMAND.test(cmd)) {
       return ask("approving the Analysis package is the user's decision. Approve only if you (the user) reviewed analysis.md.");

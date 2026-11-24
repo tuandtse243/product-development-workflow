@@ -14,6 +14,7 @@ import { loadChange, stateOf, type Change } from "./change.js";
 import { lastConverge } from "./converge.js";
 import { shotsDir } from "./design.js";
 import { Diags } from "./diag.js";
+import { keepDiscardedWork } from "./draft.js";
 import { git, isGitRepo } from "./git.js";
 import { OpError } from "./ops.js";
 import { readText, rel, walkFiles, type Paths } from "./project.js";
@@ -225,8 +226,9 @@ function seedScreenshots(p: Paths, id: string, change: Change, tasks: Task[]): s
   return copied;
 }
 
+/** UI work was built: a UI task not built (ADR-0014) has no screen to show, and a draft pull request says so. */
 function needsScreenshots(tasks: Task[]): boolean {
-  return tasks.some((t) => touchesUi(t));
+  return tasks.some((t) => touchesUi(t) && statusOf(t) === "done");
 }
 
 /** Checklist of blueprint section 14. Errors block archive. */
@@ -320,6 +322,8 @@ export function deliver(p: Paths, id: string, opts: { check?: boolean } = {}): D
     const tasks = loadTasks(p, id).tasks;
     mkdirSync(join(dir, "screenshots"), { recursive: true });
     for (const f of seedScreenshots(p, id, change, tasks)) written.push(rel(p, join(dir, "screenshots", f)));
+    // the work discarded from not-built tasks, from the machine-local .aidw/run/ into the package (src/draft.ts)
+    written.push(...keepDiscardedWork(p, change, tasks));
     const write = (name: string, text: string) => {
       writeFileSync(join(dir, name), text);
       written.push(rel(p, join(dir, name)));

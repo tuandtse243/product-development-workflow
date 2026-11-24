@@ -568,14 +568,24 @@ export function startTask(p: Paths, id: string, taskId: string, opts: { worktree
   return { task: taskId, ...(typeof t.role === "string" ? { role: t.role } : {}), attempt, maxAttempts: max, base, resumed, ...(worktree ? { worktree } : {}) };
 }
 
-/** User-granted retry of an escalated or failed task: a fresh attempt budget, same base commit. */
-export function retryTask(p: Paths, id: string, taskId: string): { task: string } {
+/**
+ * User-granted retry of an escalated, failed or not-built task: a fresh attempt budget, same base commit. A task not
+ * built (ADR-0014) comes back with the tasks that were not built only because they depend on it.
+ */
+export function retryTask(p: Paths, id: string, taskId: string): { task: string; revived?: string[] } {
   const tf = loadTasks(p, id);
   requireExecuting(p, tf.change);
   const i = indexOf(tf, taskId);
   const t = tf.tasks[i] as Task;
+  if (statusOf(t) === "not_built") {
+    const cause = String((t.not_built as { cause?: unknown } | null | undefined)?.cause ?? "");
+    if (cause === "dependency") throw new OpError(`task ${taskId} is not built because a task it depends on is not built: ${String((t.not_built as { reason?: unknown }).reason ?? "")}; retry that one`);
+    const cap = agentRunStatus(p, tf.change);
+    if (cap.reached) throw new OpError(`${capReason(cap)}: raise it first (the user runs \`aidw cap ${id} --raise <runs>\`), then retry ${taskId}`);
+    return { task: taskId, revived: reviveNotBuilt(tf, taskId, "retry granted by the user") };
+  }
   if (statusOf(t) !== "escalated" && statusOf(t) !== "failed") {
-    throw new OpError(`task ${taskId} is "${statusOf(t)}"; only escalated or failed tasks can be retried`);
+    throw new OpError(`task ${taskId} is "${statusOf(t)}"; only escalated, failed or not built tasks can be retried`);
   }
   setField(tf, i, "status", "failed");
   setField(tf, i, "attempts", 0);
@@ -585,6 +595,33 @@ export function retryTask(p: Paths, id: string, taskId: string): { task: string 
   setField(tf, i, "notes", `retry granted by the user; before: ${String(t.notes ?? "")}`.slice(0, 500));
   saveTasks(tf);
   return { task: taskId };
+}
+
+/**
+ * Brings a not-built task back (ADR-0014; `aidw task retry`, or /aidw:resume of a draft): a task that had started is
+ * `failed` with a fresh attempt budget, one that never started is `pending`; the tasks not built only because they
+ * depend on it, directly or not, are `pending` again. Saves tasks.yaml and returns the ids brought back.
+ */
+export function reviveNotBuilt(tf: TaskFile, taskId: string, why: string): string[] {
+  const out: string[] = [];
+  const queue = [taskId];
+  while (queue.length) {
+    const tid = queue.shift() as string;
+    const i = tf.tasks.findIndex((x) => x.id === tid);
+    const t = tf.tasks[i];
+    if (!t || out.includes(tid) || statusOf(t) !== "not_built") continue;
+    if (tid !== taskId && (t.not_built as { cause?: unknown } | null | undefined)?.cause !== "dependency") continue;
+    const started = attemptsOf(t) > 0 || Boolean(t.started_at);
+    setField(tf, i, "status", started ? "failed" : "pending");
+    setField(tf, i, "attempts", started ? 0 : null);
+    for (const f of ["not_built", "triage", "blocked_runs"]) setField(tf, i, f, null);
+    if (upstreamOf(t)?.phase === "open") setField(tf, i, "upstream", { ...(t.upstream as Record<string, unknown>), phase: "fixed" });
+    setField(tf, i, "notes", `${why}; before: ${String(t.notes ?? "")}`.slice(0, 500));
+    out.push(tid);
+    for (const d of tf.tasks) if (list(d.depends_on).includes(tid)) queue.push(d.id);
+  }
+  if (out.length) saveTasks(tf);
+  return out;
 }
 
 // ---------------------------------------------------------------- evidence
