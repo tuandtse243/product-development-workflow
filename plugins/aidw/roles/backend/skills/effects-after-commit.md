@@ -29,9 +29,11 @@ pay it after.
    architecture's author (Consultation) which mechanism the project uses. If the answer is "an after-commit hook,
    nothing durable", use the framework's after-commit hook and write in your report what is lost on a crash
    between the commit and the send.
-6. **Test the failure, not only the success**: the provider fails and the business change is still saved with
-   the effect still owed; the business change fails and nothing is sent or owed; a retry of the sender calls the
-   provider once per effect.
+6. **Test the failure, not only the success.** Write all three tests; each catches a different bug:
+   - the provider fails: the business change is still saved and the effect is still owed;
+   - the business change fails (make an insert in it throw): nothing is sent and **no owed row exists**. This
+     is the test that proves the row is in the same transaction, so do not skip it;
+   - the sender runs twice: the provider is called once per effect.
 
 ## Right and wrong
 
@@ -52,6 +54,7 @@ for row in rows:
   mark row sent   (on failure: attempts + 1, next_try_at later; failed after 8 attempts)
 
 test: mailer fake fails      -> order saved, outbox row still pending
+test: order insert fails     -> no order, no outbox row, mailer not called
 test: run the sender twice   -> mailer called once for the order
 ```
 
