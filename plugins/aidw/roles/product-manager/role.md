@@ -7,6 +7,7 @@ description: "Turns a request and the recorded discovery interview into the doma
 mode: interactive
 tier: deep
 access: artifacts
+consults: [research]
 tools: [Read, Write, Edit, Glob, Grep, Bash]
 reads: [intake, analysis-discovery-qa, domain-model, specs, constitution, research-note, user-journeys]
 writes: [intake, analysis-summary, analysis-decisions-to-honor, analysis-scope, analysis-domain, analysis-risks, analysis-discovery-qa, domain-model, decisions-domain, requirements, decision-research-needed, decision-ux-research-needed]

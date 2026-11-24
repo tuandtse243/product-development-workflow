@@ -31,6 +31,7 @@ import { parseQuality, qualityFile, resetQualitySummary } from "./quality.js";
 import { selectSkills, skillPath, SKILLS_WITH_NOTES, touchesUi, isSecuritySensitive, type BriefKind } from "./skills.js";
 import { configEvidence, type ConfigEvidence } from "./configlock.js";
 import { envelopeBrief } from "./grants.js";
+import { MAX_CONSULTATIONS_PER_RUN, pendingConsultation, taskAnswers, taskConsultable, taskRequestPath } from "./consult.js";
 import { packageEvidence, packageProblems, type PackageEvidence } from "./depsafety.js";
 import { secretsInChanges, secretsMessage, secretsProblem, stagedSecrets, type SecretFinding } from "./secrets.js";
 import { tamperEvidence, tamperProblems, type TamperEvidence } from "./tamper.js";
@@ -113,6 +114,7 @@ export type NextAction =
   | { action: "resolve"; task: string; title: string; with: string[]; files: string[] }
   | { action: "review-merge"; task: string; title: string; with: string[] }
   | { action: "triage"; task: string; title: string; reason: string }
+  | { action: "consult"; step: "answer" | "resume"; consultation: string; from: string; to: string; task?: string; stage?: string; status: string; brief: string }
   | { action: "escalate"; task?: string; reason: string }
   | { action: "complete"; done: number };
 
@@ -122,6 +124,11 @@ export function nextAction(p: Paths, id: string): NextAction {
   const byId = new Map(tf.tasks.map((t) => [t.id, t]));
   const title = (t: Task) => String(t.title ?? "");
 
+  // A Consultation in flight (ADR-0013) first: its asker waits for the answer, and a fresh session must not respawn it blind.
+  const c = pendingConsultation(tf.change);
+  if (c) {
+    return { action: "consult", step: c.status === "open" ? "answer" : "resume", consultation: c.id, from: c.from, to: c.to, ...(c.task ? { task: c.task } : {}), ...(c.stage ? { stage: c.stage } : {}), status: c.status, brief: join(p.aidw, c.brief) };
+  }
   // Unfinished work first, in file order: a review or an interrupted task resumes before anything new.
   for (const t of tf.tasks) if (statusOf(t) === "review") return { action: "review", task: t.id, title: title(t) };
   for (const t of tf.tasks) if (statusOf(t) === "running") return { action: "implement", task: t.id, title: title(t), reason: "interrupted" };
@@ -983,6 +990,17 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
     ]),
   ];
 
+  // ADR-0013: the Agent asks the authors of the contracts it builds against instead of guessing.
+  const consultable = kind === "implement" ? taskConsultable(p, id, t, pluginHome) : null;
+  const requestPath = taskRequestPath(p, id, taskId);
+  const consultRule = consultable
+    ? consultable.roles.length
+      ? `- **Lacking information** (a hole in a contract, a decision nobody made): ask, never guess; the user is not the first stop. You may ask: ${consultable.roles.join(", ")} (the authors of the contracts this task builds against), at most ${MAX_CONSULTATIONS_PER_RUN} questions in this attempt. Write the request to \`${requestPath}\` with the Write tool (format: \"Ask before you guess\" in your procedure), then end your turn with one line: \`CONSULT ${requestPath}\`. The orchestrator gets the answer, and you or a fresh Agent of your Role continue.`
+      : "- **Lacking information**: no author of a contract of this task can be asked. Never guess: build what this brief states and write the gap to your report file."
+    : null;
+  const answered = kind === "implement" ? taskAnswers(tf.change, taskId) : [];
+  const answers = answered.map((c) => `- ${c.id} (${c.to}, ${c.status}): \`${join(tf.change.dir, c.answer)}\`; question in \`${join(tf.change.dir, c.request)}\``);
+
   let body: string[];
   if (kind === "implement") {
     const previous: string[] = [];
@@ -1013,7 +1031,7 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
       "## Rules",
       "",
       "- Change only files matching **Touches**. If the task truly needs more, keep it minimal and say so in your report; never widen scope silently.",
-      "- Do not edit anything under `.aidw/`, do not run `aidw checkpoint`/`aidw review`, and do not commit, push or deploy: the orchestrator records progress and commits after an independent review.",
+      "- Do not edit anything under `.aidw/` (except the files this brief names: the report note, screenshots, a Consultation request), do not run `aidw checkpoint`/`aidw review`, and do not commit, push or deploy: the orchestrator records progress and commits after an independent review.",
       "- Test first. For every scenario, write a test whose name contains the scenario id verbatim, e.g. `test(\"booking/cancel-appointment/cancel-upcoming: cancels and frees the slot\")`, asserting the THEN outcome. `aidw checkpoint` looks for these ids in test files.",
       "- Run every **Verify** command yourself and make it pass before reporting.",
       "- Do not change lint, type-check, CI or git-hook configuration that already exists, and never put a key, token or password in a file: both fail the checkpoint.",
@@ -1033,6 +1051,7 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
       ...(t.type === "fix"
         ? ["- **Bugfix**: first write a regression test that reproduces the bug and run it to watch it FAIL on the current code; only then fix it. The test name keeps the scenario id. The checkpoint proves it: your new test files are run against the base commit, and a test that passes there fails the checkpoint."]
         : []),
+      ...(consultRule ? [consultRule] : []),
       "- Report in at most 10 lines: what works now, files changed, verify result.",
       `- Only if the reviewer needs to know something (a file outside Touches and why, a scenario you narrowed or could not cover, a risk), write it to \`${reportFile}\` with the Write tool (the only .aidw file you may write besides screenshots). Otherwise write nothing: do not create the file.`,
       "",
@@ -1044,6 +1063,7 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
         : []),
       ...h("Problem to fix", typeof t.problem === "string" ? ["```", t.problem.trim(), "```", "", "Find the root cause (debugging skill below), fix it, and make the verify commands pass. Touches is the whole project, but change only what the fix needs."] : []),
       ...h("Previous attempt", previous),
+      ...h("Consultations of this task (answered; read each answer before you continue)", answers),
       ...shared,
     ];
   } else {

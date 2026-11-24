@@ -4,6 +4,7 @@ description: "Breaks the approved requirements and architecture of an aidw chang
 mode: worker
 tier: deep
 access: artifacts
+consults: [software-architect]
 tools: [Read, Write, Edit, Glob, Grep, Bash]
 reads: [delta-specs, architecture, constitution, design-tokens, data-model-notes, api-contract-notes, test-plan]
 writes: [tasks, analysis-plan]

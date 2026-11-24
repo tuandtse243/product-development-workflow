@@ -8,6 +8,7 @@ description: "Chooses the stack and writes the architecture, ADRs and constituti
 mode: interactive
 tier: deep
 access: artifacts
+consults: [research]
 tools: [Read, Write, Edit, Glob, Grep, Bash]
 reads: [requirements, delta-specs, domain-model, design-direction, design-tokens, project-config, architecture, constitution, tasks]
 writes: [architecture, decisions-architecture, constitution, project-config, analysis-existing-system, analysis-stack, analysis-architecture, triage-report, decision-audit-lenses, decision-data-model-needed, decision-api-contract-needed]

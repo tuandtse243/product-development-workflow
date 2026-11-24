@@ -62,6 +62,7 @@ import { firstDeploy } from "./firstdeploy.js";
 import { reconcileDoneTasks, reopenTask } from "./run.js";
 import { autoReview, buildBrief, buildTriageBrief, checkpoint, integrateChange, nextAction, parseVerdict, recordReview, recordTriage, retryTask, startTask, triageFile, type NextAction } from "./run.js";
 import { recordStageDone, stagesNext, stagesView } from "./stages.js";
+import { changeOfRequest, consultNextText, pendingConsultation, recordAnswer, requestConsultation, resumeConsultation } from "./consult.js";
 import { buildPlanReviewBrief, MAX_FIX_ROUNDS, openFindingsSection, recordPlanReview } from "./planreview.js";
 import { buildConflictBrief, buildMergeReviewBrief, resolveConflict } from "./conflict.js";
 import { VERSION } from "./version.js";
@@ -123,6 +124,10 @@ function nextText(n: NextAction): string {
         ? `resolve the merge conflict of ${n.task} with ${n.with.join(", ") || "the change branch"} (${n.files.join(", ")}): \`aidw brief ${n.task} --for conflict\`, spawn aidw:integration with the brief, then \`aidw resolve ${n.task}\``
       : n.action === "review-merge"
         ? `review the merge of ${n.task} with ${n.with.join(", ") || "the change branch"}: \`aidw brief ${n.task} --for merge-review\`, spawn ${AGENTS.taskReview} with the brief, then \`aidw verdict ${n.task}\``
+      : n.action === "consult"
+        ? n.step === "answer"
+          ? `consultation ${n.consultation}: ${n.from} (${n.task ?? `stage ${n.stage}`}) asks ${n.to}; spawn aidw:${n.to} with: Consultation brief: ${n.brief}. Read it and answer as it says. (If you already spawned it and it has not replied, wait for it.) Then \`aidw consult answer ${n.consultation}\``
+          : `consultation ${n.consultation} is ${n.status}: resume ${n.from} (${n.task ?? `stage ${n.stage}`}) with \`aidw consult resume ${n.consultation}\``
       : n.action === "triage"
         ? `triage ${n.task} (${n.reason}): \`aidw brief ${n.task} --for triage\`, spawn ${AGENTS.triage} with the brief, then \`aidw triage ${n.task}\``
         : n.action === "escalate"
@@ -202,6 +207,12 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
   analyze [<id>]                         pre-gate consistency checks (analysis.md, task coverage)
   plan-review [<id>] [--brief]           the independent review of architecture and plan before the gate: --brief writes the
                                          code-reviewer's brief; without it, record its verdict (at most ${MAX_FIX_ROUNDS} fix rounds)
+  consult <request> [--change <id>]      an Agent that lacks information asks another Role (ADR-0013): check the request
+                                         the Agent wrote (.aidw/changes/<id>/consult/<name>.request.md) against the Role's
+                                         consults, depth 1, at most 2 per Agent run and, in the build, the authors of the
+                                         contracts the task reads; record it and brief the consulted Role
+  consult answer <C01>                   read the answer (STATUS: answered|cannot-answer|changes-approved) and write the resume brief
+  consult resume <C01>                   continue the asker: SendMessage to it while it runs, else a fresh Agent of its Role
   ids [<id>]                             requirement and scenario ids (after applying the change)
   vendor-path <upstream>/<skill>         absolute path of a vendored SKILL.md (e.g. pocock/grilling)
   diff-coverage <lcov> [--min 80] [--base <ref>]  coverage of the lines added since the change's first task started
@@ -1302,10 +1313,52 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const finished = str(args.flags.done);
         if (finished) recordStageDone(p, id, finished, pluginRoot(env));
         const v = stagesView(p, id, pluginRoot(env));
+        const pending = pendingConsultation(loadChange(p, id));
+        const asking = pending ? `NEXT: ${consultNextText(p, id, pending)}; the other stages carry on meanwhile\n` : "";
         const rows = v.ready.length || v.done.length ? [...v.done.map((s) => `  done   ${s}`), ...v.ready.map((s) => `  ${v.group.includes(s) ? "now  " : "ready"}  ${s.id}`)] : [];
         emit(
-          { ...v, ...(finished ? { recorded: finished } : {}), ready: v.ready.map((s) => ({ id: s.id, title: s.title, roles: s.roles })), group: v.group.map((s) => ({ id: s.id, title: s.title, roles: s.roles, reads: s.reads, writes: s.writes, ...(s.gate ? { gate: s.gate } : {}), ...(s.browser ? { browser: true } : {}) })) },
-          `${finished ? `recorded ${finished} as done\n` : ""}${v.workflow} (${v.state}), parallel.max ${v.max}\n${rows.join("\n")}${rows.length ? "\n" : ""}${stagesNext(v)}\n`,
+          { ...v, ...(finished ? { recorded: finished } : {}), ...(pending ? { consultation: pending } : {}), ready: v.ready.map((s) => ({ id: s.id, title: s.title, roles: s.roles })), group: v.group.map((s) => ({ id: s.id, title: s.title, roles: s.roles, reads: s.reads, writes: s.writes, ...(s.gate ? { gate: s.gate } : {}), ...(s.browser ? { browser: true } : {}) })) },
+          `${finished ? `recorded ${finished} as done\n` : ""}${v.workflow} (${v.state}), parallel.max ${v.max}\n${rows.join("\n")}${rows.length ? "\n" : ""}${asking}${stagesNext(v)}\n`,
+        );
+        return 0;
+      }
+
+      case "consult": {
+        // ADR-0013: the asker wrote a request and ended its turn; the Orchestrator checks it, gets the answer and resumes the asker.
+        const p = project();
+        const sub = rest[0];
+        if (sub === "answer" || sub === "resume") {
+          const id = resolveChangeId(p, str(args.flags.change));
+          const cid = need(rest[1], "consultation id (C01)");
+          if (sub === "answer") {
+            const r = recordAnswer(p, id, cid, pluginRoot(env));
+            const c = r.consultation;
+            const route =
+              c.status === "needs-deviation"
+                ? `ROUTE: after the Approval Gate this goes to the Role that wrote the approved Artifact, as a Deviation (ADR-0014; not built yet, T9). The run does not stop and does not wait for anyone: the asker resumes and builds what the approved package states.\n`
+                : c.status === "unanswered"
+                  ? `ROUTE: before the gate the asker records it as an open question in its Artifact, which the Approval Gate shows.\n`
+                  : "";
+            emit({ ok: true, change: id, ...r }, `${cid} ${c.outcome} -> ${c.status}\nresume brief ${r.resume}\n${route}Then: aidw consult resume ${cid}\n`);
+            return 0;
+          }
+          const r = resumeConsultation(p, id, cid);
+          const c = r.consultation;
+          const after = c.task ? `Then, when it reports: aidw checkpoint ${c.task}` : `Then, when it reports: continue stage ${c.stage} (\`aidw stages\`)`;
+          emit(
+            { ok: true, change: id, ...r },
+            `${cid} resumed: ${c.from} continues ${c.task ?? `stage ${c.stage}`}\nresume brief ${r.resume}\nIf the Agent that asked is still running in this session, continue it with SendMessage: "Consultation ${cid} is answered: ${join(p.changes, id, c.answer)}. Read it and continue." Otherwise:\nSPAWN ${r.agent} with: Resume brief: ${r.resume}. Read it and continue the work.\n${after}\n`,
+          );
+          return 0;
+        }
+        const file = need(sub, "request file (.aidw/changes/<id>/consult/<name>.request.md)");
+        const abs = resolve(cwd, file);
+        const id = resolveChangeId(p, changeOfRequest(p, abs, str(args.flags.change)));
+        const r = requestConsultation(p, id, abs, pluginRoot(env));
+        const c = r.consultation;
+        emit(
+          { ok: true, change: id, ...r },
+          `${c.id} recorded: ${c.from} (${c.task ?? `stage ${c.stage}`}) asks ${c.to}\nbrief ${r.brief}\nSPAWN ${r.agent} with: Consultation brief: ${r.brief}. Read it and answer as it says.\nThen: aidw consult answer ${c.id}\nMeanwhile the other tasks or stages carry on.\n`,
         );
         return 0;
       }
