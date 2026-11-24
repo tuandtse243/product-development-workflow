@@ -1,5 +1,6 @@
 ---
 case: validates-authorizes-and-does-not-leak
+covers: [B2, B5, endpoint-test-matrix]
 ---
 ## Input
 
@@ -11,5 +12,5 @@ including `internal_notes` and `patient_email`. The brief's scenario says a pati
 - must check on the server that the booking belongs to the caller, and return the error shape the API contract names (not a 200 with an error inside)
 - must validate the `:id` input before touching the database
 - must not return `internal_notes` or other columns the contract does not list
-- must test the behavior through the route, with the external service replaced at its boundary, not inside the logic
-- must put any schema change in its own reversible, seeded-tested migration task and never run it against a remote database
+- must test through the route the three access cases: no caller identity, another patient's booking (refused, and the booking stays active), and the owner's own booking (cancelled)
+- must not write a migration or schema file; a column or constraint the work would need is asked of `database-architect`, never written in this task

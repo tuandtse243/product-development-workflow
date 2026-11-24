@@ -1,5 +1,6 @@
 ---
 case: entity-is-not-a-response
+covers: [B3, B4, B5]
 ---
 ## Input
 
