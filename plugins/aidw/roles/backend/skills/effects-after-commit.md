@@ -5,9 +5,10 @@ description: When a write must also cause something outside the database (an ema
 
 # Effects after the commit
 
-A business change and the message about it can disagree in two ways: the email went out but the order rolled back,
-or the order was saved but the process died before the email. Sending inside the transaction causes the first;
-sending after it with no record causes the second. Record the debt with the change; pay it after.
+Serves rules B9 and B12. A business change and the message about it can disagree in two ways: the email went out
+but the order rolled back, or the order was saved but the process died before the email. Sending inside the
+transaction causes the first; sending after it with no record causes the second. Record the debt with the change;
+pay it after.
 
 ## Steps
 
@@ -16,9 +17,12 @@ sending after it with no record causes the second. Record the debt with the chan
 2. **Record what is owed in the same transaction**: a row in the project's outbox or job table with the event
    type, the payload the receiver needs (ids and values, never a credential), and a unique id for the effect.
    The business change and that row commit together or not at all.
-3. **Send from that row**: a worker, relay or scheduled job reads pending rows, sends, and marks them sent. Use
-   the project's existing queue or job runner; do not add a new one. The call to the provider itself goes through
-   an adapter with a timeout (the `external-api` and `resilient-integration` skills).
+3. **Send from that row**: a worker, relay or scheduled job claims pending rows so two workers never take the same
+   one (`FOR UPDATE SKIP LOCKED`, or a `claimed_by` and `claimed_at` pair with a timeout), sends, and marks them
+   sent. A failed send is retried later with backoff; after N failures the row is marked failed for an operator to
+   look at, not retried forever. Use the project's existing queue or job runner; do not add a new one. The call to
+   the provider goes through an adapter with an explicit timeout that the tests replace with a fake (the
+   `external-api` and `resilient-integration` skills).
 4. **Delivery is at least once.** A crash after the send and before "mark sent" sends again. Pass the effect's
    unique id as the provider's idempotency key, or make the receiver ignore an id it has seen.
 5. **No outbox, job table or queue in the project?** Do not invent one, and do not add a migration for it. Ask the
@@ -41,9 +45,11 @@ tx:
   INSERT INTO outbox (id, type, payload) VALUES (:uuid, 'order.confirmation', {orderId, email})
 commit
 -- later, the project's job runner:
-for row in pending outbox rows:
+rows = SELECT ... FROM outbox WHERE state = 'pending' AND next_try_at <= now()
+       ORDER BY id LIMIT 20 FOR UPDATE SKIP LOCKED
+for row in rows:
   mailer.send(row.payload, idempotencyKey = row.id)   -- adapter with a timeout
-  mark row sent
+  mark row sent   (on failure: attempts + 1, next_try_at later; failed after 8 attempts)
 
 test: mailer fake fails      -> order saved, outbox row still pending
 test: run the sender twice   -> mailer called once for the order
@@ -63,5 +69,6 @@ commit
 ## Sources
 
 Ideas, not wording: the "Transactional outbox" and "Idempotent consumer" patterns described by Chris Richardson
-on microservices.io; the retry and timeout guidance of the AWS Builders' Library; aidw's `resilient-integration`
-for the provider side. Look there again when the project adopts a message broker.
+on microservices.io; the retry and timeout guidance of the AWS Builders' Library; the `SKIP LOCKED` clause in the
+PostgreSQL documentation on `SELECT`; aidw's `resilient-integration` for the provider side. Look there again when
+the project adopts a message broker.

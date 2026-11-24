@@ -1,13 +1,14 @@
 ---
 name: transactions-and-races
-description: Keep a multi-row write whole and make a rule hold when two requests arrive at once (at most one, never below zero, only once) by letting the database arbitrate, with a test that fires both.
+description: Keep a multi-row write whole and make a rule hold when two requests arrive at once (at most one, never below zero, only once) by letting the database arbitrate, with a test that really races.
 ---
 
 # Transactions and races
 
-Two kinds of bug look fine in a single-request test. A write that touches several rows stops halfway and leaves
-them disagreeing. Two requests read the same value, both decide they may act, and both write. Both are fixed in the
-database, not in the code around it.
+Serves rules B7, B8 and B15. Two kinds of bug look fine in a single-request test. A write that touches several rows
+stops halfway and leaves them disagreeing. Two requests read the same value, both decide they may act, and both
+write. Both are fixed in the database, not in the code around it. Lookup: the errors each database raises and how
+to map them are in `aidw plugin-path roles/backend/references/database-conflicts.md`.
 
 ## Steps
 
@@ -15,7 +16,8 @@ database, not in the code around it.
    written inside one transaction, or none is. Read what you decide on inside it too.
 2. **Nothing slow or remote inside it.** No HTTP call, no email, no queue publish, no file upload while the
    transaction is open: it holds locks for as long as the slowest outside service. What must be sent goes after the
-   commit (the `effects-after-commit` skill).
+   commit (the `effects-after-commit` skill). Set a lock or statement timeout so a stuck lock fails fast instead of
+   piling up requests.
 3. **Find the rule that must hold under concurrency.** Scenario words give it away: "at most", "only one",
    "cannot go below", "cannot twice", "first come". Write the rule as one sentence the database can check.
 4. **Pick the arbiter** and say in your report why it fits:
@@ -23,22 +25,26 @@ database, not in the code around it.
    - a **conditional update** that checks and changes in one statement, then reads the count of rows changed:
      `stock = stock - n WHERE id = ? AND stock >= n`;
    - a **version column** compared on update, for edits that must not overwrite each other;
-   - a **row lock** taken when the decision needs several reads (lock in a fixed order to avoid deadlocks).
-   A read in code followed by a write in code is never the arbiter, at any isolation level you have not tested.
+   - a **row lock** taken when the decision needs several reads (lock in a fixed order to avoid deadlocks);
+   - the **serializable** isolation level only together with a retry of the whole transaction on a serialization
+     failure; without the retry it turns races into `500`s.
+   A read in code followed by a write in code is never the arbiter.
 5. **Map the refusal to the contract**: a unique violation or zero rows changed becomes the contract's conflict
    status and error shape, not a `500`. Catch only that specific database error; let others through.
-6. **Test with two requests at once** through the real entry point and a real database: start both before either
-   finishes, then assert exactly one succeeded, the other got the conflict status, and the stored state obeys the
-   rule. A sequential test of "the second one is refused" does not prove the race is closed.
+6. **Test a real race** through the real entry point and a real database, each request on its own connection (not
+   inside one test transaction that is rolled back at the end, which serialises everything). Either fire N requests
+   at once (10 is enough) or hold the first inside its transaction with a barrier until the second has started.
+   Assert exactly one succeeded, the rest got the conflict status, and the stored state obeys the rule. A sequential
+   "the second one is refused" does not prove the race is closed.
 7. **The arbiter needs a constraint, a column or an index that does not exist?** Do not add it: schema files are
-   not in a backend task's Touches. Ask the data model's author (Consultation) whether it is planned and under
-   what name; if it is not, report that a `database` task is needed. Do not guess with a code-only lock.
+   not in a backend task's Touches (B15). Ask `database-architect` (Consultation) whether it is planned and under
+   what name; if it is not, report under Owed that a `database` task is needed. Do not guess with a code-only lock.
 
 ## Right and wrong
 
 Scenario: "a slot can be booked once".
 
-Right: one statement decides, its result is mapped, and the test races two bookings.
+Right: one statement decides, its result is mapped, and the test races ten bookings on separate connections.
 
 ```
 tx:
@@ -48,8 +54,8 @@ tx:
 commit
 then: send confirmation (after commit)
 
-test: two users POST /bookings for the same slot at once
-      -> statuses are {201, 409}; exactly one booking row exists
+test: ten users POST /bookings for the same slot at once, each on its own connection
+      -> one 201, nine 409; exactly one booking row exists
 ```
 
 Wrong: check in code, write later, and a network call while the transaction holds its locks.

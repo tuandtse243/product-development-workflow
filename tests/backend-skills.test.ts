@@ -47,6 +47,6 @@ describe("backend skills", () => {
   });
 
   it("repeat-safe-writes cites api-design-rules instead of restating it", () => {
-    expect(readFileSync(join(dir, "repeat-safe-writes.md"), "utf8")).toMatch(/`api-design-rules`, section "Writes that may be\s+repeated"/);
+    expect(readFileSync(join(dir, "repeat-safe-writes.md"), "utf8")).toMatch(/`api-design-rules`, section\s+"Writes that may be\s+repeated"/);
   });
 });
