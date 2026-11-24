@@ -161,7 +161,8 @@ describe("the Role case runner", () => {
   it("takes --model and --case with a value, not as a Role name", () => {
     const seen: (string | undefined)[] = [];
     let out = "";
-    const code = run(["eval", "--model", "sonnet", "--case", "validates-authorizes-and-does-not-leak"], env, process.cwd(), {
+    // a copy: were --case ever to write a result file, it must not land in the repo's plugin
+    const code = run(["eval", "--model", "sonnet", "--case", "validates-authorizes-and-does-not-leak"], { ...process.env, AIDW_PLUGIN_ROOT: copy() }, process.cwd(), {
       out: (s) => (out += s),
       err: (s) => (out += s),
       modelExec: (m) => (seen.push(m), fake(true)),
