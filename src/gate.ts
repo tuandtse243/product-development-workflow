@@ -32,6 +32,7 @@ import {
   maskQuotedAngles,
   RUNNER_COMMAND,
 } from "./policy.js";
+import { detachedStart } from "./buildroute.js";
 import { pushGrantReason, taskBranchPush } from "./grants.js";
 import { grantedResources } from "./quality.js";
 import { machineOf } from "./machine.js";
@@ -243,7 +244,16 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
       return deny(`the ${role} does not change aidw state (no self-verification); report back to the orchestrator`);
     }
     if (RUNNER_COMMAND.test(cmd)) {
-      return deny("`aidw run` starts Claude Code headless in a loop; the user runs it in their own terminal, not inside a session");
+      // D2: after approval the main session starts the detached runner itself; its sessions run in auto mode (ADR-0014).
+      const start = detachedStart(cmd);
+      if (start && !input.agent_type && env.AIDW_RUNNER !== "1" && gateState(p).open) {
+        return start === "plain"
+          ? allow("the change is approved: the detached runner builds it (`aidw approve` printed this step)")
+          : ask("this starts the runner with other options than the approved step (`aidw run <id> --detach --permission-mode auto`); it needs your confirmation");
+      }
+      return deny(
+        "`aidw run` starts Claude Code headless in a loop: only the main session of an approved change starts it, in the background (`aidw run <id> --detach --permission-mode auto`); otherwise the user runs it in their own terminal",
+      );
     }
     if (APPROVE_COMMAND.test(cmd)) {
       return ask("approving the Analysis package is the user's decision. Approve only if you (the user) reviewed analysis.md.");
