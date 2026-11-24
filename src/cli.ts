@@ -61,11 +61,12 @@ import { firstDeploy } from "./firstdeploy.js";
 import { reconcileDoneTasks, reopenTask } from "./run.js";
 import { autoReview, buildBrief, buildTriageBrief, checkpoint, integrateChange, nextAction, parseVerdict, recordReview, recordTriage, retryTask, startTask, triageFile, type NextAction } from "./run.js";
 import { recordStageDone, stagesNext, stagesView } from "./stages.js";
+import { buildConflictBrief, buildMergeReviewBrief, resolveConflict } from "./conflict.js";
 import { VERSION } from "./version.js";
 
 function reviewLine(r: { task: string; verdict: string; status: string; commit: string | null; warning?: string; conflict?: string }, verdict: string, notes: string): string {
   return `${r.task}: review ${r.verdict} -> ${r.status}${r.commit ? ` (commit ${r.commit.slice(0, 8)})` : ""}${r.warning ? `\n  warning: ${r.warning}` : ""}${
-    r.conflict ? `\n  merge conflict (${r.conflict}): the task reruns sequentially` : ""
+    r.conflict ? `\n  merge conflict (${r.conflict}): ${r.status === "conflict" ? "the integration Role resolves it" : "the task reruns sequentially"}` : ""
   }${verdict === "pass" && !notes.trim() ? "\n  note: no reviewer reply recorded; pass it with --notes-file so its non-blocking remarks reach the handoff" : ""}\n`;
 }
 
@@ -116,6 +117,10 @@ function nextText(n: NextAction): string {
     ? `implement ${n.task} (${n.reason}): ${n.title}${n.reason === "interrupted" ? " (if an implementer you spawned for it has not reported yet, it is still running: wait for it, do not spawn another)" : ""}`
     : n.action === "review"
       ? `review ${n.task}: ${n.title}`
+      : n.action === "resolve"
+        ? `resolve the merge conflict of ${n.task} with ${n.with.join(", ") || "the change branch"} (${n.files.join(", ")}): \`aidw brief ${n.task} --for conflict\`, spawn aidw:integration with the brief, then \`aidw resolve ${n.task}\``
+      : n.action === "review-merge"
+        ? `review the merge of ${n.task} with ${n.with.join(", ") || "the change branch"}: \`aidw brief ${n.task} --for merge-review\`, spawn ${AGENTS.taskReview} with the brief, then \`aidw verdict ${n.task}\``
       : n.action === "triage"
         ? `triage ${n.task} (${n.reason}): \`aidw brief ${n.task} --for triage\`, spawn ${AGENTS.triage} with the brief, then \`aidw triage ${n.task}\``
         : n.action === "escalate"
@@ -211,6 +216,10 @@ Execution (state executing; add --change <id> when several changes are active):
   task start <task> [--worktree]         mark a task running (counts attempts, records the base commit);
                                          --worktree: a wave task in its own git worktree
   integrate                              after a wave: verify the merged code; a failure adds a fix task
+  brief <task> --for conflict            a wave task's merge conflicted: start the merge in its worktree and brief the
+                                         integration Role with both tasks; --for merge-review briefs the reviewer of the merge
+  resolve <task>                         check the integration Role's resolution, commit it and rerun both tasks' checks;
+                                         a failure drops the task, which reruns sequentially
 
 Unattended (in your own terminal, not inside Claude Code):
   run [<id>] [--detach] [--permission-mode M] [--max-runs N] [--claude BIN] [--keep-mcp] [-- <claude args>]
@@ -479,7 +488,17 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           emit({ change: id, task: taskId, for: kind, path: tb.path }, `${tb.path}\nSPAWN ${AGENTS.triage} with: Triage brief: ${tb.path}. Read it and write your answer as it says.\nThen: aidw triage ${taskId}\n`);
           return 0;
         }
-        if (kind !== "implement" && kind !== "review") throw new UsageError('--for must be "implement" or "review" (or "triage" for brief)');
+        if (kind === "conflict" && cmd === "brief") {
+          const cb = buildConflictBrief(p, id, taskId);
+          emit({ change: id, task: taskId, for: kind, path: cb.path }, `${cb.path}\nSPAWN aidw:integration with: Conflict brief: ${cb.path}. Read it and resolve the conflict.\nThen: aidw resolve ${taskId}\n`);
+          return 0;
+        }
+        if (kind === "merge-review" && cmd === "brief") {
+          const mb = buildMergeReviewBrief(p, id, taskId);
+          emit({ change: id, task: taskId, for: kind, path: mb.path }, `${mb.path}\nSPAWN ${AGENTS.taskReview} with: Merge review brief: ${mb.path}. Review the merge and reply with the verdict.\nThen: aidw verdict ${taskId}\n`);
+          return 0;
+        }
+        if (kind !== "implement" && kind !== "review") throw new UsageError('--for must be "implement" or "review" (or "triage", "conflict", "merge-review" for brief)');
         const b = buildBrief(p, id, taskId, kind, join(pluginRoot(env), "library", "vendor"));
         if (cmd === "skills") {
           emit({ change: id, task: taskId, for: kind, skills: b.skills }, b.skills.map((s) => `${s.path}  # ${s.reason}\n`).join(""));
@@ -731,6 +750,28 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           `${reviewLine(r, verdict, notes)}${nextLine(p, id)}${r.status === "done" ? sessionEnd(env, p, id) : ""}`,
         );
         return 0;
+      }
+
+      case "resolve": {
+        // T7: the integration Role resolved a Wave's merge conflict in the task's worktree; check it and rerun both tasks' checks.
+        const p = project();
+        const id = resolveChangeId(p, str(args.flags.change));
+        const taskId = need(rest[0], "task id");
+        const r = resolveConflict(p, id, taskId);
+        const lines = r.checks.flatMap((c) => [
+          ...c.missing_scenarios.map((s) => `  MISSING ${c.task} ${s}`),
+          ...c.runs.map((x) => `  ${x.exit === 0 ? "ok     " : "FAILED "} ${c.task} ${x.command}`),
+        ]);
+        let after = nextLine(p, id);
+        if (r.ok) {
+          const mb = buildMergeReviewBrief(p, id, taskId);
+          after = `review brief ${mb.path}\nSPAWN ${AGENTS.taskReview} with: Merge review brief: ${mb.path}. Review the merge and reply with the verdict.\nThen: aidw verdict ${taskId}\n`;
+        }
+        emit(
+          { change: id, ...r },
+          `${r.ok ? "RESOLVED" : "DROPPED"} ${taskId}: ${r.ok ? `merge ${String(r.resolution).slice(0, 8)}; both tasks' checks pass` : `${r.reason}; the task reruns sequentially on the latest code`}\n${lines.length ? `${lines.join("\n")}\n` : ""}${after}`,
+        );
+        return r.ok ? 0 : 1;
       }
 
       case "triage": {

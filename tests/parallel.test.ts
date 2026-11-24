@@ -242,7 +242,7 @@ describe("a wave in worktrees (git)", () => {
     expect(cli(root, "transition", ID, "verifying").err).toMatch(/needs every task done/);
   });
 
-  it("drops a branch whose merge conflicts and reruns the task sequentially", () => {
+  it("drops a branch whose conflict integration cannot resolve and reruns the task sequentially", () => {
     const root = project();
     for (const t of ["T01", "T02"]) cli(root, "task", "start", t, "--worktree");
     const wt = (t: string) => join(root, `.aidw/run/worktrees/${ID}/${t}`);
@@ -253,8 +253,11 @@ describe("a wave in worktrees (git)", () => {
     for (const t of ["T01", "T02"]) expect(cli(root, "checkpoint", t).code).toBe(0);
     cli(root, "review", "T01", "pass");
     const r = cli(root, "review", "T02", "pass", "--json").json();
-    expect(r).toMatchObject({ status: "pending", commit: null });
+    expect(r).toMatchObject({ status: "conflict", commit: null });
     expect(r.conflict).toMatch(/README\.md|CONFLICT|conflict/i);
+    // T7: the integration Role gets the conflict first; left unresolved, today's fallback applies
+    expect(cli(root, "brief", "T02", "--for", "conflict").code).toBe(0);
+    expect(cli(root, "resolve", "T02").code).toBe(1);
     expect(task(root, "T02")).toMatchObject({ status: "pending", sequential: true, attempts: 0 });
     expect(existsSync(wt("T02"))).toBe(false);
     expect(readFileSync(join(root, "README.md"), "utf8")).toBe("# demo\nfrom T01\n");

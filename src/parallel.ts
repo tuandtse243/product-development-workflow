@@ -7,7 +7,9 @@
  *              `aidw/<change>.<task>` (beside the change branch `aidw/<change>`), created by aidw (not the Agent tool's isolation), so the gate, the
  *              checkpoint and resume work the same for every runtime
  *   merge      review pass commits the worktree and merges it into the change branch (one commit per task);
- *              a conflict drops the branch and reruns the task sequentially on the latest code
+ *              a conflict goes to the integration Role (src/conflict.ts, D11); when that fails the branch is
+ *              dropped and the task reruns sequentially on the latest code. Each conflict is recorded in
+ *              `changes/<id>/conflicts.yaml` for the Technical Planner
  *   integrate  after a wave, the merged code runs every wave task's verify plus the `code` layer; a failure
  *              becomes a fix task (origin: integration) before anything new starts
  */
@@ -140,7 +142,7 @@ export function removeSnapshot(p: Paths, folder: string): void {
   rmSync(join(p.project, folder), { recursive: true, force: true });
 }
 
-export type MergeOutcome = { ok: true } | { ok: false; conflict: string };
+export type MergeOutcome = { ok: true } | { ok: false; conflict: string; files: string[] };
 
 /**
  * Commits the task's work in its worktree (never its stale .aidw/ copy) and merges the branch into the main
@@ -169,9 +171,71 @@ export function mergeWorktree(p: Paths, t: Task, message: string): MergeOutcome 
   }
   const m = git(p.project, ["merge", "--no-ff", "--no-commit", "-q", branch]);
   if (m.ok) return { ok: true };
+  const files = git(p.project, ["diff", "--name-only", "--diff-filter=U"]).out.split("\n").filter(Boolean);
   git(p.project, ["merge", "--abort"]);
-  const files = git(p.project, ["diff", "--name-only", "--diff-filter=U"]).out;
-  return { ok: false, conflict: (m.out || m.err || files).split("\n").slice(0, 8).join("; ") };
+  return { ok: false, conflict: (m.out || m.err || files.join("\n")).split("\n").slice(0, 8).join("; "), files };
+}
+
+// ---------------------------------------------------------------- merge conflicts (T7, D11)
+
+/**
+ * The tasks already on the change branch that changed the conflicting files since `base`: read from the `Task:`
+ * footer of the task commits (src/commit.ts). A file changed by a commit that is no task's has no partner.
+ */
+export function conflictPartners(p: Paths, taskId: string, base: string | null, files: string[]): string[] {
+  if (!base || !files.length) return [];
+  const log = git(p.project, ["log", "--format=%B", `${base}..HEAD`, "--", ...files]);
+  if (!log.ok) return [];
+  const ids = [...log.out.matchAll(/^Task: (\S+)$/gm)].map((m) => m[1] as string);
+  return [...new Set(ids)].filter((x) => x !== taskId);
+}
+
+export type ConflictOutcome = "open" | "resolved" | "dropped";
+
+export interface ConflictRecord {
+  at: string;
+  task: string;
+  with: string[];
+  files: string[];
+  outcome: ConflictOutcome;
+  reason?: string;
+}
+
+/** Where the Change keeps its merge conflicts; the Technical Planner reads it when it plans again (roles/technical-planner). */
+export const conflictsFile = (change: Change) => join(change.dir, "conflicts.yaml");
+
+const CONFLICTS_HEADER =
+  "# Merge conflicts between tasks of a Wave (written by aidw). Each names the tasks whose work met in the same\n" +
+  "# files. The Technical Planner reads it when it plans: list those files in the touches of every task that\n" +
+  "# changes them, or chain the tasks with depends_on, so they never run side by side again.\n";
+
+export function readConflicts(change: Change): ConflictRecord[] {
+  const text = readText(conflictsFile(change));
+  if (text === null) return [];
+  try {
+    const data = YAML.parse(text) as { conflicts?: ConflictRecord[] } | null;
+    return Array.isArray(data?.conflicts) ? data.conflicts : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeConflicts(change: Change, records: ConflictRecord[]): void {
+  writeFileSync(conflictsFile(change), `${CONFLICTS_HEADER}${YAML.stringify({ conflicts: records })}`);
+}
+
+/** Opens a record for a conflict found at a task's merge. */
+export function recordConflict(change: Change, entry: Omit<ConflictRecord, "at" | "outcome">): void {
+  writeConflicts(change, [...readConflicts(change), { at: now(), ...entry, outcome: "open" }]);
+}
+
+/** Closes the task's latest record: resolved by integration, or dropped (the task reruns sequentially). */
+export function closeConflict(change: Change, taskId: string, outcome: Exclude<ConflictOutcome, "open">, reason?: string): void {
+  const records = readConflicts(change);
+  const last = records.map((r) => r.task).lastIndexOf(taskId);
+  if (last < 0) return;
+  records[last] = { ...(records[last] as ConflictRecord), outcome, ...(reason ? { reason: reason.slice(0, 300) } : {}) };
+  writeConflicts(change, records);
 }
 
 // ---------------------------------------------------------------- integration verify
