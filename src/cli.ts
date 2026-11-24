@@ -19,7 +19,7 @@ import { fetchFont, runShotsWorker, SHOTS_WORKER, takeShots } from "./mock.js";
 import { boundaryOf } from "./boundary.js";
 import { buildAuditBrief, chosenLenses, compileReport, lensRoles, pickFindings } from "./audit.js";
 import { DecisionError, readDecisions, recordDecision, workflowOfChange } from "./decisions.js";
-import { machineOf } from "./machine.js";
+import { defaultWorkflowId, machineOf } from "./machine.js";
 import { packsFor } from "./stackpacks.js";
 import { git } from "./git.js";
 import { checkEvals } from "./evals.js";
@@ -1001,7 +1001,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const p = project();
         const id = need(rest[1], "change id");
         const wf = str(args.flags.workflow);
-        const dir = newChange(p, id, { title: str(args.flags.title), inputType: str(args.flags["input-type"]), ...(wf ? { workflow: wf, workflows: workflowIds(pluginRoot(env)), skipSpecs: boundaryOf(pluginRoot(env), wf)?.spec_changes === false, scopeRound: loadWorkflow(pluginRoot(env), wf)?.scope_round === true } : {}) });
+        const dir = newChange(p, id, { title: str(args.flags.title), inputType: str(args.flags["input-type"]), scopeRound: loadWorkflow(pluginRoot(env), wf ?? defaultWorkflowId(p))?.scope_round === true, ...(wf ? { workflow: wf, workflows: workflowIds(pluginRoot(env)), skipSpecs: boundaryOf(pluginRoot(env), wf)?.spec_changes === false } : {}) });
         emit({ ok: true, id, dir: rel(p, dir) }, `created change ${id} at ${rel(p, dir)}\n`);
         return 0;
       }

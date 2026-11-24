@@ -16,7 +16,8 @@ applies_to: greenfield
 existing: [project-config]
 # Scope round (ADR-0011): the user settles vision, scope, MVP and what is out on a Decision Page (`kind: scope`) during the
 # discovery interview, before any requirement is written. The checked answer is recorded under `### Scope round` in the
-# discovery appendix of analysis.md; `aidw analyze` refuses the package without it. Nothing is approved or frozen there:
+# discovery appendix of analysis.md. A Change created under this Workflow records `scope_round: true`, and
+# `aidw analyze` refuses its package without the round. Nothing is approved or frozen there:
 # the one Approval Gate stays after the plan.
 scope_round: true
 interrupts: [paused, escalated]

@@ -257,7 +257,9 @@ The Orchestrator proposes the Workflow, the user confirms, and a flag can name i
 the 12 stages above: `product` has 16 stages and `feature` 17 (it adds the assessment), each tied to Change states,
 with one approval gate and no new stage. The scope of `product` is a round of its discovery stage (`scope_round: true`):
 the user answers the `scope` Decision Page, the answer is recorded under `### Scope round` in the discovery appendix of
-`analysis.md`, and `aidw analyze` refuses the package without it. Nothing is approved there (ADR-0011). `aidw roster` checks
+`analysis.md`, and `aidw analyze` refuses the package without it. A Change created under that Workflow (named or by
+default) records `scope_round: true`, so the check follows the Change, not today's Workflow file. Nothing is approved
+there (ADR-0011). `aidw roster` checks
 that a stage reads only what an earlier stage (or the project) already has, writes only what one of its Roles owns,
 walks the Change state machine in an allowed order, and names the Agents the CLI spawns. The CLI reads the state
 machine of a Change from its own Workflow file (`transitions`, `approval_required`, `analysis_required`) and the Agents

@@ -8,8 +8,10 @@ import { ANALYSIS_MD, MAIN_SPEC, QUALITY_YAML, REQ, SCOPE_ROUND, TASKS_YAML, TOK
 
 const ID = "2026-11-14-notes-app";
 const BRIEF = "# Product brief: Notes\n\n## Vision\n\nA notes app for freelancers who lose track of client calls.\n\n## Scope\n\n- capture a note\n- tag it with a client\n\n## MVP\n\nCapture and tag; search comes later because the first users have few notes.\n\n## Out of scope\n\nSharing and sync.\n";
-/** The analysis of the fixture without its scope round: what a product change looks like before the round is recorded. */
+/** The analysis without its scope round: a product change before the round is recorded, or a change that owes none. */
 const WITHOUT_ROUND = ANALYSIS_MD.replace(SCOPE_ROUND, "");
+/** The analysis of a product change whose scope round is recorded. */
+const WITH_ROUND = ANALYSIS_MD;
 
 function cli(root: string, ...argv: string[]) {
   let out = "";
@@ -27,7 +29,7 @@ function drafted(opts: { workflow?: string | null; analysis?: string } = {}): st
   expect(cli(root, "change", "new", ID, ...wf).code).toBe(0);
   const c = `.aidw/changes/${ID}`;
   write(root, ".aidw/specs/booking/spec.md", MAIN_SPEC);
-  write(root, `${c}/analysis.md`, opts.analysis ?? ANALYSIS_MD);
+  write(root, `${c}/analysis.md`, opts.analysis ?? WITH_ROUND);
   write(root, ".aidw/design/tokens.yaml", TOKENS_YAML);
   write(root, `${c}/tasks.yaml`, TASKS_YAML);
   write(root, `${c}/quality.yaml`, QUALITY_YAML);
@@ -42,6 +44,7 @@ describe("the scope of a product change is a round of the discovery interview", 
     cli(root, "init");
     expect(cli(root, "change", "new", ID, "--workflow", "product").code).toBe(0);
     const data = change(root);
+    expect(data.scope_round).toBe(true);
     expect(data.scope_gate).toBeUndefined();
     expect(data.scope_approval).toBeUndefined();
     expect(existsSync(join(root, ".aidw/changes", ID, "brief.md"))).toBe(false);
@@ -67,7 +70,7 @@ describe("the scope of a product change is a round of the discovery interview", 
   });
 
   it("names the scope question whose answer is missing from the round", () => {
-    const root = drafted({ analysis: ANALYSIS_MD.replace(/^out .*\n/m, "") });
+    const root = drafted({ analysis: WITH_ROUND.replace(/^out .*\n/m, "") });
     const r = cli(root, "analyze", ID);
     expect(r.code).toBe(1);
     expect(r.out + r.err).toMatch(/scope round has no answer for "out"/);
@@ -103,6 +106,15 @@ questions:
   it("must ask the four scope questions", () => {
     expect(parsePage("scope", PAGE).problems).toEqual([]);
     expect(parsePage("scope", PAGE.replace(/ {2}- \{ id: mvp.*\n/, "")).problems.join("\n")).toMatch(/kind: scope needs the question "mvp"/);
+  });
+
+  it("refuses an optional scope question, and a scope question that is not a multi choice", () => {
+    const optional = parsePage("scope", PAGE.replace("{ id: out, title: Out of scope,", "{ id: out, optional: true, title: Out of scope,")).problems.join("\n");
+    expect(optional).toMatch(/kind: scope: the question "out" may not be optional/);
+    const single = parsePage("scope", PAGE.replace("    multi: true\n    recommend: [capture, tag]", "    recommend: capture")).problems.join("\n");
+    expect(single).toMatch(/kind: scope: the question "scope" is a multi choice with one option per capability/);
+    const open = parsePage("scope", PAGE.replace(/ {2}- id: scope\n[\s\S]*?(?= {2}- \{ id: mvp)/, "  - { id: scope, title: Capabilities in scope, suggest: capture and tag }\n")).problems.join("\n");
+    expect(open).toMatch(/kind: scope: the question "scope" is a multi choice with one option per capability/);
   });
 
   it("says where its checked answer is recorded", () => {
@@ -159,7 +171,7 @@ describe("a change left at the old scope gate (awaiting_scope_approval)", () => 
 
 describe("scope round edge cases", () => {
   it("refuses a scope round that is still the placeholder", () => {
-    const placeholder = ANALYSIS_MD.replace(SCOPE_ROUND, "\n## Appendix: discovery Q&A\n\n### Scope round\n\nTODO(aidw): the checked answer of the `scope` Decision Page (vision, scope, mvp, out), word for word.\n");
+    const placeholder = WITH_ROUND.replace(SCOPE_ROUND, "\n## Appendix: discovery Q&A\n\n### Scope round\n\nTODO(aidw): the checked answer of the `scope` Decision Page (vision, scope, mvp, out), word for word.\n");
     const root = drafted({ analysis: placeholder });
     const r = cli(root, "analyze", ID);
     expect(r.code).toBe(1);
@@ -167,26 +179,53 @@ describe("scope round edge cases", () => {
   });
 
   it("refuses a placeholder left among the answers of the round", () => {
-    const root = drafted({ analysis: ANALYSIS_MD.replace(/^out .*$/m, "out Out of scope: TODO(aidw)") });
+    const root = drafted({ analysis: WITH_ROUND.replace(/^out .*$/m, "out Out of scope: TODO(aidw)") });
     const r = cli(root, "analyze", ID);
     expect(r.code).toBe(1);
     expect(r.out + r.err).toMatch(/scope round is not recorded/);
   });
 
   it("refuses a scope round outside the discovery appendix", () => {
-    const moved = ANALYSIS_MD.replace(SCOPE_ROUND, "").replace("## Summary", "## Summary\n\n### Scope round\n\nvision a: b\nscope a: b\nmvp a: b\nout a: b\n");
+    const moved = WITHOUT_ROUND.replace("## Summary", "## Summary\n\n### Scope round\n\nvision a: b\nscope a: b\nmvp a: b\nout a: b\n");
     const r = cli(drafted({ analysis: moved }), "analyze", ID);
     expect(r.code).toBe(1);
     expect(r.out + r.err).toMatch(/scope round is not recorded/);
   });
 
-  it("asks a greenfield change created without --workflow (product by default) for the scope round", () => {
-    const root = drafted({ workflow: null, analysis: WITHOUT_ROUND });
+  it("records the scope round on a greenfield change created without --workflow (product by default), with its placeholder", () => {
+    const root = tempProject();
+    cli(root, "init");
+    expect(cli(root, "change", "new", ID).code).toBe(0);
     expect(change(root).workflow).toBeUndefined();
+    expect(change(root).scope_round).toBe(true);
+    expect(readFileSync(join(root, ".aidw/changes", ID, "analysis.md"), "utf8")).toMatch(/### Scope round\n\nTODO\(aidw\)/);
+  });
+
+  it("decides by the change, not its workflow: an older change with no scope_round, scope_gate or brief passes analyze", () => {
+    const root = drafted({ workflow: null, analysis: WITHOUT_ROUND });
+    const file = join(root, ".aidw/changes", ID, "change.yaml");
+    const doc = YAML.parseDocument(readFileSync(file, "utf8"));
+    doc.delete("scope_round");
+    write(root, `.aidw/changes/${ID}/change.yaml`, String(doc));
     const r = cli(root, "analyze", ID);
-    expect(r.code).toBe(1);
-    expect(r.out + r.err).toMatch(/scope round is not recorded/);
-    expect(cli(root, "transition", ID, "awaiting_approval").code).toBe(1);
+    expect(r.out + r.err).not.toMatch(/scope round/);
+    expect(cli(root, "transition", ID, "awaiting_approval").code).toBe(0);
+  });
+
+  it("a delivered change with no workflow field and no brief still passes aidw validate", () => {
+    const root = drafted({ workflow: null, analysis: WITHOUT_ROUND });
+    const file = join(root, ".aidw/changes", ID, "change.yaml");
+    const doc = YAML.parseDocument(readFileSync(file, "utf8"));
+    doc.delete("scope_round");
+    write(root, `.aidw/changes/${ID}/change.yaml`, String(doc));
+    expect(cli(root, "transition", ID, "awaiting_approval").code).toBe(0);
+    expect(cli(root, "approve", ID).code).toBe(0);
+    const d = YAML.parseDocument(readFileSync(file, "utf8"));
+    d.set("state", "delivered");
+    write(root, `.aidw/changes/${ID}/change.yaml`, String(d));
+    const v = cli(root, "validate", ID);
+    expect(v.out + v.err).not.toMatch(/scope round/);
+    expect(v.code, v.out + v.err).toBe(0);
   });
 
   it("lets a greenfield change created without --workflow through once the round is recorded", () => {
@@ -203,6 +242,7 @@ describe("old scope gate states, persisted by an older aidw", () => {
     const root = drafted({ analysis: WITHOUT_ROUND });
     const file = join(root, ".aidw/changes", ID, "change.yaml");
     const doc = YAML.parseDocument(readFileSync(file, "utf8"));
+    doc.delete("scope_round"); // an older aidw never wrote it
     for (const [k, v] of Object.entries(fields)) doc.set(k, v);
     write(root, `.aidw/changes/${ID}/change.yaml`, String(doc));
     if (opts.brief !== false) write(root, `.aidw/changes/${ID}/brief.md`, BRIEF);

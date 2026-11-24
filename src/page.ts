@@ -208,7 +208,13 @@ export function parsePage(name: string, source: string, extra: PageSection[] = [
   // The scope round of the discovery interview (scope.ts): its answer is recorded where `aidw analyze` looks for it.
   if (page.kind === "scope") {
     if (layout !== "questions") problems.push("kind: scope is a round of questions (layout: questions)");
-    else for (const id of SCOPE_QUESTIONS) if (!page.questions.some((q) => q.id === id)) problems.push(`kind: scope needs the question "${id}" (${SCOPE_QUESTIONS.join(", ")})`);
+    else
+      for (const id of SCOPE_QUESTIONS) {
+        const q = page.questions.find((x) => x.id === id);
+        if (!q) problems.push(`kind: scope needs the question "${id}" (${SCOPE_QUESTIONS.join(", ")})`);
+        else if (q.optional) problems.push(`kind: scope: the question "${id}" may not be optional; the round records an answer to each`);
+        if (q && id === "scope" && (!q.multi || q.options.length < 2)) problems.push('kind: scope: the question "scope" is a multi choice with one option per capability (multi: true, options)');
+      }
   }
 
   if (layout === "picks") {

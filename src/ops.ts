@@ -195,6 +195,7 @@ export function newChange(p: Paths, id: string, opts: { title?: string; inputTyp
       "state: draft",
       `created_at: ${now()}`,
       `skip_specs: ${opts.skipSpecs === true}`,
+      ...(opts.scopeRound ? ["scope_round: true"] : []),
       "approval: null",
       "run:",
       "  paused: null",

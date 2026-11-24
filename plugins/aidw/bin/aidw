@@ -7757,7 +7757,13 @@ function parsePage(name, source, extra = []) {
   }
   if (page.kind === "scope") {
     if (layout !== "questions") problems.push("kind: scope is a round of questions (layout: questions)");
-    else for (const id of SCOPE_QUESTIONS) if (!page.questions.some((q) => q.id === id)) problems.push(`kind: scope needs the question "${id}" (${SCOPE_QUESTIONS.join(", ")})`);
+    else
+      for (const id of SCOPE_QUESTIONS) {
+        const q = page.questions.find((x) => x.id === id);
+        if (!q) problems.push(`kind: scope needs the question "${id}" (${SCOPE_QUESTIONS.join(", ")})`);
+        else if (q.optional) problems.push(`kind: scope: the question "${id}" may not be optional; the round records an answer to each`);
+        if (q && id === "scope" && (!q.multi || q.options.length < 2)) problems.push('kind: scope: the question "scope" is a multi choice with one option per capability (multi: true, options)');
+      }
   }
   if (layout === "picks") {
     page.items = rows(raw.items).map((it, i) => {
@@ -8817,10 +8823,11 @@ function machineById(workflow) {
   if (m) cache.set(workflow, m);
   return m;
 }
+var defaultWorkflowId = (p) => projectKind(p) === "brownfield" ? "feature" : "product";
 function workflowIdOf(p, change) {
   const named = change.data.workflow;
   if (typeof named === "string" && named) return named;
-  return projectKind(p) === "brownfield" ? "feature" : "product";
+  return defaultWorkflowId(p);
 }
 function machineOf(p, change) {
   const id = workflowIdOf(p, change);
@@ -11866,6 +11873,7 @@ function newChange(p, id, opts) {
       "state: draft",
       `created_at: ${now3()}`,
       `skip_specs: ${opts.skipSpecs === true}`,
+      ...opts.scopeRound ? ["scope_round: true"] : [],
       "approval: null",
       "run:",
       "  paused: null",
@@ -13077,15 +13085,7 @@ function sizeOf(analysis) {
   const v = m[1].toLowerCase().replace(/[.,;]$/, "");
   return SIZES.includes(v) ? v : "invalid";
 }
-function scopeRoundOf(p, change) {
-  const root = pluginRoot(process.env);
-  if (!(0, import_node_fs25.existsSync)((0, import_node_path30.join)(root, "roster.yaml"))) return false;
-  try {
-    return workflowOfChange(p, change, root).scope_round;
-  } catch {
-    return false;
-  }
-}
+var scopeRoundOf = (change) => change.data.scope_round === true || change.data.scope_gate === true;
 function analyzeChange(p, id) {
   const d = new Diags();
   const change = loadChange(p, id);
@@ -13094,7 +13094,7 @@ function analyzeChange(p, id) {
   if (analysis === null) d.error(rel(p, analysisFile), "analysis.md is missing");
   else {
     checkAnalysisDoc(analysis, rel(p, analysisFile), d);
-    if (scopeRoundOf(p, change)) d.add(checkScopeRound(change, analysis, rel(p, analysisFile)));
+    if (scopeRoundOf(change)) d.add(checkScopeRound(change, analysis, rel(p, analysisFile)));
     if (projectKind(p) === "brownfield") {
       const existing = sections(analysis).find((s) => s.name.toLowerCase() === "existing system");
       if (!existing) d.error(rel(p, analysisFile), 'brownfield project: missing section "## Existing system" (assessment of the current code)');
@@ -16538,7 +16538,7 @@ ${r.errors.map((e) => `failed: ${e}
         const p = project();
         const id = need(rest[1], "change id");
         const wf = str(args.flags.workflow);
-        const dir = newChange(p, id, { title: str(args.flags.title), inputType: str(args.flags["input-type"]), ...wf ? { workflow: wf, workflows: workflowIds(pluginRoot(env)), skipSpecs: boundaryOf(pluginRoot(env), wf)?.spec_changes === false, scopeRound: loadWorkflow(pluginRoot(env), wf)?.scope_round === true } : {} });
+        const dir = newChange(p, id, { title: str(args.flags.title), inputType: str(args.flags["input-type"]), scopeRound: loadWorkflow(pluginRoot(env), wf ?? defaultWorkflowId(p))?.scope_round === true, ...wf ? { workflow: wf, workflows: workflowIds(pluginRoot(env)), skipSpecs: boundaryOf(pluginRoot(env), wf)?.spec_changes === false } : {} });
         emit({ ok: true, id, dir: rel(p, dir) }, `created change ${id} at ${rel(p, dir)}
 `);
         return 0;

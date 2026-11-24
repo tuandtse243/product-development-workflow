@@ -90,7 +90,7 @@ your suggested answer. The checked answer goes into the discovery appendix word 
 1. **The job (Product Manager).** `$(aidw plugin-path roles/product-manager/role.md)` and its `discovery-frame` skill:
    the size (`Size: small|normal` in the Summary, which the user confirms at the gate), the job to be done, today's
    workaround, the measure of done, scope and what is out. A `product` change ends this stage with the scope round
-   (step 2b). A `Size: small` change stops here.
+   (step 2b), then returns to stage 2 of step 2. A `Size: small` change stops here.
 2. **Rules and edges (Business Analyst).** `$(aidw plugin-path roles/business-analyst/role.md)` and its
    `rule-and-edge-elicitation` skill: for each behavior, the rules behind it, an example of each, and the edge and
    failure paths.
@@ -125,12 +125,13 @@ step 9. Skip this step for `feature`, `bugfix` and `audit`.
 
 1. Write one Decision Page named `scope` (`layout: questions`, `kind: scope`, `role: product-manager`) with exactly these
    question ids, each with your recommendation from what the interview found: `vision` (open: who it is for and what
-   success looks like), `scope` (`multi` choice: the capabilities, one option each), `mvp` (the smallest cut worth building
-   first, and why) and `out` (open: what is deliberately not built now). `aidw page render scope` refuses the page
+   success looks like), `scope` (`multi` choice: the capabilities, one option each), `mvp` (open, with your suggested
+   answer: the smallest cut worth building first, and why) and `out` (open: what is deliberately not built now). None of
+   them is `optional`. `aidw page render scope` refuses the page
    without one of them.
 2. Show the link and stop. When the user pastes the answer, `aidw page answers scope` checks it; record the printed lines
-   word for word under `### Scope round` in the discovery appendix of `analysis.md` (the change was created with that
-   heading). A note that changes the scope is settled in the chat first. `aidw analyze` refuses a `product` package whose
+   word for word under `### Scope round` in the discovery appendix of `analysis.md` (add the heading if it is
+   missing). A note that changes the scope is settled in the chat first. `aidw analyze` refuses a `product` package whose
    scope round is missing or leaves one of the four questions unanswered.
 3. Continue with the rules and edges (step 2, stage 2), then step 3. The Product Manager drafts inside the recorded scope.
 
