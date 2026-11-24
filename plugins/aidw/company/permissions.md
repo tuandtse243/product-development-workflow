@@ -19,11 +19,17 @@ under `## Permissions`; the user approves that list together with the rest of th
   executing, verifying, converging, deploying, approval still valid), a matching command runs **without asking**;
   otherwise, or when chained with other commands, it asks. Subagents never touch cloud resources.
 - **Roles that may not write by Bash** (read-only reviewers, `artifacts` authors) may not hand code to an
-  interpreter either: `node -e`/`-p`/`--eval`, `python -c`, `perl`/`ruby -e`, `php -r`, `deno eval`, `bun -e`,
-  `sh`/`bash -c`, `eval`, code piped or redirected into an interpreter, or a script under `.aidw/`. The project's own
-  scripts and test runners still run (`npx vitest`, `node --version`). An implementer's Bash write or inline code
-  that names `.aidw/` (other than its task worktree, `run/shots/` and its `report-<task>.md`) or a verdict or plan
-  review file is denied, as the Write tool denies it.
+  interpreter either: `node -e`/`-p`/`--eval`/`--print`, `python -c`, `perl`/`ruby -e` (also `-pe`, `-lne`),
+  `php -r`, `deno eval`, `bun -e`, `sh`/`bash -c` (also `-lc`, `-ec`), `eval`, code piped or redirected into an
+  interpreter, or a script under `.aidw/` outside a task's worktree. Commands are found behind environment
+  assignments, `env`, `time`, `command`, `nice`, `timeout <n>`, `{`, `then`/`do`/`else` and quotes; quoted text (a
+  commit message, a grep pattern) is never read as a command. The project's own scripts and test runners still run,
+  with loader flags too (`node --import tsx --test`, `node -r dotenv/config`, `ruby -Itest`, `perl -MTest::More`).
+- An implementer's Bash command is denied when one of its **write targets** (redirect targets, `tee` arguments, the
+  last argument of `cp`/`mv`/`ln`/`install`, the arguments of `rm`/`touch`/`mkdir`/`sed -i`, `find -delete` roots,
+  `dd of=`, path-like words of inline code) is `.aidw/` (other than its task worktree, `run/shots/` and its
+  `report-<task>.md`), a verdict under `run/` or `../`, or `plan-review.yaml`, as the Write tool denies it. Copying
+  out of `.aidw/` (the approved mock's fonts and images) is fine.
 - Protected paths are compared without case (macOS and Windows file systems take `.AIDW/Run` for `.aidw/run`): the
   frozen package, `.aidw/` for implementers, task worktrees, personal credentials. Allows keep the exact case.
 - A command the gate splits into words to allow it (a granted push, the runner start, a tier 2 command, an aidw
@@ -31,7 +37,8 @@ under `## Permissions`; the user approves that list together with the rest of th
   U+200B, U+FEFF...): the shell does not split where JavaScript would, so such a command asks or gets the full checks.
 - `aidw deploy` runs only the approved preview command; production is never automatic.
 - `aidw backstop` (Stop hook) surfaces file changes that slipped past the gate.
-- Pattern lists live in `src/policy.ts`. They are a first line of defense, not a sandbox: when unsure
+- Pattern lists live in `src/policy.ts`. The Bash patterns are best effort (a shell can always say a write in a way a
+  pattern does not read); the backstop is the Stop hook, `aidw backstop`. They are a first line of defense, not a sandbox: when unsure
   whether an action is tier 2 or 3, treat it as tier 3 and ask.
 
 ## Grants at the Approval Gate (ADR-0012, ADR-0014)

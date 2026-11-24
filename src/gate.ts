@@ -32,7 +32,8 @@ import {
   SHELL_CHAINING,
   TIER2_COMMANDS,
   WRITE_COMMANDS,
-  maskQuotedAngles,
+  maskQuoted,
+  writeTargets,
   RUNNER_COMMAND,
 } from "./policy.js";
 import { installedOutside, runnerCommand } from "./buildroute.js";
@@ -335,11 +336,13 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
       return deny("skipping the git hooks (--no-verify, HUSKY=0) is not allowed: fix what the hook reports");
     }
     // H1: code handed to an interpreter inline is a write the gate cannot see; a Role denied Bash writes may not run it.
-    const code = role === "reviewer" || role === "author" ? firstMatch(INLINE_CODE, cmd) : undefined;
+    // Quoted text (a commit message, a grep pattern) is masked first, so it is never read as a command.
+    const masked = maskQuoted(cmd);
+    const code = role === "reviewer" || role === "author" ? firstMatch(INLINE_CODE, masked) : undefined;
     if (code) return deny(`the ${role} may not write by Bash, and this command ${code.why} that could write; use Read, Grep and the project's own scripts`);
-    if (AIDW_COMMAND.test(cmd) && !SHELL_CHAINING.test(cmd) && !ODD_CHARACTER.test(cmd)) return null;
-    const writes = firstMatch(WRITE_COMMANDS, maskQuotedAngles(cmd));
-    if (role === "implementer" && IMPLEMENTER_PROTECTED.test(cmd) && (writes ?? firstMatch(INLINE_CODE, cmd))) {
+    if (AIDW_COMMAND.test(cmd) && !SHELL_CHAINING.test(masked) && !ODD_CHARACTER.test(masked)) return null;
+    const writes = firstMatch(WRITE_COMMANDS, masked);
+    if (role === "implementer" && writeTargets(cmd).some((t) => IMPLEMENTER_PROTECTED.test(t))) {
       return deny("implementers do not write .aidw/ or a verdict, by Bash either; the orchestrator records progress and evidence");
     }
     if (writes) {

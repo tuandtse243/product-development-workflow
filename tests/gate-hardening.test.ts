@@ -136,6 +136,73 @@ describe("1. interpreter writes", () => {
     }
   });
 
+  it("a reviewer's loader and option flags are not inline code; the inline flag is matched per interpreter", () => {
+    executing();
+    for (const c of [
+      "ruby -Itest test/a_test.rb",
+      "php -dmemory_limit=-1 vendor/bin/phpunit",
+      "perl -MTest::More t/a.t",
+      "perl -Mcore t/a.t",
+      "python3 -X dev -m pytest",
+      "python3 -Xutf8 -m pytest -c pytest.ini",
+      "node -C dev server.js",
+      "node --import tsx --test tests/",
+      "bash -euo pipefail scripts/ci.sh",
+      "sh -e script.sh",
+      "nodemon -e js",
+      "shellcheck -e SC2086 a.sh",
+    ]) {
+      expect([c, bash(c, REVIEWER)]).toEqual([c, "none"]);
+    }
+    for (const c of ["perl -lne 'print' a", "ruby -ne 'puts 1' a", "bash -ec 'x'", "python3 -Bc 'x'", "node --eval=1"]) {
+      expect([c, bash(c, REVIEWER)]).toEqual([c, "deny"]);
+    }
+  });
+
+  it("a script in a task's worktree runs, the worktree's own .aidw/ does not", () => {
+    executing();
+    expect(bash(`node .aidw/run/worktrees/${ID}/T01/scripts/check.mjs`, REVIEWER)).toBe("none");
+    expect(bash(`node .aidw/run/worktrees/${ID}/T01/.aidw/run/x.js`, REVIEWER)).toBe("deny");
+  });
+
+  it("finds the command behind assignments, wrappers, braces, keywords and quotes", () => {
+    executing();
+    for (const c of [
+      'FOO=1 node -e "1"',
+      'FOO="a b" node -e "1"',
+      'time node -e "1"',
+      'command node -e "1"',
+      'timeout 5 node -e "1"',
+      'nice -n 10 python3 -c "1"',
+      'env -i node -e "1"',
+      '{ node -e "1"; }',
+      'if true; then node -e "1"; fi',
+      'for f in a; do bash -c "x"; done',
+      '"node" -e "1"',
+      "'/usr/bin/python3' '-c' 'x'",
+      'echo "$(node -e 1)"',
+    ]) {
+      expect([c, bash(c, REVIEWER)]).toEqual([c, "deny"]);
+    }
+  });
+
+  it("quoted text is not a command", () => {
+    executing();
+    for (const c of ['grep -rnE "(bash|sh) -c" src', "git log --grep 'then node -e'", 'echo "a; node -e 1"', 'rg "| node" src']) {
+      expect([c, bash(c, REVIEWER)]).toEqual([c, "none"]);
+    }
+  });
+
+  it("an implementer copies out of .aidw/ and writes project files named like a review", () => {
+    executing();
+    for (const c of ["cp -r .aidw/design/mock/riso/fonts public/fonts", "cat .aidw/run/brief-T01.md && mkdir -p src/x", "echo x > docs/review-process.md", "sed -n 1p .aidw/run/brief-T01.md > notes.txt", "cp a .aidw/run/worktrees/app/T01/src/a.ts"]) {
+      expect([c, bash(c, IMPLEMENTER)]).toEqual([c, "none"]);
+    }
+    for (const c of ["cp a.md .aidw/run/review-T01.md", "mv a .aidw", "rm -rf .aidw/run", "tee .aidw/run/x < a", "cp -t .aidw/run a", "echo x 2> .aidw/run/x", "echo x &> .aidw/run/x", "find .aidw -delete", "dd if=a of=.aidw/run/x"]) {
+      expect([c, bash(c, IMPLEMENTER)]).toEqual([c, "deny"]);
+    }
+  });
+
   it("the lead is unchanged: inline interpreters are its own call", () => {
     analyzed();
     expect(bash("node -e 'x => 1'")).toBe("none");
