@@ -42,8 +42,11 @@ import type { Task } from "./tasks.js";
 
 const list = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : []);
 const now = () => new Date().toISOString();
-/** Conflict markers, the diff3 base marker included. */
-const MARKER = /^(?:<{7}|>{7}|\|{7})(?: |$)|^={7}$/m;
+/**
+ * Conflict markers, the diff3 base marker included. A bare `=======` is a Markdown or RST heading underline unless it
+ * stands between a `<<<<<<<` and a `>>>>>>>` line, and then the opening line is found anyway: it is not a marker alone.
+ */
+const MARKER = /^(?:<{7}|>{7}|\|{7})(?: |$)/m;
 const TOOLING_TYPES = new Set(["build", "ci", "chore"]);
 const ENV_FILE = /(^|\/)\.env(?:\.(?!example$)[\w.-]+)?$/;
 
@@ -108,6 +111,8 @@ export function buildConflictBrief(p: Paths, id: string, taskId: string): { path
   const changeBranch = git(p.project, ["branch", "--show-current"]).out || "HEAD";
   let onto = typeof o.c.onto === "string" ? o.c.onto : null;
   if (!onto) {
+    // The task's own tip, before the merge: the side the resolution is judged against (HEAD until the merge is committed).
+    const tip = git(o.dir, ["rev-parse", "HEAD"]).out;
     if (mergeInProgress(o.dir)) {
       // a restart between starting the merge and recording it: the merge in progress is the one to resolve
       onto = git(o.dir, ["rev-parse", "MERGE_HEAD"]).out;
@@ -129,7 +134,7 @@ export function buildConflictBrief(p: Paths, id: string, taskId: string): { path
     // A binary file shows no markers: left as it is, one side would silently win.
     const from = onto;
     const binary = conflictFiles.filter((f) => /^-\t-\t/.test(git(o.dir, ["diff", "--numstat", from, "HEAD", "--", f]).out));
-    setField(o.tf, o.i, "conflict", { ...o.c, with: partners, files: conflictFiles, onto, branch: changeBranch });
+    setField(o.tf, o.i, "conflict", { ...o.c, with: partners, files: conflictFiles, onto, tip, branch: changeBranch });
     saveTasksDoc(o.tf);
     updateConflict(o.tf.change, taskId, { with: partners, files: conflictFiles });
     if (binary.length) {
@@ -258,6 +263,11 @@ export function resolveConflict(p: Paths, id: string, taskId: string, opts: { ru
     if (!commit.ok) return fail(`the merge commit failed: ${(commit.err || commit.out).split("\n")[0]}`);
   } else if (!git(dir, ["merge-base", "--is-ancestor", onto, "HEAD"]).ok) {
     return fail("the merge of the Change Branch is no longer in the worktree (was it aborted?)");
+  } else {
+    // The merge was committed earlier (by the Agent, or by a resolve the machine blocked): what is judged is that commit,
+    // so the worktree must hold nothing else.
+    const dirty = git(dir, ["status", "--porcelain", "--", ".", ":(exclude).aidw"]).out;
+    if (dirty) return fail(`the worktree has changes that are not in the merge commit: ${dirty.split("\n").map((l) => l.slice(3)).join(", ")}`);
   }
   const resolution = headCommit(dir);
   if (!resolution) return fail("the worktree has no commit");
@@ -265,7 +275,7 @@ export function resolveConflict(p: Paths, id: string, taskId: string, opts: { ru
   // The resolution is judged against each side it joins, the way a checkpoint judges a task against its base: the
   // task's own side (first parent) and the Change Branch it was merged with. The Agent may have committed it itself,
   // so everything here reads the committed diff, not what was staged.
-  const taskSide = git(dir, ["rev-parse", `${resolution}^1`]).out || onto;
+  const taskSide = typeof c.tip === "string" && c.tip ? c.tip : git(dir, ["rev-parse", `${resolution}^1`]).out || onto;
   const sides = [...new Set([taskSide, onto])];
   const changedBy = new Map(sides.map((side) => [side, git(dir, ["diff", "--name-only", side, resolution]).out.split("\n").filter(Boolean)]));
   const touched = [...new Set([...changedBy.values()].flat())];
@@ -279,11 +289,22 @@ export function resolveConflict(p: Paths, id: string, taskId: string, opts: { ru
   const junk = touched.filter((f) => isGeneratedPath(f) || ENV_FILE.test(f));
   if (junk.length) return fail(junkMessage(junk));
 
-  const tooling = [t, ...partners].some((x) => typeof x.type === "string" && TOOLING_TYPES.has(x.type));
+  // A locked check-configuration file may differ only where a tooling task (build, ci, chore) changed it itself, or where
+  // it is one of the conflicting files; anything else the resolution did to it is refused like in a checkpoint.
+  const isTooling = (x: Task) => typeof x.type === "string" && TOOLING_TYPES.has(x.type);
+  const ownChanges = isTooling(t) && typeof t.base === "string" ? git(dir, ["diff", "--name-only", t.base, taskSide]).out.split("\n") : [];
+  const toolingPartners = new Set(partners.filter(isTooling).map((x) => x.id));
+  const exempt = (f: string): boolean => {
+    if (files.includes(f) || ownChanges.includes(f)) return true;
+    if (!toolingPartners.size) return false;
+    const log = git(dir, ["log", "--format=%B", `${taskSide}..${onto}`, "--", f]).out;
+    return [...log.matchAll(/^Task: (\S+)$/gm)].some((m) => toolingPartners.has(m[1] as string));
+  };
   const guards: GuardCheck[] = sides.map((side) => {
     const changed = changedBy.get(side) ?? [];
     const tamper = tamperEvidence(dir, side, changed, { isTest: (f) => TEST_FILE.test(f), removesTests: false });
-    const config = configEvidence(dir, side, changed, tooling ? "build" : t.type);
+    const raw = configEvidence(dir, side, changed, "feat");
+    const config = raw ? { locked: raw.locked.filter((f) => !exempt(f)), watched: [...raw.watched, ...raw.locked.filter(exempt)] } : null;
     const secrets = secretsInChanges(dir, side, changed) ?? [];
     const packages = packageEvidence(dir, side, changed);
     const problems = [
@@ -326,7 +347,8 @@ export function resolveConflict(p: Paths, id: string, taskId: string, opts: { ru
       : `${bad.task}: no test names scenario ${bad.missing_scenarios.join(", ")} on the resolved code`;
     return fail(why, result);
   }
-  setField(tf, o.i, "conflict", { ...c, phase: "review", resolution });
+  const configFiles = [...new Set(guards.flatMap((x) => [...((x.config as { locked: string[] } | undefined)?.locked ?? []), ...((x.config as { watched: string[] } | undefined)?.watched ?? [])]))];
+  setField(tf, o.i, "conflict", { ...c, phase: "review", resolution, ...(configFiles.length ? { config: configFiles } : {}) });
   setField(tf, o.i, "notes", `merge conflict resolved by integration (${resolution?.slice(0, 8)}); both tasks' checks pass; the merge waits for its review`);
   saveTasksDoc(tf);
   return { ...record({ ...result, ok: true }) };
@@ -359,6 +381,9 @@ export function buildMergeReviewBrief(p: Paths, id: string, taskId: string): { p
     `- \`git show --cc ${resolution}\`: the hunks where the resolution differs from both sides.`,
     `- \`git diff ${onto.slice(0, 12)} ${resolution} -- ${files.join(" ")}\`: the conflicting files against the change branch.`,
     `- Conflicting files: ${files.map((f) => `\`${f}\``).join(", ")}.`,
+    ...(list(c.config).length
+      ? [`- Configuration of the checks this merge changes against one side: ${list(c.config).map((f) => `\`${f}\``).join(", ")}. Read the diff of each: a lowered threshold, a removed rule or a narrower include that neither task made is a \`fix\`.`]
+      : []),
     `- Checks of both tasks on the resolved code: \`${rel(p, join(tf.change.dir, "evidence", `merge-${taskId}.json`))}\`; ${taskId}'s own evidence: \`${rel(p, join(tf.change.dir, evidenceRel(taskId)))}\`.`,
     "",
     "## Checklist",

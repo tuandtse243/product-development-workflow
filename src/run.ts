@@ -662,6 +662,16 @@ export function recordReview(
       dropToSequential(p, tf, i, why);
       return { task: taskId, verdict, status: "pending", commit: null, conflict: why };
     }
+    // What was checked and reviewed is the merge commit: the worktree must still be exactly that, or nothing is merged.
+    const wtDir = taskDir(p, t);
+    const head = git(wtDir, ["rev-parse", "HEAD"]).out;
+    const dirty = git(wtDir, ["status", "--porcelain", "--", ".", ":(exclude).aidw"]).out;
+    const resolution = String((t.conflict as Record<string, unknown>).resolution ?? "");
+    if (head !== resolution || dirty) {
+      const why = head !== resolution ? "the worktree moved past the reviewed merge commit" : `the worktree has changes after the reviewed merge commit (${dirty.split("\n").map((l) => l.slice(3)).join(", ")})`;
+      dropToSequential(p, tf, i, why);
+      return { task: taskId, verdict, status: "pending", commit: null, conflict: why };
+    }
     setField(tf, i, "conflict", { ...(t.conflict as Record<string, unknown>), phase: "merged" });
   }
 

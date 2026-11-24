@@ -14338,6 +14338,15 @@ function recordReview(p, id, taskId, verdict, notes, opts = {}) {
       dropToSequential(p, tf, i, why);
       return { task: taskId, verdict, status: "pending", commit: null, conflict: why };
     }
+    const wtDir = taskDir(p, t);
+    const head = git(wtDir, ["rev-parse", "HEAD"]).out;
+    const dirty = git(wtDir, ["status", "--porcelain", "--", ".", ":(exclude).aidw"]).out;
+    const resolution = String(t.conflict.resolution ?? "");
+    if (head !== resolution || dirty) {
+      const why = head !== resolution ? "the worktree moved past the reviewed merge commit" : `the worktree has changes after the reviewed merge commit (${dirty.split("\n").map((l) => l.slice(3)).join(", ")})`;
+      dropToSequential(p, tf, i, why);
+      return { task: taskId, verdict, status: "pending", commit: null, conflict: why };
+    }
     setField(tf, i, "conflict", { ...t.conflict, phase: "merged" });
   }
   if (verdict === "fix") {
@@ -16174,7 +16183,7 @@ var import_node_fs39 = require("node:fs");
 var import_node_path44 = require("node:path");
 var list6 = (v) => Array.isArray(v) ? v.map(String) : [];
 var now6 = () => (/* @__PURE__ */ new Date()).toISOString();
-var MARKER = /^(?:<{7}|>{7}|\|{7})(?: |$)|^={7}$/m;
+var MARKER = /^(?:<{7}|>{7}|\|{7})(?: |$)/m;
 var TOOLING_TYPES2 = /* @__PURE__ */ new Set(["build", "ci", "chore"]);
 var ENV_FILE2 = /(^|\/)\.env(?:\.(?!example$)[\w.-]+)?$/;
 function openConflict(p, id, taskId, phase) {
@@ -16219,6 +16228,7 @@ function buildConflictBrief(p, id, taskId) {
   const changeBranch = git(p.project, ["branch", "--show-current"]).out || "HEAD";
   let onto = typeof o.c.onto === "string" ? o.c.onto : null;
   if (!onto) {
+    const tip = git(o.dir, ["rev-parse", "HEAD"]).out;
     if (mergeInProgress(o.dir)) {
       onto = git(o.dir, ["rev-parse", "MERGE_HEAD"]).out;
     } else {
@@ -16236,7 +16246,7 @@ function buildConflictBrief(p, id, taskId) {
     const partners2 = conflictPartners(p, taskId, typeof o.t.base === "string" ? o.t.base : null, conflictFiles);
     const from = onto;
     const binary = conflictFiles.filter((f) => /^-\t-\t/.test(git(o.dir, ["diff", "--numstat", from, "HEAD", "--", f]).out));
-    setField(o.tf, o.i, "conflict", { ...o.c, with: partners2, files: conflictFiles, onto, branch: changeBranch });
+    setField(o.tf, o.i, "conflict", { ...o.c, with: partners2, files: conflictFiles, onto, tip, branch: changeBranch });
     saveTasksDoc(o.tf);
     updateConflict(o.tf.change, taskId, { with: partners2, files: conflictFiles });
     if (binary.length) {
@@ -16322,10 +16332,13 @@ function resolveConflict(p, id, taskId, opts = {}) {
     if (!commit.ok) return fail(`the merge commit failed: ${(commit.err || commit.out).split("\n")[0]}`);
   } else if (!git(dir, ["merge-base", "--is-ancestor", onto, "HEAD"]).ok) {
     return fail("the merge of the Change Branch is no longer in the worktree (was it aborted?)");
+  } else {
+    const dirty = git(dir, ["status", "--porcelain", "--", ".", ":(exclude).aidw"]).out;
+    if (dirty) return fail(`the worktree has changes that are not in the merge commit: ${dirty.split("\n").map((l) => l.slice(3)).join(", ")}`);
   }
   const resolution = headCommit(dir);
   if (!resolution) return fail("the worktree has no commit");
-  const taskSide = git(dir, ["rev-parse", `${resolution}^1`]).out || onto;
+  const taskSide = typeof c.tip === "string" && c.tip ? c.tip : git(dir, ["rev-parse", `${resolution}^1`]).out || onto;
   const sides = [.../* @__PURE__ */ new Set([taskSide, onto])];
   const changedBy = new Map(sides.map((side) => [side, git(dir, ["diff", "--name-only", side, resolution]).out.split("\n").filter(Boolean)]));
   const touched = [...new Set([...changedBy.values()].flat())];
@@ -16338,11 +16351,20 @@ function resolveConflict(p, id, taskId, opts = {}) {
   if (marked.length) return fail(`conflict markers are left in ${marked.join(", ")}`);
   const junk = touched.filter((f) => isGeneratedPath(f) || ENV_FILE2.test(f));
   if (junk.length) return fail(junkMessage(junk));
-  const tooling = [t, ...partners].some((x) => typeof x.type === "string" && TOOLING_TYPES2.has(x.type));
+  const isTooling = (x) => typeof x.type === "string" && TOOLING_TYPES2.has(x.type);
+  const ownChanges = isTooling(t) && typeof t.base === "string" ? git(dir, ["diff", "--name-only", t.base, taskSide]).out.split("\n") : [];
+  const toolingPartners = new Set(partners.filter(isTooling).map((x) => x.id));
+  const exempt = (f) => {
+    if (files.includes(f) || ownChanges.includes(f)) return true;
+    if (!toolingPartners.size) return false;
+    const log = git(dir, ["log", "--format=%B", `${taskSide}..${onto}`, "--", f]).out;
+    return [...log.matchAll(/^Task: (\S+)$/gm)].some((m) => toolingPartners.has(m[1]));
+  };
   const guards = sides.map((side) => {
     const changed = changedBy.get(side) ?? [];
     const tamper = tamperEvidence(dir, side, changed, { isTest: (f) => TEST_FILE.test(f), removesTests: false });
-    const config = configEvidence(dir, side, changed, tooling ? "build" : t.type);
+    const raw = configEvidence(dir, side, changed, "feat");
+    const config = raw ? { locked: raw.locked.filter((f) => !exempt(f)), watched: [...raw.watched, ...raw.locked.filter(exempt)] } : null;
     const secrets = secretsInChanges(dir, side, changed) ?? [];
     const packages = packageEvidence(dir, side, changed);
     const problems = [
@@ -16381,7 +16403,8 @@ function resolveConflict(p, id, taskId, opts = {}) {
     const why = failed ? `${bad.task}: \`${failed.command}\`${failed.timedOut ? " timed out" : ` exited ${failed.exit}`} on the resolved code` : `${bad.task}: no test names scenario ${bad.missing_scenarios.join(", ")} on the resolved code`;
     return fail(why, result);
   }
-  setField(tf, o.i, "conflict", { ...c, phase: "review", resolution });
+  const configFiles = [...new Set(guards.flatMap((x) => [...x.config?.locked ?? [], ...x.config?.watched ?? []]))];
+  setField(tf, o.i, "conflict", { ...c, phase: "review", resolution, ...configFiles.length ? { config: configFiles } : {} });
   setField(tf, o.i, "notes", `merge conflict resolved by integration (${resolution?.slice(0, 8)}); both tasks' checks pass; the merge waits for its review`);
   saveTasksDoc(tf);
   return { ...record({ ...result, ok: true }) };
@@ -16412,6 +16435,7 @@ function buildMergeReviewBrief(p, id, taskId) {
     `- \`git show --cc ${resolution}\`: the hunks where the resolution differs from both sides.`,
     `- \`git diff ${onto.slice(0, 12)} ${resolution} -- ${files.join(" ")}\`: the conflicting files against the change branch.`,
     `- Conflicting files: ${files.map((f) => `\`${f}\``).join(", ")}.`,
+    ...list6(c.config).length ? [`- Configuration of the checks this merge changes against one side: ${list6(c.config).map((f) => `\`${f}\``).join(", ")}. Read the diff of each: a lowered threshold, a removed rule or a narrower include that neither task made is a \`fix\`.`] : [],
     `- Checks of both tasks on the resolved code: \`${rel(p, (0, import_node_path44.join)(tf.change.dir, "evidence", `merge-${taskId}.json`))}\`; ${taskId}'s own evidence: \`${rel(p, (0, import_node_path44.join)(tf.change.dir, evidenceRel(taskId)))}\`.`,
     "",
     "## Checklist",
