@@ -67,7 +67,8 @@ Boundaries decided in the interview:
 - **`qa`**, once active, writes the test plan and test cases from spec scenarios before implementation, and
   closes coverage gaps after it. The CLI remains the party that runs tests and decides pass or fail.
 - **Reviewers** (`code-reviewer`, `security`, the review side of `ui-ux-designer`) read and give a verdict.
-  They never change code.
+  They never change code. `code-reviewer` reviews two things: each finished task, and, before the Approval Gate,
+  the architecture and plan of the Change (its `plan-review` skill; section 7).
 
 ## 3. A Role
 
@@ -243,6 +244,28 @@ back on its own (`aidw stages --done <stage>`, `aidw layer-review <layer>`); a s
 one-step flow. A `fix` verdict of one reviewer sends the Change back to `executing`; the other verdicts of the same
 group are still recorded while their layer awaits review on unchanged code.
 
+**Review before the gate (D4, [ADR-0011](adr/0011-approval-gate-stays-after-the-plan.md)).** The last analysis stage of
+every building Workflow is `plan-review`, after `quality-profile` and before `approval`. Once `aidw analyze` is clean,
+`aidw plan-review <id> --brief` writes the brief (it refuses while the CLI's own checks fail) and the Orchestrator spawns
+one read-only `code-reviewer` Agent, a Role that wrote none of the package. It grades the architecture, the plan and the
+test plan against a fixed list: (1) every approved scenario has a task that really delivers it, (2) no task outside the
+approved scope, (3) the constitution is followed, (4) no needless complexity. It writes `.aidw/run/review-plan-<id>.md`
+(Artifact `plan-review`): `VERDICT: pass | fix` and numbered findings `[item N] <task id | scenario id | area>: problem ->
+fix`. `aidw plan-review <id>` checks the shape (a known item, a task, requirement, scenario or area of this Change) and
+records the verdict as a round in `changes/<id>/plan-review.yaml`, outside the approved package, with a digest of the file;
+a verdict in the wrong shape is refused and not counted.
+
+| Round | Verdict | What follows |
+|---|---|---|
+| 1 or 2 | `pass` | the stage is done |
+| 1 or 2 | `fix` | the authoring Roles fix the findings (the CLI names one per finding), `aidw analyze` again, then a new brief listing the open findings and a new review |
+| 3 | `fix` | the 2 fix rounds are used up: the stage is done and the findings are carried |
+
+`aidw transition <id> awaiting_approval` is refused until the review is recorded: no verdict, a fix round still open, a
+verdict file changed or missing after it was recorded. The gate Decision Page then opens with the carried findings
+("Open findings of the independent review", added by the CLI before the authored sections), so the user approves with
+them or asks for a change. The stage is never reported with `aidw stages --done`: recording a final verdict reports it.
+
 **Triage.** When a task runs out of attempts, a fresh `software-architect` Agent classifies the cause from the
 evidence. It writes only its answer (`.aidw/run/triage-<task>.md`): the gate keeps the approved package and the
 project files closed to it. One triage per task; `implementation` grants one further attempt, then the task escalates:
@@ -270,6 +293,7 @@ The Orchestrator proposes the Workflow, the user confirms, and a flag can name i
 | 5 Architecture | `software-architect`, `database-architect`, `api-designer` | architecture, data model, API contract, ADRs | artifacts valid |
 | 6 Test plan | `qa` | test plan, test cases | every scenario has a test case |
 | 7 Plan | `technical-planner` | task graph: Role, Slice, dependencies | Decision: shape of each Slice; CLI `analyze` |
+| 7b Plan review | `code-reviewer` | verdict on architecture and plan against a fixed list | at most 2 fix rounds; open findings head the gate page |
 | | | | **Approval Gate: design, architecture and plan** (the only one, ADR-0011) |
 | 8 Build | implementation Roles | code and tests per task | CLI checkpoint, `code-reviewer` verdict; Decision: triage |
 | 9 Verify | `qa`, `security`, `performance`, `ui-ux-designer` | quality report, fix tasks | every layer passes |
@@ -281,8 +305,8 @@ The Orchestrator proposes the Workflow, the user confirms, and a flag can name i
 ### Workflow files today
 
 `workflows/product.yaml` (greenfield) and `workflows/feature.yaml` (brownfield) describe the flow aidw runs now, not
-the 12 stages above: `product` has 16 stages and `feature` 17 (it adds the assessment), each tied to Change states,
-with one approval gate and no new stage. The scope of `product` is a round of its discovery stage (`scope_round: true`):
+the 12 stages above: `product` has 17 stages and `feature` 18 (it adds the assessment), each tied to Change states,
+with one approval gate; the only stage added since is the `plan-review` before it (section 7). The scope of `product` is a round of its discovery stage (`scope_round: true`):
 the user answers the `scope` Decision Page, the answer is recorded under `### Scope round` in the discovery appendix of
 `analysis.md`, and `aidw analyze` refuses the package without it. A Change created under that Workflow (named or by
 default) records `scope_round: true`, so the check follows the Change, not today's Workflow file. Nothing is approved
@@ -299,8 +323,8 @@ does, then requirements. One Approval Gate before build (design, architecture an
 
 ### bugfix
 
-Reproduce with a failing regression test, diagnose, fix, review, verify, converge, handover. **No Approval
-Gate.** The boundary that keeps larger work out (Q40): after diagnosis the CLI checks the planned fix, and if
+Reproduce with a failing regression test, diagnose, plan, plan review (section 7), fix, review, verify, converge,
+handover. **No Approval Gate.** The boundary that keeps larger work out (Q40): after diagnosis the CLI checks the planned fix, and if
 it changes behavior written in a spec, needs a migration, or needs more than 3 tasks, the Change is
 reclassified to `feature` and stops at that Workflow's gate. A production deploy still asks.
 The main session writes the diagnosis itself (no product-manager or architect Agent); only the planner is spawned. The red-first
