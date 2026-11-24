@@ -721,6 +721,13 @@ In the user's project, `.aidw/` keeps its current shape and gains `roles/<id>/` 
   includes (`library/implement-a-task.md`, so the protocol for asking does not decide a case), and a case that passes is
   printed as PASSES BARE (exit 1). Both print every criterion's verdict, so a run is read per criterion, and never write
   the result file.
+- **What C3 showed on the deep tier (owner decision 2026-11-24).** The first backend run (one run each, the claude
+  CLI's default model) passed 4 of its 10 cases bare, with only `library/implement-a-task.md`, and the other 6 failed
+  only on details (one missing test, one field of a log line), mostly the same ones with and without their covers; a
+  rule and the skill that serves it are also restated in role.md, which `--without` never removes. On the deep tier the
+  bare and `--without` runs are therefore a diagnostic, not a gate. "Fails without what it covers" is required on the
+  tier a Role would be lowered to (before `tiers.yaml` maps it to a cheaper model) and at level 2 (C4, task T18), where
+  a real task with tools gives the Role's knowledge room to matter.
 - **Coverage (level 0, no tokens; plan C1).** For a Role whose `rules.md` is a table, `aidw roster` fails when a rule
   id or a skill of the Role has no case covering it. A `covers:` entry that names neither a rule id nor a skill of
   the Role fails for every Role. Roles still in prose are not held to coverage.
