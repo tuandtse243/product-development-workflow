@@ -288,6 +288,14 @@ describe("briefs", () => {
     let out = "";
     run(["brief", "T01", "--root", root], { AIDW_PLUGIN_ROOT: pluginCopy }, root, { out: (s) => (out += s), err: () => {} });
     expect(readFileSync(out.trim(), "utf8")).not.toMatch(/Rules of the Role that built it/);
+    // ...but the implement brief of a Role that follows another's rules points at those: they are not in its profile
+    let fsImpl = "";
+    run(["brief", "T01", "--root", fsRoot], { AIDW_PLUGIN_ROOT: pluginCopy }, fsRoot, { out: (s) => (fsImpl += s), err: () => {} });
+    const fsBrief = readFileSync(fsImpl.trim(), "utf8");
+    expect(fsBrief).toContain("## Rules of the Roles yours follows");
+    expect(fsBrief).toContain(`\`${rules}\`: rules of backend, one per row with an id.`);
+    expect(fsBrief).not.toContain(`\`${join(pluginCopy, "roles", "fullstack", "rules.md")}\``); // its own are in its profile
+    expect(readFileSync(out.trim(), "utf8")).not.toMatch(/Rules of the Roles yours follows/); // backend follows no one
     // a rules.md in prose is pointed at, without asking for ids
     writeFileSync(rules, "- Never return an entity.\n");
     const prose = brief({ AIDW_PLUGIN_ROOT: pluginCopy });

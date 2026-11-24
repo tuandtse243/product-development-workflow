@@ -179,7 +179,34 @@ Shared skills (test-first, debugging, git workflow, the vendored Pocock and Addy
 tooling questions (install, format, lint, test). A framework pack answers how to build with that framework
 (structure, conventions, common mistakes). Roles stay stack-neutral: `frontend` on a Next.js project loads
 `node` plus `nextjs`; `backend` on a NestJS project loads `node` plus `nestjs`. Next.js and NestJS are the
-first framework packs.
+first framework packs. Express, Fastify and Hono are HTTP libraries that `aidw detect` reports as the `server`, not
+the `framework`: their packs say `detected_as: server` and load only when no framework pack matches, so a NestJS
+project that also lists `express` gets `nestjs` alone. Selection has limits: a Next.js app with a separate Express
+server in the same `package.json` gets `nextjs` only, and `aidw detect` keeps only the first server dependency it finds.
+
+**What a backend task receives (audit, 2026-11-24, plan T17).** Read from a real implement brief (`aidw brief`) for a
+task with `role: backend`, Touches `src/bookings/**`, an API contract, a data model and Express in `package.json`, and
+from the generated `agents/backend.md`:
+
+| Piece | Where it reaches the Agent |
+|---|---|
+| Responsibility, procedure, Done when, ask rule, rules for every implementing Role | agent file (`role.md` body + `library/implement-a-task.md`) |
+| The Role's own `rules.md` | agent file (`## Rules`, generated); the review brief points at the same file |
+| Rules of a Role it follows (`follows_rules`, fullstack follows backend) | review brief; **was missing** from the implement brief |
+| The Role's skill index, incl. `library/external-api`, `library/resilient-integration` | agent file, one `aidw plugin-path` command each; the Agent decides (R3) |
+| `references/`, `lessons.md` | named in `role.md`, read on demand |
+| Scenarios, requirement text, Decisions to honor, Touches, Verify, envelope, finished dependencies | brief |
+| Constitution, domain model, architecture, data model, API contract and OpenAPI, test plan, ADRs | brief, "Read first", each only when the file exists |
+| Consultation rule (who may be asked: the authors of this task's contracts that the Role `consults`) | brief |
+| Skills picked by signal (`incremental-implementation`, `test-driven-development`, `verification-before-completion`, `api-and-interface-design`, `aidw/api-design-rules`; `aidw/schema-evolution` when Touches hit the data layer) | brief |
+| Framework pack of the project (`stacks/express.md`...) | brief, implement only; **was missing** from the review brief |
+| Language pack (`stacks/node.md`, `stacks/python.md`) | **was missing**: the agent file says `stacks/<language>.md` and left the Agent to guess the language |
+
+Fixed in `src/run.ts`: both briefs point at the language pack `aidw detect` reports and at the framework pack of the
+building Role (the reviewer judges by the conventions the implementer followed), and the implement brief lists the
+`rules.md` of the Roles the building Role follows (its own stays in the agent file only, as T12 decided). Not
+changed, by design: the library skills are not picked by signal (the Agent loads them from its index, and level 2
+cases check that from the tool log, C4); `references/` and `lessons.md` are not pointed at from the brief.
 
 ## 5. Rules
 

@@ -157,7 +157,7 @@ Each line gives the exact command that prints the skill's path; run it as writte
 
 - `contract-tests`: when the client and the server meet over an HTTP or RPC contract, to prove they agree
   `aidw plugin-path roles/integration/skills/contract-tests.md`
-- `external-api`: when the task calls a third-party service (payment, email, maps, an identity provider)
-  `aidw plugin-path roles/integration/skills/external-api.md`
-- `resilient-integration`: when the task receives a webhook, or makes a write across a boundary that may be retried or may time out
-  `aidw plugin-path roles/integration/skills/resilient-integration.md`
+- `library/external-api`: when the task calls a third-party service (payment, email, maps, an identity provider)
+  `aidw plugin-path library/skills/external-api/SKILL.md`
+- `library/resilient-integration`: when the task receives a webhook, or makes a write across a boundary that may be retried or may time out
+  `aidw plugin-path library/skills/resilient-integration/SKILL.md`
