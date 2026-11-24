@@ -226,6 +226,9 @@ Fastify, Hono.
   `vendored-skill-notes.md` entry; it loads for backend only on a narrow signal (a credential field added to a class
   or config, or a logger/span/error-context call taking whole objects), only the project's language reference; the
   security Role loads it in Phase 4; S5 names it as a source.
+- T16 runs: decided 2026-11-24: C3 is shown per case (`aidw eval --without <all of the case's covers>`, 1 run) plus a
+  bare baseline (`--bare`, 1 run); per-item ablation is a diagnostic only. Budget for this round: 100 model calls
+  (level 1 60, per-case 20, bare 20); more needs the owner's word.
 - T8: how the asking Agent is resumed in runner mode. Decided 2026-11-24: the asker writes its question and a
   progress note into the request file; the CLI always writes a resume brief (original brief + note + answer
   path), so a fresh Agent of the same Role is the guaranteed path; continuing the live Agent with SendMessage is
