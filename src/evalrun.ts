@@ -1,9 +1,9 @@
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
-import { loadEvalCases, type EvalCase } from "./evals.js";
-import { loadRoster } from "./roles.js";
+import { loadEvalCases, resultsFile, roleDigest, type EvalCase, type RunRecord } from "./evals.js";
+import { loadRole, loadRoster, loadRuleTable, loadTiers, renderAgent, skillFile, type RoleProfile } from "./roles.js";
 
 /**
  * Runner for the Role cases. For each case of a Role: the Role's own instructions (its generated agent file) are given to a
@@ -50,18 +50,40 @@ export const claudeExec =
  * the text of its skills. A real Agent reads a skill from the index when it needs it; here there are no tools, so every skill
  * is inlined, or a case could only fail on knowledge the Role has but cannot reach.
  */
-export function roleSystem(root: string, id: string): string {
-  const file = [join(root, "agents", `${id}.md`), join(root, "roles", id, "role.md")].find(existsSync);
-  if (!file) throw new Error(`Role "${id}" has no agent file or role.md`);
-  const body = readFileSync(file, "utf8").replace(/^---\n[\s\S]*?\n---\n/, "").trim();
+export function roleSystem(root: string, id: string, without?: string): string {
+  const role = loadRole(root, id);
+  const strip = (body: string) => body.replace(/^---\n[\s\S]*?\n---\n/, "").trim();
+  let body: string;
+  let index: string[] = [];
+  if (role) {
+    const r: RoleProfile = without ? withoutItem(role, without) : role;
+    body = strip(renderAgent(r, loadTiers(root)));
+    index = r.skills.map((x) => x.name);
+  } else {
+    const file = [join(root, "agents", `${id}.md`), join(root, "roles", id, "role.md")].find(existsSync);
+    if (!file) throw new Error(`Role "${id}" has no agent file or role.md`);
+    body = strip(readFileSync(file, "utf8"));
+  }
+  // The skills of the index (own and library), then any other file in the Role's skills/ folder.
   const dir = join(root, "roles", id, "skills");
-  const skills = existsSync(dir)
-    ? readdirSync(dir)
-        .filter((n) => n.endsWith(".md"))
-        .sort()
-        .map((n) => `### Skill: ${n.slice(0, -3)}\n\n${readFileSync(join(dir, n), "utf8").replace(/^---\n[\s\S]*?\n---\n/, "").trim()}`)
-    : [];
+  const own = existsSync(dir) ? readdirSync(dir).filter((n) => n.endsWith(".md")).map((n) => n.slice(0, -3)) : [];
+  const names = [...index, ...own.filter((n) => !index.includes(n) && n !== without).sort()];
+  const skills = names
+    .map((n) => ({ n, file: join(root, skillFile(id, n)) }))
+    .filter((x) => existsSync(x.file))
+    .map((x) => `### Skill: ${x.n}\n\n${strip(readFileSync(x.file, "utf8"))}`);
   return skills.length ? `${body}\n\n## Your skills, in full\n\nThe index above points at these files; here is their text.\n\n${skills.join("\n\n")}` : body;
+}
+
+/**
+ * The Role with one rule row or one skill taken out (plan C3): a case must fail without what it covers. Throws when the
+ * Role has no such rule id or skill.
+ */
+export function withoutItem(role: RoleProfile, item: string): RoleProfile {
+  if (role.skills.some((x) => x.name === item)) return { ...role, skills: role.skills.filter((x) => x.name !== item) };
+  const row = new RegExp(`^\\s*\\|\\s*${item.replace(/[^A-Za-z0-9]/g, "")}\\s*\\|.*\\n?`, "m");
+  if (/^[A-Z]+[1-9][0-9]*$/.test(item) && row.test(role.rules)) return { ...role, rules: role.rules.replace(row, "") };
+  throw new Error(`--without: "${item}" is not a rule id or a skill of ${role.id}`);
 }
 
 export function buildGradePrompt(c: EvalCase, answer: string): string {
@@ -122,38 +144,43 @@ export function answerPrompt(c: EvalCase): string {
     "the command, and put the full content of each file you write inline: the test code, the changes, the configuration or the",
     "review verdict, exactly as you would hand them over. Nothing can be run here, so for a command say what you expect it to print.",
     "## Reply: the exact message you send back when you are done, in the format your role asks for.",
-    "The brief above is complete and nothing is blocked: do not stop to ask a question or to report a missing input.",
+    // A case that expects a question (`expect: ask`) tests whether the Role asks: telling it not to would decide the case.
+    ...(c.expect === "ask" ? [] : ["The brief above is complete and nothing is blocked: do not stop to ask a question or to report a missing input."]),
     "Do not summarize and do not leave parts out.",
   ].join("\n");
 }
 
 /** Shorter than this is no deliverable: a refusal, a question, or a note that a filter cut the reply. */
 const MIN_ANSWER = 300;
+/** A reply that refuses the work: for a case that expects a question, this (or nothing) is no answer. */
+const REFUSAL = /^(I can['’]?t|I cannot|I won['’]?t|I'm (not able|unable)|I am (not able|unable)|Sorry, I)\b/i;
 
-export function runCase(root: string, id: string, c: EvalCase, exec: Exec): CaseResult {
-  const system = roleSystem(root, id);
+export function runCase(root: string, id: string, c: EvalCase, exec: Exec, without?: string): CaseResult {
+  const system = roleSystem(root, id, without);
+  // A case that expects a question is graded whatever its length (a short question is the right answer there), but an
+  // empty reply or a refusal is still no answer.
+  const short = (a: string) => (c.expect === "ask" ? !a.trim() || REFUSAL.test(a.trim()) : a.trim().length < MIN_ANSWER);
   let answer = exec(answerPrompt(c), system);
-  if (answer.trim().length < MIN_ANSWER) answer = exec(answerPrompt(c), system); // a filtered reply is often a one-off
+  if (short(answer)) answer = exec(answerPrompt(c), system); // a filtered reply is often a one-off
   // Not graded: grading a missing deliverable would blame the Role for what the model refused to write.
-  if (answer.trim().length < MIN_ANSWER) throw new Error(`no deliverable (the model replied: ${answer.trim().replace(/\s+/g, " ").slice(0, 160)})`);
+  if (short(answer)) throw new Error(`no ${c.expect === "ask" ? "answer" : "deliverable"} (the model replied: ${answer.trim().replace(/\s+/g, " ").slice(0, 160) || "nothing"})`);
   const criteria = parseGrade(exec(buildGradePrompt(c, answer)), c.criteria);
   return { role: id, name: c.name, pass: criteria.every((x) => x.pass), criteria, answer };
 }
 
-/** Runs the cases of one Role (or of every active Role when `role` is omitted), optionally only the named case. */
 /** One attempt at a case: a failed model call is an ERROR result, so one refusal never ends a run over many Roles. */
-function attempt(root: string, id: string, c: EvalCase, exec: Exec): CaseResult {
+function attempt(root: string, id: string, c: EvalCase, exec: Exec, without?: string): CaseResult {
   try {
-    return runCase(root, id, c, exec);
+    return runCase(root, id, c, exec, without);
   } catch (e) {
     return { role: id, name: c.name, pass: false, criteria: [], answer: "", error: (e as Error).message.replace(/^claude -p failed: /, "") };
   }
 }
 
 /** N attempts as one result. A single run is the plain result; with more, a criterion that failed says in how many runs. */
-function attempts(root: string, id: string, c: EvalCase, exec: Exec, n: number): CaseResult {
-  if (n <= 1) return attempt(root, id, c, exec);
-  const rs = Array.from({ length: n }, () => attempt(root, id, c, exec));
+function attempts(root: string, id: string, c: EvalCase, exec: Exec, n: number, without?: string): CaseResult {
+  if (n <= 1) return attempt(root, id, c, exec, without);
+  const rs = Array.from({ length: n }, () => attempt(root, id, c, exec, without));
   const graded = rs.filter((r) => !r.error);
   const passed = rs.filter((r) => r.pass).length;
   const failing = new Map<string, { count: number; reason: string }>();
@@ -172,7 +199,12 @@ function attempts(root: string, id: string, c: EvalCase, exec: Exec, n: number):
   };
 }
 
-export function runCases(root: string, role: string | undefined, caseName: string | undefined, exec: Exec, onCase?: (r: CaseResult) => void, runs = 1): CaseResult[] {
+/**
+ * Runs the cases of one Role (or of every active Role when `role` is omitted), optionally only the named case. With
+ * `without` (one Role only) the Role's instructions lose that rule row or skill and only the cases that cover it run.
+ */
+export function runCases(root: string, role: string | undefined, caseName: string | undefined, exec: Exec, onCase?: (r: CaseResult) => void, runs = 1, without?: string): CaseResult[] {
+  if (without !== undefined && !role) throw new Error("--without needs a Role: rule ids and skills belong to one Role");
   const roster = loadRoster(root);
   const ids = role
     ? [role]
@@ -182,15 +214,48 @@ export function runCases(root: string, role: string | undefined, caseName: strin
   const out: CaseResult[] = [];
   for (const id of ids) {
     if (!roster.roles[id]) throw new Error(`"${id}" is not a Role in roster.yaml`);
+    if (without !== undefined) {
+      const known = [...(loadRuleTable(root, id) ?? []).map((r) => r.id), ...(loadRole(root, id)?.skills ?? []).map((x) => x.name)];
+      if (!known.includes(without)) throw new Error(`--without: "${without}" is not a rule id or a skill of ${id}`);
+    }
     for (const c of loadEvalCases(root, id).cases) {
       if (caseName && c.name !== caseName) continue;
-      const r = attempts(root, id, c, exec, runs);
+      if (without !== undefined && !caseName && !c.covers.includes(without)) continue;
+      const r = attempts(root, id, c, exec, runs, without);
       out.push(r);
       onCase?.(r);
     }
   }
   if (caseName && !out.length) throw new Error(`no case "${caseName}"${role ? ` for ${role}` : ""}`);
+  if (without !== undefined && !out.length) throw new Error(`no case of ${role} covers "${without}"`);
   return out;
+}
+
+/**
+ * The record of a run of all the cases of one Role (C6), written to `roles/<id>/evals/results.json` and committed with the
+ * Role's change; `aidw roster` compares its digest with the Role's content. Returns the file written.
+ */
+export function writeResults(root: string, id: string, results: CaseResult[], meta: { model?: string; runs: number; date?: Date }): string {
+  const record: RunRecord = {
+    role: id,
+    date: (meta.date ?? new Date()).toISOString(),
+    model: meta.model ?? null,
+    tier: loadRole(root, id)?.tier ?? "",
+    runs: meta.runs,
+    digest: roleDigest(root, id),
+    cases: results
+      .filter((r) => r.role === id)
+      .map((r) => ({
+        name: r.name,
+        pass: r.pass,
+        runs: r.runs ?? { total: 1, passed: r.pass ? 1 : 0, errors: r.error ? 1 : 0 },
+        failed: r.criteria.filter((x) => !x.pass).map((x) => x.criterion),
+        ...(r.error ? { error: r.error } : {}),
+      })),
+  };
+  const file = resultsFile(root, id);
+  writeFileSync(file, `${JSON.stringify(record, null, 2)}\n`);
+  return file;
 }
 
 export function printResults(rs: CaseResult[], showAnswers = false): string {

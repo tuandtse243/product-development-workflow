@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import YAML from "yaml";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -245,6 +246,52 @@ describe("briefs", () => {
     expect(review).toMatch(/`VERDICT: pass` or `VERDICT: fix`/);
     expect(review).toMatch(/addy\/code-review-and-quality\/SKILL\.md/);
     expect(review).not.toMatch(/test-driven-development/);
+    expect(review).not.toMatch(/Rules of the Role that built it/); // fullstack has no rules.md
+  });
+
+  it("the review brief points at the rules.md of the Role that built the task and asks for rule ids (R2)", () => {
+    const pluginCopy = mkdtempSync(join(tmpdir(), "aidw-plugin-"));
+    const plugin = join(__dirname, "..", "plugins", "aidw");
+    cpSync(plugin, pluginCopy, { recursive: true, filter: (src) => !src.startsWith(join(plugin, "bin")) });
+    const rules = join(pluginCopy, "roles", "backend", "rules.md");
+    writeFileSync(rules, "| id | rule | applies when | checked by |\n|---|---|---|---|\n| B1 | One. | always | reviewer |\n| B2 | Two. | always | script |\n");
+    const root = executingProject({ tasks: RUN_TASKS().replace(/fullstack-engineer/g, "backend") });
+    cli(root, "task", "start", "T01");
+    const brief = (env: Record<string, string>) => {
+      let out = "";
+      expect(run(["brief", "T01", "--for", "review", "--root", root], env, root, { out: (s) => (out += s), err: () => {} })).toBe(0);
+      return readFileSync(out.trim(), "utf8");
+    };
+    const review = brief({ AIDW_PLUGIN_ROOT: pluginCopy });
+    expect(review).toContain(`## Rules of the Role that built it (backend)`);
+    expect(review).toContain(`\`${rules}\``);
+    expect(review).toMatch(/cite its id \(for example `B1`\)/);
+    expect(review).toMatch(/Your verdict[\s\S]*name the rule id/);
+    expect(review).toMatch(/A rule checked only by the CLI is already proven by the checkpoint; when reviewer is also listed, judge it/);
+    expect(review).toMatch(/kept when the implementer asked instead of guessing/);
+    // a Role that follows another's rules (follows_rules) gets both files in the review of its tasks
+    const fsRole = join(pluginCopy, "roles", "fullstack", "role.md");
+    writeFileSync(fsRole, readFileSync(fsRole, "utf8").replace(/^access: (.*)$/m, "access: $1\nfollows_rules: [backend]"));
+    writeFileSync(join(pluginCopy, "roles", "fullstack", "rules.md"), "- Keep the slice whole.\n");
+    const fsRoot = executingProject();
+    cli(fsRoot, "task", "start", "T01");
+    let fsOut = "";
+    run(["brief", "T01", "--for", "review", "--root", fsRoot], { AIDW_PLUGIN_ROOT: pluginCopy }, fsRoot, { out: (s) => (fsOut += s), err: () => {} });
+    const fsReview = readFileSync(fsOut.trim(), "utf8");
+    expect(fsReview).toContain("## Rules of the Role that built it (fullstack)");
+    expect(fsReview).toContain(`\`${join(pluginCopy, "roles", "fullstack", "rules.md")}\`: rules of fullstack.`);
+    expect(fsReview).toContain(`\`${rules}\`: rules of backend, one per row with an id.`);
+    expect(fsReview).toMatch(/cite its id \(for example `B1`\)/);
+    // the implement brief does not carry it: the implementer's agent already has its rules
+    let out = "";
+    run(["brief", "T01", "--root", root], { AIDW_PLUGIN_ROOT: pluginCopy }, root, { out: (s) => (out += s), err: () => {} });
+    expect(readFileSync(out.trim(), "utf8")).not.toMatch(/Rules of the Role that built it/);
+    // a rules.md in prose is pointed at, without asking for ids
+    writeFileSync(rules, "- Never return an entity.\n");
+    const prose = brief({ AIDW_PLUGIN_ROOT: pluginCopy });
+    expect(prose).toContain(`\`${rules}\``);
+    expect(prose).not.toMatch(/cite its id/);
+    rmSync(pluginCopy, { recursive: true, force: true });
   });
 });
 

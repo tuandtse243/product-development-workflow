@@ -84,6 +84,8 @@ export interface RoleProfile {
   includes: string[];
   /** the Roles an Agent of this Role may ask a question through the Orchestrator (a Consultation, ADR-0013) */
   consults: string[];
+  /** Roles whose rules.md also binds this Role's work (fullstack follows backend's): the review brief lists each file */
+  follows_rules: string[];
   /** role.md after its header */
   body: string;
   /** the text of `includes`, in order */
@@ -137,10 +139,86 @@ export function loadRole(root: string, id: string): RoleProfile | null {
     skills: skillIndex(h.skills),
     includes,
     consults: Array.isArray(h.consults) ? h.consults.map(String) : [],
+    follows_rules: Array.isArray(h.follows_rules) ? h.follows_rules.map(String) : [],
     body: parsed.body,
     shared: includes.map((f) => (existsSync(join(root, f)) ? read(join(root, f)).trim() : "")),
     rules: existsSync(rulesFile) ? read(rulesFile).trim() : "",
   };
+}
+
+/**
+ * A Role's `rules.md` as a table (plan R2): one row per rule that can be answered pass or fail.
+ *
+ *   | id | rule | applies when | checked by |
+ *   |---|---|---|---|
+ *   | B7 | A write that changes more than one table runs in one transaction. | the task writes more than one table | reviewer |
+ *
+ * `id` is capital letters then a number, unique in the Role; `checked by` is one or more of RULE_CHECKERS, comma-separated.
+ * Text may stand before and after the table. A `rules.md` with no `| id |` header row is prose (the format before R2) and
+ * is left as it is: no ids, no coverage check.
+ */
+export const RULE_CHECKERS = ["reviewer", "script", "CLI"] as const;
+export type RuleChecker = (typeof RULE_CHECKERS)[number];
+export interface RoleRule {
+  id: string;
+  rule: string;
+  appliesWhen: string;
+  checkedBy: RuleChecker[];
+}
+const RULES_HEADER = ["id", "rule", "applies when", "checked by"];
+/** No leading zero: `B01` and `B1` would be one rule under two spellings. */
+const RULE_ID = /^[A-Z]+[1-9][0-9]*$/;
+
+/** The cells of one table row; `\|` is a pipe inside a cell. */
+function cells(line: string): string[] {
+  const inner = line.trim().replace(/^\|/, "").replace(/(?<!\\)\|$/, "");
+  return inner.split(/(?<!\\)\|/).map((c) => c.trim().replace(/\\\|/g, "|"));
+}
+
+export function parseRulesTable(text: string): { table: boolean; rules: RoleRule[]; problems: string[] } {
+  const lines = text.split("\n");
+  const start = lines.findIndex((l) => /^\s*\|\s*id\s*\|/i.test(l));
+  if (start < 0) return { table: false, rules: [], problems: [] };
+  const problems: string[] = [];
+  const header = cells(lines[start] as string).map((c) => c.toLowerCase());
+  if (header.join("|") !== RULES_HEADER.join("|")) problems.push(`the header must be | ${RULES_HEADER.join(" | ")} |`);
+  if (!/^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$/.test(lines[start + 1] ?? "")) problems.push("the header must be followed by a | --- | separator row");
+  const rules: RoleRule[] = [];
+  const seen = new Set<string>();
+  let end = start + 2;
+  for (const line of lines.slice(start + 2)) {
+    if (!line.trim().startsWith("|")) break;
+    end++;
+    const c = cells(line);
+    const id = c[0] ?? "";
+    const label = id || "a row";
+    if (c.length !== RULES_HEADER.length) {
+      problems.push(`${label}: a row has ${c.length} cells, expected ${RULES_HEADER.length}`);
+      continue;
+    }
+    const [, rule, appliesWhen, checker] = c as [string, string, string, string];
+    if (!RULE_ID.test(id)) problems.push(`id "${id}" must be capital letters then a number with no leading zero (B1, FE12)`);
+    else if (seen.has(id)) problems.push(`id "${id}" is used twice`);
+    seen.add(id);
+    if (!rule) problems.push(`${label}: the rule is empty`);
+    if (!appliesWhen) problems.push(`${label}: "applies when" is empty`);
+    const checkedBy = checker ? checker.split(/\s*,\s*/) : [];
+    if (!checkedBy.length) problems.push(`${label}: "checked by" is empty`);
+    for (const k of checkedBy) if (!(RULE_CHECKERS as readonly string[]).includes(k)) problems.push(`${label}: checked by "${k}" is not one of ${RULE_CHECKERS.join(", ")}`);
+    rules.push({ id, rule, appliesWhen, checkedBy: checkedBy as RuleChecker[] });
+  }
+  if (!rules.length && !problems.length) problems.push("the table has no rules");
+  // A second rules table would be rules nobody reads for ids or coverage.
+  if (lines.slice(end).some((l) => /^\s*\|\s*id\s*\|/i.test(l))) problems.push("one rules table per file: a second | id | table was found; put every rule in the first");
+  return { table: true, rules, problems };
+}
+
+/** The rules of a Role whose `rules.md` is a table, or null (no rules.md, or one in prose). */
+export function loadRuleTable(root: string, id: string): RoleRule[] | null {
+  const file = join(roleDir(root, id), "rules.md");
+  if (!existsSync(file)) return null;
+  const t = parseRulesTable(read(file));
+  return t.table ? t.rules : null;
 }
 
 /** `skills: [{ name: when }]` -> a list; anything else is reported by checkRoster. */
@@ -156,7 +234,23 @@ export function loadTiers(root: string, platform = "claude-code"): Record<string
 }
 
 /** The command a Role's agent runs to find one of its skills: written out in full, so it is never assembled wrongly. */
-export const skillCommand = (roleId: string, skill: string): string => `aidw plugin-path roles/${roleId}/skills/${skill}.md`;
+/**
+ * A skill of a Role's index, as a plugin-relative file: `<name>` is the Role's own (`roles/<id>/skills/<name>.md`),
+ * `library/<name>` a shared one several Roles list (`library/skills/<name>/SKILL.md`, plan R5).
+ */
+export const LIBRARY_SKILL = /^library\/([a-z0-9]+(?:-[a-z0-9]+)*)$/;
+export const skillFile = (roleId: string, skill: string): string => {
+  const lib = LIBRARY_SKILL.exec(skill);
+  return lib ? `library/skills/${lib[1]}/SKILL.md` : `roles/${roleId}/skills/${skill}.md`;
+};
+export const skillCommand = (roleId: string, skill: string): string => `aidw plugin-path ${skillFile(roleId, skill)}`;
+
+/** The model the tier of a Role maps to on Claude Code, or undefined when it inherits the session's. */
+export function tierModel(root: string, id: string): string | undefined {
+  const tier = loadRole(root, id)?.tier;
+  const m = tier ? loadTiers(root)[tier] : undefined;
+  return m && m !== "inherit" ? m : undefined;
+}
 
 /** The Claude Code agent file of one Role. */
 export function renderAgent(role: RoleProfile, tiers: Record<string, string>): string {
@@ -285,8 +379,8 @@ export function checkRoster(root: string): Diags {
         d.error(file, 'skills must be a list of one-entry mappings: "- <skill-name>: <when to load it>"');
       } else {
         for (const s of skillIndex(h.skills)) {
-          if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(s.name)) d.error(file, `skill name "${s.name}" must be kebab-case`);
-          else if (!existsSync(join(roleDir(root, id), "skills", `${s.name}.md`))) d.error(file, `skill "${s.name}" has no file roles/${id}/skills/${s.name}.md`);
+          if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(s.name) && !LIBRARY_SKILL.test(s.name)) d.error(file, `skill name "${s.name}" must be kebab-case, or library/<name> for a shared skill`);
+          else if (!existsSync(join(root, skillFile(id, s.name)))) d.error(file, `skill "${s.name}" has no file ${skillFile(id, s.name)}`);
         }
       }
     }
@@ -307,6 +401,20 @@ export function checkRoster(root: string): Diags {
         if (new Set(h.consults).size !== h.consults.length) d.error(file, "consults lists a role twice");
       }
     }
+    if (h.follows_rules !== undefined) {
+      // the review brief of this Role's tasks also lists these Roles' rules.md
+      if (!Array.isArray(h.follows_rules) || !h.follows_rules.every((c) => typeof c === "string")) d.error(file, "follows_rules must be a list of role ids");
+      else {
+        for (const r of h.follows_rules as string[]) {
+          if (r === id) d.error(file, `follows_rules: a role does not list itself ("${r}"); its own rules.md is always read`);
+          else if (!(r in roster.roles)) d.error(file, `follows_rules: "${r}" is not a role in roster.yaml`);
+          else if (!existsSync(join(roleDir(root, r), "rules.md"))) d.error(file, `follows_rules: "${r}" has no rules.md`);
+        }
+        if (new Set(h.follows_rules).size !== h.follows_rules.length) d.error(file, "follows_rules lists a role twice");
+      }
+    }
+    const rulesPath = join(roleDir(root, id), "rules.md");
+    if (existsSync(rulesPath)) for (const problem of parseRulesTable(read(rulesPath)).problems) d.error(`roles/${id}/rules.md`, problem);
     // Department, status and carried_by have one home: roster.yaml.
     for (const k of ["department", "status", "carried_by"]) if (k in h) d.error(file, `"${k}" belongs in roster.yaml, not in the profile`);
   }

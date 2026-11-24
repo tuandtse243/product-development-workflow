@@ -1,5 +1,6 @@
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
+import { spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { stringify as toYaml } from "yaml";
 import { answersText, PAGE_NAME, pageDataFile, pageHtmlFile, pagesDir, pageSummary, parseAnswers, parsePage, picksData, renderPage, triageData, type PageSection } from "./page.js";
@@ -22,10 +23,10 @@ import { DecisionError, readDecisions, recordDecision, workflowOfChange } from "
 import { defaultWorkflowId, machineOf } from "./machine.js";
 import { packsFor } from "./stackpacks.js";
 import { git } from "./git.js";
-import { checkEvals } from "./evals.js";
-import { claudeExec, printResults, runCases, type Exec } from "./evalrun.js";
+import { checkEvals, loadEvalCases } from "./evals.js";
+import { claudeExec, printResults, runCases, writeResults, type CaseResult, type Exec } from "./evalrun.js";
 import { checkWorkflows, loadWorkflow, workflowIds } from "./workflow.js";
-import { agentForTask, AGENTS, checkRoster, rosterTable, writeAgents } from "./roles.js";
+import { agentForTask, AGENTS, checkRoster, loadRoster, rosterTable, tierModel, writeAgents } from "./roles.js";
 import { checkChange, checkSpecs } from "./check.js";
 import { Diags, type Diagnostic } from "./diag.js";
 import {
@@ -299,14 +300,22 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
   vendor-path <upstream>/<skill>         absolute path of a vendored SKILL.md (e.g. pocock/grilling)
   diff-coverage <lcov> [--min 80] [--base <ref>]  coverage of the lines added since the change's first task started
   plugin-path <path>                     absolute path of a plugin file (e.g. roles/software-architect/references/stack-pool.md)
-  eval [<role>] [--case <name>] [--model <m>] [--runs <n>] [--answers]
+  eval [<role>] [--case <name>] [--model <m>] [--runs <n>] [--without <id>] [--answers]
                                          run a Role's cases with claude -p (no tools) and grade each answer against its
                                          criteria; without a Role, every active Role. Costs tokens; exits 1 when a case fails.
-                                         --runs <n> runs each case n times (1-10): a case that passes only some runs is FLAKY
+                                         The model is the one the Role's tier maps to in tiers.yaml (--model overrides it).
+                                         --runs <n> runs each case n times (1-10, default 3): a case passes only when every run
+                                         passes; one that passes only some runs is FLAKY and not passed
+                                         --without <rule-id|skill> drops that rule row or skill and runs the cases covering it:
+                                         each must fail (exits 1 when one still passes)
                                          --answers also prints each answer, to see why a case failed
-  roster [--write]                       the factory's Roles; checks roster.yaml, role profiles, artifacts.yaml (one owner
-                                         per artifact, reads/writes of each Role), workflows/*.yaml and the generated agent files
-                                         (--write regenerates agents/ from roles/)
+                                         A full run from a source checkout on the tier's model writes
+                                         roles/<id>/evals/results.json (commit it with the Role's change)
+  roster [--write] [--strict]            the factory's Roles; checks roster.yaml, role profiles, rules.md tables, artifacts.yaml
+                                         (one owner per artifact, reads/writes of each Role), workflows/*.yaml, the cases (a Role
+                                         whose rules.md is a table covers every rule and skill), and the generated agent files;
+                                         warns when such a Role's results.json is missing, stale or not 3 of 3
+                                         (--write regenerates agents/; --strict fails on warnings too)
 
 Execution (state executing; add --change <id> when several changes are active):
   next                                   what the orchestrator does next (implement | review | triage | upstream | complete ...);
@@ -365,7 +374,7 @@ interface Args {
   flags: Record<string, string | true>;
 }
 
-const VALUE_FLAGS = new Set(["role", "files", "consultation", "remove-reason", "scope-reason", "summary", "cause", "task", "session", "last", "root", "title", "input-type", "workflow", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude", "model", "case", "runs", "text", "lang", "weights", "to", "done", "cannot", "raise", "base"]);
+const VALUE_FLAGS = new Set(["role", "files", "consultation", "remove-reason", "scope-reason", "summary", "cause", "task", "session", "last", "root", "title", "input-type", "workflow", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude", "model", "case", "runs", "without", "text", "lang", "weights", "to", "done", "cannot", "raise", "base"]);
 
 export function parseArgs(argv: string[]): Args {
   const pos: string[] = [];
@@ -1018,16 +1027,56 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
 
       case "eval": {
         const root = pluginRoot(env);
-        const runs = args.flags.runs === undefined ? 1 : Number(args.flags.runs);
+        // Level 1 (plan C2): a case passes only when it passes 3 runs of 3; a FLAKY case is not passed.
+        const runs = args.flags.runs === undefined ? 3 : Number(args.flags.runs);
         if (!Number.isInteger(runs) || runs < 1 || runs > 10) throw new OpError("--runs takes a whole number from 1 to 10");
-        let results;
+        const caseName = str(args.flags.case);
+        const without = str(args.flags.without);
+        const asked = str(args.flags.model);
+        const progress = (r: CaseResult) => io.err(`  ... ${r.role}/${r.name}: ${r.error ? "ERROR" : r.pass ? "pass" : "fail"}${r.runs ? ` (${r.runs.passed}/${r.runs.total})` : ""}\n`);
+        // One Role at a time: each answers with the model its tier maps to, unless --model names one.
+        const results: CaseResult[] = [];
+        const modelOf = new Map<string, string | undefined>();
         try {
-          results = runCases(root, rest[0], str(args.flags.case), (io.modelExec ?? claudeExec)(str(args.flags.model)), (r) => io.err(`  ... ${r.role}/${r.name}: ${r.error ? "ERROR" : r.pass ? "pass" : "fail"}${r.runs ? ` (${r.runs.passed}/${r.runs.total})` : ""}\n`), runs);
+          if (without !== undefined && !rest[0]) throw new Error("--without needs a Role: rule ids and skills belong to one Role");
+          const roster = loadRoster(root);
+          let ids = rest[0] ? [rest[0]] : Object.entries(roster.roles).filter(([, e]) => e?.status === "active").map(([k]) => k);
+          if (caseName && !rest[0]) ids = ids.filter((id) => loadEvalCases(root, id).cases.some((c) => c.name === caseName));
+          if (caseName && !ids.length) throw new Error(`no case "${caseName}"`);
+          for (const id of ids) {
+            const model = asked ?? (roster.roles[id] ? tierModel(root, id) : undefined);
+            modelOf.set(id, model);
+            results.push(...runCases(root, id, caseName, (io.modelExec ?? claudeExec)(model), progress, runs, without));
+          }
         } catch (e) {
           throw new OpError((e as Error).message);
         }
         const ok = results.every((r) => r.pass);
-        emit({ ok, results }, printResults(results, args.flags.answers === true));
+        const written: string[] = [];
+        if (without) {
+          // C3: each case must fail without what it covers; one that still passes does not test it.
+          const still = results.filter((r) => r.pass);
+          const text =
+            `without ${without}: ${results.length - still.length}/${results.length} case(s) failed, as they should\n` +
+            still.map((r) => `  STILL PASSES ${r.role}/${r.name}: it does not test ${without}; rewrite or drop it (C3)\n`).join("") +
+            "  no result file written: a run --without is not the Role\n";
+          emit({ ok: still.length === 0, without, results }, printResults(results, args.flags.answers === true) + text);
+          return still.length === 0 ? 0 : 1;
+        }
+        // The record of the run (C6): only a full run of a Role's cases, on its tier's model, from a source checkout.
+        const inGit = spawnSync("git", ["rev-parse", "--is-inside-work-tree"], { cwd: root, encoding: "utf8" }).stdout?.trim() === "true";
+        if (caseName) io.err("  no result file written: --case runs only part of a Role's cases\n");
+        else if (!inGit) io.err(`  no result file written: ${root} is not a source checkout\n`);
+        else {
+          for (const id of [...new Set(results.map((r) => r.role))]) {
+            const tm = tierModel(root, id);
+            const mine = results.filter((r) => r.role === id);
+            if (asked && tm && asked !== tm) io.err(`  no result file written for ${id}: --model ${asked} is not its tier's model (${tm})\n`);
+            else if (mine.every((r) => r.error)) io.err(`  no result file written for ${id}: no case was graded\n`);
+            else written.push(relative(root, writeResults(root, id, results, { runs, ...(modelOf.get(id) ? { model: modelOf.get(id) as string } : {}) })));
+          }
+        }
+        emit({ ok, results, written }, printResults(results, args.flags.answers === true) + written.map((f) => `wrote ${f}\n`).join(""));
         return ok ? 0 : 1;
       }
 
@@ -1039,12 +1088,14 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         d.add(checkWorkflows(root));
         d.add(checkEvals(root));
         const table = d.errors.length ? "" : rosterTable(root);
-        const summary = `${d.errors.length ? "FAILED" : "OK"}: ${d.errors.length} error(s), ${d.warnings.length} warning(s)\n`;
+        const strict = args.flags.strict === true;
+        const failed = d.failed(strict);
+        const summary = `${failed ? "FAILED" : "OK"}: ${d.errors.length} error(s), ${d.warnings.length} warning(s)${strict ? " (strict)" : ""}\n`;
         emit(
-          { ok: d.errors.length === 0, written, ...diagsJson(d) },
+          { ok: !failed, strict, written, ...diagsJson(d) },
           `${table}${written.length ? `wrote agents/: ${written.join(", ")}\n` : ""}${printDiags(d)}${summary}`,
         );
-        return d.errors.length ? 1 : 0;
+        return failed ? 1 : 0;
       }
 
       case "analyze": {

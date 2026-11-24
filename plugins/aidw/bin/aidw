@@ -7331,8 +7331,9 @@ __export(cli_exports, {
 module.exports = __toCommonJS(cli_exports);
 var import_node_fs47 = require("node:fs");
 var import_node_path52 = require("node:path");
+var import_node_child_process14 = require("node:child_process");
 var import_node_url = require("node:url");
-var import_yaml24 = __toESM(require_dist(), 1);
+var import_yaml25 = __toESM(require_dist(), 1);
 
 // src/page.ts
 var import_node_crypto = require("node:crypto");
@@ -9235,10 +9236,60 @@ function loadRole(root, id) {
     skills: skillIndex(h.skills),
     includes,
     consults: Array.isArray(h.consults) ? h.consults.map(String) : [],
+    follows_rules: Array.isArray(h.follows_rules) ? h.follows_rules.map(String) : [],
     body: parsed.body,
     shared: includes.map((f) => (0, import_node_fs9.existsSync)((0, import_node_path11.join)(root, f)) ? read((0, import_node_path11.join)(root, f)).trim() : ""),
     rules: (0, import_node_fs9.existsSync)(rulesFile) ? read(rulesFile).trim() : ""
   };
+}
+var RULE_CHECKERS = ["reviewer", "script", "CLI"];
+var RULES_HEADER = ["id", "rule", "applies when", "checked by"];
+var RULE_ID = /^[A-Z]+[1-9][0-9]*$/;
+function cells(line) {
+  const inner = line.trim().replace(/^\|/, "").replace(/(?<!\\)\|$/, "");
+  return inner.split(/(?<!\\)\|/).map((c) => c.trim().replace(/\\\|/g, "|"));
+}
+function parseRulesTable(text2) {
+  const lines = text2.split("\n");
+  const start = lines.findIndex((l) => /^\s*\|\s*id\s*\|/i.test(l));
+  if (start < 0) return { table: false, rules: [], problems: [] };
+  const problems = [];
+  const header2 = cells(lines[start]).map((c) => c.toLowerCase());
+  if (header2.join("|") !== RULES_HEADER.join("|")) problems.push(`the header must be | ${RULES_HEADER.join(" | ")} |`);
+  if (!/^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$/.test(lines[start + 1] ?? "")) problems.push("the header must be followed by a | --- | separator row");
+  const rules = [];
+  const seen = /* @__PURE__ */ new Set();
+  let end = start + 2;
+  for (const line of lines.slice(start + 2)) {
+    if (!line.trim().startsWith("|")) break;
+    end++;
+    const c = cells(line);
+    const id = c[0] ?? "";
+    const label2 = id || "a row";
+    if (c.length !== RULES_HEADER.length) {
+      problems.push(`${label2}: a row has ${c.length} cells, expected ${RULES_HEADER.length}`);
+      continue;
+    }
+    const [, rule, appliesWhen, checker] = c;
+    if (!RULE_ID.test(id)) problems.push(`id "${id}" must be capital letters then a number with no leading zero (B1, FE12)`);
+    else if (seen.has(id)) problems.push(`id "${id}" is used twice`);
+    seen.add(id);
+    if (!rule) problems.push(`${label2}: the rule is empty`);
+    if (!appliesWhen) problems.push(`${label2}: "applies when" is empty`);
+    const checkedBy = checker ? checker.split(/\s*,\s*/) : [];
+    if (!checkedBy.length) problems.push(`${label2}: "checked by" is empty`);
+    for (const k of checkedBy) if (!RULE_CHECKERS.includes(k)) problems.push(`${label2}: checked by "${k}" is not one of ${RULE_CHECKERS.join(", ")}`);
+    rules.push({ id, rule, appliesWhen, checkedBy });
+  }
+  if (!rules.length && !problems.length) problems.push("the table has no rules");
+  if (lines.slice(end).some((l) => /^\s*\|\s*id\s*\|/i.test(l))) problems.push("one rules table per file: a second | id | table was found; put every rule in the first");
+  return { table: true, rules, problems };
+}
+function loadRuleTable(root, id) {
+  const file = (0, import_node_path11.join)(roleDir(root, id), "rules.md");
+  if (!(0, import_node_fs9.existsSync)(file)) return null;
+  const t = parseRulesTable(read(file));
+  return t.table ? t.rules : null;
 }
 function skillIndex(raw) {
   if (!Array.isArray(raw)) return [];
@@ -9249,7 +9300,17 @@ function loadTiers(root, platform = "claude-code") {
   const data = (0, import_node_fs9.existsSync)(file) ? import_yaml6.default.parse(read(file)) : null;
   return isRecord3(data) && isRecord3(data[platform]) ? data[platform] : {};
 }
-var skillCommand = (roleId, skill) => `aidw plugin-path roles/${roleId}/skills/${skill}.md`;
+var LIBRARY_SKILL = /^library\/([a-z0-9]+(?:-[a-z0-9]+)*)$/;
+var skillFile = (roleId, skill) => {
+  const lib = LIBRARY_SKILL.exec(skill);
+  return lib ? `library/skills/${lib[1]}/SKILL.md` : `roles/${roleId}/skills/${skill}.md`;
+};
+var skillCommand = (roleId, skill) => `aidw plugin-path ${skillFile(roleId, skill)}`;
+function tierModel(root, id) {
+  const tier = loadRole(root, id)?.tier;
+  const m = tier ? loadTiers(root)[tier] : void 0;
+  return m && m !== "inherit" ? m : void 0;
+}
 function renderAgent(role, tiers) {
   const model = tiers[role.tier];
   const head = [
@@ -9375,8 +9436,8 @@ function checkRoster(root) {
         d.error(file, 'skills must be a list of one-entry mappings: "- <skill-name>: <when to load it>"');
       } else {
         for (const s of skillIndex(h.skills)) {
-          if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(s.name)) d.error(file, `skill name "${s.name}" must be kebab-case`);
-          else if (!(0, import_node_fs9.existsSync)((0, import_node_path11.join)(roleDir(root, id), "skills", `${s.name}.md`))) d.error(file, `skill "${s.name}" has no file roles/${id}/skills/${s.name}.md`);
+          if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(s.name) && !LIBRARY_SKILL.test(s.name)) d.error(file, `skill name "${s.name}" must be kebab-case, or library/<name> for a shared skill`);
+          else if (!(0, import_node_fs9.existsSync)((0, import_node_path11.join)(root, skillFile(id, s.name)))) d.error(file, `skill "${s.name}" has no file ${skillFile(id, s.name)}`);
         }
       }
     }
@@ -9396,6 +9457,19 @@ function checkRoster(root) {
         if (new Set(h.consults).size !== h.consults.length) d.error(file, "consults lists a role twice");
       }
     }
+    if (h.follows_rules !== void 0) {
+      if (!Array.isArray(h.follows_rules) || !h.follows_rules.every((c) => typeof c === "string")) d.error(file, "follows_rules must be a list of role ids");
+      else {
+        for (const r of h.follows_rules) {
+          if (r === id) d.error(file, `follows_rules: a role does not list itself ("${r}"); its own rules.md is always read`);
+          else if (!(r in roster.roles)) d.error(file, `follows_rules: "${r}" is not a role in roster.yaml`);
+          else if (!(0, import_node_fs9.existsSync)((0, import_node_path11.join)(roleDir(root, r), "rules.md"))) d.error(file, `follows_rules: "${r}" has no rules.md`);
+        }
+        if (new Set(h.follows_rules).size !== h.follows_rules.length) d.error(file, "follows_rules lists a role twice");
+      }
+    }
+    const rulesPath = (0, import_node_path11.join)(roleDir(root, id), "rules.md");
+    if ((0, import_node_fs9.existsSync)(rulesPath)) for (const problem of parseRulesTable(read(rulesPath)).problems) d.error(`roles/${id}/rules.md`, problem);
     for (const k of ["department", "status", "carried_by"]) if (k in h) d.error(file, `"${k}" belongs in roster.yaml, not in the profile`);
   }
   for (const id of ids) {
@@ -17325,6 +17399,18 @@ ${req.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`;
     const diff = base2 ? `${inWorktree ? `in the worktree \`${taskRoot}\`: ` : ""}\`git diff ${base2}\` plus untracked files (\`git status --porcelain\`)` : "the files matching Touches (no base commit was recorded)";
     const outside = lastCheckpoint?.outside_touches ?? [];
     const design = lastCheckpoint?.design;
+    const builder = implementerOf(pluginHome, typeof t.role === "string" ? t.role : void 0) ?? defaultTaskRole();
+    const ruleFiles = [builder, ...loadRole(pluginHome, builder)?.follows_rules ?? []].map((r) => ({ role: r, file: (0, import_node_path42.join)(pluginHome, "roles", r, "rules.md") })).filter((x) => (0, import_node_fs37.existsSync)(x.file)).map((x) => ({ ...x, table: loadRuleTable(pluginHome, x.role) }));
+    const exampleId = ruleFiles.find((x) => x.table?.length)?.table?.[0]?.id;
+    const rulesSection = ruleFiles.length ? h(`Rules of the Role that built it (${builder})`, [
+      ...ruleFiles.map(
+        (x) => x.table ? `- \`${x.file}\`: rules of ${x.role}, one per row with an id.` : `- \`${x.file}\`: rules of ${x.role}.`
+      ),
+      "",
+      'The implementer had to follow these. Judge the diff against every rule whose "applies when" fits this task. A rule checked only by the CLI is already proven by the checkpoint; when reviewer is also listed, judge it. For a rule checked by a script, read its output in the implementer notes, if any.',
+      "A rule whose right action is to ask (a hole in a contract, a missing constraint) is kept when the implementer asked instead of guessing.",
+      exampleId ? `A broken rule is a blocking issue: cite its id (for example \`${exampleId}\`) in the finding.` : "A broken rule is a blocking issue."
+    ]) : [];
     body = [
       "You are an independent reviewer in a fresh context. You did not write this code. You may read files and run read-only commands (tests included); you cannot edit anything.",
       "",
@@ -17346,6 +17432,7 @@ ${req.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`;
       ...design?.screenshots.length ? [`- Screenshots (open each with Read): ${design.screenshots.map((f) => `\`${(0, import_node_path42.join)(p.project, f)}\``).join(", ")}`] : [],
       ...design?.hardcoded_colors.length ? [`- Color literals that are not tokens, in changed files: ${design.hardcoded_colors.map((f) => `\`${f}\``).join(", ")}. Each needs a reason or becomes a token.`] : [],
       "",
+      ...rulesSection,
       "## Checklist",
       "",
       "1. Every scenario is implemented as the spec says, and its test really asserts the THEN outcome (not a placeholder, not mocked away).",
@@ -17362,6 +17449,7 @@ ${req.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`;
       "Your verdict starts with exactly one line: `VERDICT: pass` or `VERDICT: fix`.",
       "For `fix`, follow with numbered blocking issues: file, problem, expected fix. Only blocking issues justify `fix`;",
       "put anything else under `Non-blocking:`. Be concrete: the implementer will get your notes verbatim.",
+      ...exampleId ? [`When a finding breaks one of those rules, name the rule id first, e.g. \`1. ${exampleId}: <file>: <problem>; <expected fix>\`.`] : [],
       `**Write the whole verdict to \`${(0, import_node_path42.join)(p.run, `review-${taskId}.md`)}\` with the Write tool** (the only file you may write), then reply with just its first line, \`VERDICT: pass\` or \`VERDICT: fix\`. The orchestrator reads the file; keeping your reply short saves its context.`,
       "",
       ...shared
@@ -18054,8 +18142,11 @@ async function runShotsWorker(req) {
 }
 
 // src/evals.ts
+var import_node_crypto8 = require("node:crypto");
 var import_node_fs40 = require("node:fs");
 var import_node_path45 = require("node:path");
+var import_yaml22 = __toESM(require_dist(), 1);
+var CASE_KEYS = ["case", "covers", "expect"];
 function loadEvalCases(root, id) {
   const d = new Diags();
   const dir = (0, import_node_path45.join)(roleDir(root, id), "evals");
@@ -18064,14 +18155,29 @@ function loadEvalCases(root, id) {
   for (const f of (0, import_node_fs40.readdirSync)(dir).filter((n) => n.endsWith(".md")).sort()) {
     const file = `roles/${id}/evals/${f}`;
     const text2 = (0, import_node_fs40.readFileSync)((0, import_node_path45.join)(dir, f), "utf8");
-    const head = /^---\ncase: ([a-z0-9-]+)\n---\n/.exec(text2);
-    if (!head) {
+    const fm = /^---\n([\s\S]*?)\n---\n/.exec(text2);
+    let head = null;
+    try {
+      const v = fm ? import_yaml22.default.parse(fm[1] ?? "") : null;
+      head = v && typeof v === "object" && !Array.isArray(v) ? v : null;
+    } catch {
+      head = null;
+    }
+    const name = head?.case;
+    if (!head || typeof name !== "string" || !/^[a-z0-9-]+$/.test(name)) {
       d.error(file, "a case starts with a front matter `case: <name>` (kebab-case)");
       continue;
     }
-    if (head[1] !== f.slice(0, -3)) d.error(file, `case "${head[1]}" must equal the file name "${f.slice(0, -3)}"`);
-    const section2 = (name) => {
-      const m = new RegExp(`^## ${name}\\n([\\s\\S]*?)(?=^## |$(?![\\s\\S]))`, "m").exec(text2);
+    if (name !== f.slice(0, -3)) d.error(file, `case "${name}" must equal the file name "${f.slice(0, -3)}"`);
+    for (const k of Object.keys(head)) if (!CASE_KEYS.includes(k)) d.error(file, `unknown key "${k}" in the front matter (${CASE_KEYS.join(", ")})`);
+    let covers = [];
+    if (head.covers !== void 0) {
+      if (!Array.isArray(head.covers) || !head.covers.every((c) => typeof c === "string" && c.trim())) d.error(file, "covers must be a list of rule ids and skill names, e.g. [B7, effects-after-commit]");
+      else covers = head.covers;
+    }
+    if (head.expect !== void 0 && head.expect !== "ask") d.error(file, 'expect must be "ask" (or left out: the answer is the deliverable)');
+    const section2 = (title) => {
+      const m = new RegExp(`^## ${title}\\n([\\s\\S]*?)(?=^## |$(?![\\s\\S]))`, "m").exec(text2);
       return m ? m[1].trim() : null;
     };
     const input = section2("Input");
@@ -18082,9 +18188,66 @@ function loadEvalCases(root, id) {
     const bad = bullets.filter((l) => !/^- must( not)? \S/.test(l));
     for (const l of bad) d.error(file, `criterion "${l.slice(0, 50)}" must be a bullet starting "- must" or "- must not"`);
     if (criteria !== null && !bullets.length) d.error(file, '"## Criteria" has no bullets');
-    cases.push({ name: head[1], file, input: input ?? "", criteria: bullets.filter((l) => /^- must( not)? \S/.test(l)).map((l) => l.slice(2)) });
+    cases.push({
+      name,
+      file,
+      input: input ?? "",
+      criteria: bullets.filter((l) => /^- must( not)? \S/.test(l)).map((l) => l.slice(2)),
+      covers,
+      ...head.expect === "ask" ? { expect: "ask" } : {}
+    });
   }
   return { cases, diags: d };
+}
+var resultsFile = (root, id) => (0, import_node_path45.join)(roleDir(root, id), "evals", "results.json");
+function roleDigest(root, id) {
+  const files = [];
+  const walk = (rel2) => {
+    const abs = (0, import_node_path45.join)(root, rel2);
+    if (!(0, import_node_fs40.existsSync)(abs)) return;
+    if ((0, import_node_fs40.statSync)(abs).isDirectory()) {
+      for (const n of (0, import_node_fs40.readdirSync)(abs).sort()) if (!n.startsWith(".")) walk(`${rel2}/${n}`);
+    } else if (rel2 !== `roles/${id}/evals/results.json`) files.push(rel2);
+  };
+  walk(`roles/${id}`);
+  walk(`agents/${id}.md`);
+  for (const sk of loadRole(root, id)?.skills ?? []) if (LIBRARY_SKILL.test(sk.name)) walk(skillFile(id, sk.name));
+  const h = (0, import_node_crypto8.createHash)("sha256");
+  for (const f of [...new Set(files)].sort()) {
+    const raw = (0, import_node_fs40.readFileSync)((0, import_node_path45.join)(root, f));
+    const text2 = !raw.includes(0);
+    h.update(`${f}\0`).update(text2 ? raw.toString("utf8").replace(/\r\n/g, "\n") : raw).update("\0");
+  }
+  return `sha256:${h.digest("hex")}`;
+}
+function checkCoverage(root, id, cases, d) {
+  const table = loadRuleTable(root, id);
+  const skills = (loadRole(root, id)?.skills ?? []).map((s) => s.name);
+  const known = /* @__PURE__ */ new Set([...(table ?? []).map((r) => r.id), ...skills]);
+  for (const c of cases) for (const x of c.covers) if (!known.has(x)) d.error(c.file, `covers "${x}" is not a rule id or a skill of ${id}`);
+  if (!table) return;
+  const covered = new Set(cases.flatMap((c) => c.covers));
+  for (const r of table) if (!covered.has(r.id)) d.error(`roles/${id}/evals`, `rule ${r.id} has no case (add it to a case's covers:)`);
+  for (const s of skills) if (!covered.has(s)) d.error(`roles/${id}/evals`, `skill ${s} has no case (add it to a case's covers:)`);
+  const rf = `roles/${id}/evals/results.json`;
+  const file = resultsFile(root, id);
+  if (!(0, import_node_fs40.existsSync)(file)) {
+    d.warn(rf, `missing: run \`aidw eval ${id}\` and commit the file`);
+    return;
+  }
+  let rec;
+  try {
+    rec = JSON.parse((0, import_node_fs40.readFileSync)(file, "utf8"));
+  } catch {
+    d.warn(rf, `not readable: run \`aidw eval ${id}\` again`);
+    return;
+  }
+  if (rec.digest !== roleDigest(root, id)) d.warn(rf, `older than the Role's content (it changed after the run of ${rec.date}): run \`aidw eval ${id}\` again`);
+  else {
+    if (!(Number(rec.runs) >= 3)) d.warn(rf, `the last run had ${String(rec.runs)} run(s) per case; a case passes level 1 only with 3 of 3: run it again without --runs`);
+    const failed = Array.isArray(rec.cases) ? rec.cases.filter((c) => !c.pass).map((c) => c.name) : [];
+    if (failed.length) d.warn(rf, `the last run did not pass ${failed.length} case(s): ${failed.join(", ")}`);
+  }
 }
 function checkEvals(root) {
   const d = new Diags();
@@ -18095,6 +18258,7 @@ function checkEvals(root) {
     const r = loadEvalCases(root, id);
     d.add(r.diags);
     if (e?.status === "active" && r.cases.length === 0) d.error(`roles/${id}/evals`, "an active Role ships at least one eval case (roles/<id>/evals/<case>.md)");
+    checkCoverage(root, id, r.cases, d);
   }
   return d;
 }
@@ -18115,14 +18279,26 @@ var claudeExec = (model) => (prompt, system) => {
     (0, import_node_fs41.rmSync)(cwd, { recursive: true, force: true });
   }
 };
-function roleSystem(root, id) {
-  const file = [(0, import_node_path46.join)(root, "agents", `${id}.md`), (0, import_node_path46.join)(root, "roles", id, "role.md")].find(import_node_fs41.existsSync);
-  if (!file) throw new Error(`Role "${id}" has no agent file or role.md`);
-  const body = (0, import_node_fs41.readFileSync)(file, "utf8").replace(/^---\n[\s\S]*?\n---\n/, "").trim();
+function roleSystem(root, id, without) {
+  const role = loadRole(root, id);
+  const strip = (body2) => body2.replace(/^---\n[\s\S]*?\n---\n/, "").trim();
+  let body;
+  let index = [];
+  if (role) {
+    const r = without ? withoutItem(role, without) : role;
+    body = strip(renderAgent(r, loadTiers(root)));
+    index = r.skills.map((x) => x.name);
+  } else {
+    const file = [(0, import_node_path46.join)(root, "agents", `${id}.md`), (0, import_node_path46.join)(root, "roles", id, "role.md")].find(import_node_fs41.existsSync);
+    if (!file) throw new Error(`Role "${id}" has no agent file or role.md`);
+    body = strip((0, import_node_fs41.readFileSync)(file, "utf8"));
+  }
   const dir = (0, import_node_path46.join)(root, "roles", id, "skills");
-  const skills = (0, import_node_fs41.existsSync)(dir) ? (0, import_node_fs41.readdirSync)(dir).filter((n) => n.endsWith(".md")).sort().map((n) => `### Skill: ${n.slice(0, -3)}
+  const own = (0, import_node_fs41.existsSync)(dir) ? (0, import_node_fs41.readdirSync)(dir).filter((n) => n.endsWith(".md")).map((n) => n.slice(0, -3)) : [];
+  const names2 = [...index, ...own.filter((n) => !index.includes(n) && n !== without).sort()];
+  const skills = names2.map((n) => ({ n, file: (0, import_node_path46.join)(root, skillFile(id, n)) })).filter((x) => (0, import_node_fs41.existsSync)(x.file)).map((x) => `### Skill: ${x.n}
 
-${(0, import_node_fs41.readFileSync)((0, import_node_path46.join)(dir, n), "utf8").replace(/^---\n[\s\S]*?\n---\n/, "").trim()}`) : [];
+${strip((0, import_node_fs41.readFileSync)(x.file, "utf8"))}`);
   return skills.length ? `${body}
 
 ## Your skills, in full
@@ -18130,6 +18306,12 @@ ${(0, import_node_fs41.readFileSync)((0, import_node_path46.join)(dir, n), "utf8
 The index above points at these files; here is their text.
 
 ${skills.join("\n\n")}` : body;
+}
+function withoutItem(role, item) {
+  if (role.skills.some((x) => x.name === item)) return { ...role, skills: role.skills.filter((x) => x.name !== item) };
+  const row = new RegExp(`^\\s*\\|\\s*${item.replace(/[^A-Za-z0-9]/g, "")}\\s*\\|.*\\n?`, "m");
+  if (/^[A-Z]+[1-9][0-9]*$/.test(item) && row.test(role.rules)) return { ...role, rules: role.rules.replace(row, "") };
+  throw new Error(`--without: "${item}" is not a rule id or a skill of ${role.id}`);
 }
 function buildGradePrompt(c, answer) {
   return [
@@ -18177,29 +18359,32 @@ function answerPrompt(c) {
     "the command, and put the full content of each file you write inline: the test code, the changes, the configuration or the",
     "review verdict, exactly as you would hand them over. Nothing can be run here, so for a command say what you expect it to print.",
     "## Reply: the exact message you send back when you are done, in the format your role asks for.",
-    "The brief above is complete and nothing is blocked: do not stop to ask a question or to report a missing input.",
+    // A case that expects a question (`expect: ask`) tests whether the Role asks: telling it not to would decide the case.
+    ...c.expect === "ask" ? [] : ["The brief above is complete and nothing is blocked: do not stop to ask a question or to report a missing input."],
     "Do not summarize and do not leave parts out."
   ].join("\n");
 }
 var MIN_ANSWER = 300;
-function runCase(root, id, c, exec) {
-  const system = roleSystem(root, id);
+var REFUSAL = /^(I can['’]?t|I cannot|I won['’]?t|I'm (not able|unable)|I am (not able|unable)|Sorry, I)\b/i;
+function runCase(root, id, c, exec, without) {
+  const system = roleSystem(root, id, without);
+  const short = (a) => c.expect === "ask" ? !a.trim() || REFUSAL.test(a.trim()) : a.trim().length < MIN_ANSWER;
   let answer = exec(answerPrompt(c), system);
-  if (answer.trim().length < MIN_ANSWER) answer = exec(answerPrompt(c), system);
-  if (answer.trim().length < MIN_ANSWER) throw new Error(`no deliverable (the model replied: ${answer.trim().replace(/\s+/g, " ").slice(0, 160)})`);
+  if (short(answer)) answer = exec(answerPrompt(c), system);
+  if (short(answer)) throw new Error(`no ${c.expect === "ask" ? "answer" : "deliverable"} (the model replied: ${answer.trim().replace(/\s+/g, " ").slice(0, 160) || "nothing"})`);
   const criteria = parseGrade(exec(buildGradePrompt(c, answer)), c.criteria);
   return { role: id, name: c.name, pass: criteria.every((x) => x.pass), criteria, answer };
 }
-function attempt(root, id, c, exec) {
+function attempt(root, id, c, exec, without) {
   try {
-    return runCase(root, id, c, exec);
+    return runCase(root, id, c, exec, without);
   } catch (e) {
     return { role: id, name: c.name, pass: false, criteria: [], answer: "", error: e.message.replace(/^claude -p failed: /, "") };
   }
 }
-function attempts(root, id, c, exec, n) {
-  if (n <= 1) return attempt(root, id, c, exec);
-  const rs = Array.from({ length: n }, () => attempt(root, id, c, exec));
+function attempts(root, id, c, exec, n, without) {
+  if (n <= 1) return attempt(root, id, c, exec, without);
+  const rs = Array.from({ length: n }, () => attempt(root, id, c, exec, without));
   const graded = rs.filter((r) => !r.error);
   const passed = rs.filter((r) => r.pass).length;
   const failing = /* @__PURE__ */ new Map();
@@ -18217,21 +18402,49 @@ function attempts(root, id, c, exec, n) {
     runs: { total: n, passed, errors: rs.length - graded.length }
   };
 }
-function runCases(root, role, caseName, exec, onCase, runs = 1) {
+function runCases(root, role, caseName, exec, onCase, runs = 1, without) {
+  if (without !== void 0 && !role) throw new Error("--without needs a Role: rule ids and skills belong to one Role");
   const roster = loadRoster(root);
   const ids = role ? [role] : Object.entries(roster.roles).filter(([, e]) => e?.status === "active").map(([k]) => k);
   const out = [];
   for (const id of ids) {
     if (!roster.roles[id]) throw new Error(`"${id}" is not a Role in roster.yaml`);
+    if (without !== void 0) {
+      const known = [...(loadRuleTable(root, id) ?? []).map((r) => r.id), ...(loadRole(root, id)?.skills ?? []).map((x) => x.name)];
+      if (!known.includes(without)) throw new Error(`--without: "${without}" is not a rule id or a skill of ${id}`);
+    }
     for (const c of loadEvalCases(root, id).cases) {
       if (caseName && c.name !== caseName) continue;
-      const r = attempts(root, id, c, exec, runs);
+      if (without !== void 0 && !caseName && !c.covers.includes(without)) continue;
+      const r = attempts(root, id, c, exec, runs, without);
       out.push(r);
       onCase?.(r);
     }
   }
   if (caseName && !out.length) throw new Error(`no case "${caseName}"${role ? ` for ${role}` : ""}`);
+  if (without !== void 0 && !out.length) throw new Error(`no case of ${role} covers "${without}"`);
   return out;
+}
+function writeResults(root, id, results, meta) {
+  const record = {
+    role: id,
+    date: (meta.date ?? /* @__PURE__ */ new Date()).toISOString(),
+    model: meta.model ?? null,
+    tier: loadRole(root, id)?.tier ?? "",
+    runs: meta.runs,
+    digest: roleDigest(root, id),
+    cases: results.filter((r) => r.role === id).map((r) => ({
+      name: r.name,
+      pass: r.pass,
+      runs: r.runs ?? { total: 1, passed: r.pass ? 1 : 0, errors: r.error ? 1 : 0 },
+      failed: r.criteria.filter((x) => !x.pass).map((x) => x.criterion),
+      ...r.error ? { error: r.error } : {}
+    }))
+  };
+  const file = resultsFile(root, id);
+  (0, import_node_fs41.writeFileSync)(file, `${JSON.stringify(record, null, 2)}
+`);
+  return file;
 }
 function printResults(rs, showAnswers = false) {
   const lines = [];
@@ -18645,7 +18858,7 @@ ${bad ? `${bad} problem(s) to fix before the run` : warn ? `no blocking problem,
 var import_node_child_process11 = require("node:child_process");
 var import_node_fs44 = require("node:fs");
 var import_node_path49 = require("node:path");
-var import_yaml22 = __toESM(require_dist(), 1);
+var import_yaml23 = __toESM(require_dist(), 1);
 var MIGRATION2 = /(^|\/)(migrations?|prisma\/migrations|supabase\/migrations|db\/migrate)\//i;
 var DEP_FILES = /(^|\/)(package\.json|pnpm-lock\.yaml|package-lock\.json|yarn\.lock|requirements\.txt|pyproject\.toml|go\.mod|Cargo\.toml)$/;
 function mergeDanger(p, id, tasks, base2, head) {
@@ -18672,7 +18885,7 @@ function loadAny(p, id) {
     const dir = (0, import_node_path49.join)(p.archive, id);
     const file = (0, import_node_path49.join)(dir, "change.yaml");
     if (!(e instanceof ChangeError) || !(0, import_node_fs44.existsSync)(file)) throw e;
-    const doc = import_yaml22.default.parseDocument((0, import_node_fs44.readFileSync)(file, "utf8"));
+    const doc = import_yaml23.default.parseDocument((0, import_node_fs44.readFileSync)(file, "utf8"));
     return { id, dir, file, doc, data: doc.toJS() ?? {} };
   }
 }
@@ -18848,10 +19061,10 @@ function ghCreate(p, plan, draft) {
 
 // src/runner.ts
 var import_node_child_process12 = require("node:child_process");
-var import_node_crypto8 = require("node:crypto");
+var import_node_crypto9 = require("node:crypto");
 var import_node_fs45 = require("node:fs");
 var import_node_path50 = require("node:path");
-var import_yaml23 = __toESM(require_dist(), 1);
+var import_yaml24 = __toESM(require_dist(), 1);
 var MINUTE = 6e4;
 var BACKOFF_MINUTES = [5, 10, 20, 40, 60];
 var LIMIT_TEXT = /rate[ _-]?limit|usage limit|quota|overloaded|\b429\b|\b529\b|limit (?:will )?reset/i;
@@ -18899,7 +19112,7 @@ function prOf(p, id) {
     const file = (0, import_node_path50.join)(dir, "change.yaml");
     if (!(0, import_node_fs45.existsSync)(file)) continue;
     try {
-      const pr = import_yaml23.default.parse((0, import_node_fs45.readFileSync)(file, "utf8"))?.run?.pr;
+      const pr = import_yaml24.default.parse((0, import_node_fs45.readFileSync)(file, "utf8"))?.run?.pr;
       return pr && typeof pr === "object" ? { url: typeof pr.url === "string" && pr.url ? pr.url : null, draft: pr.draft === true } : null;
     } catch {
       return null;
@@ -18937,7 +19150,7 @@ function fingerprint(p, id) {
     const parts = [String(c.data.state), String(c.data.approval?.hash ?? "-")];
     for (const f of ["tasks.yaml", "evidence/quality/summary.json", "evidence/converge.json", "evidence/deploy.json", "evidence/integration.json", "consultations.yaml", "deviations.yaml"]) {
       const file = (0, import_node_path50.join)(c.dir, f);
-      parts.push((0, import_node_fs45.existsSync)(file) ? (0, import_node_crypto8.createHash)("sha1").update((0, import_node_fs45.readFileSync)(file, "utf8").replace(ISO_TIME, "")).digest("hex").slice(0, 12) : "-");
+      parts.push((0, import_node_fs45.existsSync)(file) ? (0, import_node_crypto9.createHash)("sha1").update((0, import_node_fs45.readFileSync)(file, "utf8").replace(ISO_TIME, "")).digest("hex").slice(0, 12) : "-");
     }
     return parts.join("|");
   } catch {
@@ -19576,14 +19789,22 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
   vendor-path <upstream>/<skill>         absolute path of a vendored SKILL.md (e.g. pocock/grilling)
   diff-coverage <lcov> [--min 80] [--base <ref>]  coverage of the lines added since the change's first task started
   plugin-path <path>                     absolute path of a plugin file (e.g. roles/software-architect/references/stack-pool.md)
-  eval [<role>] [--case <name>] [--model <m>] [--runs <n>] [--answers]
+  eval [<role>] [--case <name>] [--model <m>] [--runs <n>] [--without <id>] [--answers]
                                          run a Role's cases with claude -p (no tools) and grade each answer against its
                                          criteria; without a Role, every active Role. Costs tokens; exits 1 when a case fails.
-                                         --runs <n> runs each case n times (1-10): a case that passes only some runs is FLAKY
+                                         The model is the one the Role's tier maps to in tiers.yaml (--model overrides it).
+                                         --runs <n> runs each case n times (1-10, default 3): a case passes only when every run
+                                         passes; one that passes only some runs is FLAKY and not passed
+                                         --without <rule-id|skill> drops that rule row or skill and runs the cases covering it:
+                                         each must fail (exits 1 when one still passes)
                                          --answers also prints each answer, to see why a case failed
-  roster [--write]                       the factory's Roles; checks roster.yaml, role profiles, artifacts.yaml (one owner
-                                         per artifact, reads/writes of each Role), workflows/*.yaml and the generated agent files
-                                         (--write regenerates agents/ from roles/)
+                                         A full run from a source checkout on the tier's model writes
+                                         roles/<id>/evals/results.json (commit it with the Role's change)
+  roster [--write] [--strict]            the factory's Roles; checks roster.yaml, role profiles, rules.md tables, artifacts.yaml
+                                         (one owner per artifact, reads/writes of each Role), workflows/*.yaml, the cases (a Role
+                                         whose rules.md is a table covers every rule and skill), and the generated agent files;
+                                         warns when such a Role's results.json is missing, stale or not 3 of 3
+                                         (--write regenerates agents/; --strict fails on warnings too)
 
 Execution (state executing; add --change <id> when several changes are active):
   next                                   what the orchestrator does next (implement | review | triage | upstream | complete ...);
@@ -19636,7 +19857,7 @@ Hooks:
 States: ${STATES.join(", ")}
 Exit codes: 0 ok, 1 failed check or refused operation, 2 usage error
 `;
-var VALUE_FLAGS = /* @__PURE__ */ new Set(["role", "files", "consultation", "remove-reason", "scope-reason", "summary", "cause", "task", "session", "last", "root", "title", "input-type", "workflow", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude", "model", "case", "runs", "text", "lang", "weights", "to", "done", "cannot", "raise", "base"]);
+var VALUE_FLAGS = /* @__PURE__ */ new Set(["role", "files", "consultation", "remove-reason", "scope-reason", "summary", "cause", "task", "session", "last", "root", "title", "input-type", "workflow", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude", "model", "case", "runs", "without", "text", "lang", "weights", "to", "done", "cannot", "raise", "base"]);
 function parseArgs(argv) {
   const pos = [];
   const flags = {};
@@ -20296,17 +20517,56 @@ ${lines.length ? `${lines.join("\n")}
       }
       case "eval": {
         const root = pluginRoot(env);
-        const runs = args.flags.runs === void 0 ? 1 : Number(args.flags.runs);
+        const runs = args.flags.runs === void 0 ? 3 : Number(args.flags.runs);
         if (!Number.isInteger(runs) || runs < 1 || runs > 10) throw new OpError("--runs takes a whole number from 1 to 10");
-        let results;
+        const caseName = str(args.flags.case);
+        const without = str(args.flags.without);
+        const asked = str(args.flags.model);
+        const progress = (r) => io.err(`  ... ${r.role}/${r.name}: ${r.error ? "ERROR" : r.pass ? "pass" : "fail"}${r.runs ? ` (${r.runs.passed}/${r.runs.total})` : ""}
+`);
+        const results = [];
+        const modelOf = /* @__PURE__ */ new Map();
         try {
-          results = runCases(root, rest[0], str(args.flags.case), (io.modelExec ?? claudeExec)(str(args.flags.model)), (r) => io.err(`  ... ${r.role}/${r.name}: ${r.error ? "ERROR" : r.pass ? "pass" : "fail"}${r.runs ? ` (${r.runs.passed}/${r.runs.total})` : ""}
-`), runs);
+          if (without !== void 0 && !rest[0]) throw new Error("--without needs a Role: rule ids and skills belong to one Role");
+          const roster = loadRoster(root);
+          let ids = rest[0] ? [rest[0]] : Object.entries(roster.roles).filter(([, e]) => e?.status === "active").map(([k]) => k);
+          if (caseName && !rest[0]) ids = ids.filter((id) => loadEvalCases(root, id).cases.some((c) => c.name === caseName));
+          if (caseName && !ids.length) throw new Error(`no case "${caseName}"`);
+          for (const id of ids) {
+            const model = asked ?? (roster.roles[id] ? tierModel(root, id) : void 0);
+            modelOf.set(id, model);
+            results.push(...runCases(root, id, caseName, (io.modelExec ?? claudeExec)(model), progress, runs, without));
+          }
         } catch (e) {
           throw new OpError(e.message);
         }
         const ok = results.every((r) => r.pass);
-        emit({ ok, results }, printResults(results, args.flags.answers === true));
+        const written = [];
+        if (without) {
+          const still = results.filter((r) => r.pass);
+          const text2 = `without ${without}: ${results.length - still.length}/${results.length} case(s) failed, as they should
+` + still.map((r) => `  STILL PASSES ${r.role}/${r.name}: it does not test ${without}; rewrite or drop it (C3)
+`).join("") + "  no result file written: a run --without is not the Role\n";
+          emit({ ok: still.length === 0, without, results }, printResults(results, args.flags.answers === true) + text2);
+          return still.length === 0 ? 0 : 1;
+        }
+        const inGit = (0, import_node_child_process14.spawnSync)("git", ["rev-parse", "--is-inside-work-tree"], { cwd: root, encoding: "utf8" }).stdout?.trim() === "true";
+        if (caseName) io.err("  no result file written: --case runs only part of a Role's cases\n");
+        else if (!inGit) io.err(`  no result file written: ${root} is not a source checkout
+`);
+        else {
+          for (const id of [...new Set(results.map((r) => r.role))]) {
+            const tm = tierModel(root, id);
+            const mine = results.filter((r) => r.role === id);
+            if (asked && tm && asked !== tm) io.err(`  no result file written for ${id}: --model ${asked} is not its tier's model (${tm})
+`);
+            else if (mine.every((r) => r.error)) io.err(`  no result file written for ${id}: no case was graded
+`);
+            else written.push((0, import_node_path52.relative)(root, writeResults(root, id, results, { runs, ...modelOf.get(id) ? { model: modelOf.get(id) } : {} })));
+          }
+        }
+        emit({ ok, results, written }, printResults(results, args.flags.answers === true) + written.map((f) => `wrote ${f}
+`).join(""));
         return ok ? 0 : 1;
       }
       case "roster": {
@@ -20317,14 +20577,16 @@ ${lines.length ? `${lines.join("\n")}
         d.add(checkWorkflows(root));
         d.add(checkEvals(root));
         const table = d.errors.length ? "" : rosterTable(root);
-        const summary = `${d.errors.length ? "FAILED" : "OK"}: ${d.errors.length} error(s), ${d.warnings.length} warning(s)
+        const strict = args.flags.strict === true;
+        const failed = d.failed(strict);
+        const summary = `${failed ? "FAILED" : "OK"}: ${d.errors.length} error(s), ${d.warnings.length} warning(s)${strict ? " (strict)" : ""}
 `;
         emit(
-          { ok: d.errors.length === 0, written, ...diagsJson(d) },
+          { ok: !failed, strict, written, ...diagsJson(d) },
           `${table}${written.length ? `wrote agents/: ${written.join(", ")}
 ` : ""}${printDiags(d)}${summary}`
         );
-        return d.errors.length ? 1 : 0;
+        return failed ? 1 : 0;
       }
       case "analyze": {
         const p = project();
@@ -20675,7 +20937,7 @@ Fix the file and render again.`);
         };
         const save = (name, data) => {
           (0, import_node_fs47.mkdirSync)(pagesDir(p), { recursive: true });
-          (0, import_node_fs47.writeFileSync)(pageDataFile(p, name), typeof data === "string" ? data : (0, import_yaml24.stringify)(data));
+          (0, import_node_fs47.writeFileSync)(pageDataFile(p, name), typeof data === "string" ? data : (0, import_yaml25.stringify)(data));
         };
         const show = (name) => {
           const page = load2(name);
