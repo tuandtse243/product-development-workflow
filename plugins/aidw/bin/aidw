@@ -11882,6 +11882,7 @@ function newChange(p, id, opts) {
     ].join("\n")
   );
   (0, import_node_fs21.writeFileSync)((0, import_node_path26.join)(dir, "intake.md"), INTAKE(title));
+  (0, import_node_fs21.writeFileSync)((0, import_node_path26.join)(dir, "stages.yaml"), "done: []\n");
   (0, import_node_fs21.writeFileSync)((0, import_node_path26.join)(dir, "analysis.md"), ANALYSIS(title, projectKind(p) === "brownfield", opts.scopeRound === true));
   recordBaseline(p);
   return dir;
@@ -12381,7 +12382,9 @@ var isFamily = (path) => /<(?!id>)[^>]+>|NNNN/.test(path);
 function keyOfRegistry(registry) {
   return (a) => {
     const path = registry?.[a]?.path;
-    return typeof path === "string" && path !== DECISIONS_PATH && !isFamily(path) ? `file:${path}` : `name:${a}`;
+    if (typeof path !== "string" || path === DECISIONS_PATH) return `name:${a}`;
+    if (path.startsWith("decisions/NNNN")) return "file:decisions/NNNN";
+    return isFamily(path) ? `name:${a}` : `file:${path}`;
   };
 }
 var keyed = (x, keyOf) => ({ ...x, reads: x.reads.map(keyOf), writes: x.writes.map(keyOf) });
@@ -12455,7 +12458,7 @@ function doneStages(w, change, p, registry = null) {
   const at = state ? stages.findIndex((s) => s.states.includes(state)) : -1;
   if (state && !ANALYSIS_STATES.includes(state)) for (const s of stages) done.add(s.id);
   else if (at > 0) for (const s of stages.slice(0, at)) done.add(s.id);
-  if (p && state === "analyzing") for (const id of writtenStages(p, change, stages, registry)) done.add(id);
+  if (p && state === "analyzing" && !(0, import_node_fs23.existsSync)(stagesFile(change))) for (const id of writtenStages(p, change, stages, registry)) done.add(id);
   const lastGate = stages.reduce((n, s, i) => s.gate !== void 0 && done.has(s.id) ? i : n, -1);
   if (lastGate > 0) for (const s of stages.slice(0, lastGate)) done.add(s.id);
   return done;

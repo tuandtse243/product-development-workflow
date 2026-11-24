@@ -56,8 +56,10 @@ you, says which may run at the same time: `aidw stages <id>` lists them as `done
 The CLI already leaves out a stage that reads another's output or writes the same Artifact, a second browser user (the
 `design` stage screenshots its mocks), and anything past `parallel.max`. Stages that write the same file (two sections
 of `analysis.md`, say) never run together; only the parts of `decisions.yaml` are exempt, because `aidw decide` writes
-them one at a time before you spawn. A Change started before `stages.yaml` existed needs no catching up: a stage whose
-Artifacts are all on disk and filled in (no `TODO(aidw)` left in its sections) counts as done. Following the steps one by one, in order, is
+them one at a time before you spawn. Report every stage yourself, including one a Decision Point skipped (`none`): the
+CLI never counts a stage done because its files exist. Only a Change started before `stages.yaml` existed (no such file in
+its folder) is caught up from its files: a stage whose Artifacts are all on disk and filled in (no `TODO(aidw)` left in
+its sections) counts as done; a skipped stage there is still reported with `--done`. Following the steps one by one, in order, is
 still correct; the `NEXT:` line only saves waiting.
 
 ## 0. Preconditions

@@ -2,7 +2,7 @@
  * D13: the CLI computes which analysis stages, and which review layers, may run at the same time, from the
  * Artifacts each one reads and writes, and offers them in one NEXT.
  */
-import { cpSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
@@ -70,9 +70,12 @@ describe("readyStages: stages whose inputs are written", () => {
     expect(ids(pickGroup(sameFile.stages.map((s) => stageWork(s, k)), 3))).toEqual(["a"]);
     const decisions = { ...product, stages: [st("a", ["decision-research-needed"]), st("b", ["decision-ux-research-needed"])] };
     expect(ids(readyStages(decisions, new Set(), k))).toEqual(["a", "b"]);
-    // a family of files (one ADR each) is compared by name
+    // ADR writers share the decisions/NNNN numbering: never together
     const adrs = { ...product, stages: [st("a", ["decisions-domain"]), st("b", ["decisions-architecture"])] };
-    expect(ids(readyStages(adrs, new Set(), k))).toEqual(["a", "b"]);
+    expect(ids(readyStages(adrs, new Set(), k))).toEqual(["a"]);
+    // another family of files (a spec per capability) is compared by name
+    const specs = { ...product, stages: [st("a", ["specs"]), st("b", ["delta-specs"])] };
+    expect(ids(readyStages(specs, new Set(), k))).toEqual(["a", "b"]);
   });
 
   /** Steps a shipped workflow: offer a group (max 3), report all of it done, repeat. */
@@ -183,16 +186,32 @@ describe("aidw stages", () => {
     expect(r.err).toMatch(/--done needs a value/);
   });
 
-  it("counts a stage done by its filled-in Artifacts when stages.yaml has no record (a change started before it)", () => {
-    const root = project();
-    cli(root, "transition", ID, "intake");
-    cli(root, "transition", ID, "analyzing");
+  const fillDiscovery = (root: string) => {
     const file = join(root, ".aidw/changes", ID, "analysis.md");
     const text = readFileSync(file, "utf8");
-    // the empty template proves nothing
-    expect(cli(root, "stages", ID, "--json").json().done).toEqual(["intake"]);
     const at = text.indexOf("## Appendix: discovery Q&A");
     writeFileSync(file, `${text.slice(0, at)}## Appendix: discovery Q&A\n\nRound 1: notes app for one user. Answer: yes.\n`);
+  };
+
+  it("never counts a stage done by its files on a change that has stages.yaml (only the lead reports it)", () => {
+    const root = project();
+    expect(existsSync(join(root, ".aidw/changes", ID, "stages.yaml"))).toBe(true);
+    cli(root, "transition", ID, "intake");
+    cli(root, "transition", ID, "analyzing");
+    fillDiscovery(root);
+    const j = cli(root, "stages", ID, "--json").json();
+    expect(j.done).toEqual(["intake"]);
+    expect(j.group.map((s: { id: string }) => s.id)).toEqual(["discovery"]);
+  });
+
+  it("counts a stage done by its filled-in Artifacts when stages.yaml is missing (a change started before it)", () => {
+    const root = project();
+    rmSync(join(root, ".aidw/changes", ID, "stages.yaml"));
+    cli(root, "transition", ID, "intake");
+    cli(root, "transition", ID, "analyzing");
+    // the empty template proves nothing
+    expect(cli(root, "stages", ID, "--json").json().done).toEqual(["intake"]);
+    fillDiscovery(root);
     const j = cli(root, "stages", ID, "--json").json();
     expect(j.done).toEqual(["intake", "discovery"]);
     expect(j.group.map((s: { id: string }) => s.id)).toEqual(["research", "user-research"]);

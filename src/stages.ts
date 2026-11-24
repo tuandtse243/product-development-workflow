@@ -6,7 +6,8 @@
  * Two pieces conflict when one reads a file the other writes, or both write the same file: each Artifact is compared
  * by its path in artifacts.yaml, so two sections of analysis.md conflict. Artifacts that are one of a family of files
  * (a path with a placeholder other than <id>) and the parts of decisions.yaml (only `aidw decide` writes it, one call
- * at a time, before the Agents are spawned) are compared by name. A gate
+ * at a time, before the Agents are spawned) are compared by name; every ADR writer shares one key (the next
+ * decisions/NNNN number). A gate
  * stage runs alone. At most one piece of browser-driving work runs at a time (the project has one test browser),
  * and at most `parallel.max` of quality.yaml (3 until quality.yaml exists). When reviewers and analysis stages are
  * both ready, the reviewers are offered first.
@@ -49,7 +50,10 @@ const isFamily = (path: string) => /<(?!id>)[^>]+>|NNNN/.test(path);
 export function keyOfRegistry(registry: Record<string, ArtifactEntry> | null): KeyOf {
   return (a) => {
     const path = registry?.[a]?.path;
-    return typeof path === "string" && path !== DECISIONS_PATH && !isFamily(path) ? `file:${path}` : `name:${a}`;
+    if (typeof path !== "string" || path === DECISIONS_PATH) return `name:${a}`;
+    // every ADR writer takes the next decisions/NNNN number: they share one key and never run together
+    if (path.startsWith("decisions/NNNN")) return "file:decisions/NNNN";
+    return isFamily(path) ? `name:${a}` : `file:${path}`;
   };
 }
 
@@ -104,7 +108,7 @@ export function readyStages(w: Workflow, done: ReadonlySet<string>, keyOf: KeyOf
   return stages.filter((s) => !done.has(s.id) && !blocker(stages, s, done, keyOf));
 }
 
-const STAGES_FILE = "stages.yaml";
+export const STAGES_FILE = "stages.yaml";
 const stagesFile = (change: Change) => join(change.dir, STAGES_FILE);
 
 function recordedDone(change: Change): string[] {
@@ -172,7 +176,9 @@ export function doneStages(w: Workflow, change: Change, p?: Paths, registry: Rec
   const at = state ? stages.findIndex((s) => s.states.includes(state)) : -1;
   if (state && !ANALYSIS_STATES.includes(state)) for (const s of stages) done.add(s.id);
   else if (at > 0) for (const s of stages.slice(0, at)) done.add(s.id);
-  if (p && state === "analyzing") for (const id of writtenStages(p, change, stages, registry)) done.add(id);
+  // only a Change started before stages.yaml existed (newChange writes it) is caught up from its files: on any other
+  // a half-written Artifact of a running stage, or an Agent writing files, must not mark a stage done
+  if (p && state === "analyzing" && !existsSync(stagesFile(change))) for (const id of writtenStages(p, change, stages, registry)) done.add(id);
   const lastGate = stages.reduce((n, s, i) => (s.gate !== undefined && done.has(s.id) ? i : n), -1);
   if (lastGate > 0) for (const s of stages.slice(0, lastGate)) done.add(s.id);
   return done;
