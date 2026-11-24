@@ -296,8 +296,8 @@ describe("gate in worktrees", () => {
     expect(d(hook(root, join(root, `.aidw/run/worktrees/${ID}`)))).toBe("deny");
     const bash = (command: string): HookInput => ({ hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command }, cwd: root });
     expect(decide(bash("aidw run 2026-11-10-wave"), {})).toMatchObject({ decision: "deny" });
-    // D2: the main session of an approved change starts the detached runner itself (tests/buildroute.test.ts)
-    expect(decide(bash("aidw run 2026-11-10-wave --detach"), {})).toMatchObject({ decision: "allow" });
+    // D2: only the exact command `aidw approve` prints, for an installed plugin, is allowed; other detached starts ask
+    expect(decide(bash("aidw run 2026-11-10-wave --detach"), {})).toMatchObject({ decision: "ask" });
     // reading or stopping the runner starts nothing (a user asked for `aidw run --status` in a session and was refused)
     expect(decide(bash("aidw run --status"), {})).toBeNull();
     expect(decide(bash("aidw run --stop"), {})).toBeNull();

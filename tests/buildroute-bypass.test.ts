@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, realpathSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
 import { decide, type HookInput } from "../src/gate.js";
@@ -49,9 +52,9 @@ describe("gate: bypasses of the plain detached start (D2)", () => {
     expect(cli("approve", ID)).toBe(0);
   });
 
-  it("still allows the bundled plugin's own start", () => {
-    expect(decision(START)).toBe("allow");
-    expect(decision(`${PLUGIN}/bin/aidw run ${ID} --detach --permission-mode auto -- --plugin-dir ${PLUGIN}`)).toBe("allow");
+  it("asks for the start of a plugin loaded from a folder, and for bare aidw (PATH can be planted)", () => {
+    expect(decision(START)).toBe("ask");
+    expect(decision(`${PLUGIN}/bin/aidw run ${ID} --detach --permission-mode auto -- --plugin-dir ${PLUGIN}`)).toBe("ask");
   });
 
   it("does not allow a --plugin-dir other than the bundled plugin (its hooks run unsandboxed in the runner)", () => {
@@ -116,15 +119,25 @@ describe("gate: the runner allowance is narrow (D2, follow-up review)", () => {
     change("other");
     expect(decision(`aidw run other --detach --permission-mode auto`)).toBe("deny");
     expect(decision(`aidw run --detach --permission-mode auto`)).toBe("deny"); // two changes: none resolved
-    expect(decision(`aidw run ${ID} --detach --permission-mode auto`)).toBe("allow");
+    expect(decision(`aidw run ${ID} --detach --permission-mode auto`)).toBe("ask");
   });
 });
 
 describe("route: a plugin loaded from a directory is passed to the runner", () => {
   it("adds -- --plugin-dir only when given one", async () => {
-    const { buildRoute, installedPlugin } = await import("../src/buildroute.js");
-    expect(buildRoute(ID, 4, `${PLUGIN}/bin/aidw`, PLUGIN).command).toBe(`${PLUGIN}/bin/aidw run ${ID} --detach --permission-mode auto -- --plugin-dir ${PLUGIN}`);
-    expect(installedPlugin("/Users/x/.claude/plugins/cache/aidw/aidw/1.0.0")).toBe(true);
-    expect(installedPlugin("/Users/x/src/aidw/plugins/aidw")).toBe(false);
+    const { buildRoute, installedOutside } = await import("../src/buildroute.js");
+    const r = buildRoute(ID, 4, `${PLUGIN}/bin/aidw`, PLUGIN);
+    expect(r.command).toBe(`${PLUGIN}/bin/aidw run ${ID} --detach --permission-mode auto -- --plugin-dir ${PLUGIN}`);
+    expect(r.next).toMatch(/asks the user to confirm, because aidw is loaded from a folder/);
+    expect(buildRoute(ID, 4, `${PLUGIN}/bin/aidw`).next).not.toMatch(/asks the user/);
+    const home = realpathSync(mkdtempSync(join(tmpdir(), "aidw-home-")));
+    const installed = join(home, ".claude", "plugins", "cache", "aidw");
+    mkdirSync(installed, { recursive: true });
+    const proj = tempProject();
+    expect(installedOutside(installed, proj)).toBe(true);
+    expect(installedOutside(join(home, "src", "plugins", "aidw"), proj)).toBe(false); // not installed (and missing)
+    const inProj = join(proj, ".claude", "plugins", "aidw");
+    mkdirSync(inProj, { recursive: true });
+    expect(installedOutside(inProj, proj)).toBe(false); // installed shape, but inside the project
   });
 });

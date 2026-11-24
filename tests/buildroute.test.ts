@@ -124,10 +124,11 @@ describe("gate: the main session starts the detached runner after approval", () 
       expect(cli("approve", ID).code).toBe(0);
     });
 
-    it("allows the detached runner from the main session, by name or by path", () => {
-      expect(decision(START)).toBe("allow");
-      expect(decision(`/opt/plugin/bin/aidw run ${ID} --detach --permission-mode auto -- --plugin-dir /opt/plugin`)).toBe("allow");
-      expect(decision(`aidw run --detach`)).toBe("allow");
+    it("asks for a start that is not the exact command of an installed plugin, and denies one naming no approved Change", () => {
+      // bare aidw is looked up on PATH; /opt/plugin is not installed (tests/buildroute-shell.test.ts has the allow)
+      expect(decision(START)).toBe("ask");
+      expect(decision(`/opt/plugin/bin/aidw run ${ID} --detach --permission-mode auto -- --plugin-dir /opt/plugin`)).toBe("ask");
+      expect(decision(`aidw run --detach`)).toBe("deny");
     });
 
     it("still denies a foreground runner, a subagent, and a session under the runner", () => {

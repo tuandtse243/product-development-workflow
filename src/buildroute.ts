@@ -8,7 +8,7 @@
  * never asks the user (ADR-0014).
  */
 import { readFileSync, realpathSync } from "node:fs";
-import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
+import { isAbsolute, join, relative, sep } from "node:path";
 import { loadChange } from "./change.js";
 import type { Paths } from "./project.js";
 import { parseTasks } from "./tasks.js";
@@ -26,19 +26,26 @@ export interface BuildRoute {
   next: string;
 }
 
+/** The exact command that starts the detached runner for a Change: what the route prints and the gate compares. */
+export function runnerCommand(id: string, aidw: string, pluginDir?: string): string {
+  // A plugin loaded from a directory is passed on, so the runner's sessions have /aidw:resume and the gate.
+  return `${aidw} run ${id} --detach --permission-mode auto${pluginDir ? ` -- --plugin-dir ${pluginDir}` : ""}`;
+}
+
 /**
  * The route for a Change with `tasks` tasks left; `aidw` is the CLI as the orchestrator should type it, `pluginDir` the
- * plugin directory when it is not installed.
+ * plugin directory when aidw is loaded from a folder rather than installed. Only the start of an installed plugin is
+ * allowed by the gate without asking; from a folder the user confirms it at a prompt.
  */
 export function buildRoute(id: string, tasks: number, aidw = "aidw", pluginDir?: string): BuildRoute {
   if (tasks > RUNNER_THRESHOLD) {
-    // A plugin loaded from a directory is passed on, so the runner's sessions have /aidw:resume and the gate.
-    const command = `${aidw} run ${id} --detach --permission-mode auto${pluginDir ? ` -- --plugin-dir ${pluginDir}` : ""}`;
+    const command = runnerCommand(id, aidw, pluginDir);
+    const asks = pluginDir ? "; the start asks the user to confirm, because aidw is loaded from a folder" : "";
     return {
       mode: "runner",
       tasks,
       command,
-      next: `NEXT: start the runner: ${command} (${tasks} tasks, more than ${RUNNER_THRESHOLD}: one fresh session per task; run it with the sandbox disabled, then tell the user how to follow it)`,
+      next: `NEXT: start the runner: ${command} (${tasks} tasks, more than ${RUNNER_THRESHOLD}: one fresh session per task; run exactly this, with the sandbox disabled${asks}; then tell the user how to follow it)`,
     };
   }
   return {
@@ -58,59 +65,25 @@ export function tasksLeft(p: Paths, id: string): number {
   }
 }
 
-/** A path compared by what it points at: the real path when it exists, else the resolved one. */
-function canonical(path: string): string {
-  try {
-    return realpathSync(path);
-  } catch {
-    return resolve(path);
-  }
-}
-
-export interface DetachedStart {
-  kind: "plain" | "other";
-  /** the change id named on the command line, if any */
-  id?: string;
+function inside(parent: string, child: string): boolean {
+  const r = relative(parent, child);
+  return r === "" || (r !== ".." && !r.startsWith(`..${sep}`) && !isAbsolute(r));
 }
 
 /**
- * For a command that runs `aidw run`: `plain` when it is exactly the detached start the route prints, null when it is
- * not detached, `other` for every other detached form. Plain means: the CLI itself (bare `aidw`, or `<root>/bin/aidw`
- * for one of `roots`, the plugin this CLI belongs to), an optional change id, `--detach`, `--permission-mode auto`,
- * `--max-runs N` (N >= 1), and after `--` at most one `--plugin-dir` that is one of `roots`. Anything else (another
- * binary or plugin, another permission mode, a claude argument, a newline or other shell syntax) is `other`.
- *
- * The gate lets the main session run a `plain` start after approval without asking (D2). That allow also skips the
- * prompt for running it outside the sandbox, so nothing in it may load code the user did not approve.
+ * Whether the gate may start the runner of the plugin at `root` without asking: the plugin is installed (under a
+ * `.claude/plugins/` directory) and lies outside the project. A plugin loaded from a folder sits in a tree the session
+ * may write, so what its start runs could be changed under it; that start asks the user. Only the plugin root, which
+ * comes from the hook's own environment, is resolved here; nothing the command says is.
  */
-export function detachedStart(cmd: string, roots: string[]): DetachedStart | null {
-  if (!/\s--detach(?:\s|$)/.test(cmd)) return null;
-  const other: DetachedStart = { kind: "other" };
-  if (/[;&|`<>\n\r'"\\]|\$/.test(cmd)) return other;
-  const allowed = new Set(roots.filter(Boolean).map(canonical));
-  const isRoot = (dir: string) => isAbsolute(dir) && allowed.has(canonical(dir));
-  const words = cmd.trim().split(/\s+/);
-  const bin = words[0] ?? "";
-  if (words[1] !== "run") return other;
-  if (bin !== "aidw" && !(basename(bin) === "aidw" && basename(dirname(bin)) === "bin" && isRoot(dirname(dirname(bin))))) return other;
-  const args = words.slice(2);
-  const dashdash = args.indexOf("--");
-  const own = dashdash >= 0 ? args.slice(0, dashdash) : args;
-  const passthrough = dashdash >= 0 ? args.slice(dashdash + 1) : [];
-  let id: string | undefined;
-  for (let i = 0; i < own.length; i++) {
-    const a = own[i] as string;
-    if (a === "--detach") continue;
-    if (a === "--permission-mode" && own[i + 1] === "auto") i++;
-    else if (a === "--max-runs" && /^[1-9]\d*$/.test(own[i + 1] ?? "")) i++;
-    else if (i === 0 && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(a)) id = a;
-    else return other;
+export function installedOutside(root: string, project: string): boolean {
+  let real: string;
+  let proj: string;
+  try {
+    real = realpathSync(root);
+    proj = realpathSync(project);
+  } catch {
+    return false;
   }
-  if (passthrough.length && !(passthrough.length === 2 && passthrough[0] === "--plugin-dir" && isRoot(passthrough[1] as string))) return other;
-  return { kind: "plain", ...(id ? { id } : {}) };
-}
-
-/** Whether the plugin at `root` is installed (Claude Code loads it by itself) rather than loaded with --plugin-dir. */
-export function installedPlugin(root: string): boolean {
-  return canonical(root).split(sep).join("/").includes("/.claude/plugins/");
+  return real.split(sep).join("/").includes("/.claude/plugins/") && !inside(proj, real);
 }

@@ -70,14 +70,14 @@ describe("gate: forms of the detached start against a real plugin dir (D2)", () 
       expect(cli("approve", ID)).toBe(0);
     });
 
-    it("allows the own options in any order, tab separators and an empty trailing --", () => {
+    it("asks for the own options in any order, tab separators and an empty trailing -- (only the exact command is allowed)", () => {
       for (const c of [
         `aidw run ${ID} --permission-mode auto --detach`,
         `aidw run ${ID} --detach --max-runs 3 --permission-mode auto`,
         `aidw\trun ${ID}\t--detach --permission-mode auto`,
         `${START} --`,
       ]) {
-        expect([JSON.stringify(c), decision(c)]).toEqual([JSON.stringify(c), "allow"]);
+        expect([JSON.stringify(c), decision(c)]).toEqual([JSON.stringify(c), "ask"]);
       }
     });
 

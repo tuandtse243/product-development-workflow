@@ -9433,14 +9433,18 @@ var AIDW_STATE_COMMAND = /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+(?:task
 var import_node_fs9 = require("node:fs");
 var import_node_path11 = require("node:path");
 var RUNNER_THRESHOLD = 3;
+function runnerCommand(id, aidw, pluginDir) {
+  return `${aidw} run ${id} --detach --permission-mode auto${pluginDir ? ` -- --plugin-dir ${pluginDir}` : ""}`;
+}
 function buildRoute(id, tasks, aidw = "aidw", pluginDir) {
   if (tasks > RUNNER_THRESHOLD) {
-    const command = `${aidw} run ${id} --detach --permission-mode auto${pluginDir ? ` -- --plugin-dir ${pluginDir}` : ""}`;
+    const command = runnerCommand(id, aidw, pluginDir);
+    const asks = pluginDir ? "; the start asks the user to confirm, because aidw is loaded from a folder" : "";
     return {
       mode: "runner",
       tasks,
       command,
-      next: `NEXT: start the runner: ${command} (${tasks} tasks, more than ${RUNNER_THRESHOLD}: one fresh session per task; run it with the sandbox disabled, then tell the user how to follow it)`
+      next: `NEXT: start the runner: ${command} (${tasks} tasks, more than ${RUNNER_THRESHOLD}: one fresh session per task; run exactly this, with the sandbox disabled${asks}; then tell the user how to follow it)`
     };
   }
   return {
@@ -9457,41 +9461,20 @@ function tasksLeft(p, id) {
     return 0;
   }
 }
-function canonical(path) {
+function inside(parent, child) {
+  const r = (0, import_node_path11.relative)(parent, child);
+  return r === "" || r !== ".." && !r.startsWith(`..${import_node_path11.sep}`) && !(0, import_node_path11.isAbsolute)(r);
+}
+function installedOutside(root, project) {
+  let real2;
+  let proj;
   try {
-    return (0, import_node_fs9.realpathSync)(path);
+    real2 = (0, import_node_fs9.realpathSync)(root);
+    proj = (0, import_node_fs9.realpathSync)(project);
   } catch {
-    return (0, import_node_path11.resolve)(path);
+    return false;
   }
-}
-function detachedStart(cmd2, roots) {
-  if (!/\s--detach(?:\s|$)/.test(cmd2)) return null;
-  const other = { kind: "other" };
-  if (/[;&|`<>\n\r'"\\]|\$/.test(cmd2)) return other;
-  const allowed = new Set(roots.filter(Boolean).map(canonical));
-  const isRoot = (dir) => (0, import_node_path11.isAbsolute)(dir) && allowed.has(canonical(dir));
-  const words = cmd2.trim().split(/\s+/);
-  const bin = words[0] ?? "";
-  if (words[1] !== "run") return other;
-  if (bin !== "aidw" && !((0, import_node_path11.basename)(bin) === "aidw" && (0, import_node_path11.basename)((0, import_node_path11.dirname)(bin)) === "bin" && isRoot((0, import_node_path11.dirname)((0, import_node_path11.dirname)(bin))))) return other;
-  const args = words.slice(2);
-  const dashdash = args.indexOf("--");
-  const own = dashdash >= 0 ? args.slice(0, dashdash) : args;
-  const passthrough = dashdash >= 0 ? args.slice(dashdash + 1) : [];
-  let id;
-  for (let i = 0; i < own.length; i++) {
-    const a = own[i];
-    if (a === "--detach") continue;
-    if (a === "--permission-mode" && own[i + 1] === "auto") i++;
-    else if (a === "--max-runs" && /^[1-9]\d*$/.test(own[i + 1] ?? "")) i++;
-    else if (i === 0 && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(a)) id = a;
-    else return other;
-  }
-  if (passthrough.length && !(passthrough.length === 2 && passthrough[0] === "--plugin-dir" && isRoot(passthrough[1]))) return other;
-  return { kind: "plain", ...id ? { id } : {} };
-}
-function installedPlugin(root) {
-  return canonical(root).split(import_node_path11.sep).join("/").includes("/.claude/plugins/");
+  return real2.split(import_node_path11.sep).join("/").includes("/.claude/plugins/") && !inside(proj, real2);
 }
 
 // src/grants.ts
@@ -9796,30 +9779,27 @@ function gateState(p) {
   return st;
 }
 function approvedForBuild(p, id) {
-  const ids = listChangeIds(p);
-  const target = id ?? (ids.length === 1 ? ids[0] : void 0);
-  if (!target || !ids.includes(target)) return false;
   try {
-    const c = loadChange(p, target);
+    const c = loadChange(p, id);
     const state = stateOf(c);
     return !!state && OPEN_STATES.has(state) && approvalStatus(p, c).status === "valid";
   } catch {
     return false;
   }
 }
-function inside(parent, child) {
+function inside2(parent, child) {
   const r = (0, import_node_path13.relative)(parent, child);
   return r === "" || r !== ".." && !r.startsWith(`..${import_node_path13.sep}`) && !(0, import_node_path13.isAbsolute)(r);
 }
 function isFrozenPackageFile(p, file, frozen) {
-  if (file === p.constitution || FROZEN_PROJECT_DIRS(p).some((d) => inside(d, file))) return frozen.length > 0;
+  if (file === p.constitution || FROZEN_PROJECT_DIRS(p).some((d) => inside2(d, file))) return frozen.length > 0;
   for (const id of frozen) {
     try {
       if (baseSpecFiles(p, loadChange(p, id)).includes(file)) return true;
     } catch {
     }
     const dir = (0, import_node_path13.join)(p.changes, id);
-    if (!inside(dir, file)) continue;
+    if (!inside2(dir, file)) continue;
     const r = (0, import_node_path13.relative)(dir, file).split(import_node_path13.sep).join("/");
     if (CHANGE_PACKAGE_FILES.includes(r) || r.startsWith("specs/")) return true;
   }
@@ -9866,7 +9846,7 @@ function decide(input, env) {
   if (tool === "Read") {
     const file = String(ti.file_path ?? "");
     const secret = firstMatch(SECRET_PATHS, file);
-    return secret && !inside(project, (0, import_node_path13.resolve)(cwd, file)) ? deny(`reading ${secret.why} is forbidden (tier x)`) : null;
+    return secret && !inside2(project, (0, import_node_path13.resolve)(cwd, file)) ? deny(`reading ${secret.why} is forbidden (tier x)`) : null;
   }
   const role = agentRole(input.agent_type, env);
   if (tool === "Write" || tool === "Edit" || tool === "MultiEdit" || tool === "NotebookEdit") {
@@ -9874,9 +9854,9 @@ function decide(input, env) {
     if (!raw) return null;
     const file = (0, import_node_path13.resolve)(cwd, raw);
     const secret = firstMatch(SECRET_PATHS, file);
-    if (secret && !inside(project, file)) return deny(`writing ${secret.why} is forbidden (tier x)`);
-    if (!inside(project, file)) return null;
-    if (role === "author" && !inside(p.aidw, file)) {
+    if (secret && !inside2(project, file)) return deny(`writing ${secret.why} is forbidden (tier x)`);
+    if (!inside2(project, file)) return null;
+    if (role === "author" && !inside2(p.aidw, file)) {
       return deny("an authoring role drafts Artifacts under .aidw/ only; project files are written by the implementing roles after approval");
     }
     if (role === "reviewer") {
@@ -9884,7 +9864,7 @@ function decide(input, env) {
       return deny("the reviewer is read-only; report issues in the verdict instead of fixing them (it may write only .aidw/run/review-<task>.md or layer-review-<layer>.md)");
     }
     const worktrees = (0, import_node_path13.join)(p.run, "worktrees");
-    if (inside(worktrees, file)) {
+    if (inside2(worktrees, file)) {
       const parts = (0, import_node_path13.relative)(worktrees, file).split(import_node_path13.sep);
       if (parts.length < 3) return deny("write inside a task's worktree (.aidw/run/worktrees/<change>/<task>/...)");
       if (parts[2] === AIDW_DIR) return deny("the worktree's .aidw/ is a stale copy; aidw state lives in the main checkout and is the orchestrator's");
@@ -9892,11 +9872,11 @@ function decide(input, env) {
       return st2.open ? allow("analysis approved (task worktree)") : deny(closedReason(st2));
     }
     if (role === "implementer" && (0, import_node_path13.dirname)(file) === p.run && REPORT_FILE.test((0, import_node_path13.basename)(file))) return allow("implementer note for the reviewer");
-    if (role === "implementer" && inside(p.aidw, file) && !inside((0, import_node_path13.join)(p.run, "shots"), file)) {
+    if (role === "implementer" && inside2(p.aidw, file) && !inside2((0, import_node_path13.join)(p.run, "shots"), file)) {
       return deny("implementers do not write .aidw/; the orchestrator records progress and evidence");
     }
     const st = gateState(p);
-    if (inside(p.aidw, file)) {
+    if (inside2(p.aidw, file)) {
       if (isFrozenPackageFile(p, file, st.frozen)) {
         return deny(
           "the approved Analysis package is frozen during execution. To change scope, transition the change to escalated and back to analyzing, then re-approve."
@@ -9926,9 +9906,19 @@ function decide(input, env) {
       return deny(`the ${role} does not change aidw state (no self-verification); report back to the orchestrator`);
     }
     if (RUNNER_COMMAND.test(cmd2)) {
-      const start = detachedStart(cmd2, [pluginRoot(env), bundledRoot() ?? ""]);
-      if (start && !input.agent_type && env.AIDW_RUNNER !== "1" && approvedForBuild(p, start.id)) {
-        return start.kind === "plain" ? allow("the change is approved: the detached runner builds it (`aidw approve` printed this step)") : ask("this starts the runner with other options than the approved step (`aidw run <id> --detach --permission-mode auto`); it needs your confirmation");
+      if (!input.agent_type && env.AIDW_RUNNER !== "1") {
+        const root = pluginRoot(env);
+        const silent = installedOutside(root, p.project);
+        const approved = listChangeIds(p).filter((id) => approvedForBuild(p, id));
+        if (silent && approved.some((id) => cmd2.trim() === runnerCommand(id, (0, import_node_path13.join)(root, "bin", "aidw")))) {
+          return allow("the change is approved: the detached runner builds it (`aidw approve` printed this exact command)");
+        }
+        const names = cmd2.trim().split(/[ \t]+/);
+        if (approved.some((id) => names.includes(id)) && /(?:^|\s)--detach(?:\s|$)/.test(cmd2)) {
+          return ask(
+            silent ? "this starts the runner, outside the sandbox, with other words than the command `aidw approve` printed; it needs your confirmation" : "this starts the runner outside the sandbox, and aidw is loaded from a folder rather than installed; it needs your confirmation"
+          );
+        }
       }
       return deny(
         "`aidw run` starts Claude Code headless in a loop: only the main session of an approved change starts it, in the background (`aidw run <id> --detach --permission-mode auto`); otherwise the user runs it in their own terminal"
@@ -17335,7 +17325,7 @@ ${rows2.join("\n")}${rows2.length ? "\n" : ""}${stagesNext(v)}
         const { hash, files, by } = approve(p, id, auto ? { auto: { pluginRoot: pluginRoot(env) } } : {});
         const { kept, reopened } = reconcileDoneTasks(p, id);
         const root = pluginRoot(env);
-        const route = buildRoute(id, tasksLeft(p, id), (0, import_node_path45.join)(root, "bin", "aidw"), installedPlugin(root) ? void 0 : root);
+        const route = buildRoute(id, tasksLeft(p, id), (0, import_node_path45.join)(root, "bin", "aidw"), installedOutside(root, p.project) ? void 0 : root);
         emit(
           { ok: true, id, hash, files, kept, reopened, route },
           `approved ${id}${by === "user" ? "" : ` by ${by}`}
