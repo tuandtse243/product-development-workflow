@@ -71,9 +71,11 @@ that aidw creates; everything else runs sequentially on the main checkout.
    - `vercel project` WARN (not linked): run `vercel link --yes` now (creating a free project is covered by the
      `vercel-preview` permission). Without it the first deploy is forced to Production, which is tier 3.
 4. Not running under the runner (`echo $AIDW_RUNNER` is empty) and more than 3 tasks remain: **recommend the runner first**:
-   tell the user once, in one line, that typing `aidw doctor <id>` and then `aidw run <id> --permission-mode auto` in
-   their own terminal builds everything by itself, one fresh session per task, for about a quarter of the tokens of
-   this long session. Then continue here if they do not switch.
+   tell the user once, in one line, that `aidw run <id> --detach --permission-mode auto` builds everything in the
+   background, one fresh session per task, for about half the tokens of this long session, and that you can start it
+   now (`/aidw:start` and `/aidw:approve` already start it by themselves after approval when the plan has more than 3
+   tasks). On a yes, start it as step 6 of `$(aidw plugin-path skills/approve/SKILL.md)` says and stop; otherwise
+   continue here.
 
 ## Token discipline (this session re-reads its whole context on every turn)
 
@@ -246,12 +248,15 @@ A task is triaged once: if the extra attempt fails too, it escalates without ano
 
 ## Unattended runs (usage limits)
 
-If the user wants the run to survive usage or rate limits without them, tell them to start the runner in
-their own terminal (never run it yourself; the gate denies it):
+If the user wants the run to survive usage or rate limits without them, the runner does it. The main session of an
+approved change may start it in the background, with the sandbox disabled (the gate allows exactly this form; a
+foreground `aidw run` inside a session is denied):
 
 ```
-aidw run <id> --permission-mode auto -- --plugin-dir <plugin dir if not installed>
+aidw run <id> --detach --permission-mode auto -- --plugin-dir <plugin dir if not installed>
 ```
+
+The user can also run it in their own terminal, without `--detach`.
 
 Before every session the runner prepares what a sandboxed session cannot do: it starts the project's test browser
 (`aidw browser start`, a free port, one profile per project) when a layer drives a browser, and stops it when the

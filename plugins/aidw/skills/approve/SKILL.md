@@ -1,6 +1,6 @@
 ---
 name: approve
-description: Approve the Analysis package of an aidw change so autonomous execution can start. Only when the user runs /aidw:approve.
+description: Approve the Analysis package of an aidw change and start the build where the CLI routes it (in the session, or the background runner). Only when the user runs /aidw:approve.
 disable-model-invocation: true
 argument-hint: "[change id]"
 ---
@@ -33,18 +33,20 @@ The user has asked to approve. This is the single human gate of the workflow (Q2
      and opening its pull request against the named base do not ask again; every other tier 3 action still does;
    - the approved package (intake, analysis, specs, design, constitution) is frozen; changing it needs
      `aidw transition <id> escalated`, then `analyzing`, then a new approval;
-   - autonomous execution starts with `/aidw:run` (one fresh implementer per task, checkpoint evidence,
-     independent review, a commit per task); after an interruption, `/aidw:resume`;
-   - **how to build, two ways; offer both in a few lines and let the user pick.** An agent cannot open another
-     terminal tab or start `aidw run` itself (the sandbox blocks a nested Claude Code from the network and the
-     login, and the gate denies it), so the cheap way is one line the user types in this same window:
-     - **A. Background run (measured: about half the tokens per task of an in-session run)**: `! aidw run <id> --detach --permission-mode auto`
-       (the `!` runs it in the user's own shell; the CLI prints the full path; if `aidw` is not on PATH, use the
-       plugin's `bin/aidw` path). It returns at once and loops in the background: one fresh session per task or
-       wave, no MCP servers, waits out usage limits, stops by itself when it needs the user (escalation, a failed
-       `aidw doctor`). Follow: `tail -f .aidw/run/runner.log`, `aidw run --status`, `aidw run --stop`. Run
-       `aidw doctor <id>` first.
-     - **B. In this session**: the user says "go" and you start `/aidw:run`: subagents work automatically, but this
-       session's long context is re-read on every turn (trial-3A in session: 0.82M tokens per task; trial-3C with the runner: 0.40M). Tell the user to
-       `/clear` first if they can, since a fresh session starts leaner.
-     Concepts: user guide, "Task, phiên và worktree". Do not start either yourself until the user picks.
+   - autonomous execution starts right away: one fresh implementer per task, checkpoint evidence, independent
+     review, a commit per task; after an interruption, `/aidw:resume`.
+6. **Build: follow the `NEXT:` line of `aidw approve`; do not ask the user to pick.** The CLI chose where the build runs
+   from the number of tasks (more than 3 go to the runner; plan D2):
+   - `NEXT: build here: ...`: follow `$(aidw plugin-path skills/run/SKILL.md)` for `<id>` now, from its step 0 (the
+     user does not type `/aidw:run`).
+   - `NEXT: start the runner: <command>`: run exactly that command with the Bash tool and the sandbox disabled
+     (`dangerouslyDisableSandbox: true`): the runner starts Claude Code sessions, which need the network and the login
+     that the sandbox withholds. The gate allows exactly this command from the main session of an approved change; any
+     other form asks or is denied. It returns at once and loops in the background: one fresh session per task or wave
+     (about half the tokens per task of an in-session run: trial-3A 0.82M, trial-3C 0.40M), auto permission mode so
+     nothing asks after the gate (ADR-0014), no MCP servers, waits out usage limits, runs `aidw doctor` before the first
+     session, and stops by itself when it needs the user. Tell the user in three lines how to follow it (`tail -f
+     .aidw/run/runner.log`, `aidw run --status`) and stop it (`aidw run --stop`), then stop.
+   - The runner did not start (the prompt was declined, a runner is already running, the sandbox blocked it): give the
+     user the same command to type with `!` in front, in this window (the `!` runs it in their own shell), and stop.
+   Concepts: user guide, "Task, phiên và worktree".

@@ -7,8 +7,9 @@ Tài liệu này dành cho người mới. Kế hoạch kiểm thử thực tế
 
 ## 1. Hiểu nhanh trong một phút
 
-- Bạn **chỉ quyết định ở một chỗ**: duyệt `analysis.md` (lệnh `/aidw:approve`). Trước đó, code bị khóa. Sau đó,
-  mọi thứ chạy tự động.
+- Bạn **chỉ quyết định ở một chỗ**: duyệt `analysis.md` (đồng ý mọi mục trên trang cổng duyệt, hoặc gõ `/aidw:approve`).
+  Trước đó, code bị khóa. Sau đó, mọi thứ chạy tự động: **một lệnh `/aidw:start`** đi từ yêu cầu qua cổng duyệt vào tới
+  lúc build, bạn không phải gõ `/aidw:run`.
 - Mọi trạng thái nằm trong thư mục `.aidw/` của project và trong git. Session Claude Code bị đóng giữa chừng
   không làm mất gì.
 - Mỗi task do một **subagent mới** làm, rồi một **subagent khác** review. Mỗi task được một commit.
@@ -52,9 +53,9 @@ Bạn chỉ gõ các lệnh `/aidw:...` trong Claude Code. CLI `aidw` do Claude 
 | Lệnh | Khi nào | Việc nó làm |
 |---|---|---|
 | `/aidw:init` | một lần mỗi project | tạo `.aidw/`. Tự nhận ra project có sẵn (brownfield) và ghi stack, package manager |
-| `/aidw:start <ý tưởng, PRD hoặc đường dẫn file>` | mỗi change mới | hỏi bạn, phân tích, viết spec, chia task. Dừng trước cổng duyệt |
-| `/aidw:approve` | sau khi bạn đọc xong | **cổng duy nhất**: bạn bấm Yes. Hash và đóng băng gói phân tích |
-| `/aidw:run` | sau approve | chạy tự động các task, kiểm tra chất lượng, deploy preview, bàn giao |
+| `/aidw:start <ý tưởng, PRD hoặc đường dẫn file>` | mỗi change mới | hỏi bạn, phân tích, viết spec, chia task, dừng ở cổng duyệt. Bạn đồng ý xong thì nó tự duyệt và tự build (mục 7: tối đa 3 task build ngay trong phiên, hơn 3 task tự bật runner nền) |
+| `/aidw:approve` | khi muốn duyệt từ phiên khác | **cổng duy nhất**: bạn bấm Yes. Hash và đóng băng gói phân tích, rồi build như trên |
+| `/aidw:run` | thường không cần gõ | build ngay trong phiên: chạy các task, kiểm tra chất lượng, deploy preview, bàn giao. `start` và `approve` tự gọi nó khi kế hoạch có tối đa 3 task |
 | `/aidw:resume` | sau khi bị ngắt | tiếp tục từ chỗ dừng. Đã dừng vì escalation thì xử lý xong rồi mới resume |
 | `/aidw:status` | bất cứ lúc nào | trạng thái, drift, task nào xong, việc cần bạn |
 | `/aidw:deliver` | `run` tự gọi ở cuối | tạo gói bàn giao (README, handoff, báo cáo chất lượng) và archive |
@@ -265,9 +266,24 @@ bậc 2 chưa nằm trong danh sách cũng hỏi. Hộp thoại lặp lại quá
 
 ## 7. Chạy không cần trông: `aidw run` (cách chạy khuyên dùng)
 
-Bạn gõ **một lệnh, một lần**, sau khi đã approve. Sau đó có thể đi làm việc khác. AI không tự mở được tab terminal khác (sandbox chặn Claude Code lồng nhau gọi mạng và đăng nhập), nên có hai cách gõ:
+**Bạn không phải gõ gì.** Ngay sau khi duyệt, `aidw approve` in một dòng `NEXT:` cho biết build ở đâu. CLI quyết định
+theo số task còn lại (ngưỡng cố định là 3), không phải Claude:
 
-- **Ngay trong cửa sổ Claude Code đang mở:** `! aidw run <id> --detach --permission-mode auto`. Lệnh trả về ngay, vòng lặp chạy nền. Theo dõi: `tail -f .aidw/run/runner.log`; xem trạng thái: `aidw run --status`; dừng: `aidw run --stop`.
+| Số task | `NEXT:` | Việc phiên Claude Code làm |
+|---|---|---|
+| tối đa 3 | `build here: follow the /aidw:run steps` | build ngay trong phiên, như `/aidw:run` |
+| hơn 3 | `start the runner: aidw run <id> --detach --permission-mode auto` | tự chạy đúng lệnh đó (ngoài sandbox, vì runner mở các phiên Claude Code cần mạng và đăng nhập), báo bạn cách theo dõi rồi dừng |
+
+Gate chỉ cho phép đúng dạng lệnh đó, từ phiên chính (không phải subagent, không phải phiên do runner mở), khi change đã
+được duyệt. Lệnh có thêm tùy chọn khác (`--claude`, permission mode khác, tham số gửi cho `claude`) thì hỏi bạn; `aidw run`
+chạy nổi trong phiên hoặc trước khi duyệt thì bị chặn. Runner chạy mọi phiên ở chế độ `auto`: sau cổng duyệt không còn gì
+hỏi bạn ([ADR-0014](adr/0014-after-the-approval-gate-the-run-does-not-ask-the-user.md)); việc vượt ngoài quyền đã cấp kết thúc
+bằng escalation chứ không chờ bạn.
+
+Theo dõi: `tail -f .aidw/run/runner.log`; xem trạng thái: `aidw run --status`; dừng: `aidw run --stop` (rồi `/aidw:resume`
+để làm tiếp trong phiên). Nếu phiên không bật được runner (bạn từ chối hộp thoại, đã có runner khác chạy), tự gõ:
+
+- **Ngay trong cửa sổ Claude Code đang mở:** `! aidw run <id> --detach --permission-mode auto`. Lệnh trả về ngay, vòng lặp chạy nền.
 - **Ở terminal riêng** (chạy nổi, thấy log trực tiếp):
 
 ```bash
@@ -284,7 +300,7 @@ aidw run <id> --permission-mode auto -- --plugin-dir /đường/dẫn/plugins/ai
 - Nó không hỏi bạn được giữa chừng: câu hỏi cần bạn trả lời thành một escalation. Xử lý xong thì chạy lại đúng lệnh trên; nó tiếp tục từ chỗ dừng.
 - Nếu muốn tạm dừng: Ctrl+C. Chạy lại lệnh sau là tiếp tục. Không mất gì.
 
-Dùng `/aidw:run` tương tác trong Claude Code vẫn được, dành cho việc ngắn hoặc khi bạn muốn xem từng bước. Hãy gõ `/clear` trước (cuộc trò chuyện phân tích dài, mỗi lượt sau đều đọc lại toàn bộ).
+Dùng `/aidw:run` tương tác trong Claude Code vẫn được (với kế hoạch tối đa 3 task, `start` và `approve` tự làm vậy), dành cho việc ngắn hoặc khi bạn muốn xem từng bước. Hãy gõ `/clear` trước (cuộc trò chuyện phân tích dài, mỗi lượt sau đều đọc lại toàn bộ).
 
 ### Đo token: `aidw cost`
 
