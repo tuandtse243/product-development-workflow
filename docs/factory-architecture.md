@@ -216,6 +216,27 @@ A Decision Point in a Workflow:
 
 The deciding Role writes its answer and reason as an Artifact. The CLI rejects an answer outside `options`.
 
+**What runs at the same time (D13).** The CLI, not the Orchestrator, decides which pieces of work may run in
+parallel, at every level, from what each one reads and writes (`src/stages.ts`):
+
+- *Analysis stages.* `aidw stages <id>` lists the stages before the Approval Gate as done, ready, or `now`. A stage is
+  ready when no earlier unfinished stage writes what it reads, reads what it writes, or writes the same Artifact, and
+  no gate stands between them (a gate runs alone, and nothing after it starts first). A stage is done when the
+  Orchestrator reports it (`aidw stages --done <stage>`, also for a stage a Decision Point skips), when the Change
+  state is past it, or when a later gate is passed. Recorded in `changes/<id>/stages.yaml`, outside the approved package.
+- *Reviewers.* `aidw verify` no longer stops at the first review layer: it runs every layer, and each review layer
+  whose commands pass waits for its reviewer. The waiting reviewers are offered together.
+- *Tasks.* Waves, as before (section 9 and `src/parallel.ts`): disjoint `touches`, `depends_on` done.
+
+From what is ready, one group is offered in one `NEXT:`: greedily, in Workflow or layer order, leaving out a piece
+that conflicts with one already in, a second piece of **browser-driving** work (the project has one test browser: a
+`ui` reviewer, a stage marked `browser: true` such as `design`, which screenshots its mocks), and anything past
+`parallel.max` of `quality.yaml` (3 until that file exists). When reviewers and analysis stages are both ready the
+reviewers' group comes first. The Orchestrator spawns one subagent per piece, all in one message, and reports each
+back on its own (`aidw stages --done <stage>`, `aidw layer-review <layer>`); a single-piece group is the old
+one-step flow. A `fix` verdict of one reviewer sends the Change back to `executing`; the other verdicts of the same
+group are still recorded while their layer awaits review on unchanged code.
+
 **Triage.** When a task runs out of attempts, a fresh `software-architect` Agent classifies the cause from the
 evidence. It writes only its answer (`.aidw/run/triage-<task>.md`): the gate keeps the approved package and the
 project files closed to it. One triage per task; `implementation` grants one further attempt, then the task escalates:
