@@ -222,7 +222,10 @@ Fastify, Hono.
 
 - T6: which Role does the pre-gate review. Decided 2026-11-24: `code-reviewer`, with a new `plan-review` skill.
 - T1: decided 2026-11-24: `schema-evolution` moves to `library/skills/` (done).
-- T8: how the asking Agent is resumed in runner mode.
+- T8: how the asking Agent is resumed in runner mode. Decided 2026-11-24: the asker writes its question and a
+  progress note into the request file; the CLI always writes a resume brief (original brief + note + answer
+  path), so a fresh Agent of the same Role is the guaranteed path; continuing the live Agent with SendMessage is
+  an optimisation the lead uses when the asker is still running in its session.
 - The cases of every other active Role have no `covers:` yet; T12 must not fail `aidw roster` for Roles that
   have not been upgraded (require coverage only once a Role's `rules.md` uses the table format).
 - The owner prefers question rounds as an HTML Decision Page with options, examples and a copy-back summary,
