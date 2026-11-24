@@ -69,6 +69,8 @@ export interface Consultation {
   route?: "deviation";
   /** with route deviation: `pending` until the Deviation path (T9) records it as `recorded` */
   deviation?: "pending" | "recorded";
+  /** the Deviation that recorded it (src/deviation.ts) */
+  deviation_id?: string;
   at: string;
   answered_at?: string;
   resumed_at?: string;
@@ -423,8 +425,8 @@ export function recordAnswer(p: Paths, id: string, cid: string, pluginRoot: stri
     outcome,
     answered_at: now(),
     resume: `run/briefs/${id}/${cid}.resume.md`,
-    // TODO(T9): a Consultation routed to "deviation" is where the author Role changes its Artifact and the CLI records a
-    // Deviation and reruns the affected tasks (ADR-0014). Until T9, the asker resumes and builds what was approved.
+    // ADR-0014: the author Role changes its Artifact as a Deviation (`aidw deviation open --consultation`, src/deviation.ts);
+    // closing it sets `recorded`. `aidw next` asks for the Deviation before the asker resumes.
     ...(status === "needs-deviation" ? { route: "deviation" as const, deviation: "pending" as const } : {}),
   };
   writeResumeBrief(p, change, updated, pluginRoot);
@@ -499,6 +501,26 @@ function writeResumeBrief(p: Paths, change: Change, c: Consultation, pluginRoot:
   const path = join(p.aidw, c.resume as string);
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, lines.join("\n").replace(/\n{3,}/g, "\n\n"));
+}
+
+/**
+ * A Deviation opened for this Consultation was closed (src/deviation.ts): the record says `recorded` and the resume
+ * brief, written when the answer came, gets what changed, so the asker builds on the moved package.
+ */
+export function deviationRecorded(p: Paths, id: string, cid: string, d: { id: string; roles: string[]; changed?: string[]; reason: string; rerun?: string[] }): void {
+  const change = loadChange(p, id);
+  const { list, i, c } = find(change, cid);
+  list[i] = { ...c, deviation: "recorded", deviation_id: d.id };
+  saveConsultations(change, list);
+  if (!c.resume) return;
+  const path = join(p.aidw, c.resume);
+  const text = readText(path);
+  if (text === null) return;
+  const files = (d.changed ?? []).map((f) => `\`${join(p.project, f)}\``).join(", ");
+  writeFileSync(
+    path,
+    `${text.trimEnd()}\n\n## Deviation ${d.id}: the approved package changed\n\n${d.roles.join(" and ")} changed ${files} after this question (${d.reason}). The CLI checked and recorded it. Read those files again and build on them: where this brief says to build what the approved package states, the package now means the changed one.${d.rerun?.length ? ` Tasks that run again because of it: ${d.rerun.join(", ")}.` : ""}\n`,
+  );
 }
 
 // ---------------------------------------------------------------- aidw consult resume C<NN>

@@ -43,6 +43,7 @@ import { machineOf } from "./machine.js";
 import { bundledRoot, pluginRoot } from "./plugin.js";
 import { roleAccess } from "./roles.js";
 import { consultWrite } from "./consult.js";
+import { DEVIATIONS_DIR, DEVIATIONS_FILE, openDeviation } from "./deviationrecord.js";
 
 export interface HookInput {
   hook_event_name?: string;
@@ -134,6 +135,27 @@ function isFrozenPackageFile(p: Paths, file: string, frozen: string[]): boolean 
     if (CHANGE_PACKAGE_FILES.some((x) => x.toLowerCase() === r) || r.startsWith("specs/")) return true;
   }
   return false;
+}
+
+/**
+ * ADR-0014: while a Deviation is open, exactly its author Role may edit exactly its files (src/deviation.ts). Null when
+ * the file is not in an open Deviation, so the frozen package rule applies.
+ */
+function deviationEdit(p: Paths, file: string, agent: string, frozen: string[]): Decision {
+  for (const id of frozen) {
+    let d: ReturnType<typeof openDeviation> = null;
+    try {
+      d = openDeviation(loadChange(p, id));
+    } catch {
+      d = null;
+    }
+    if (!d || !d.files.some((f) => lower(join(p.project, f)) === lower(file))) continue;
+    const f = d.files.find((x) => join(p.project, x) === file);
+    const author = f ? d.authors?.[f] : undefined;
+    if (author && agent === author) return allow(`Deviation ${d.id}: ${author} changes what it wrote`);
+    return deny(`Deviation ${d.id} of ${id} lets only ${author ?? "its author Role"} edit ${rel(p, file)}: no other Agent and not the Orchestrator edits it while it is open`);
+  }
+  return null;
 }
 
 /** MCP tool names (the part after `mcp__<server>__`) that only read. */
@@ -228,6 +250,11 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
       if (same(basename(file), CONSULT_RECORD) && same(dirname(dirname(file)), p.changes)) {
         return deny("consultations.yaml is the CLI's record of Consultations; only `aidw consult` writes it");
       }
+      // ADR-0014: the record of Deviations and the copies of what was approved are the CLI's
+      const parts = relative(lower(p.changes), lower(file)).split(sep);
+      if (insideAnyCase(p.changes, file) && (same(parts[1] ?? "", DEVIATIONS_FILE) || same(parts[1] ?? "", DEVIATIONS_DIR)) && parts.length >= 2) {
+        return deny("deviations.yaml and deviations/ are the CLI's record of Deviations; only `aidw deviation` writes them");
+      }
       // ADR-0013: the request of the Agent running a task, the answer of the consulted Role, nothing else
       const consult = role === "reviewer" ? null : consultWrite(p, file, name, role);
       if (consult) return consult.allow ? allow(consult.reason) : deny(consult.reason);
@@ -260,9 +287,12 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
     }
     const st = gateState(p);
     if (insideAnyCase(p.aidw, file)) {
+      // ADR-0014: a file named by an open Deviation (frozen, or the task list) is its author Role's alone until it closes
+      const dev = deviationEdit(p, file, (input.agent_type ?? "").split(":").pop() ?? "", st.frozen);
+      if (dev) return dev;
       if (isFrozenPackageFile(p, file, st.frozen)) {
         return deny(
-          "the approved Analysis package is frozen during execution. To change scope, transition the change to escalated and back to analyzing, then re-approve.",
+          "the approved Analysis package is frozen during execution. A change to something approved is a Deviation by the Role that wrote it (`aidw deviation open`, ADR-0014); the user's own change of scope goes through escalated and back to analyzing, then re-approval.",
         );
       }
       return allow("aidw state directory");

@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { approvalStatus, computeApprovalHash } from "./approval.js";
+import { openDeviation } from "./deviationrecord.js";
 import {
   CHANGE_ID,
   ChangeError,
@@ -332,6 +333,9 @@ export function approve(p: Paths, id: string, opts: { auto?: { pluginRoot: strin
   if (state !== "awaiting_approval") {
     throw new OpError(`change "${id}" is in state "${String(change.data.state)}"; only "awaiting_approval" can be approved`);
   }
+  // ADR-0014: an open Deviation counts its files as they were; approving over it would hash a package nobody checked
+  const deviating = openDeviation(change);
+  if (deviating) throw new OpError(`Deviation ${deviating.id} of "${id}" is still open: \`aidw deviation close\` or \`aidw deviation abandon\` first`);
   const d = readinessCheck(p, id);
   if (d.errors.length) throw new OpError(`change "${id}" has validation errors; fix them before approving`, d);
   if (opts.auto) {

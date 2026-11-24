@@ -9,8 +9,9 @@ import { typeProblem } from "./commit.js";
  *              \------ escalated              (attempts exhausted; needs the user)
  * review -> conflict -> review -> done           (a wave task whose merge conflicts: integration resolves it, T7)
  *              \-> pending (sequential)      (the resolution failed: dropped, reruns on the latest code)
+ * any open task -> not_built                  (D10: its work lies outside what the user granted; never done)
  */
-export const TASK_STATUSES = ["pending", "running", "review", "done", "failed", "blocked", "escalated", "conflict"] as const;
+export const TASK_STATUSES = ["pending", "running", "review", "done", "failed", "blocked", "escalated", "conflict", "not_built"] as const;
 
 /** Fields the orchestrator updates during execution; excluded from the approval hash. */
 export const RUNTIME_FIELDS = [
@@ -34,6 +35,8 @@ export const RUNTIME_FIELDS = [
   "conflict",
   // ADR-0013: the Agent-run counter, raised on every new attempt and never reset; the Consultation budget counts per run
   "runs",
+  // D10: why a task is not built: { cause, reason, at }
+  "not_built",
 ] as const;
 
 export const DEFAULT_MAX_ATTEMPTS = 3;

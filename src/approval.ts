@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { Change } from "./change.js";
 import { capabilityOf, rel, walkFiles, type Paths } from "./project.js";
 import { canonicalTasks } from "./tasks.js";
+import { openDeviationDigests } from "./deviationrecord.js";
 
 export interface ApprovalHash {
   hash: string;
@@ -12,7 +13,19 @@ export interface ApprovalHash {
 }
 
 /** Change-level files of the approved package (besides specs/** and the planned part of tasks.yaml). */
-export const CHANGE_PACKAGE_FILES = ["intake.md", "analysis.md", "design.md", "quality.yaml", "decisions.yaml", "brief.md"] as const;
+export const CHANGE_PACKAGE_FILES = [
+  "intake.md",
+  "analysis.md",
+  "design.md",
+  "quality.yaml",
+  "decisions.yaml",
+  "brief.md",
+  // the contracts the build is held to (api-designer, database-architect): a later change to one is a Deviation
+  "openapi.yaml",
+  "api-contract.md",
+  "data-model.md",
+  "data-model.dbml",
+] as const;
 
 /** Project-level directories that belong to the approved package (with constitution.md). */
 export const FROZEN_PROJECT_DIRS = (p: Paths): string[] => [p.design, p.domain, p.architecture, p.requirements];
@@ -38,16 +51,23 @@ const normalize = (s: string) => s.replace(/\r\n?/g, "\n");
 
 /**
  * Hash of everything the user approves at the gate:
- *   change: intake.md, analysis.md, design.md, quality.yaml, specs/** (deltas), tasks.yaml (planned fields only),
+ *   change: intake.md, analysis.md, design.md, quality.yaml, decisions.yaml, brief.md, the contracts (openapi.yaml,
+ *           api-contract.md, data-model.md, data-model.dbml), specs/** (deltas), tasks.yaml (planned fields only),
  *           and the main specs those deltas apply to
  *   project: constitution.md, design/**, domain/**, architecture/**, requirements/**
  * Execution progress (task status, evidence, run state) is deliberately excluded.
  * decisions/ (ADRs) is excluded: implementation-level ADRs may be added during execution.
  * The push binding fixed at approval (`approval.push`: Change Branch, remote and its URL, base; src/grants.ts) is
  * hashed too, so editing it in change.yaml is drift. `push` is passed by `aidw approve` (null: none); otherwise it
- * is read from the recorded approval.
+ * is read from the recorded approval. `opts.as` replaces the digests of some files: while a Deviation is open its files
+ * count as they were when it opened (src/deviation.ts).
  */
-export function computeApprovalHash(p: Paths, change: Change, push?: unknown): ApprovalHash {
+export function computeApprovalHash(p: Paths, change: Change, push?: unknown, opts: { as?: Map<string, string | null> } = {}): ApprovalHash {
+  return hashOf(packageDigests(p, change, opts.as), push === undefined ? (change.data.approval as { push?: unknown } | null | undefined)?.push : push);
+}
+
+/** The project-relative files of the approved package and the digest each is hashed with. */
+export function packageDigests(p: Paths, change: Change, as?: Map<string, string | null>): Map<string, string> {
   const entries: { path: string; digest: string }[] = [];
   const add = (file: string, content?: string) => {
     if (!existsSync(file)) return;
@@ -63,17 +83,35 @@ export function computeApprovalHash(p: Paths, change: Change, push?: unknown): A
   add(p.constitution);
   for (const dir of FROZEN_PROJECT_DIRS(p)) for (const f of walkFiles(dir)) add(f);
 
-  entries.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-  const bound = push !== undefined ? push : (change.data.approval as { push?: unknown } | null | undefined)?.push;
+  const out = new Map(entries.map((e) => [e.path, e.digest]));
+  // An open Deviation (src/deviation.ts): its files count as they were when it opened, so the author's edit is not
+  // drift while every other approved file still is.
+  for (const [path, digest] of as ?? []) {
+    if (digest === null) out.delete(path);
+    else out.set(path, digest);
+  }
+  return out;
+}
+
+function hashOf(digests: Map<string, string>, bound: unknown): ApprovalHash {
+  const files = [...digests.keys()].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
   const binding = bound ? `approval.push\n${sha256(JSON.stringify(bound))}\n` : "";
-  const manifest = entries.map((e) => `${e.path}\n${e.digest}\n`).join("") + binding;
-  return { hash: `sha256:${sha256(manifest)}`, files: entries.map((e) => e.path) };
+  const manifest = files.map((f) => `${f}\n${digests.get(f)}\n`).join("") + binding;
+  return { hash: `sha256:${sha256(manifest)}`, files };
+}
+
+/** The digest a file of the package is hashed with (the planned part of tasks.yaml for tasks.yaml); null when it is absent. */
+export function fileDigest(p: Paths, change: Change, file: string): string | null {
+  if (!existsSync(file)) return null;
+  const text = normalize(readFileSync(file, "utf8"));
+  return sha256(file === join(change.dir, "tasks.yaml") ? canonicalTasks(text) : text);
 }
 
 export type ApprovalStatus = "none" | "valid" | "drift";
 
 export function approvalStatus(p: Paths, change: Change): { status: ApprovalStatus; expected?: string; actual: string } {
-  const actual = computeApprovalHash(p, change).hash;
+  const open = openDeviationDigests(change);
+  const actual = computeApprovalHash(p, change, undefined, open ? { as: open } : {}).hash;
   const approval = change.data.approval as { hash?: unknown } | null | undefined;
   const expected = typeof approval?.hash === "string" ? approval.hash : undefined;
   if (!expected) return { status: "none", actual };

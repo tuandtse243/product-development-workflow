@@ -34,6 +34,7 @@ import { envelopeBrief } from "./grants.js";
 import { loadArtifacts } from "./artifacts.js";
 import { BRIEF_READS } from "./briefreads.js";
 export { BRIEF_READS } from "./briefreads.js";
+import { openDeviation } from "./deviationrecord.js";
 import { loadConsultations, MAX_CONSULTATIONS_PER_RUN, pendingConsultation, taskAnswers, taskConsultable, taskRequestPath } from "./consult.js";
 import { packageEvidence, packageProblems, type PackageEvidence } from "./depsafety.js";
 import { secretsInChanges, secretsMessage, secretsProblem, stagedSecrets, type SecretFinding } from "./secrets.js";
@@ -126,7 +127,8 @@ export type TaskAction =
  */
 export type ConsultAction = {
   action: "consult";
-  step: "answer" | "record" | "resume";
+  /** deviation: the answer needs a change to the approved package; the lead opens a Deviation for the author Role */
+  step: "answer" | "record" | "deviation" | "resume";
   consultation: string;
   from: string;
   to: string;
@@ -137,7 +139,17 @@ export type ConsultAction = {
   meanwhile?: TaskAction;
 };
 
-export type NextAction = TaskAction | ConsultAction;
+/** An open Deviation (ADR-0014): the author Role changes the files it names, then `aidw deviation close` checks and records it. */
+export type DeviationAction = {
+  action: "deviation";
+  deviation: string;
+  /** file -> the Role that changes it */
+  authors: Record<string, string>;
+  brief: string;
+  meanwhile?: TaskAction;
+};
+
+export type NextAction = TaskAction | ConsultAction | DeviationAction;
 
 /**
  * What may run beside tasks that wait for an answer (ADR-0013), or nothing. An asker on the main checkout (a sequential
@@ -179,8 +191,21 @@ export function nextAction(p: Paths, id: string): NextAction {
   const c = pendingConsultation(tf.change);
   const waitingIds = new Set(pending.flatMap((x) => (x.task ? [x.task] : [])));
   const rest = taskAction(p, tf, waitingIds);
+  // ADR-0014: an open Deviation before anything new; work already in flight goes on beside it.
+  const dev = openDeviation(tf.change);
+  if (dev) {
+    const inFlight = ["review", "resolve", "review-merge", "integrate", "triage"].includes(rest.action) || (rest.action === "implement" && rest.reason !== "new");
+    return { action: "deviation", deviation: dev.id, authors: dev.authors, brief: join(p.run, "briefs", id, `${dev.id}.deviation.md`), ...(inFlight ? { meanwhile: rest } : {}) };
+  }
   if (c) {
-    const step = c.status !== "open" ? "resume" : existsSync(join(tf.change.dir, c.answer)) ? "record" : "answer";
+    const step =
+      c.status === "needs-deviation" && c.deviation === "pending"
+        ? "deviation"
+        : c.status !== "open"
+          ? "resume"
+          : existsSync(join(tf.change.dir, c.answer))
+            ? "record"
+            : "answer";
     return {
       action: "consult",
       step,
@@ -231,8 +256,8 @@ function taskAction(p: Paths, tf: TaskFile, waiting: ReadonlySet<string>): TaskA
   const wave = planWave(tf.tasks, parallelConfig(p, tf.change).max);
   if (wave.length >= 2) return { action: "wave", tasks: wave.map((t) => ({ task: t.id, title: title(t) })) };
   if (wave[0]) return { action: "implement", task: wave[0].id, title: title(wave[0]), reason: "new" };
-  const open = tf.tasks.filter((t) => statusOf(t) !== "done");
-  if (open.length === 0) return { action: "complete", done: tf.tasks.length };
+  const open = tf.tasks.filter((t) => statusOf(t) !== "done" && statusOf(t) !== "not_built");
+  if (open.length === 0) return { action: "complete", done: tf.tasks.filter((t) => statusOf(t) === "done").length };
   const stuck = open.map((t) => `${t.id} (${statusOf(t)}${list(t.depends_on).length ? `, needs ${list(t.depends_on).join(", ")}` : ""})`);
   return { action: "escalate", reason: `no runnable task: ${stuck.join("; ")}` };
 }
@@ -849,6 +874,26 @@ export function reconcileDoneTasks(p: Paths, id: string): { kept: string[]; reop
   });
   if (reopened.length) saveTasks(tf);
   return { kept, reopened };
+}
+
+/**
+ * A Deviation (src/deviation.ts) changed what these tasks were built against: the done ones go back to pending with a
+ * fresh attempt budget and the quality results are dropped; tasks still open simply run on the changed package.
+ */
+export function rerunTasks(p: Paths, id: string, ids: readonly string[], note: string): string[] {
+  const tf = loadTasks(p, id);
+  const reset: string[] = [];
+  tf.tasks.forEach((t, i) => {
+    if (!ids.includes(t.id) || statusOf(t) !== "done") return;
+    resetTask(tf, i, note);
+    reset.push(t.id);
+  });
+  if (!reset.length) return reset;
+  saveTasks(tf);
+  resetQualitySummary(tf.change);
+  const state = stateOf(tf.change);
+  if (state === "verifying" || state === "converging") transition(p, id, "executing", {});
+  return reset;
 }
 
 /**
