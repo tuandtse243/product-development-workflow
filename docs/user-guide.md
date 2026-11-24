@@ -183,7 +183,7 @@ Hai trường hợp đặc biệt:
   chỉ nhận Role đã viết file đó (theo `artifacts.yaml`) và chỉ file thuộc package đã duyệt; trong lúc mở, hook chỉ cho
   đúng Role đó sửa đúng các file đó, còn sửa bất kỳ file đã duyệt nào khác vẫn là drift. Role tác giả sửa theo ba quy
   tắc: giữ mục đích, sửa ít nhất, không thêm phạm vi. `aidw deviation close` kiểm: không file nào khác bị đổi, không
-  contract hay scenario nào đang viết dở, không đụng `grants` hay `permissions` của bạn, package vẫn hợp lệ, không bỏ
+  contract hay scenario nào đang viết dở, không đụng `grants`, `permissions` hay lệnh `run`/`setup` của các layer mà bạn đã duyệt, package vẫn hợp lệ, không bỏ
   scenario đã duyệt nào mà không ghi lý do (`--remove-reason`), không thêm requirement mới nếu không ghi lý do
   (`--scope-reason`), task mới phải phục vụ một scenario đã duyệt, task cần chạy lại không còn đang chạy dở, và phân
   loại thay đổi contract (`openapi.yaml`, `data-model.dbml`) là *additive* (thêm, không phá) hay *breaking*. "Giữ mục

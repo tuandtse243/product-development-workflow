@@ -223,7 +223,7 @@ checkpoint it as usual; the gap is on record and the pull request will show it. 
 2. Spawn each Agent on a `SPAWN` line with the printed prompt and nothing else. While it is open the hook lets each file be
    edited by its author Role only, never you (by Bash neither); an edit anywhere else in the package is still drift.
 3. When they reply: `aidw deviation close --change <id> --summary "<their one paragraph>"`. Refused, it says why
-   (another approved file drifted, a contract or scenario is half written, the grants or permissions changed, the
+   (another approved file drifted, a contract or scenario is half written, the grants, permissions or layer commands changed, the
    package does not validate, an approved scenario is removed without a reason, a new requirement, a new task serves no
    approved scenario): send the author back with that line. When the author removed an approved scenario and said why,
    add `--remove-reason "<scenario>=<its reason>; ..."`; when it says a new requirement is not new scope and why, add

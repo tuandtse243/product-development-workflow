@@ -30,7 +30,7 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync,
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import YAML from "yaml";
 import { decisionsToHonor, reqId, scenarioId, specsAfterChange } from "./analyze.js";
-import { approvalStatus, computeApprovalHash, fileDigest, isPackageRel, PACKAGE_VERSION, packageDigests } from "./approval.js";
+import { approvalStatus, computeApprovalHash, fileDigest, isPackageRel, packageDigests, packageVersionOf } from "./approval.js";
 import { loadArtifacts } from "./artifacts.js";
 import { loadChange, saveChange, stateOf, type Change } from "./change.js";
 import { deviationAbandoned, deviationRecorded, loadConsultations } from "./consult.js";
@@ -144,11 +144,14 @@ export function specIndex(p: Paths, id: string): SpecIndex {
 
 const planned = (text: string | null): Task[] => (text === null ? [] : parseTasks(text).tasks.filter((t) => t && !ADDED_ORIGINS.includes(String(t.origin))));
 
-/** What the user granted at the gate in quality.yaml: `grants` and the tier 2 `permissions`. */
+/** What the user approved in quality.yaml as theirs: `grants`, the tier 2 `permissions` and the layers' `run`/`setup` commands. */
 function grantsOf(text: string | null): string {
   try {
-    const data = text === null ? null : (YAML.parse(text) as { grants?: unknown; permissions?: unknown } | null);
-    return JSON.stringify({ grants: data?.grants ?? null, permissions: data?.permissions ?? null });
+    const data = text === null ? null : (YAML.parse(text) as { grants?: unknown; permissions?: unknown; layers?: unknown } | null);
+    const layers = Array.isArray(data?.layers)
+      ? (data.layers as unknown[]).map((l) => (l && typeof l === "object" ? { name: (l as Record<string, unknown>).name ?? null, run: (l as Record<string, unknown>).run ?? null, setup: (l as Record<string, unknown>).setup ?? null } : l))
+      : null;
+    return JSON.stringify({ grants: data?.grants ?? null, permissions: data?.permissions ?? null, layers });
   } catch {
     return "invalid";
   }
@@ -392,7 +395,7 @@ export function closeDeviation(p: Paths, id: string, o: CloseOptions): Deviation
   // 3. the grants and the tier 2 permissions are the user's
   const qualityRel = rel(p, join(change.dir, "quality.yaml"));
   if (changed.includes(qualityRel) && grantsOf(beforeText(qualityRel)) !== grantsOf(afterText(qualityRel))) {
-    refuse("`grants` and `permissions` in quality.yaml were granted by the user at the Approval Gate; no Role changes them");
+    refuse("`grants`, `permissions` and the layers' `run` and `setup` commands in quality.yaml were approved by the user at the Approval Gate; no Role changes them");
   }
 
   // 4. the package still holds together
@@ -442,7 +445,6 @@ export function closeDeviation(p: Paths, id: string, o: CloseOptions): Deviation
 
   // 7. contracts: additive, breaking, prose or unclassified
   const contracts: ContractDiff[] = [];
-  const has = (name: string) => existsSync(join(change.dir, name));
   for (const f of changed) {
     const name = basename(f);
     let c: ContractDiff | null = null;
@@ -450,10 +452,8 @@ export function closeDeviation(p: Paths, id: string, o: CloseOptions): Deviation
     else if (name === "data-model.dbml") c = { file: f, kind: "dbml", ...classifyDbml(beforeText(f), afterText(f)) };
     else if (name === "api-contract.md" || name === "data-model.md") {
       // the machine-readable contract beside the notes decides; the notes alone are prose
-      const decided = name === "api-contract.md" ? has("openapi.yaml") : has("data-model.dbml");
-      c = decided
-        ? { file: f, kind: "prose", class: "none", changes: [`notes changed; ${name === "api-contract.md" ? "openapi.yaml" : "data-model.dbml"} decides what the build must change`] }
-        : { file: f, kind: "prose", class: "prose", changes: ["changed (prose: compared by the reviewers, not the CLI)"] };
+      // the notes carry rules the machine-readable contract does not (errors, evolution): prose, rerun by Role
+      c = { file: f, kind: "prose", class: "prose", changes: ["changed (prose: compared by the reviewers, not the CLI)"] };
     }
     if (!c) continue;
     if (c.class === "none" && c.kind !== "prose") c = { ...c, class: "unclassified", changes: ["the text changed with no difference the CLI can classify; the reviewers judge it"] };
@@ -494,17 +494,17 @@ export function closeDeviation(p: Paths, id: string, o: CloseOptions): Deviation
 
   // 9. one step: the closed record and the new hash together (`approval.push` is kept: the push grant holds); only then
   // the tasks, whose reset may move the Change back to executing, which needs the approval valid
+  // the package keeps the version it was approved with: a contract the user never approved (version 1) is never adopted
   change = loadChange(p, id);
-  const { hash } = computeApprovalHash(p, change, undefined, { version: PACKAGE_VERSION });
-  const approval = (change.data.approval ?? {}) as Record<string, unknown>;
-  const history = Array.isArray(approval.history) ? (approval.history as unknown[]) : [];
+  const version = packageVersionOf(change);
+  const { hash } = computeApprovalHash(p, change, undefined, { version });
   const at2 = now();
-  const entry = { deviation: d.id, previous: String(approval.hash), hash, reason: d.reason, roles: d.roles, files: changed, at: at2 };
   const closed: DeviationRecord = {
     ...d,
     status: "closed",
     closed_at: at2,
     hash,
+    package: version,
     changed,
     ...(o.summary?.trim() ? { summary: o.summary.trim() } : {}),
     scenarios: { removed: removed.map((s) => ({ scenario: s, reason: reasons[s] as string })), added, changed: changedScenarios },
@@ -518,14 +518,47 @@ export function closeDeviation(p: Paths, id: string, o: CloseOptions): Deviation
   const list2 = loadDeviations(change);
   list2[list2.findIndex((x) => x.id === d.id)] = closed;
   saveDeviations(change, list2);
-  change.doc.setIn(["approval", "hash"], hash);
-  change.doc.setIn(["approval", "package"], PACKAGE_VERSION);
-  change.doc.setIn(["approval", "history"], change.doc.createNode([...history, entry]));
-  saveChange(change);
+  // the rest is the same step a later session runs when this one is interrupted here (finishDeviations)
+  return finishDeviations(p, id) ?? closed;
+}
 
-  rerunTasks(p, id, reset, `Deviation ${d.id} (${d.roles.join(", ")}) changed ${changed.join(", ")}; runs again`);
-  if (d.consultation) deviationRecorded(p, id, d.consultation, closed);
-  return closed;
+/**
+ * Finishes a close that was interrupted (ADR-0014): every CLI command runs it first, so a crash between the saves of a
+ * close never leaves the Change in drift with no open Deviation, or done tasks the record says were reset. Idempotent,
+ * and only for the newest closed Deviation not yet `finished`:
+ *   - the approval still names the hash the Deviation started from and the package hashes to the recorded new one:
+ *     the new hash and its history entry are written;
+ *   - the approval names the new hash: the recorded resets are made (tasks still done go back to pending), the
+ *     Consultation is marked recorded, and the record is `finished`.
+ * Returns the finished record, or null when there was nothing to finish.
+ */
+export function finishDeviations(p: Paths, id: string): DeviationRecord | null {
+  let change = loadChange(p, id);
+  const all = loadDeviations(change);
+  const at = all.map((d) => d.status).lastIndexOf("closed");
+  const d = all[at];
+  if (!d || d.finished || !d.hash) return null;
+  const approval = (change.data.approval ?? {}) as Record<string, unknown>;
+  if (approval.hash === d.previous && computeApprovalHash(p, change, undefined, { version: d.package ?? packageVersionOf(change) }).hash === d.hash) {
+    const history = Array.isArray(approval.history) ? (approval.history as unknown[]) : [];
+    const entry = { deviation: d.id, previous: d.previous, hash: d.hash, reason: d.reason, roles: d.roles, files: d.changed ?? [], at: d.closed_at ?? now() };
+    change.doc.setIn(["approval", "hash"], d.hash);
+    change.doc.setIn(["approval", "history"], change.doc.createNode([...history, entry]));
+    saveChange(change);
+    change = loadChange(p, id);
+  }
+  if ((change.data.approval as { hash?: unknown } | undefined)?.hash !== d.hash) return null; // drift of its own: not ours to settle
+  rerunTasks(p, id, d.reset ?? [], `Deviation ${d.id} (${d.roles.join(", ")}) changed ${(d.changed ?? []).join(", ")}; runs again`);
+  if (d.consultation) {
+    const c = loadConsultations(loadChange(p, id)).find((x) => x.id === d.consultation);
+    if (c && c.deviation !== "recorded") deviationRecorded(p, id, d.consultation, d);
+  }
+  const fresh = loadDeviations(loadChange(p, id));
+  const i = fresh.findIndex((x) => x.id === d.id);
+  const done: DeviationRecord = { ...d, finished: true };
+  fresh[i] = done;
+  saveDeviations(loadChange(p, id), fresh);
+  return done;
 }
 
 // ---------------------------------------------------------------- abandon

@@ -11042,7 +11042,8 @@ function deviationBashWrite(p, cmd2, frozen) {
     const hit = d.files.find((f) => text2.includes(lower((0, import_node_path19.relative)(p.aidw, (0, import_node_path19.join)(p.project, f)).split(import_node_path19.sep).join("/"))));
     if (!hit) continue;
     const masked = maskQuoted(cmd2);
-    if (firstMatch(WRITE_COMMANDS, masked) || firstMatch(INLINE_CODE, masked) || firstMatch(WRITE_COMMANDS, cmd2)) {
+    const rewrites = /\bgit\s+(?:checkout|restore)\b/.test(masked) || /(?:^|\s)--(?:write|fix)\b/.test(masked);
+    if (rewrites || firstMatch(WRITE_COMMANDS, masked) || firstMatch(INLINE_CODE, masked) || firstMatch(WRITE_COMMANDS, cmd2)) {
       return `Deviation ${d.id} of ${id} is open: only ${d.authors?.[hit] ?? "its author Role"} edits ${hit}, with the Write tool; no Bash write by the Orchestrator or any Agent`;
     }
   }
@@ -17750,7 +17751,8 @@ var planned = (text2) => text2 === null ? [] : parseTasks(text2).tasks.filter((t
 function grantsOf(text2) {
   try {
     const data = text2 === null ? null : import_yaml22.default.parse(text2);
-    return JSON.stringify({ grants: data?.grants ?? null, permissions: data?.permissions ?? null });
+    const layers = Array.isArray(data?.layers) ? data.layers.map((l) => l && typeof l === "object" ? { name: l.name ?? null, run: l.run ?? null, setup: l.setup ?? null } : l) : null;
+    return JSON.stringify({ grants: data?.grants ?? null, permissions: data?.permissions ?? null, layers });
   } catch {
     return "invalid";
   }
@@ -17947,7 +17949,7 @@ function closeDeviation(p, id, o) {
   if (incomplete.length) refuse(`scenario(s) ${incomplete.join(", ")} lack a WHEN or a THEN: is the spec still being edited?`);
   const qualityRel = rel(p, (0, import_node_path48.join)(change.dir, "quality.yaml"));
   if (changed.includes(qualityRel) && grantsOf(beforeText(qualityRel)) !== grantsOf(afterText(qualityRel))) {
-    refuse("`grants` and `permissions` in quality.yaml were granted by the user at the Approval Gate; no Role changes them");
+    refuse("`grants`, `permissions` and the layers' `run` and `setup` commands in quality.yaml were approved by the user at the Approval Gate; no Role changes them");
   }
   const diags = readinessCheck(p, id);
   if (diags.errors.length) refuse(`the changed package does not validate; ${d.roles.join(", ")} fix it before it closes`, diags);
@@ -17989,15 +17991,13 @@ function closeDeviation(p, id, o) {
     }
   }
   const contracts = [];
-  const has = (name) => (0, import_node_fs43.existsSync)((0, import_node_path48.join)(change.dir, name));
   for (const f of changed) {
     const name = (0, import_node_path48.basename)(f);
     let c = null;
     if (name === "openapi.yaml") c = { file: f, kind: "openapi", ...classifyOpenApi(beforeText(f), afterText(f)) };
     else if (name === "data-model.dbml") c = { file: f, kind: "dbml", ...classifyDbml(beforeText(f), afterText(f)) };
     else if (name === "api-contract.md" || name === "data-model.md") {
-      const decided = name === "api-contract.md" ? has("openapi.yaml") : has("data-model.dbml");
-      c = decided ? { file: f, kind: "prose", class: "none", changes: [`notes changed; ${name === "api-contract.md" ? "openapi.yaml" : "data-model.dbml"} decides what the build must change`] } : { file: f, kind: "prose", class: "prose", changes: ["changed (prose: compared by the reviewers, not the CLI)"] };
+      c = { file: f, kind: "prose", class: "prose", changes: ["changed (prose: compared by the reviewers, not the CLI)"] };
     }
     if (!c) continue;
     if (c.class === "none" && c.kind !== "prose") c = { ...c, class: "unclassified", changes: ["the text changed with no difference the CLI can classify; the reviewers judge it"] };
@@ -18032,16 +18032,15 @@ function closeDeviation(p, id, o) {
   if (busy.length) refuse(`${busy.map((t) => `${t.id} (${statusOf4(t)})`).join(", ")} must run again but ${busy.length > 1 ? "are" : "is"} still in flight: wait for ${busy.map((t) => t.id).join(", ")} to settle, then close`);
   const reset = order.filter((x) => statusOf4(live.find((t) => t.id === x)) === "done");
   change = loadChange(p, id);
-  const { hash } = computeApprovalHash(p, change, void 0, { version: PACKAGE_VERSION });
-  const approval = change.data.approval ?? {};
-  const history = Array.isArray(approval.history) ? approval.history : [];
+  const version = packageVersionOf(change);
+  const { hash } = computeApprovalHash(p, change, void 0, { version });
   const at2 = now7();
-  const entry = { deviation: d.id, previous: String(approval.hash), hash, reason: d.reason, roles: d.roles, files: changed, at: at2 };
   const closed = {
     ...d,
     status: "closed",
     closed_at: at2,
     hash,
+    package: version,
     changed,
     ...o.summary?.trim() ? { summary: o.summary.trim() } : {},
     scenarios: { removed: removed.map((s) => ({ scenario: s, reason: reasons[s] })), added, changed: changedScenarios },
@@ -18055,13 +18054,35 @@ function closeDeviation(p, id, o) {
   const list22 = loadDeviations(change);
   list22[list22.findIndex((x) => x.id === d.id)] = closed;
   saveDeviations(change, list22);
-  change.doc.setIn(["approval", "hash"], hash);
-  change.doc.setIn(["approval", "package"], PACKAGE_VERSION);
-  change.doc.setIn(["approval", "history"], change.doc.createNode([...history, entry]));
-  saveChange(change);
-  rerunTasks(p, id, reset, `Deviation ${d.id} (${d.roles.join(", ")}) changed ${changed.join(", ")}; runs again`);
-  if (d.consultation) deviationRecorded(p, id, d.consultation, closed);
-  return closed;
+  return finishDeviations(p, id) ?? closed;
+}
+function finishDeviations(p, id) {
+  let change = loadChange(p, id);
+  const all2 = loadDeviations(change);
+  const at = all2.map((d2) => d2.status).lastIndexOf("closed");
+  const d = all2[at];
+  if (!d || d.finished || !d.hash) return null;
+  const approval = change.data.approval ?? {};
+  if (approval.hash === d.previous && computeApprovalHash(p, change, void 0, { version: d.package ?? packageVersionOf(change) }).hash === d.hash) {
+    const history = Array.isArray(approval.history) ? approval.history : [];
+    const entry = { deviation: d.id, previous: d.previous, hash: d.hash, reason: d.reason, roles: d.roles, files: d.changed ?? [], at: d.closed_at ?? now7() };
+    change.doc.setIn(["approval", "hash"], d.hash);
+    change.doc.setIn(["approval", "history"], change.doc.createNode([...history, entry]));
+    saveChange(change);
+    change = loadChange(p, id);
+  }
+  if (change.data.approval?.hash !== d.hash) return null;
+  rerunTasks(p, id, d.reset ?? [], `Deviation ${d.id} (${d.roles.join(", ")}) changed ${(d.changed ?? []).join(", ")}; runs again`);
+  if (d.consultation) {
+    const c = loadConsultations(loadChange(p, id)).find((x) => x.id === d.consultation);
+    if (c && c.deviation !== "recorded") deviationRecorded(p, id, d.consultation, d);
+  }
+  const fresh = loadDeviations(loadChange(p, id));
+  const i = fresh.findIndex((x) => x.id === d.id);
+  const done = { ...d, finished: true };
+  fresh[i] = done;
+  saveDeviations(loadChange(p, id), fresh);
+  return done;
 }
 function abandonDeviation(p, id) {
   const change = loadChange(p, id);
@@ -18687,6 +18708,12 @@ function run(argv, env, cwd, io) {
     if (!dir) throw new OpError("no .aidw/ found in this directory or its parents; run `aidw init`");
     const p = pathsFor(dir);
     assertProject(p);
+    for (const id of listChangeIds(p)) {
+      try {
+        finishDeviations(p, id);
+      } catch {
+      }
+    }
     if (env === process.env) {
       for (const [k, v] of Object.entries(browserEnv(p))) if (!process.env[k]) process.env[k] = v;
     }

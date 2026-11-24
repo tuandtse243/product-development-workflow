@@ -360,7 +360,9 @@ is resolved to its spelling on disk, so a case variant is one file) and each fil
 package and its scenario and requirement index, and writes the author's brief with the three rules (keep the purpose,
 smallest change, no new scope). The first two are the author's and the reviewers' judgment; the CLI checks what it can
 of the third. While it is open the gate hook lets each named file be edited by its author Role only, with the Write
-tool at its exact path (every other Agent and the Orchestrator are denied, a Bash write naming the file too), the
+tool at its exact path (every other Agent and the Orchestrator are denied, and so is a Bash write naming the file:
+redirects, in-place edits, copies, inline code, `git checkout --`, `git restore`, a formatter's `--write` or `--fix`;
+best effort like H1, since a path relative to another `cd`, a glob or a variable is not caught), the
 approval hash reads those files as they were when it opened, so an edit to any other approved file is still drift,
 and while `quality.yaml` is open the grants and the tier 2 permissions are read from its approved copy. `next` returns
 the Deviation first, with `meanwhile` for work already in flight (none when `tasks.yaml` is open: the CLI would record
@@ -371,18 +373,21 @@ what the CLI can check:
 |---|---|
 | drift | another approved file changed (named, from the per-file digests) |
 | half written | `openapi.yaml` does not parse, `data-model.dbml` has an unclosed block, a new or changed scenario lacks its WHEN or THEN |
-| grants | `grants` or `permissions` in quality.yaml changed: they are the user's |
+| grants | `grants`, `permissions` or a layer's `run` or `setup` commands in quality.yaml changed: they are the user's |
 | package | `aidw validate` + `aidw analyze` report an error on the changed package |
 | scenarios | an approved scenario is gone with no reason (`--remove-reason "<why>"` for all, or `"<scenario>=<why>; ..."`) |
 | scope | a new requirement without `--scope-reason`; a new scenario under no approved requirement |
 | tasks | a new planned task lists no approved scenario under `scenarios:` |
 | in flight | a task that must run again (other than the one the Deviation names) is running, in review or in conflict: wait for it to settle |
-| contracts | never refused: `openapi.yaml` and `data-model.dbml` are classified additive, breaking or, when the text changed with no difference the CLI can classify, unclassified (`src/contractdiff.ts`: operations, parameters, bodies, responses, schema properties, required, types, enums; tables, columns, a new NOT NULL column without a default, enums); `api-contract.md` and `data-model.md` are `prose`, or decided by `openapi.yaml` / `data-model.dbml` when the Change has one |
+| contracts | never refused: `openapi.yaml` and `data-model.dbml` are classified additive, breaking or, when the text changed with no difference the CLI can classify, unclassified (`src/contractdiff.ts`: operations, parameters, bodies, responses, schema properties, required, types, enums; tables, columns, a new NOT NULL column without a default, enums); `api-contract.md` and `data-model.md` are `prose` (rerun by Role, even beside an `openapi.yaml` or `data-model.dbml`: the notes carry rules the machine-readable contract does not) |
 
-Then, in one step, it records the closed Deviation and rehashes the package with `approval.package: 2` (`approval.push`
-is read from the record and kept, so the push grant still holds), appending `{deviation, previous, hash, reason, roles,
+Then it records the closed Deviation and rehashes the package with the approval's own version (`approval.push` is
+read from the record and kept, so the push grant still holds), appending `{deviation, previous, hash, reason, roles,
 files, at}` to `approval.history`; only after that does it reset tasks, so a Change in verifying or converging returns
-to executing on a valid approval. The tasks to run again: tasks whose planned fields changed, whose scenarios were
+to executing on a valid approval, and it marks the record `finished`. A close interrupted between these steps is
+finished by the next CLI command (`finishDeviations`, run before every command reads the Change): when the approval
+still names the starting hash and the package hashes to the recorded new one, it writes the new hash; then it makes the
+recorded resets and the Consultation update, which are idempotent. The tasks to run again: tasks whose planned fields changed, whose scenarios were
 removed or changed, whose requirements changed; every task that reads a changed constitution, domain, architecture or
 requirements file, or a changed "Decisions to honor"; for a breaking, prose or unclassified contract the Roles that build
 against it (API: backend, frontend, fullstack, integration; data model: database, backend, fullstack, integration; an
@@ -404,7 +409,8 @@ the upstream fix loop: `openDeviationFor(p, id, {role, files, reason, task, plug
 **Package version.** The approval record names the package version it was hashed with (`approval.package`). Version 2
 added the contracts (`openapi.yaml`, `api-contract.md`, `data-model.md`, `data-model.dbml`) to the hashed and frozen
 files; an approval that names no version is version 1 and keeps the older list, so a Change approved before the upgrade
-does not turn into drift. `aidw approve` and a Deviation's close write version 2.
+does not turn into drift. `aidw approve` writes version 2; a Deviation's close keeps the approval's version, so a
+contract the user never approved is never adopted into the package after the gate.
 
 **Not built** (D10). Work outside the permission envelope is never done: `aidw not-built <T> --reason "..." [--cause
 envelope|environment]` sets the task to `not_built` with `not_built: {cause, reason, at}`, and every open task that

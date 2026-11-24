@@ -63,7 +63,7 @@ import { reconcileDoneTasks, reopenTask } from "./run.js";
 import { autoReview, buildBrief, buildTriageBrief, checkpoint, integrateChange, nextAction, parseVerdict, recordReview, recordTriage, retryTask, startTask, triageFile, type ConsultAction, type DeviationAction, type NextAction } from "./run.js";
 import { recordStageDone, stagesNext, stagesView } from "./stages.js";
 import { changeOfRequest, consultNextText, unansweredSection, pendingConsultation, recordAnswer, requestConsultation, resumeConsultation } from "./consult.js";
-import { abandonDeviation, closeDeviation, markNotBuilt, openDeviationFor } from "./deviation.js";
+import { abandonDeviation, closeDeviation, finishDeviations, markNotBuilt, openDeviationFor } from "./deviation.js";
 import { loadDeviations } from "./deviationrecord.js";
 import { buildPlanReviewBrief, MAX_FIX_ROUNDS, openFindingsSection, recordPlanReview } from "./planreview.js";
 import { buildConflictBrief, buildMergeReviewBrief, resolveConflict } from "./conflict.js";
@@ -415,6 +415,14 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
     if (!dir) throw new OpError("no .aidw/ found in this directory or its parents; run `aidw init`");
     const p = pathsFor(dir);
     assertProject(p);
+    // ADR-0014: a Deviation's close that a crash interrupted is finished before anything reads the Change
+    for (const id of listChangeIds(p)) {
+      try {
+        finishDeviations(p, id);
+      } catch {
+        // an unreadable Change is reported by the command itself
+      }
+    }
     // The commands that run layer or verify commands pass the project's test browser on to them (no fixed port).
     if (env === process.env) for (const [k, v] of Object.entries(browserEnv(p))) if (!process.env[k]) process.env[k] = v;
     return p;

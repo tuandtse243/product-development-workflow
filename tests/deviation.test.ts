@@ -297,7 +297,7 @@ describe("aidw deviation close", () => {
     write(root, `${C}/quality.yaml`, `${QUALITY_YAML}grants:\n  agent_runs: 99\n`);
     const r = cli("deviation", "close", ID);
     expect(r.code).toBe(1);
-    expect(r.err).toMatch(/`grants` and `permissions` .* no Role changes them/);
+    expect(r.err).toMatch(/`grants`, `permissions` .* no Role changes them/);
   });
 
   it("classifies an additive contract difference and reruns no done task for it", () => {
@@ -464,7 +464,7 @@ it("the deviations record sits outside the approved package", () => {
 describe("review findings", () => {
   beforeEach(() => building());
 
-  it("an approval of the old package list (no `package`) stays valid, opens a Deviation and closes as version 2", () => {
+  it("an approval of the old package list (no `package`) stays valid, opens a Deviation and keeps version 1 when it closes", () => {
     // a Change approved before the contracts joined the package: its hash covers the old list only
     const data = YAML.parse(read(`${C}/change.yaml`)) as Record<string, any>;
     delete data.approval.package;
@@ -481,9 +481,9 @@ describe("review findings", () => {
     write(root, `${C}/analysis.md`, ANALYSIS_MD.replace("Assumes one clinic", "Assumes a single clinic"));
     const r = cli("deviation", "close", ID);
     expect(r.code, r.all).toBe(0);
-    expect((change().approval as Record<string, unknown>).package).toBe(2);
+    expect((change().approval as Record<string, unknown>).package).toBeUndefined();
     expect(cli("approval", "check", ID).code).toBe(0);
-    expect(writeAs(undefined, `${C}/openapi.yaml`)).toBe("deny"); // frozen with version 2
+    expect(writeAs(undefined, `${C}/openapi.yaml`)).toBe("allow"); // never approved by the user: not adopted
   });
 
   it("refuses a change to the tier 2 permissions, and reads the approved grants while quality.yaml is open", () => {
@@ -493,7 +493,7 @@ describe("review findings", () => {
     write(root, `${C}/quality.yaml`, QUALITY_YAML.replace("permissions: [vercel-preview]", "permissions: [vercel-preview, vercel-production]"));
     const r = cli("deviation", "close", ID);
     expect(r.code).toBe(1);
-    expect(r.err).toMatch(/`grants` and `permissions`/);
+    expect(r.err).toMatch(/`grants`, `permissions`/);
   });
 
   it("returns no meanwhile beside a Deviation of the task list", () => {

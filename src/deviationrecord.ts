@@ -51,6 +51,10 @@ export interface DeviationRecord {
   closed_at?: string;
   /** the approval hash after it */
   hash?: string;
+  /** the package version it was hashed with (the approval's own; src/approval.ts) */
+  package?: number;
+  /** every step of the close is done: the hash written, the tasks reset, the Consultation recorded */
+  finished?: boolean;
   /** files that really changed */
   changed?: string[];
   /** the author's account, given at close (`--summary`) */

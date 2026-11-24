@@ -168,6 +168,8 @@ function deviationEdit(p: Paths, file: string, agent: string, frozen: string[]):
 /**
  * ADR-0014: a Bash command that could write a file an open Deviation names (in any case, by its path inside `.aidw/` or
  * from the project): only the author Role edits it, and the Orchestrator's edit would close as the author's change.
+ * Best effort, like the inline-code rule (H1): the path is matched as text, so a path relative to another `cd`, a glob
+ * or a variable is not caught.
  */
 function deviationBashWrite(p: Paths, cmd: string, frozen: string[]): string | null {
   const text = lower(cmd);
@@ -183,7 +185,9 @@ function deviationBashWrite(p: Paths, cmd: string, frozen: string[]): string | n
     const hit = d.files.find((f) => text.includes(lower(relative(p.aidw, join(p.project, f)).split(sep).join("/"))));
     if (!hit) continue;
     const masked = maskQuoted(cmd);
-    if (firstMatch(WRITE_COMMANDS, masked) || firstMatch(INLINE_CODE, masked) || firstMatch(WRITE_COMMANDS, cmd)) {
+    // also what puts a file back or rewrites it in place: git checkout -- / git restore, a formatter's --write or --fix
+    const rewrites = /\bgit\s+(?:checkout|restore)\b/.test(masked) || /(?:^|\s)--(?:write|fix)\b/.test(masked);
+    if (rewrites || firstMatch(WRITE_COMMANDS, masked) || firstMatch(INLINE_CODE, masked) || firstMatch(WRITE_COMMANDS, cmd)) {
       return `Deviation ${d.id} of ${id} is open: only ${d.authors?.[hit] ?? "its author Role"} edits ${hit}, with the Write tool; no Bash write by the Orchestrator or any Agent`;
     }
   }
