@@ -348,7 +348,7 @@ export interface DesignEvidence {
 }
 
 /** Design checks for a UI task when the approved design has tokens; null otherwise. */
-const SERVER_ROLES: ReadonlySet<string> = new Set(["backend", "database", "devops", "backend-engineer", "database-engineer"]);
+const SERVER_ROLES: ReadonlySet<string> = new Set(["backend", "database", "devops"]);
 /**
  * A task whose screens the design check judges: it touches UI paths and its Role is not a server-side one, which builds
  * no screen whatever its paths look like (seen on a real run: a backend task owning a Next.js route handler under

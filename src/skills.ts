@@ -100,9 +100,9 @@ export function selectSkills(t: Task, kind: BriefKind, opts: { retry?: boolean; 
   add("test-driven-development", "core: tests per scenario before code");
   add("obra/verification-before-completion", "core: run the proof before you say it works");
 
-  const ui = touchesUi(t) || role === "frontend-engineer";
-  const api = touches.some((g) => API_TOUCH.test(g)) || role === "backend-engineer";
-  const data = touches.some((g) => DATA_TOUCH.test(g)) || role === "database-engineer";
+  const ui = touchesUi(t) || role === "frontend";
+  const api = touches.some((g) => API_TOUCH.test(g)) || role === "backend";
+  const data = touches.some((g) => DATA_TOUCH.test(g)) || role === "database";
   if (ui) add("frontend-ui-engineering", "touches UI files");
   if (ui) add("anthropic/frontend-design", "touches UI files: an interface with a point of view, inside the approved design tokens");
   if (ui && MOTION_HINT.test([t.title ?? "", ...list(t.scenarios)].join(" ").replace(/[/_.-]/g, " "))) add("emil/animate", "the task is about motion");

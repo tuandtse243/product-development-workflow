@@ -8,7 +8,7 @@ import { run } from "../src/cli.js";
 import { decide, type HookInput } from "../src/gate.js";
 import { globToRegExp, matchesAny } from "../src/glob.js";
 import { findScenarioTests } from "../src/run.js";
-import { selectSkills } from "../src/skills.js";
+import { selectSkills, skillPath } from "../src/skills.js";
 import { ANALYSIS_MD, TOKENS_YAML, MAIN_SPEC, QUALITY_YAML, REQ, tempProject, write } from "./fixtures.js";
 
 const ID = "2026-11-08-booking";
@@ -61,7 +61,7 @@ function gitInit(root: string) {
 }
 
 /** Approved change in state executing. */
-export function executingProject(opts: { git?: boolean; t2Verify?: string; quality?: string } = {}): string {
+export function executingProject(opts: { git?: boolean; t2Verify?: string; quality?: string; tasks?: string } = {}): string {
   const root = tempProject();
   expect(cli(root, "init").code).toBe(0);
   write(root, ".aidw/specs/booking/spec.md", MAIN_SPEC);
@@ -70,7 +70,7 @@ export function executingProject(opts: { git?: boolean; t2Verify?: string; quali
   write(root, `${c}/analysis.md`, ANALYSIS_MD);
   write(root, ".aidw/design/tokens.yaml", TOKENS_YAML);
   write(root, "app/globals.css", ":root { --accent: #e5533d; --surface: #faf5ec; font-family: Inter; }\n.dark { --accent: #ff7a66; }\n");
-  write(root, `${c}/tasks.yaml`, RUN_TASKS(opts.t2Verify));
+  write(root, `${c}/tasks.yaml`, opts.tasks ?? RUN_TASKS(opts.t2Verify));
   write(root, `${c}/quality.yaml`, opts.quality ?? QUALITY_YAML);
   write(root, `${c}/specs/booking/spec.md`, `## ADDED Requirements\n\n${REQ("Reschedule appointment")}`);
   write(root, ".aidw/domain/model.md", "# Domain\n");
@@ -341,6 +341,92 @@ describe("skill selection", () => {
     expect(ids({ touches: ["lib/x/**"], skills: ["performance-optimization"] }, "implement", true)).toEqual(
       expect.arrayContaining(["obra/systematic-debugging", "performance-optimization"]),
     );
+  });
+});
+
+describe("skill selection by Role", () => {
+  const core = ["addy/incremental-implementation", "addy/test-driven-development", "obra/verification-before-completion"];
+  const pick = (role: string, touches: string[]) =>
+    selectSkills({ id: "T", title: "x", role, type: "feat", verify: ["pnpm vitest"], touches } as never, "implement").map((s) => s.id);
+
+  it("a backend task gets the API skills even when its Touches do not look like server code", () => {
+    expect(pick("backend", ["src/bookings/**"])).toEqual([...core, "addy/api-and-interface-design", "aidw/api-design-rules"]);
+  });
+
+  it("a frontend task gets the UI skills", () => {
+    expect(pick("frontend", ["src/bookings/**"])).toEqual([...core, "addy/frontend-ui-engineering", "anthropic/frontend-design"]);
+  });
+
+  it("a database task gets the data skills", () => {
+    expect(pick("database", ["src/bookings/**"])).toEqual([
+      ...core,
+      "addy/api-and-interface-design",
+      "aidw/schema-evolution",
+      "supabase/supabase-postgres-best-practices",
+    ]);
+  });
+
+  it("a fullstack task is chosen by its Touches alone", () => {
+    expect(pick("fullstack", ["src/bookings/**"])).toEqual(core);
+    expect(pick("fullstack", ["app/api/bookings/**", "components/calendar/**"])).toEqual(
+      expect.arrayContaining(["addy/frontend-ui-engineering", "addy/api-and-interface-design", "aidw/api-design-rules"]),
+    );
+  });
+});
+
+describe("selected skills resolve", () => {
+  const vendor = join(__dirname, "..", "plugins", "aidw", "library", "vendor");
+  const base = { id: "T", title: "x", role: "fullstack", type: "feat", verify: ["pnpm vitest"], touches: ["lib/x/**"] };
+  // One task per branch of selectSkills.
+  const cases: [string, Record<string, unknown>, "implement" | "review", { retry?: boolean; reviewFix?: boolean }?][] = [
+    ["core", {}, "implement"],
+    ["UI", { touches: ["components/calendar/**"] }, "implement"],
+    ["UI by Role", { role: "frontend" }, "implement"],
+    ["motion", { touches: ["components/calendar/**"], title: "Animate the day transition" }, "implement"],
+    ["API", { touches: ["app/api/bookings/**"] }, "implement"],
+    ["API by Role", { role: "backend" }, "implement"],
+    ["data", { touches: ["supabase/migrations/**"] }, "implement"],
+    ["data by Role", { role: "database" }, "implement"],
+    ["security", { risk: "high" }, "implement"],
+    ["browser verify", { verify: ["pnpm playwright test"] }, "implement"],
+    ["Docker", { touches: ["Dockerfile"] }, "implement"],
+    ["compose", { touches: ["docker-compose.yml"] }, "implement"],
+    ["GH workflow", { touches: [".github/workflows/ci.yml"] }, "review"],
+    ["Python project", { touches: ["pyproject.toml"] }, "implement"],
+    ["observability", { title: "Structured logging for the export job" }, "implement"],
+    ["retry", {}, "implement", { retry: true }],
+    ["quality origin", { origin: "quality" }, "implement"],
+    ["review fix", {}, "implement", { reviewFix: true }],
+    ["review kind", { risk: "high" }, "review"],
+  ];
+
+  it.each(cases)("every skill picked for a %s task has a SKILL.md", (_name, t, kind, opts) => {
+    const picks = selectSkills({ ...base, ...t } as never, kind, opts ?? {});
+    expect(picks.length).toBeGreaterThan(0);
+    for (const s of picks) expect(existsSync(skillPath(vendor, s.id)), s.id).toBe(true);
+  });
+
+  it("a data task's brief names an existing file for every selected skill", () => {
+    const tasks = `tasks:
+  - id: T01
+    title: Add the bookings table
+    role: database
+    type: feat
+    specs: [booking/reschedule-appointment]
+    scenarios: [${SCENARIO}]
+    depends_on: []
+    touches: ["db/migrations/**", "tests/**"]
+    verify: ['${OK}']
+    status: pending
+`;
+    const root = executingProject({ tasks });
+    cli(root, "task", "start", "T01");
+    const out = cli(root, "brief", "T01", "--json").json();
+    const ids = out.skills.map((s: { id: string }) => s.id);
+    expect(ids).toEqual(expect.arrayContaining(["aidw/schema-evolution", "supabase/supabase-postgres-best-practices"]));
+    for (const s of out.skills as { path: string }[]) expect(existsSync(s.path), s.path).toBe(true);
+    const brief = readFileSync(out.path, "utf8");
+    for (const s of out.skills as { path: string }[]) expect(brief).toContain(s.path);
   });
 });
 
