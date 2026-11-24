@@ -156,3 +156,98 @@ describe("a change left at the old scope gate (awaiting_scope_approval)", () => 
     expect(change(root).state).toBe("awaiting_scope_approval"); // nothing is written by a refused command
   });
 });
+
+describe("scope round edge cases", () => {
+  it("refuses a scope round that is still the placeholder", () => {
+    const placeholder = ANALYSIS_MD.replace(SCOPE_ROUND, "\n## Appendix: discovery Q&A\n\n### Scope round\n\nTODO(aidw): the checked answer of the `scope` Decision Page (vision, scope, mvp, out), word for word.\n");
+    const root = drafted({ analysis: placeholder });
+    const r = cli(root, "analyze", ID);
+    expect(r.code).toBe(1);
+    expect(r.out + r.err).toMatch(/scope round is not recorded/);
+  });
+
+  it("refuses a placeholder left among the answers of the round", () => {
+    const root = drafted({ analysis: ANALYSIS_MD.replace(/^out .*$/m, "out Out of scope: TODO(aidw)") });
+    const r = cli(root, "analyze", ID);
+    expect(r.code).toBe(1);
+    expect(r.out + r.err).toMatch(/scope round is not recorded/);
+  });
+
+  it("refuses a scope round outside the discovery appendix", () => {
+    const moved = ANALYSIS_MD.replace(SCOPE_ROUND, "").replace("## Summary", "## Summary\n\n### Scope round\n\nvision a: b\nscope a: b\nmvp a: b\nout a: b\n");
+    const r = cli(drafted({ analysis: moved }), "analyze", ID);
+    expect(r.code).toBe(1);
+    expect(r.out + r.err).toMatch(/scope round is not recorded/);
+  });
+
+  it("asks a greenfield change created without --workflow (product by default) for the scope round", () => {
+    const root = drafted({ workflow: null, analysis: WITHOUT_ROUND });
+    expect(change(root).workflow).toBeUndefined();
+    const r = cli(root, "analyze", ID);
+    expect(r.code).toBe(1);
+    expect(r.out + r.err).toMatch(/scope round is not recorded/);
+    expect(cli(root, "transition", ID, "awaiting_approval").code).toBe(1);
+  });
+
+  it("lets a greenfield change created without --workflow through once the round is recorded", () => {
+    const root = drafted({ workflow: null });
+    const r = cli(root, "analyze", ID);
+    expect(r.out + r.err).not.toMatch(/scope round/);
+    expect(cli(root, "transition", ID, "awaiting_approval").code).toBe(0);
+  });
+});
+
+describe("old scope gate states, persisted by an older aidw", () => {
+  /** A product change written by an older aidw; `brief` false leaves no brief.md. */
+  function old(fields: Record<string, unknown>, opts: { brief?: boolean } = {}): string {
+    const root = drafted({ analysis: WITHOUT_ROUND });
+    const file = join(root, ".aidw/changes", ID, "change.yaml");
+    const doc = YAML.parseDocument(readFileSync(file, "utf8"));
+    for (const [k, v] of Object.entries(fields)) doc.set(k, v);
+    write(root, `.aidw/changes/${ID}/change.yaml`, String(doc));
+    if (opts.brief !== false) write(root, `.aidw/changes/${ID}/brief.md`, BRIEF);
+    return root;
+  }
+  const APPROVED_SCOPE = { hash: "sha256:" + "0".repeat(64), at: "2026-11-01T00:00:00.000Z", by: "user" };
+
+  it("awaiting_scope_approval with scope_approval already set: read as analyzing, and on to the gate", () => {
+    const root = old({ state: "awaiting_scope_approval", scope_gate: true, scope_approval: APPROVED_SCOPE });
+    expect(cli(root, "status", ID).out).toMatch(/analyzing/);
+    const v = cli(root, "validate", ID);
+    expect(v.code, v.out + v.err).toBe(0);
+    const t = cli(root, "transition", ID, "awaiting_approval");
+    expect(t.code, t.err).toBe(0);
+    expect(cli(root, "approve", ID).code).toBe(0);
+    expect(change(root)).toMatchObject({ state: "approved", approval: { by: "user" } });
+  });
+
+  it("is written as analyzing the next time a command saves it", () => {
+    const root = old({ state: "awaiting_scope_approval", scope_gate: true, scope_approval: null });
+    expect(cli(root, "transition", ID, "awaiting_approval").code).toBe(0);
+    expect(change(root).state).toBe("awaiting_approval");
+    expect(readFileSync(join(root, ".aidw/changes", ID, "change.yaml"), "utf8")).not.toMatch(/awaiting_scope_approval/);
+  });
+
+  it("analyzing with an approved scope (past the old gate) needs no scope round: its brief counts", () => {
+    const root = old({ state: "analyzing", scope_gate: true, scope_approval: APPROVED_SCOPE });
+    const r = cli(root, "analyze", ID);
+    expect(r.out + r.err).not.toMatch(/scope round/);
+    expect(cli(root, "transition", ID, "awaiting_approval").code).toBe(0);
+  });
+
+  it("awaiting_scope_approval with no usable brief still has to record the scope round", () => {
+    const root = old({ state: "awaiting_scope_approval", scope_gate: true, scope_approval: null }, { brief: false });
+    const r = cli(root, "analyze", ID);
+    expect(r.code).toBe(1);
+    expect(r.out + r.err).toMatch(/scope round is not recorded/);
+    expect(cli(root, "transition", ID, "awaiting_approval").code).toBe(1);
+  });
+
+  it("a brief that is still the old skeleton does not stand in for the scope round", () => {
+    const root = old({ state: "awaiting_scope_approval", scope_gate: true, scope_approval: null }, { brief: false });
+    write(root, `.aidw/changes/${ID}/brief.md`, "# Product brief: Notes\n\n## Vision\n\nTODO(aidw): who\n\n## Scope\n\nTODO(aidw): what\n\n## MVP\n\nTODO(aidw): cut\n\n## Out of scope\n\nTODO(aidw): out\n");
+    const r = cli(root, "analyze", ID);
+    expect(r.code).toBe(1);
+    expect(r.out + r.err).toMatch(/scope round is not recorded/);
+  });
+});
