@@ -15,19 +15,20 @@ export interface Rule {
   why: string;
 }
 
-/** Start of a shell command: line start, after ; & | ( or after sudo/xargs/exec. */
-const CMD = String.raw`(?:^|[;&|(]\s*|\b(?:sudo|xargs|exec|env)\s+)`;
+/** Start of a shell command: line start, after ; & | ( a newline or a backtick, after sudo/xargs/exec/env or find -exec. */
+const CMD = String.raw`(?:^|[;&|(\n\x60]\s*|\b(?:sudo|xargs|exec|env)\s+|\s-(?:exec|execdir|ok|okdir)\s+)`;
 const cmd = (body: string, flags = "") => new RegExp(`${CMD}(?:${body})`, flags);
 
 /** Tier x: paths that hold personal credentials. Matched against file paths and Bash commands. */
 export const SECRET_PATHS: Rule[] = [
-  { re: /(^|[\s"'=:/])~?\/?(?:[^\s"']*\/)?\.ssh(\/|\b)/, why: "SSH keys" },
-  { re: /(^|[\s"'=:/])~?\/?(?:[^\s"']*\/)?\.aws(\/|\b)/, why: "AWS credentials" },
-  { re: /(^|[\s"'=:/])~?\/?(?:[^\s"']*\/)?\.gnupg(\/|\b)/, why: "GPG keys" },
-  { re: /(^|[\s"'=:/])~?\/?(?:[^\s"']*\/)?\.kube\/config\b/, why: "Kubernetes credentials" },
-  { re: /(^|[\s"'=:/])~?\/?(?:[^\s"']*\/)?\.config\/gcloud(\/|\b)/, why: "Google Cloud credentials" },
-  { re: /(^|[\s"'=:/])~?\/?(?:[^\s"']*\/)?\.docker\/config\.json\b/, why: "Docker registry credentials" },
-  { re: /\bid_(rsa|ed25519|ecdsa)\b/, why: "private keys" },
+  // without case: macOS and Windows file systems take ~/.SSH for ~/.ssh
+  { re: /(^|[\s"'=:/])~?\/?(?:[^\s"']*\/)?\.ssh(\/|\b)/i, why: "SSH keys" },
+  { re: /(^|[\s"'=:/])~?\/?(?:[^\s"']*\/)?\.aws(\/|\b)/i, why: "AWS credentials" },
+  { re: /(^|[\s"'=:/])~?\/?(?:[^\s"']*\/)?\.gnupg(\/|\b)/i, why: "GPG keys" },
+  { re: /(^|[\s"'=:/])~?\/?(?:[^\s"']*\/)?\.kube\/config\b/i, why: "Kubernetes credentials" },
+  { re: /(^|[\s"'=:/])~?\/?(?:[^\s"']*\/)?\.config\/gcloud(\/|\b)/i, why: "Google Cloud credentials" },
+  { re: /(^|[\s"'=:/])~?\/?(?:[^\s"']*\/)?\.docker\/config\.json\b/i, why: "Docker registry credentials" },
+  { re: /\bid_(rsa|ed25519|ecdsa)\b/i, why: "private keys" },
 ];
 
 /** Tier x: commands that are never acceptable. */
@@ -96,7 +97,37 @@ export const WRITE_COMMANDS: Rule[] = [
   { re: cmd(String.raw`(?:cp|mv|touch|mkdir|rm|rmdir|ln|chmod|install|rsync|unzip|tar\s+-?[a-z]*x)\b`), why: "modifies the filesystem" },
   { re: cmd(String.raw`(?:npm|pnpm|yarn|bun)\s+(?:i|install|add|create|init|dlx)\b|npx\s+(?:create-|degit|shadcn)`), why: "installs or scaffolds packages" },
   { re: cmd(String.raw`git\s+(?:clone|checkout\s+-b|switch\s+-c|apply|am|stash\s+pop|reset\s+--hard)\b`), why: "changes the working tree" },
+  { re: cmd(String.raw`find\b[^|;&\n]*\s-delete\b`), why: "deletes files with find" },
 ];
+
+/** An interpreter or shell, by name or path (case-insensitive: macOS finds `NODE` on PATH), after an optional package runner. */
+const INTERPRETER = String.raw`${RUNNER}(?:[^\s;&|"'\x60]*\/)?(?:node|nodejs|python[\d.]*|pypy[\d.]*|perl|ruby|php|deno|bun|tsx|ts-node|lua|rscript|osascript|pwsh|sh|bash|zsh|dash|ksh|fish)`;
+
+/**
+ * Code a command hands an interpreter inline, on stdin or from a file under `.aidw/`: whatever it does, the gate cannot
+ * tell a write from a read in it (`node -e "require('fs').writeFileSync(...)"`). A Role that may not write by Bash
+ * (read-only, artifacts) may not run it either; the project's scripts and test runners still run (`node script.js`).
+ */
+export const INLINE_CODE: Rule[] = [
+  { re: cmd(String.raw`${INTERPRETER}(?:\s+-\S*)*?\s+(?:-[a-z]*[ecpr][a-z]*|--(?:eval|print|command|exec|require|import)\b|eval\b|-(?=\s|$))`, "i"), why: "runs inline code" },
+  { re: cmd(String.raw`${INTERPRETER}(?:\s+-\S*)*\s*<`, "i"), why: "runs code from stdin" },
+  { re: new RegExp(String.raw`\|\s*${INTERPRETER}(?:\s+-\S*)*\s*(?:$|[;&|)\n])`, "i"), why: "runs code from stdin" },
+  { re: cmd(String.raw`(?:${INTERPRETER}(?:\s+-\S*)*|source|\.)\s+["']?[^\s;&|]*\.aidw\/`, "i"), why: "runs a script from .aidw/" },
+  { re: cmd(String.raw`eval\s`), why: "runs a string as a command" },
+];
+
+/**
+ * In a write command of an implementer, the aidw state it may not write with the Write tool either: `.aidw/` except its
+ * task worktrees, screenshots and its report note, and any verdict or plan review file by name (also through `../`).
+ */
+export const IMPLEMENTER_PROTECTED =
+  /\.aidw\/(?!run\/(?:worktrees|shots)\/|run\/report-[\w.-]+\.md\b)|(?:^|[\s"'=/])(?:(?:layer-)?review-[^\s"'/;&|]*\.md|audit-[^\s"'/;&|]*\.md|plan-review\.yaml)/i;
+
+/**
+ * What a command the gate word-splits to allow must not hold: whitespace other than space and tab (JS `\s` takes NBSP,
+ * \v, U+3000... for separators, the shell does not) and control or format characters (U+200B, U+FEFF, bidi marks).
+ */
+export const ODD_CHARACTER = /(?![ \t])[\s\p{Cc}\p{Cf}]/u;
 
 /**
  * Hides `<` and `>` inside quoted strings so an argument like `'data:text/html,<p>ok</p>'` or `"a > b"` is not read
@@ -139,7 +170,7 @@ export const RUNNER_COMMAND = /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+ru
 export const AIDW_COMMAND = /^\s*["']?(?:[^\s;&|"']*\/)?aidw["']?\s/;
 
 /** Shell syntax that chains or substitutes commands; an aidw command using it gets the full checks. */
-export const SHELL_CHAINING = /[;&|`<>]|\$\(/;
+export const SHELL_CHAINING = /[;&|`<>\n\r]|\$\(/;
 
 /** aidw commands that record progress or change state: the orchestrator's job, never a subagent's. */
 export const AIDW_STATE_COMMAND =

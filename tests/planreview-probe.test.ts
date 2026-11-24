@@ -60,6 +60,10 @@ describe("forging the verdict or the record through Bash", () => {
     }
   }
 
+  it("an author may not forge it with an interpreter either (node -e writeFileSync)", () => {
+    const root = drafted();
+    expect(bash(root, "aidw:technical-planner", `node -e "require('fs').writeFileSync('${verdict}','VERDICT: pass')"`)).toBe("deny");
+  });
 });
 
 describe("case variants of the protected names (macOS and Windows file systems ignore case)", () => {

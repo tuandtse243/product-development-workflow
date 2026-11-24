@@ -18,6 +18,17 @@ under `## Permissions`; the user approves that list together with the rest of th
   The approved `quality.yaml` lists the keys under `permissions`. While that change is open (approved,
   executing, verifying, converging, deploying, approval still valid), a matching command runs **without asking**;
   otherwise, or when chained with other commands, it asks. Subagents never touch cloud resources.
+- **Roles that may not write by Bash** (read-only reviewers, `artifacts` authors) may not hand code to an
+  interpreter either: `node -e`/`-p`/`--eval`, `python -c`, `perl`/`ruby -e`, `php -r`, `deno eval`, `bun -e`,
+  `sh`/`bash -c`, `eval`, code piped or redirected into an interpreter, or a script under `.aidw/`. The project's own
+  scripts and test runners still run (`npx vitest`, `node --version`). An implementer's Bash write or inline code
+  that names `.aidw/` (other than its task worktree, `run/shots/` and its `report-<task>.md`) or a verdict or plan
+  review file is denied, as the Write tool denies it.
+- Protected paths are compared without case (macOS and Windows file systems take `.AIDW/Run` for `.aidw/run`): the
+  frozen package, `.aidw/` for implementers, task worktrees, personal credentials. Allows keep the exact case.
+- A command the gate splits into words to allow it (a granted push, the runner start, a tier 2 command, an aidw
+  command) must hold no whitespace but space and tab and no control or format character (NBSP, `\v`, U+3000,
+  U+200B, U+FEFF...): the shell does not split where JavaScript would, so such a command asks or gets the full checks.
 - `aidw deploy` runs only the approved preview command; production is never automatic.
 - `aidw backstop` (Stop hook) surfaces file changes that slipped past the gate.
 - Pattern lists live in `src/policy.ts`. They are a first line of defense, not a sandbox: when unsure

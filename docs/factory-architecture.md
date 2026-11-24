@@ -441,4 +441,7 @@ One Change at a time per project. No monorepo support. Task commits go to the ch
 merges, and pushes without asking only the Change Branch and its one pull request, when the Approval Gate granted it
 (ADR-0012, `grants:` in `quality.yaml`). Role, skill and Workflow files are written in English; the factory talks with
 the user in the user's language. The commands `/aidw:start`, `approve`, `run`, `resume`, `status` and
-`deliver` keep their names through all four steps.
+`deliver` keep their names through all four steps. The gate's Bash patterns stay a first line of defense, not a
+sandbox: a Role denied Bash writes is also denied inline interpreter code (`node -e`, `python -c`, `bash -c`...),
+protected paths are matched without case, and a command split into words for an allow holds only space and tab
+(`company/permissions.md`); what still slips through is surfaced by the Stop-hook backstop.

@@ -9342,16 +9342,17 @@ var import_node_path14 = require("node:path");
 var import_node_path13 = require("node:path");
 
 // src/policy.ts
-var CMD = String.raw`(?:^|[;&|(]\s*|\b(?:sudo|xargs|exec|env)\s+)`;
+var CMD = String.raw`(?:^|[;&|(\n\x60]\s*|\b(?:sudo|xargs|exec|env)\s+|\s-(?:exec|execdir|ok|okdir)\s+)`;
 var cmd = (body, flags = "") => new RegExp(`${CMD}(?:${body})`, flags);
 var SECRET_PATHS = [
-  { re: /(^|[\s"'=:/])~?\/?(?:[^\s"']*\/)?\.ssh(\/|\b)/, why: "SSH keys" },
-  { re: /(^|[\s"'=:/])~?\/?(?:[^\s"']*\/)?\.aws(\/|\b)/, why: "AWS credentials" },
-  { re: /(^|[\s"'=:/])~?\/?(?:[^\s"']*\/)?\.gnupg(\/|\b)/, why: "GPG keys" },
-  { re: /(^|[\s"'=:/])~?\/?(?:[^\s"']*\/)?\.kube\/config\b/, why: "Kubernetes credentials" },
-  { re: /(^|[\s"'=:/])~?\/?(?:[^\s"']*\/)?\.config\/gcloud(\/|\b)/, why: "Google Cloud credentials" },
-  { re: /(^|[\s"'=:/])~?\/?(?:[^\s"']*\/)?\.docker\/config\.json\b/, why: "Docker registry credentials" },
-  { re: /\bid_(rsa|ed25519|ecdsa)\b/, why: "private keys" }
+  // without case: macOS and Windows file systems take ~/.SSH for ~/.ssh
+  { re: /(^|[\s"'=:/])~?\/?(?:[^\s"']*\/)?\.ssh(\/|\b)/i, why: "SSH keys" },
+  { re: /(^|[\s"'=:/])~?\/?(?:[^\s"']*\/)?\.aws(\/|\b)/i, why: "AWS credentials" },
+  { re: /(^|[\s"'=:/])~?\/?(?:[^\s"']*\/)?\.gnupg(\/|\b)/i, why: "GPG keys" },
+  { re: /(^|[\s"'=:/])~?\/?(?:[^\s"']*\/)?\.kube\/config\b/i, why: "Kubernetes credentials" },
+  { re: /(^|[\s"'=:/])~?\/?(?:[^\s"']*\/)?\.config\/gcloud(\/|\b)/i, why: "Google Cloud credentials" },
+  { re: /(^|[\s"'=:/])~?\/?(?:[^\s"']*\/)?\.docker\/config\.json\b/i, why: "Docker registry credentials" },
+  { re: /\bid_(rsa|ed25519|ecdsa)\b/i, why: "private keys" }
 ];
 var FORBIDDEN_COMMANDS = [
   { re: /\bsecurity\s+(find|dump)-(generic|internet)-password\b|\bsecurity\s+dump-keychain\b/, why: "reads the macOS keychain" },
@@ -9400,8 +9401,19 @@ var WRITE_COMMANDS = [
   { re: cmd(String.raw`sed\s+(?:-[a-zA-Z]*i|--in-place)`), why: "edits files in place" },
   { re: cmd(String.raw`(?:cp|mv|touch|mkdir|rm|rmdir|ln|chmod|install|rsync|unzip|tar\s+-?[a-z]*x)\b`), why: "modifies the filesystem" },
   { re: cmd(String.raw`(?:npm|pnpm|yarn|bun)\s+(?:i|install|add|create|init|dlx)\b|npx\s+(?:create-|degit|shadcn)`), why: "installs or scaffolds packages" },
-  { re: cmd(String.raw`git\s+(?:clone|checkout\s+-b|switch\s+-c|apply|am|stash\s+pop|reset\s+--hard)\b`), why: "changes the working tree" }
+  { re: cmd(String.raw`git\s+(?:clone|checkout\s+-b|switch\s+-c|apply|am|stash\s+pop|reset\s+--hard)\b`), why: "changes the working tree" },
+  { re: cmd(String.raw`find\b[^|;&\n]*\s-delete\b`), why: "deletes files with find" }
 ];
+var INTERPRETER = String.raw`${RUNNER}(?:[^\s;&|"'\x60]*\/)?(?:node|nodejs|python[\d.]*|pypy[\d.]*|perl|ruby|php|deno|bun|tsx|ts-node|lua|rscript|osascript|pwsh|sh|bash|zsh|dash|ksh|fish)`;
+var INLINE_CODE = [
+  { re: cmd(String.raw`${INTERPRETER}(?:\s+-\S*)*?\s+(?:-[a-z]*[ecpr][a-z]*|--(?:eval|print|command|exec|require|import)\b|eval\b|-(?=\s|$))`, "i"), why: "runs inline code" },
+  { re: cmd(String.raw`${INTERPRETER}(?:\s+-\S*)*\s*<`, "i"), why: "runs code from stdin" },
+  { re: new RegExp(String.raw`\|\s*${INTERPRETER}(?:\s+-\S*)*\s*(?:$|[;&|)\n])`, "i"), why: "runs code from stdin" },
+  { re: cmd(String.raw`(?:${INTERPRETER}(?:\s+-\S*)*|source|\.)\s+["']?[^\s;&|]*\.aidw\/`, "i"), why: "runs a script from .aidw/" },
+  { re: cmd(String.raw`eval\s`), why: "runs a string as a command" }
+];
+var IMPLEMENTER_PROTECTED = /\.aidw\/(?!run\/(?:worktrees|shots)\/|run\/report-[\w.-]+\.md\b)|(?:^|[\s"'=/])(?:(?:layer-)?review-[^\s"'/;&|]*\.md|audit-[^\s"'/;&|]*\.md|plan-review\.yaml)/i;
+var ODD_CHARACTER = /(?![ \t])[\s\p{Cc}\p{Cf}]/u;
 function maskQuotedAngles(command) {
   let out = "";
   let quote = null;
@@ -9427,7 +9439,7 @@ function firstMatch(rules, text2) {
 var APPROVE_COMMAND = /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+approve\b/;
 var RUNNER_COMMAND = /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+run\b(?![^;&|]*\s--(?:status|stop)\b)/;
 var AIDW_COMMAND = /^\s*["']?(?:[^\s;&|"']*\/)?aidw["']?\s/;
-var SHELL_CHAINING = /[;&|`<>]|\$\(/;
+var SHELL_CHAINING = /[;&|`<>\n\r]|\$\(/;
 var AIDW_STATE_COMMAND = /(^|[\s;&|(])["']?(?:[^\s;&|"']*\/)?aidw["']?\s+(?:task|checkpoint|review|layer-review|verify|integrate|converge|deploy|first-deploy|deliver|transition|approve|archive|merge|init|change|brief|plan-review|pr|stages(?=[^;&|]*--done))\b/;
 
 // src/buildroute.ts
@@ -9610,7 +9622,7 @@ function envelopeBrief(change) {
   ];
 }
 function shellWords(cmd2) {
-  if (/[\n\r`$\\]/.test(cmd2)) return null;
+  if (/[\n\r`$\\]/.test(cmd2) || ODD_CHARACTER.test(cmd2)) return null;
   const words = [];
   let cur = "";
   let has = false;
@@ -9624,7 +9636,7 @@ function shellWords(cmd2) {
     if (c === "'" || c === '"') {
       quote = c;
       has = true;
-    } else if (/\s/.test(c)) {
+    } else if (c === " " || c === "	") {
       if (has) words.push(cur);
       cur = "";
       has = false;
@@ -9792,17 +9804,20 @@ function inside2(parent, child) {
   const r = (0, import_node_path13.relative)(parent, child);
   return r === "" || r !== ".." && !r.startsWith(`..${import_node_path13.sep}`) && !(0, import_node_path13.isAbsolute)(r);
 }
+var lower = (f) => f.toLowerCase();
+var insideAnyCase = (parent, child) => inside2(lower(parent), lower(child));
 function isFrozenPackageFile(p, file, frozen) {
-  if (file === p.constitution || FROZEN_PROJECT_DIRS(p).some((d) => inside2(d, file))) return frozen.length > 0;
+  const f = lower(file);
+  if (f === lower(p.constitution) || FROZEN_PROJECT_DIRS(p).some((d) => insideAnyCase(d, file))) return frozen.length > 0;
   for (const id of frozen) {
     try {
-      if (baseSpecFiles(p, loadChange(p, id)).includes(file)) return true;
+      if (baseSpecFiles(p, loadChange(p, id)).some((b) => lower(b) === f)) return true;
     } catch {
     }
-    const dir = (0, import_node_path13.join)(p.changes, id);
-    if (!inside2(dir, file)) continue;
-    const r = (0, import_node_path13.relative)(dir, file).split(import_node_path13.sep).join("/");
-    if (CHANGE_PACKAGE_FILES.includes(r) || r.startsWith("specs/")) return true;
+    const dir = lower((0, import_node_path13.join)(p.changes, id));
+    if (!inside2(dir, f)) continue;
+    const r = (0, import_node_path13.relative)(dir, f).split(import_node_path13.sep).join("/");
+    if (CHANGE_PACKAGE_FILES.some((x) => x.toLowerCase() === r) || r.startsWith("specs/")) return true;
   }
   return false;
 }
@@ -9877,19 +9892,19 @@ function decide(input, env) {
       return deny("the reviewer is read-only; report issues in the verdict instead of fixing them (it may write only .aidw/run/review-<task>.md or layer-review-<layer>.md)");
     }
     const worktrees = (0, import_node_path13.join)(p.run, "worktrees");
-    if (inside2(worktrees, file)) {
-      const parts = (0, import_node_path13.relative)(worktrees, file).split(import_node_path13.sep);
+    if (insideAnyCase(worktrees, file)) {
+      const parts = (0, import_node_path13.relative)(lower(worktrees), lower(file)).split(import_node_path13.sep);
       if (parts.length < 3) return deny("write inside a task's worktree (.aidw/run/worktrees/<change>/<task>/...)");
       if (parts[2] === AIDW_DIR) return deny("the worktree's .aidw/ is a stale copy; aidw state lives in the main checkout and is the orchestrator's");
       const st2 = gateState(p);
       return st2.open ? allow("analysis approved (task worktree)") : deny(closedReason(st2));
     }
     if (role === "implementer" && (0, import_node_path13.dirname)(file) === p.run && REPORT_FILE.test((0, import_node_path13.basename)(file))) return allow("implementer note for the reviewer");
-    if (role === "implementer" && inside2(p.aidw, file) && !inside2((0, import_node_path13.join)(p.run, "shots"), file)) {
+    if (role === "implementer" && insideAnyCase(p.aidw, file) && !inside2((0, import_node_path13.join)(p.run, "shots"), file)) {
       return deny("implementers do not write .aidw/; the orchestrator records progress and evidence");
     }
     const st = gateState(p);
-    if (inside2(p.aidw, file)) {
+    if (insideAnyCase(p.aidw, file)) {
       if (isFrozenPackageFile(p, file, st.frozen)) {
         return deny(
           "the approved Analysis package is frozen during execution. To change scope, transition the change to escalated and back to analyzing, then re-approve."
@@ -9923,7 +9938,8 @@ function decide(input, env) {
         const root = pluginRoot(env);
         const silent = installedOutside(root, p.project);
         const approved = listChangeIds(p).filter((id) => approvedForBuild(p, id));
-        if (silent && approved.some((id) => cmd2.trim() === runnerCommand(id, (0, import_node_path13.join)(root, "bin", "aidw")))) {
+        const plain = cmd2.replace(/^[ \t\n]+|[ \t\n]+$/g, "");
+        if (silent && !ODD_CHARACTER.test(plain) && approved.some((id) => plain === runnerCommand(id, (0, import_node_path13.join)(root, "bin", "aidw")))) {
           return allow("the change is approved: the detached runner builds it (`aidw approve` printed this exact command)");
         }
         const names = cmd2.trim().split(/[ \t]+/);
@@ -9948,7 +9964,7 @@ function decide(input, env) {
     if (tier2) {
       if (role) return deny(`the ${role} does not touch cloud resources; deploys are the orchestrator's step`);
       const granted = grantedResources(p, listChangeIds(p), OPEN_STATES);
-      if (granted.has(tier2.resource) && !SHELL_CHAINING.test(cmd2)) {
+      if (granted.has(tier2.resource) && !SHELL_CHAINING.test(cmd2) && !ODD_CHARACTER.test(cmd2)) {
         return allow(`tier 2 "${tier2.resource}" is in the approved allowlist`);
       }
       return ask(
@@ -9961,8 +9977,13 @@ function decide(input, env) {
     if (/\bgit\s+(?:commit|merge|push)\b[^|;&]*\s--no-verify(?:\s|$)|\bgit\s+commit\b[^|;&]*\s-[a-mo-zA-Z]*n[a-zA-Z]*(?:\s|$)|\bHUSKY=0\b/.test(cmd2)) {
       return deny("skipping the git hooks (--no-verify, HUSKY=0) is not allowed: fix what the hook reports");
     }
-    if (AIDW_COMMAND.test(cmd2) && !SHELL_CHAINING.test(cmd2)) return null;
+    const code = role === "reviewer" || role === "author" ? firstMatch(INLINE_CODE, cmd2) : void 0;
+    if (code) return deny(`the ${role} may not write by Bash, and this command ${code.why} that could write; use Read, Grep and the project's own scripts`);
+    if (AIDW_COMMAND.test(cmd2) && !SHELL_CHAINING.test(cmd2) && !ODD_CHARACTER.test(cmd2)) return null;
     const writes = firstMatch(WRITE_COMMANDS, maskQuotedAngles(cmd2));
+    if (role === "implementer" && IMPLEMENTER_PROTECTED.test(cmd2) && (writes ?? firstMatch(INLINE_CODE, cmd2))) {
+      return deny("implementers do not write .aidw/ or a verdict, by Bash either; the orchestrator records progress and evidence");
+    }
     if (writes) {
       if (role === "reviewer") return deny(`the reviewer is read-only (this command ${writes.why})`);
       if (role === "author") return deny(`an authoring role writes its files with the Write tool, inside ${AIDW_DIR}/ (this command ${writes.why})`);
