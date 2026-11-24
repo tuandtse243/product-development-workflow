@@ -208,7 +208,10 @@ A task is triaged once: if the extra attempt fails too, it escalates without ano
         `pass` or `fix`, keeping the non-blocking remarks for the quality report and the handoff. No clear
         verdict: spawn a fresh reviewer once more; still unclear, record `fix` with
         `aidw layer-review <layer> fix --notes-file <file>`.
-     3. Record every verdict of the group first, also after one of them was `fix`. All `pass` -> run `aidw verify` again for
+     3. Record every verdict of the group first, also after one of them was `fix`: the `pass` verdicts first, then the
+        `fix` ones. If a `fix` verdict escalates the change (its fix rounds are exhausted), record no more verdicts: the
+        others stay in `.aidw/run/layer-review-<layer>.md`, name them to the user with the escalation, and after
+        `/aidw:resume` `aidw verify` offers those layers again. All `pass` -> run `aidw verify` again for
         the remaining layers. A `fix` -> a fix task `Qnn` was added with the reviewer's notes; return to the loop
         (section 1), then come back here. Fix rounds exhausted -> the change
         is `escalated`: tell the user and stop.

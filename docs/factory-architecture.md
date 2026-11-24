@@ -219,11 +219,16 @@ The deciding Role writes its answer and reason as an Artifact. The CLI rejects a
 **What runs at the same time (D13).** The CLI, not the Orchestrator, decides which pieces of work may run in
 parallel, at every level, from what each one reads and writes (`src/stages.ts`):
 
+- *Files, not names.* Each Artifact is compared by its file in `artifacts.yaml`, so two sections of `analysis.md`
+  conflict. A family of files (a path with a placeholder other than `<id>`, such as one ADR each) and the parts of
+  `decisions.yaml` (written only by `aidw decide`, one call at a time) are compared by name.
 - *Analysis stages.* `aidw stages <id>` lists the stages before the Approval Gate as done, ready, or `now`. A stage is
   ready when no earlier unfinished stage writes what it reads, reads what it writes, or writes the same Artifact, and
   no gate stands between them (a gate runs alone, and nothing after it starts first). A stage is done when the
   Orchestrator reports it (`aidw stages --done <stage>`, also for a stage a Decision Point skips), when the Change
-  state is past it, or when a later gate is passed. Recorded in `changes/<id>/stages.yaml`, outside the approved package.
+  state is past it, when a later gate is passed, or, while `analyzing`, when every Artifact it writes is on disk and filled
+in (a Change started before this existed). Only the Orchestrator may report one: `aidw stages --done` is a state
+command an Agent is denied. Recorded in `changes/<id>/stages.yaml`, outside the approved package.
 - *Reviewers.* `aidw verify` no longer stops at the first review layer: it runs every layer, and each review layer
   whose commands pass waits for its reviewer. The waiting reviewers are offered together.
 - *Tasks.* Waves, as before (section 9 and `src/parallel.ts`): disjoint `touches`, `depends_on` done.

@@ -6,7 +6,9 @@ import { cpSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
-import { pickGroup, readyStages, type Work } from "../src/stages.js";
+import { decide, type HookInput } from "../src/gate.js";
+import { AIDW_STATE_COMMAND } from "../src/policy.js";
+import { pickGroup, pluginKeyOf, readyStages, stageWork, type Work } from "../src/stages.js";
 import { loadWorkflow, type Stage, type Workflow } from "../src/workflow.js";
 import { tempProject, write } from "./fixtures.js";
 
@@ -53,12 +55,55 @@ describe("readyStages: stages whose inputs are written", () => {
     expect(ready(product, ["intake"])).toEqual(["discovery"]);
   });
 
-  it("offers research and user research together once discovery is recorded; a gate waits for everything before it", () => {
+  it("offers research and user research together once discovery is recorded; requirements waits for both", () => {
     expect(ready(product, ["intake", "discovery"])).toEqual(["research", "user-research"]);
     expect(ready(product, ["intake", "discovery", "research"])).toEqual(["user-research"]);
-    expect(ready(product, ["intake", "discovery", "research", "user-research"])).toEqual(["scope"]);
-    // nothing after a gate starts before the gate is passed
-    expect(ready(product, ["intake", "discovery", "research", "user-research", "scope"])).toEqual(["requirements"]);
+    expect(ready(product, ["intake", "discovery", "research", "user-research"])).toEqual(["requirements"]);
+  });
+
+  it("keeps apart two stages that write different sections of one file, but not two parts of decisions.yaml", () => {
+    const k = pluginKeyOf(plugin);
+    const st = (id: string, writes: string[]): Stage => ({ id, title: id, states: ["analyzing"], roles: [], reads: [], writes });
+    const sameFile = { ...product, stages: [st("a", ["analysis-design"]), st("b", ["analysis-stack"])] };
+    expect(ready(sameFile, [])).toEqual(["a", "b"]); // by name they do not overlap
+    expect(ids(readyStages(sameFile, new Set(), k))).toEqual(["a"]);
+    expect(ids(pickGroup(sameFile.stages.map((s) => stageWork(s, k)), 3))).toEqual(["a"]);
+    const decisions = { ...product, stages: [st("a", ["decision-research-needed"]), st("b", ["decision-ux-research-needed"])] };
+    expect(ids(readyStages(decisions, new Set(), k))).toEqual(["a", "b"]);
+    // a family of files (one ADR each) is compared by name
+    const adrs = { ...product, stages: [st("a", ["decisions-domain"]), st("b", ["decisions-architecture"])] };
+    expect(ids(readyStages(adrs, new Set(), k))).toEqual(["a", "b"]);
+  });
+
+  /** Steps a shipped workflow: offer a group (max 3), report all of it done, repeat. */
+  const sequence = (id: string) => {
+    const wf = loadWorkflow(plugin, id) as Workflow;
+    const k = pluginKeyOf(plugin);
+    const done = new Set<string>();
+    const out: string[][] = [];
+    for (let n = 0; n < 50; n++) {
+      const g = pickGroup(readyStages(wf, done, k).map((s) => stageWork(s, k)), 3).map((x) => x.id);
+      if (!g.length) break;
+      out.push(g);
+      for (const x of g) done.add(x);
+    }
+    return out;
+  };
+
+  it("steps the product workflow in order", () => {
+    expect(sequence("product")).toEqual([["intake"], ["discovery"], ["research", "user-research"], ["requirements"], ["design"], ["architecture"], ["contracts"], ["plan"], ["quality-profile"], ["approval"]]);
+  });
+
+  it("steps the feature workflow in order: discovery after the assessment", () => {
+    expect(sequence("feature")).toEqual([["intake"], ["assessment"], ["discovery"], ["research", "user-research"], ["requirements"], ["design"], ["architecture"], ["contracts"], ["plan"], ["quality-profile"], ["approval"]]);
+  });
+
+  it("steps the bugfix workflow in order: the plan after the diagnosis", () => {
+    expect(sequence("bugfix")).toEqual([["intake"], ["diagnosis"], ["plan"], ["quality-profile"], ["approval"]]);
+  });
+
+  it("steps the audit workflow in order", () => {
+    expect(sequence("audit")).toEqual([["intake"], ["lenses"], ["review"]]);
   });
 
   it("never offers the build or later stages (they have their own loop)", () => {
@@ -126,7 +171,46 @@ describe("aidw stages", () => {
     expect(j.max).toBe(3);
     // each one is reported back on its own
     expect(cli(root, "stages", "--done", "user-research", "--change", ID).out).toMatch(/NEXT: stage research /);
-    expect(cli(root, "stages", "--done", "research", "--change", ID).out).toMatch(/NEXT: stage scope \(.*\): roles product-manager; gate scope-approval/);
+    expect(cli(root, "stages", "--done", "research", "--change", ID).out).toMatch(/NEXT: stage requirements \(.*\): roles product-manager, business-analyst; when it is done/);
+    // the approval gate is never reported
+    expect(cli(root, "stages", "--done", "approval", "--change", ID).err).toMatch(/stage "approval" is a gate \(approval\)/);
+  });
+
+  it("refuses --done without a stage", () => {
+    const root = project();
+    const r = cli(root, "stages", ID, "--done");
+    expect(r.code).toBe(2);
+    expect(r.err).toMatch(/--done needs a value/);
+  });
+
+  it("counts a stage done by its filled-in Artifacts when stages.yaml has no record (a change started before it)", () => {
+    const root = project();
+    cli(root, "transition", ID, "intake");
+    cli(root, "transition", ID, "analyzing");
+    const file = join(root, ".aidw/changes", ID, "analysis.md");
+    const text = readFileSync(file, "utf8");
+    // the empty template proves nothing
+    expect(cli(root, "stages", ID, "--json").json().done).toEqual(["intake"]);
+    const at = text.indexOf("## Appendix: discovery Q&A");
+    writeFileSync(file, `${text.slice(0, at)}## Appendix: discovery Q&A\n\nRound 1: notes app for one user. Answer: yes.\n`);
+    const j = cli(root, "stages", ID, "--json").json();
+    expect(j.done).toEqual(["intake", "discovery"]);
+    expect(j.group.map((s: { id: string }) => s.id)).toEqual(["research", "user-research"]);
+    // a decision recorded is not enough while the research note is missing
+    expect(cli(root, "decide", "research-needed", "market", "--reason", "competitors", "--change", ID).code).toBe(0);
+    expect(cli(root, "stages", ID, "--json").json().done).toEqual(["intake", "discovery"]);
+  });
+
+  it("keeps aidw stages --done out of an Agent's hands, but not the plain listing", () => {
+    const root = project();
+    cli(root, "transition", ID, "intake");
+    cli(root, "transition", ID, "analyzing");
+    const hook = (command: string): HookInput => ({ hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command }, cwd: root, agent_type: "aidw:research" });
+    expect(decide(hook(`aidw stages --done research --change ${ID}`), {})?.decision).toBe("deny");
+    expect(decide(hook(`aidw stages ${ID}`), {})?.decision ?? "none").not.toBe("deny");
+    expect(AIDW_STATE_COMMAND.test("aidw stages x --done=research")).toBe(true);
+    expect(AIDW_STATE_COMMAND.test("aidw stages x --json")).toBe(false);
+    expect(AIDW_STATE_COMMAND.test("aidw stages x; echo --done")).toBe(false);
   });
 
   it("honours parallel.max of quality.yaml once it is written", () => {

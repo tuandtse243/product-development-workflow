@@ -439,7 +439,7 @@ const awaitingSummary = (group: AwaitingReview[], waiting: string[]) => {
 
 /** D13: the reviewers to run at the same time (one browser user, parallel.max) and the ones offered after them. */
 function reviewGroup(reviews: AwaitingReview[], max: number): { group: AwaitingReview[]; waiting: string[] } {
-  const picked = pickGroup(reviews.map((a) => ({ id: a.layer, kind: "review" as const, reads: [], writes: [`layer-review-${a.layer}`], browser: a.browser, a })), max).map((x) => x.a);
+  const picked = pickGroup(reviews.map((a) => ({ id: a.layer, kind: "review" as const, reads: [], writes: [`file:run/layer-review-${a.layer}.md`], browser: a.browser, a })), max).map((x) => x.a);
   return { group: picked, waiting: reviews.filter((a) => !picked.includes(a)).map((a) => a.layer) };
 }
 
