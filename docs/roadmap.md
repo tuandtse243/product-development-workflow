@@ -131,6 +131,9 @@ aidw becomes a software factory with a Roster of Roles, Workflows as data and de
   - [x] Scope gate of `product` (Approval Gate 1): state `awaiting_scope_approval`, `brief.md` (vision, scope, MVP, out of scope),
     `aidw approve` approves the scope, `awaiting_approval` is refused until it is approved and again if the brief changed.
     A change gets it when created with `--workflow product`; one created without `--workflow` keeps the single gate.
+    **Replaced (ADR-0011):** the scope is now a round of the discovery interview (`scope` Decision Page, recorded under
+    `### Scope round` in `analysis.md`, checked by `aidw analyze`); a Change left in `awaiting_scope_approval` is read as
+    `analyzing` and its `brief.md` stands in for the round.
   - [x] `audit` Workflow (read-only; its own machine: analyzing -> delivered, no approval): `aidw decide audit-lenses`, `aidw audit
     brief|report|picks`; reviewers write `.aidw/run/audit-<lens>.md`, the CLI assembles one report by severity. `performance` joins
     when its Role is activated. Not yet run with real Agents.

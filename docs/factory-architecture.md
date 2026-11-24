@@ -190,7 +190,7 @@ Workflow does not contain.
 
 When the user has to choose, the Orchestrator does not print the options into the chat. It writes them as data and
 the CLI renders a **Decision Page** ([ADR-0007](adr/0007-decision-pages-are-views.md)): interview rounds, the design
-direction, an escalated task's decision, the audit pick list and both Approval Gates. The user's choices come back as
+direction, an escalated task's decision, the audit pick list and the Approval Gate. The user's choices come back as
 pasted text that the CLI checks before anything is recorded; the page is a view under `.aidw/run/pages/` and never
 an Artifact. How a Role writes one: `plugins/aidw/library/decision-pages.md`.
 
@@ -237,26 +237,27 @@ The Orchestrator proposes the Workflow, the user confirms, and a flag can name i
 | Stage | Owning Role | Artifact | Gate |
 |---|---|---|---|
 | 1 Intake | Orchestrator | request, Workflow class | Decision: Workflow, confirmed by user |
-| 2 Scope | `product-manager` | product brief: vision, scope, MVP | artifact valid |
-| | | | **Approval Gate 1: scope and MVP** |
+| 2 Scope | `product-manager` | scope round of the discovery interview: vision, scope, MVP, out (in `analysis.md`) | Decision Page answered; CLI `analyze` checks it is recorded |
 | 3 Requirements | `business-analyst` | requirements, specs per capability | CLI validates specs |
 | 4 Design | `ui-ux-designer` | design direction, tokens | Decision: full design, reuse, or no UI |
 | 5 Architecture | `software-architect`, `database-architect`, `api-designer` | architecture, data model, API contract, ADRs | artifacts valid |
 | 6 Test plan | `qa` | test plan, test cases | every scenario has a test case |
 | 7 Plan | `technical-planner` | task graph: Role, Slice, dependencies | Decision: shape of each Slice; CLI `analyze` |
-| | | | **Approval Gate 2: design, architecture and plan** |
+| | | | **Approval Gate: design, architecture and plan** (the only one, ADR-0011) |
 | 8 Build | implementation Roles | code and tests per task | CLI checkpoint, `code-reviewer` verdict; Decision: triage |
 | 9 Verify | `qa`, `security`, `performance`, `ui-ux-designer` | quality report, fix tasks | every layer passes |
 | 10 Converge | `qa` | scenario-to-test table | every scenario has a passing test |
-| | | | **Approval Gate 3: only for a production deploy** |
+| | | | **Gate: a production deploy asks first** |
 | 11 Release | `release`, `devops` | deployment, smoke results | smoke checks pass |
 | 12 Handover | `documentation` | delivery package | README commands run |
 
 ### Workflow files today
 
 `workflows/product.yaml` (greenfield) and `workflows/feature.yaml` (brownfield) describe the flow aidw runs now, not
-the 12 stages above: `product` has 13 stages and `feature` 14 (it adds the assessment), each tied to Change states,
-with one approval gate and no new stage. `aidw roster` checks
+the 12 stages above: `product` has 16 stages and `feature` 17 (it adds the assessment), each tied to Change states,
+with one approval gate and no new stage. The scope of `product` is a round of its discovery stage (`scope_round: true`):
+the user answers the `scope` Decision Page, the answer is recorded under `### Scope round` in the discovery appendix of
+`analysis.md`, and `aidw analyze` refuses the package without it. Nothing is approved there (ADR-0011). `aidw roster` checks
 that a stage reads only what an earlier stage (or the project) already has, writes only what one of its Roles owns,
 walks the Change state machine in an allowed order, and names the Agents the CLI spawns. The CLI reads the state
 machine of a Change from its own Workflow file (`transitions`, `approval_required`, `analysis_required`) and the Agents
@@ -264,7 +265,7 @@ it spawns from `product.yaml`.
 
 ### feature (brownfield)
 
-The product Workflow without stage 2 and Gate 1. It starts with the existing-system assessment aidw already
+The product Workflow without the scope round. It starts with the existing-system assessment aidw already
 does, then requirements. One Approval Gate before build (design, architecture and plan).
 
 ### bugfix
@@ -359,7 +360,7 @@ Four steps. Each is its own Change, keeps the test suite and both fixtures green
 |---|---|---|
 | 1 | `roles/` for all 21 (9 active with the knowledge moved from today's agents and skills, 12 planned with a profile only), `roster.yaml`, the agent generator in the build, a CLI check of Roster and profiles | generated agents behave as today's four; no workflow behavior changes; existing tests pass with the new names |
 | 2 | `workflows/product.yaml` and `feature.yaml` drive `aidw next` for the flow that exists today; `artifacts.yaml`; consistency checks; interactive Roles interview, worker Agents draft | a run on each fixture takes the same path and passes the same gates as before, with a smaller main-session context |
-| 3 | Decision Points, triage, Slice shape with `frontend` / `backend` assignment, the scope gate for `product`; `bugfix.yaml` and `audit.yaml` | each Workflow runs end to end on a fixture; a forced spec-caused failure reaches the user with a diagnosis instead of three retries |
+| 3 | Decision Points, triage, Slice shape with `frontend` / `backend` assignment, the scope gate for `product` (since replaced by a scope round, ADR-0011); `bugfix.yaml` and `audit.yaml` | each Workflow runs end to end on a fixture; a forced spec-caused failure reaches the user with a diagnosis instead of three retries |
 | 4 | Activate Planned Roles one at a time, each with its evals; framework packs for Next.js and NestJS | a Role is activated by deleting its `carried_by` line and adding knowledge, with no CLI change |
 
 Filling Roles with knowledge and skills (the user's stated next phase) starts once step 1 lands and continues

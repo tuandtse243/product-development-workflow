@@ -65,7 +65,8 @@ fails, the work is refused or sent back.
 _Avoid_: Gate (a Gate is the condition; a Guard is a check that enforces one), lint rule, hook
 
 **Approval Gate**:
-A Gate that only the user can pass.
+A Gate that only the user can pass. A Workflow has at most one, after the plan (ADR-0011); choices settled
+earlier, like the scope of a new product, are rounds of questions, not Approval Gates.
 _Avoid_: Checkpoint (that word means the per-task evidence check)
 
 **Decision Point**:

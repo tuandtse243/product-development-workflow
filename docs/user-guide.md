@@ -99,7 +99,12 @@ cùng bằng chứng; task bị sửa hoặc mới sẽ chạy lại (output `ai
 Sơ đồ: mở [`diagrams/lifecycle.html`](diagrams/lifecycle.html) trong trình duyệt để xem (có chế độ sáng/tối, zoom).
 
 1. **Analyzing.** `/aidw:start` đọc code (nếu có), hỏi bạn từng vòng câu hỏi, rồi viết: `analysis.md` (tóm tắt,
-   stack, thiết kế, quyền cần dùng), spec theo từng scenario, `tasks.yaml` và `quality.yaml`.
+   stack, thiết kế, quyền cần dùng), spec theo từng scenario, `tasks.yaml` và `quality.yaml`. Với sản phẩm mới
+   (workflow `product`), buổi phỏng vấn có một **vòng phạm vi**: trang `scope` hỏi tầm nhìn, các khả năng nằm trong phạm
+   vi, bản MVP và những gì để ngoài. Câu trả lời được ghi nguyên văn vào `analysis.md` (mục `### Scope round` trong phụ lục
+   phỏng vấn). Đây là vòng câu hỏi, không phải cổng duyệt: không có gì bị đóng băng ở bước này, bạn vẫn chỉ duyệt một lần
+   ở cuối ([ADR-0011](adr/0011-approval-gate-stays-after-the-plan.md)). Change tạo bởi bản aidw cũ còn ở
+   `awaiting_scope_approval` được đọc như `analyzing`: phỏng vấn tiếp tục, `brief.md` của nó thay cho vòng phạm vi.
 2. **Awaiting approval.** Bạn đọc `analysis.md` và duyệt. Gói bị đóng băng: spec, thiết kế, task. Muốn đổi
    phạm vi thì phải quay lại analyzing và duyệt lại.
 3. **Executing.** Từng task chạy theo vòng lặp ở mục 5.
