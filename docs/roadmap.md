@@ -237,7 +237,8 @@ are in `library/vendored-skill-notes.md`; a brief that loads one of these Skills
   covered by the authored `schema-evolution` Skill (wave 4, `database-architect`), which the `database` Role also loads.
 - [x] Vendored, `devops`: docker `docker-project-foundations`, `docker-build-strategies`, `docker-compose-patterns`;
   Sentry `gha-security-review` (the review of a task that changes a workflow).
-- [x] Authored, `integration`: `resilient-integration`, webhooks, idempotency, retries and timeouts.
+- [x] Authored, shared by `integration` and `backend` in `library/skills/`: `resilient-integration` (webhooks,
+  idempotency, retries and timeouts) and `external-api` (an outside service behind an interface, with a fake).
 - [x] Authored, shared: `aidw/api-design-rules` in `library/skills/` (error shape, lists, repeated writes, compatibility).
 - [ ] Not done: Addy `source-driven-development` (its core step needs web access the Agents do not have); obra
   `writing-good-tests` (no such Skill upstream: the material is a file inside its TDD Skill, which overlaps Addy's);
