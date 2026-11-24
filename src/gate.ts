@@ -286,6 +286,9 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
       if (same(basename(file), CONSULT_RECORD) && same(dirname(dirname(file)), p.changes)) {
         return deny("consultations.yaml is the CLI's record of Consultations; only `aidw consult` writes it");
       }
+      if (same(basename(file), "agent-runs.json") && same(basename(dirname(file)), "evidence") && same(dirname(dirname(dirname(file))), p.changes)) {
+        return deny("evidence/agent-runs.json is the CLI's count of Agent runs against the cap (D10); no Agent writes it");
+      }
       // ADR-0014: the record of Deviations and the copies of what was approved are the CLI's
       const parts = relative(lower(p.changes), lower(file)).split(sep);
       if (insideAnyCase(p.changes, file) && (same(parts[1] ?? "", DEVIATIONS_FILE) || same(parts[1] ?? "", DEVIATIONS_DIR)) && parts.length >= 2) {

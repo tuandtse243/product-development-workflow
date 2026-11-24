@@ -3,7 +3,7 @@
  * caused it, at most three rounds; then it and its dependants are not built and the rest carries on. Agent runs are
  * counted per Change, and at the cap no new task starts and the Change moves on.
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import YAML from "yaml";
 import { describe, expect, it } from "vitest";
@@ -11,7 +11,7 @@ import { agentRunStatus } from "../src/agentruns.js";
 import { run } from "../src/cli.js";
 import { loadChange } from "../src/change.js";
 import { pathsFor } from "../src/project.js";
-import { DEVIATION_OPEN, MAX_UPSTREAM_ROUNDS } from "../src/run.js";
+import { MAX_UPSTREAM_ROUNDS } from "../src/run.js";
 import { QUALITY_YAML, write } from "./fixtures.js";
 import { executingProject } from "./run.test.js";
 
@@ -99,6 +99,18 @@ function triage(root: string, cause: string, text = "the evidence says so."): Re
   return cli(root, "triage", "T02");
 }
 
+let edits = 0;
+/** The author's round (T9): the brief opens the Deviation, the technical-planner changes T02 in tasks.yaml, the lead closes it. */
+function authorRound(root: string): void {
+  expect(cli(root, "brief", "T02", "--for", "upstream").code).toBe(0);
+  const file = join(root, ".aidw/changes", ID, "tasks.yaml");
+  edits += 1;
+  writeFileSync(file, readFileSync(file, "utf8").replace(/title: Staff calendar.*/, `title: Staff calendar v${edits}`));
+  const c = cli(root, "deviation", "close");
+  expect(c.code, c.err).toBe(0);
+  expect(cli(root, "upstream", "T02").code).toBe(0);
+}
+
 /** The task is back after the author's round: it reruns, and fails again. */
 function rerunAndFail(root: string): void {
   expect(next(root)).toMatchObject({ action: "implement", task: "T02", reason: "retry" });
@@ -117,13 +129,14 @@ describe("the upstream fix loop (D9)", () => {
     expect(state(root)).toBe("executing");
 
     const n = next(root);
-    expect(n).toMatchObject({ action: "upstream", task: "T02", cause: "plan", role: "technical-planner", round: 1 });
+    expect(n).toMatchObject({ action: "upstream", step: "open", task: "T02", cause: "plan", role: "technical-planner", round: 1 });
     expect(cli(root, "next").out).toMatch(/aidw brief T02 --for upstream/);
 
     const b = cli(root, "brief", "T02", "--for", "upstream");
-    expect(b.code).toBe(0);
-    // the approved Artifact changes only through a Deviation (T9): the CLI says which one to open, for which Role and files
-    expect(b.out).toContain(`aidw deviation open ${ID} --role technical-planner --files .aidw/changes/${ID}/tasks.yaml --reason`);
+    expect(b.code, b.err).toBe(0);
+    // the approved Artifact changes only through a Deviation (T9): the brief opens it for the author's files, one SPAWN
+    expect(b.out).toContain(`Deviation D01 is open for the technical-planner: .aidw/changes/${ID}/tasks.yaml`);
+    expect(b.out.match(/SPAWN /g)).toHaveLength(1);
     expect(b.out).toMatch(/SPAWN aidw:technical-planner with: Upstream brief: .*T02\.upstream\.md/);
     expect(b.out).toMatch(/Then: aidw deviation close, and aidw upstream T02/);
     const brief = readFileSync(b.out.match(/Upstream brief: (\S+)\./)![1]!, "utf8");
@@ -131,8 +144,23 @@ describe("the upstream fix loop (D9)", () => {
     expect(brief).toMatch(/keep the purpose/i);
     expect(brief).toMatch(/smallest change/i);
     expect(brief).toMatch(/no new scope/i);
-    expect(brief).toMatch(/aidw deviation open/);
+    expect(brief).toMatch(/Deviation D01 is open[\s\S]*D01\.deviation\.md/);
+    // the Deviation brief points back at the diagnosis and at the upstream brief
+    const dbrief = readFileSync(join(root, ".aidw/run/briefs", ID, "D01.deviation.md"), "utf8");
+    expect(dbrief).toMatch(/\.aidw\/run\/triage-T02\.md/);
+    expect(dbrief).toMatch(/T02\.upstream\.md/);
+    // while it is open, next says the author is at work, not "spawn the Deviation's author" a second time
+    expect(next(root)).toMatchObject({ action: "upstream", step: "author", task: "T02", deviation: "D01" });
+    // printed again: the same Deviation and the same Agent run
+    expect(cli(root, "brief", "T02", "--for", "upstream").out).toContain("Deviation D01 is open");
+    expect(agentRunStatus(pathsFor(root), loadChange(pathsFor(root), ID)).used).toBe(5);
 
+    // not before the Deviation is closed
+    expect(cli(root, "upstream", "T02").err).toMatch(/D01 for T02 is still open: `aidw deviation close` first/);
+    const file = join(root, ".aidw/changes", ID, "tasks.yaml");
+    writeFileSync(file, readFileSync(file, "utf8").replace(/title: Staff calendar.*/, "title: Staff calendar in app/api/calendar"));
+    const closed = cli(root, "deviation", "close");
+    expect(closed.code, closed.err).toBe(0);
     const u = cli(root, "upstream", "T02");
     expect(u.code).toBe(0);
     expect(u.out).toMatch(/NEXT: implement T02 \(retry\)/);
@@ -152,17 +180,43 @@ describe("the upstream fix loop (D9)", () => {
     expect(triage(root, cause).code).toBe(0);
     expect(next(root)).toMatchObject({ action: "upstream", task: "T02", cause, role, round: 1 });
     const b = cli(root, "brief", "T02", "--for", "upstream");
-    expect(b.out).toContain(`--role ${role} --files ${file}`);
+    expect(b.code, b.err).toBe(0);
+    expect(b.out).toContain(`Deviation D01 is open for the ${role}: ${file}`);
     expect(b.out).toMatch(new RegExp(`SPAWN aidw:${role} with: Upstream brief`));
   });
 
+  it("lets Triage name the file at fault: its owner in artifacts.yaml fixes it", () => {
+    const root = failedT02();
+    // the domain model is an approved Artifact of the product-manager (artifacts.yaml: domain-model)
+    const t = triage(root, "architecture", "The domain model has no notion of a moved slot.\nFILES: domain/model.md");
+    expect(t.out).toMatch(/goes back to the product-manager/);
+    expect(task(root, "T02").upstream).toMatchObject({ role: "product-manager", files: [".aidw/domain/model.md"] });
+    const b = cli(root, "brief", "T02", "--for", "upstream");
+    expect(b.code, b.err).toBe(0);
+    expect(b.out).toContain("Deviation D01 is open for the product-manager: .aidw/domain/model.md");
+  });
+
+  it("names every delta spec of the Change for a spec cause of a task without specs", () => {
+    const root = project();
+    finish(root, "T01");
+    for (let i = 0; i < 3; i++) {
+      expect(cli(root, "task", "start", "T04").code).toBe(0);
+      expect(cli(root, "checkpoint", "T04").code).toBe(0);
+      expect(cli(root, "review", "T04", "fix", "--notes", "1. still wrong").code).toBe(0);
+    }
+    expect(cli(root, "brief", "T04", "--for", "triage").code).toBe(0);
+    write(root, ".aidw/run/triage-T04.md", "CAUSE: spec\nThe reminder scenario cannot be observed.\n");
+    expect(cli(root, "triage", "T04").code).toBe(0);
+    const b = cli(root, "brief", "T04", "--for", "upstream");
+    expect(b.code, b.err).toBe(0);
+    expect(b.out).toContain(`Deviation D01 is open for the business-analyst: .aidw/changes/${ID}/specs/booking/spec.md`);
+  });
+
   it(`after ${MAX_UPSTREAM_ROUNDS} rounds the task and its dependants are not built, and an independent task still runs`, () => {
-    // three rounds of triage, author and rerun take more Agent runs than the default cap of this small plan
-    const root = failedT02(`${QUALITY_YAML}grants:\n  agent_runs: 40\n`);
+    const root = failedT02();
     for (let round = 1; round <= MAX_UPSTREAM_ROUNDS; round++) {
       expect(triage(root, "plan").out).toMatch(new RegExp(`round ${round} of ${MAX_UPSTREAM_ROUNDS}`));
-      expect(cli(root, "brief", "T02", "--for", "upstream").code).toBe(0);
-      expect(cli(root, "upstream", "T02").code).toBe(0);
+      authorRound(root);
       rerunAndFail(root);
     }
     const last = triage(root, "plan");
@@ -223,19 +277,24 @@ describe("the upstream fix loop (D9)", () => {
     expect(next(root)).toMatchObject({ action: "triage", task: "T04" });
   });
 
-  it("an author that cannot fix its Artifact leaves the task not built at once", () => {
+  it("an author that cannot fix its Artifact leaves the task not built at once; its Deviation is abandoned", () => {
     const root = failedT02();
     triage(root, "spec");
     cli(root, "brief", "T02", "--for", "upstream");
     const u = cli(root, "upstream", "T02", "--cannot", "the two scenarios contradict and both are core to the purpose");
-    expect(u.code).toBe(0);
+    expect(u.code, u.err).toBe(0);
+    expect(cli(root, "deviation", "list").out).toMatch(/D01 abandoned/);
     expect(task(root, "T02")).toMatchObject({ status: "not_built" });
     expect(String((task(root, "T02").not_built as { reason?: string }).reason)).toMatch(/business-analyst could not fix.*contradict/);
     expect(task(root, "T03").status).toBe("not_built");
   });
 
-  it("keeps the Deviation command in one constant (T9's command)", () => {
-    expect(DEVIATION_OPEN(ID, "technical-planner", ["a", "b"], "T02")).toBe(`aidw deviation open ${ID} --role technical-planner --files a,b --reason "<why, in one line>" --task T02`);
+  it("refuses to rerun after an abandoned Deviation without --cannot", () => {
+    const root = failedT02();
+    triage(root, "plan");
+    cli(root, "brief", "T02", "--for", "upstream");
+    expect(cli(root, "deviation", "abandon").code).toBe(0);
+    expect(cli(root, "upstream", "T02").err).toMatch(/D01 of this round was abandoned/);
   });
 });
 
@@ -247,7 +306,7 @@ describe("Agent runs and the cap (D10)", () => {
     expect(agentRunStatus(p, loadChange(p, ID)).used).toBe(3);
     cli(root, "brief", "T02", "--for", "triage");
     cli(root, "brief", "T02", "--for", "triage"); // printed again: the same run
-    expect(agentRunStatus(p, loadChange(p, ID))).toMatchObject({ used: 4, cap: 12, reached: false });
+    expect(agentRunStatus(p, loadChange(p, ID))).toMatchObject({ used: 4, cap: 24, reached: false });
     write(root, ".aidw/run/triage-T02.md", "CAUSE: plan\nx\n");
     cli(root, "triage", "T02");
     cli(root, "brief", "T02", "--for", "upstream");
@@ -278,5 +337,92 @@ describe("Agent runs and the cap (D10)", () => {
     const root = project(`${QUALITY_YAML}grants:\n  agent_runs: 1\n`);
     expect(cli(root, "task", "start", "T01").code).toBe(0);
     expect(cli(root, "task", "start", "T04").err).toMatch(/cap of 1 Agent run/);
+  });
+});
+
+describe("after review: the cap, the seam and the fallbacks", () => {
+  const setTask = (root: string, id: string, fields: Record<string, unknown>) => {
+    const file = join(root, ".aidw/changes", ID, "tasks.yaml");
+    const data = YAML.parse(readFileSync(file, "utf8")) as { tasks: Record<string, unknown>[] };
+    Object.assign(data.tasks.find((t) => t.id === id) as object, fields);
+    writeFileSync(file, YAML.stringify(data));
+  };
+
+  it("measures the default cap against the planned Agent runs and fixes it in the approval record", () => {
+    const root = project();
+    const p = pathsFor(root);
+    // 4 tasks x 2 (implementer and reviewer) + 0 review layers = 8 planned; 3 x 8
+    expect((loadChange(p, ID).data.approval as { agent_run_cap?: number }).agent_run_cap).toBe(24);
+    expect(agentRunStatus(p, loadChange(p, ID)).cap).toBe(24);
+  });
+
+  it("fails closed on a record of Agent runs that cannot be read", () => {
+    const root = project();
+    write(root, `.aidw/changes/${ID}/evidence/agent-runs.json`, "{ not json");
+    const p = pathsFor(root);
+    expect(agentRunStatus(p, loadChange(p, ID))).toMatchObject({ reached: true, unreadable: true });
+    expect(cli(root, "task", "start", "T01").err).toMatch(/cannot be read/);
+    expect(next(root)).toMatchObject({ action: "complete", done: 0 });
+    expect(task(root, "T04").not_built).toMatchObject({ cause: "cap" });
+  });
+
+  it("a blocker no Role can answer is an environment cause: `aidw not-built --cause environment`, dependants with it", () => {
+    const root = project();
+    finish(root, "T01");
+    expect(cli(root, "task", "start", "T02").code).toBe(0);
+    const r = cli(root, "not-built", "T02", "--cause", "environment", "--reason", "the SMS provider's sandbox key is not in .env");
+    expect(r.code, r.err).toBe(0);
+    expect(task(root, "T02")).toMatchObject({ status: "not_built", not_built: { cause: "environment" } });
+    expect(task(root, "T03").not_built).toMatchObject({ cause: "dependency" });
+    expect(next(root)).toMatchObject({ action: "implement", task: "T04" });
+    expect(state(root)).toBe("executing");
+  });
+
+  it("`aidw triage --unclear`: no clear cause twice, the task is not built", () => {
+    const root = failedT02();
+    expect(cli(root, "brief", "T02", "--for", "triage").code).toBe(0);
+    const r = cli(root, "triage", "T02", "--unclear");
+    expect(r.code, r.err).toBe(0);
+    expect(r.out).toMatch(/no clear cause, so it is not built/);
+    expect(task(root, "T02")).toMatchObject({ status: "not_built", not_built: { cause: "triage" } });
+  });
+
+  it("only `aidw next` and state changes settle: a read-only next does not mark anything", async () => {
+    const root = project(`${QUALITY_YAML}grants:\n  agent_runs: 1\n`);
+    expect(cli(root, "task", "start", "T01").code).toBe(0); // the cap
+    const { nextAction } = await import("../src/run.js");
+    expect(nextAction(pathsFor(root), ID)).toMatchObject({ action: "implement", task: "T01", reason: "interrupted" });
+    expect(task(root, "T04").status).toBe("pending");
+    expect(cli(root, "next").code).toBe(0);
+    expect(task(root, "T04").status).toBe("not_built");
+  });
+
+  it("at the cap an open upstream Deviation is abandoned before the task is not built", () => {
+    const root = failedT02(`${QUALITY_YAML}grants:\n  agent_runs: 5\n`);
+    triage(root, "plan"); // 4
+    expect(cli(root, "brief", "T02", "--for", "upstream").code).toBe(0); // 5: the cap
+    expect(next(root)).toMatchObject({ action: "complete" });
+    expect(cli(root, "deviation", "list").out).toMatch(/D01 abandoned/);
+    expect(task(root, "T02").not_built).toMatchObject({ cause: "cap" });
+  });
+
+  it("tasks that can never run are not built, so the run does not stop on them", () => {
+    const root = project();
+    finish(root, "T01");
+    setTask(root, "T02", { status: "blocked" });
+    finish(root, "T04");
+    const n = next(root);
+    expect(n.action).toBe("complete");
+    expect(task(root, "T03").not_built).toMatchObject({ cause: "dependency" });
+    expect(task(root, "T02").status).toBe("not_built");
+  });
+
+  it("a resolve the machine refused twice leaves the task not built (environment)", async () => {
+    const root = project();
+    expect(cli(root, "task", "start", "T04").code).toBe(0);
+    const { recordBlocked } = await import("../src/run.js");
+    expect(recordBlocked(pathsFor(root), ID, "T04", "environment: `pnpm test` was refused by the machine (EPERM)")).toBeNull();
+    expect(recordBlocked(pathsFor(root), ID, "T04", "environment: `pnpm test` was refused by the machine (EPERM)")).toEqual(["T04"]);
+    expect(task(root, "T04").not_built).toMatchObject({ cause: "environment", reason: expect.stringMatching(/refused a check twice.*EPERM/) });
   });
 });

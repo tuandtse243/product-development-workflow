@@ -91,9 +91,9 @@ describe("grants in quality.yaml", () => {
     expect(parseQuality(QUALITY_YAML + "grants:\n  agent_runs: -1\n", "q").config).toBeNull();
   });
 
-  it("caps Agent runs at 3 times the planned tasks unless the user set a number", () => {
-    expect(agentRunCap({ push: null, envelope: false, agentRuns: null }, 4)).toBe(12);
-    expect(agentRunCap({ push: null, envelope: false, agentRuns: 7 }, 4)).toBe(7);
+  it("caps Agent runs at 3 times the planned Agent runs unless the user set a number", () => {
+    expect(agentRunCap({ push: null, envelope: false, agentRuns: null }, 10)).toBe(30);
+    expect(agentRunCap({ push: null, envelope: false, agentRuns: 7 }, 10)).toBe(7);
     expect(agentRunCap({ push: null, envelope: false, agentRuns: null }, 0)).toBe(3);
   });
 
@@ -346,7 +346,7 @@ describe("the grants are shown on the gate page and in the brief", () => {
     expect(cli("page", "render", "gate").code).toBe(0);
     const html = readFileSync(join(root, ".aidw/run/pages/gate.html"), "utf8");
     expect(html).toMatch(/Push and pull request<\/b>: not granted/);
-    expect(html).toMatch(/6 Agent runs \(default: 3 per planned task\)/);
+    expect(html).toMatch(/12 Agent runs \(default: 3 × 4 planned = 2 tasks × 2 \+ 0 review layers\)/);
   });
 
   it("puts the envelope in the task brief", () => {

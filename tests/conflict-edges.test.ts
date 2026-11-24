@@ -499,13 +499,30 @@ describe("review findings (B1, N2, N4, N8)", () => {
     expect(conflicts(root)[0]).toMatchObject({ outcome: "open" });
     // the merge commit is already there (restart after the resolve commit)
     expect(g(wt(root, "T02"), "rev-list", "--parents", "-n1", "HEAD").split(" ")).toHaveLength(3);
-    const plain = c(root, "resolve", "T02");
-    expect(plain.out).toMatch(/^BLOCKED \(environment\) T02: .*nothing dropped/);
-    expect(plain.out).toMatch(/NEXT: .*aidw resolve T02 .*outside the sandbox/);
+    // run once more outside the sandbox (T10, B3: a second refusal would make the task not built): now it passes
     execFileSync("rm", [flag]);
     const again = c(root, "resolve", "T02", "--json");
     expect(again.code, again.out).toBe(0);
     expect(task(root, "T02")).toMatchObject({ conflict: { phase: "review" } });
+  });
+
+  it("a resolve the machine refuses twice leaves the task not built (environment) and closes its conflict", () => {
+    const root = briefed();
+    write(wt(root, "T02"), "README.md", "# demo\nfrom T01\nfrom T02\n");
+    const flag = join(root, "refuse.flag");
+    writeFileSync(flag, "1");
+    const check = `const fs=require('fs');if(fs.existsSync(${JSON.stringify(flag)})){console.log('EPERM: Operation not permitted');process.exit(1)}process.exit(fs.existsSync(process.argv[2])?0:1);\n`;
+    write(wt(root, "T02"), "check.js", check);
+    const first = c(root, "resolve", "T02");
+    expect(first.out).toMatch(/^BLOCKED \(environment\) T02: .*nothing dropped/);
+    expect(first.out).toMatch(/NEXT: .*aidw resolve T02 .*outside the sandbox/);
+    const second = c(root, "resolve", "T02");
+    expect(second.code).toBe(0);
+    expect(second.out).toMatch(/^NOT BUILT \(environment\) T02/);
+    expect(task(root, "T02")).toMatchObject({ status: "not_built", not_built: { cause: "environment" } });
+    expect(task(root, "T02").conflict).toBeUndefined();
+    expect(existsSync(wt(root, "T02"))).toBe(false);
+    expect(conflicts(root)[0]).toMatchObject({ outcome: "dropped" });
   });
 
   it("the record is closed as resolved only by the commit of the final merge", () => {

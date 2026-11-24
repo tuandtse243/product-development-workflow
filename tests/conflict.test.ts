@@ -39,8 +39,6 @@ deploy:
   target: none
 parallel:
   max: 3
-grants:
-  agent_runs: 50
 `;
 
 function cli(root: string, ...argv: string[]) {

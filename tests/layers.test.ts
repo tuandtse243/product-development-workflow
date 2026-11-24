@@ -58,8 +58,7 @@ function project(quality = Q()): string {
   write(root, ".aidw/design/tokens.yaml", TOKENS_YAML);
   write(root, ".aidw/design/direction.md", "# Direction\n\nCalm clinical palette.\n");
   write(root, `${c}/tasks.yaml`, TASKS);
-  // these tests are about fix rounds: an Agent-run cap well above what they spawn (the default, 3 per planned task, is 3 here)
-  write(root, `${c}/quality.yaml`, /^grants:/m.test(quality) ? quality : `${quality}grants:\n  agent_runs: 50\n`);
+  write(root, `${c}/quality.yaml`, quality);
   write(root, `${c}/specs/booking/spec.md`, `## ADDED Requirements\n\n${REQ("Reschedule appointment")}`);
   write(root, "check.js", "process.exit(require('fs').existsSync(process.argv[2]) ? 0 : (console.log('missing ' + process.argv[2]), 1));\n");
   write(root, "shots.js", "const fs=require('fs');fs.mkdirSync('test-results/shots',{recursive:true});fs.writeFileSync('test-results/shots/home-mobile-light.png','');fs.writeFileSync('test-results/shots/home-desktop-dark.png','');console.log('2 shots');\n");

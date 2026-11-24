@@ -153,7 +153,7 @@ describe("execution loop (exit criterion [4])", () => {
   });
 
   it("feeds review notes back to the implementer and sends a spec cause back to its author when attempts run out", () => {
-    root = executingProject({ t2Verify: FAIL, quality: `${QUALITY_YAML}grants:\n  agent_runs: 20\n` });
+    root = executingProject({ t2Verify: FAIL });
     write(root, "tests/booking.test.ts", SCENARIO_TEST);
     cli(root, "task", "start", "T01");
     cli(root, "checkpoint", "T01");
@@ -510,14 +510,20 @@ describe("a check the machine refused", () => {
     cli(root, "review", "T01", "pass");
 
     expect(cli(root, "task", "start", "T02", "--json").json().attempt).toBe(1);
-    for (let i = 0; i < 2; i++) {
-      const r = cli(root, "checkpoint", "T02");
-      expect(r.code).toBe(1);
-      expect(r.out).toMatch(/BLOCKED \(environment\) T02 -> running, no attempt used/);
-      expect(r.out).toMatch(/refused by the machine \(ERR_PNPM_STORE_DIR_OPEN_OPERATION_LOCK\)/);
-      expect(r.out).toMatch(/outside the sandbox/);
-      expect(task(root, "T02")).toMatchObject({ status: "running", attempts: 1 }); // T02 allows 2: it would be escalated otherwise
-    }
+    const r = cli(root, "checkpoint", "T02");
+    expect(r.code).toBe(1);
+    expect(r.out).toMatch(/BLOCKED \(environment\) T02 -> running, no attempt used/);
+    expect(r.out).toMatch(/refused by the machine \(ERR_PNPM_STORE_DIR_OPEN_OPERATION_LOCK\)/);
+    expect(r.out).toMatch(/outside the sandbox/);
+    expect(task(root, "T02")).toMatchObject({ status: "running", attempts: 1, blocked_runs: 1 });
+
+    // refused a second time: an environment cause (ADR-0014): not built, the rest carries on, nobody is asked
+    const again = cli(root, "checkpoint", "T02");
+    expect(again.code).toBe(0);
+    expect(again.out).toMatch(/NOT BUILT \(environment\) T02/);
+    expect(again.out).not.toMatch(/escalate/);
+    expect(task(root, "T02")).toMatchObject({ status: "not_built", not_built: { cause: "environment", reason: expect.stringMatching(/refused a check twice[\s\S]*ERR_PNPM_STORE_DIR_OPEN_OPERATION_LOCK/) } });
+    expect(again.out).toMatch(/NEXT: complete: 1 task\(s\) done, not built: T02/);
   });
 
   it("still fails a task whose own check fails", () => {

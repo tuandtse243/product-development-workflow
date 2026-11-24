@@ -40,8 +40,10 @@ export const RUNTIME_FIELDS = [
   "runs",
   // ADR-0014: why a task was not built (with status not_built): { cause, reason, at }
   "not_built",
-  // T10: the upstream round of a task after Triage: { cause, role, round, phase, at }
+  // T10: the upstream round of a task after Triage: { cause, role, round, phase, at, deviation?, files? }
   "upstream",
+  // T10: checks of the task the machine refused in a row; the second makes it not built (environment)
+  "blocked_runs",
 ] as const;
 
 export const DEFAULT_MAX_ATTEMPTS = 3;

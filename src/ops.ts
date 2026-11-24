@@ -24,7 +24,7 @@ import { capabilityOf, findProject, isDir, KEBAB_SEGMENT, pathsFor, projectKind,
 import { applyDelta, type MergeSummary } from "./spec/merge.js";
 import { parseSpec } from "./spec/parse.js";
 import { git, headCommit, isDefaultBranch, isGitRepo } from "./git.js";
-import { bindPush } from "./grants.js";
+import { agentRunCap, bindPush, plannedAgentRuns, readGrants } from "./grants.js";
 import { checkDelivery } from "./deliver.js";
 import { transitionGuard } from "./guards.js";
 import { parseTasks } from "./tasks.js";
@@ -356,7 +356,9 @@ export function approve(p: Paths, id: string, opts: { auto?: { pluginRoot: strin
   // ADR-0012: the push grant holds only for the branch, remote URL and base fixed here, hashed with the package.
   const push = bindPush(p, change).binding;
   const { hash, files } = computeApprovalHash(p, change, push, { version: PACKAGE_VERSION });
-  change.doc.set("approval", change.doc.createNode({ hash, at: now(), by, package: PACKAGE_VERSION, ...(push ? { push } : {}) }));
+  // D5: the cap on Agent runs is fixed with the approval, so a Deviation that adds tasks does not move it
+  const agent_run_cap = agentRunCap(readGrants(change), plannedAgentRuns(change).runs);
+  change.doc.set("approval", change.doc.createNode({ hash, at: now(), by, package: PACKAGE_VERSION, agent_run_cap, ...(push ? { push } : {}) }));
   change.doc.set("state", "approved");
   saveChange(change);
   return { hash, files, by };
