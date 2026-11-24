@@ -163,10 +163,10 @@ describe("cases cover rules and skills (C1)", () => {
 });
 
 describe("the result file of a Role's cases (C6)", () => {
-  const writeResults = (root: string, digest: string, pass = true) =>
+  const writeResults = (root: string, digest: string, pass = true, runs = 3) =>
     writeFileSync(
       join(root, "roles", "backend", "evals", "results.json"),
-      JSON.stringify({ role: "backend", date: "2026-11-24T00:00:00.000Z", model: null, tier: "standard", runs: 3, digest, cases: [{ name: "x", pass, runs: { total: 3, passed: pass ? 3 : 2, errors: 0 } }] }),
+      JSON.stringify({ role: "backend", date: "2026-11-24T00:00:00.000Z", model: null, tier: "standard", runs, digest, cases: [{ name: "x", pass, runs: { total: 3, passed: pass ? 3 : 2, errors: 0 } }] }),
     );
 
   it("the digest covers the Role's content and not the result file", () => {
@@ -207,5 +207,97 @@ describe("the result file of a Role's cases (C6)", () => {
     d = checkEvals(root);
     expect(d.errors).toEqual([]);
     expect(warns(d)).toMatch(/not readable/);
+    writeResults(root, roleDigest(root, "backend"), true, 1);
+    expect(warns(checkEvals(root))).toMatch(/the last run had 1 run\(s\) per case; a case passes level 1 only with 3 of 3/);
+  });
+
+  it("the digest also covers the generated agent file and a library skill the Role lists, and any other file of the Role", () => {
+    const root = copy();
+    tableRole(root);
+    let before = roleDigest(root, "backend");
+    writeFileSync(join(root, "agents", "backend.md"), readFileSync(join(root, "agents", "backend.md"), "utf8") + "\nchanged include\n");
+    expect(roleDigest(root, "backend")).not.toBe(before);
+    before = roleDigest(root, "backend");
+    writeFileSync(join(root, "roles", "backend", "lessons.md"), "a lesson\n");
+    expect(roleDigest(root, "backend")).not.toBe(before);
+    const role = join(root, "roles", "backend", "role.md");
+    writeFileSync(role, readFileSync(role, "utf8").replace("skills:\n", "skills:\n  - library/api-design-rules: when designing a route\n"));
+    before = roleDigest(root, "backend");
+    const lib = join(root, "library", "skills", "api-design-rules", "SKILL.md");
+    writeFileSync(lib, readFileSync(lib, "utf8") + "\nmore\n");
+    expect(roleDigest(root, "backend")).not.toBe(before);
+  });
+
+  it("aidw roster --strict fails on a warning", () => {
+    const root = copy();
+    tableRole(root);
+    const go = (argv: string[]) => {
+      let out = "";
+      const code = run(argv, { AIDW_PLUGIN_ROOT: root }, process.cwd(), { out: (s) => (out += s), err: (s) => (out += s) });
+      return { code, out };
+    };
+    expect(go(["roster"]).code).toBe(0); // results.json missing: a warning
+    const strict = go(["roster", "--strict"]);
+    expect(strict.code).toBe(1);
+    expect(strict.out).toMatch(/FAILED: 0 error\(s\), 1 warning\(s\) \(strict\)/);
+  });
+});
+
+describe("library skills in a Role's index (R5)", () => {
+  const listLib = (root: string, entry: string) => {
+    const role = join(root, "roles", "backend", "role.md");
+    writeFileSync(role, readFileSync(role, "utf8").replace(/^access: (.*)$/m, `access: $1\nskills:\n  - ${entry}`));
+  };
+
+  it("resolves library/<name> to library/skills/<name>/SKILL.md and refuses one that does not exist", () => {
+    let root = copy();
+    listLib(root, "library/api-design-rules: when designing a route");
+    writeAgents(root);
+    expect(checkRoster(root).errors.map((e) => e.message)).toEqual([]);
+    expect(readFileSync(join(root, "agents", "backend.md"), "utf8")).toContain("aidw plugin-path library/skills/api-design-rules/SKILL.md");
+    root = copy();
+    listLib(root, "library/nope: never");
+    expect(checkRoster(root).errors.map((e) => e.message).join("\n")).toMatch(/skill "library\/nope" has no file library\/skills\/nope\/SKILL\.md/);
+  });
+
+  it("counts for coverage and for covers:", () => {
+    const root = copy();
+    tableRole(root);
+    const role = join(root, "roles", "backend", "role.md");
+    writeFileSync(role, readFileSync(role, "utf8").replace("skills:\n", "skills:\n  - library/api-design-rules: when designing a route\n"));
+    expect(errs(checkEvals(root))).toMatch(/skill library\/api-design-rules has no case/);
+    const f = join(root, "roles", "backend", "evals", "validates-authorizes-and-does-not-leak.md");
+    writeFileSync(f, readFileSync(f, "utf8").replace("covers: [B2]", "covers: [B2, library/api-design-rules]"));
+    expect(errs(checkEvals(root))).toBe("");
+  });
+});
+
+describe("follows_rules in role.md", () => {
+  const follows = (root: string, role: string, list: string) => {
+    const file = join(root, "roles", role, "role.md");
+    writeFileSync(file, readFileSync(file, "utf8").replace(/^access: (.*)$/m, `access: $1\nfollows_rules: ${list}`));
+  };
+  const rosterErrs = (root: string) => checkRoster(root).errors.map((e) => `${e.file}: ${e.message}`).join("\n");
+
+  it("accepts a Role with a rules.md and refuses the Role itself, an unknown Role, one without rules.md, a twice-listed one and a non-list", () => {
+    let root = copy();
+    tableRole(root);
+    follows(root, "fullstack", "[backend]");
+    writeAgents(root);
+    expect(rosterErrs(root)).toBe("");
+    root = copy();
+    follows(root, "fullstack", "[backend]");
+    expect(rosterErrs(root)).toMatch(/roles\/fullstack\/role\.md: follows_rules: "backend" has no rules\.md/);
+    root = copy();
+    follows(root, "fullstack", "[fullstack, nobody]");
+    expect(rosterErrs(root)).toMatch(/follows_rules: a role does not list itself/);
+    expect(rosterErrs(root)).toMatch(/follows_rules: "nobody" is not a role in roster\.yaml/);
+    root = copy();
+    tableRole(root);
+    follows(root, "fullstack", "[backend, backend]");
+    expect(rosterErrs(root)).toMatch(/follows_rules lists a role twice/);
+    root = copy();
+    follows(root, "fullstack", "backend");
+    expect(rosterErrs(root)).toMatch(/follows_rules must be a list of role ids/);
   });
 });
