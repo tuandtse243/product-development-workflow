@@ -58,11 +58,11 @@ contract and the project's existing routes; never mix the two meanings on one AP
 | An outside service timed out | `504` or `503` | per the contract |
 | Overloaded or in maintenance, a retry later will help | `503` with `Retry-After` | |
 | Rate limit of this API reached | `429` with `Retry-After` | |
-| Database serialization failure or deadlock after the bounded retries | `503` or `500` | never `409`: the client did nothing wrong (see `database-conflicts.md`) |
+| Database serialization failure or deadlock after the bounded retries | `503` with `Retry-After` | `409` only if the contract uses it for concurrency conflicts (AIP-193 maps ABORTED to `409`); not `500` (see `database-conflicts.md`) |
 
 ## Sources
 
 RFC 9110 (HTTP Semantics, sections 15.2 to 15.6 and the `Allow`, `Location`, `Retry-After` and `WWW-Authenticate`
 fields), RFC 6585 (`428`, `429`), RFC 9457 (problem details), the IETF draft `draft-ietf-httpapi-idempotency-key-header`,
-and the OWASP API Security Top 10 2023, API1 (broken object level authorization), for the `404` versus `403` choice.
+Google AIP-193 (error codes, ABORTED), and the OWASP API Security Top 10 2023, API1 (broken object level authorization), for the `404` versus `403` choice.
 Written for aidw; no text copied.

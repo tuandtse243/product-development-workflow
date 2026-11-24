@@ -2,9 +2,9 @@
 
 Lookup material for the backend Role, read when a route accepts an `Idempotency-Key` or a scenario says a retry must
 not act twice. What the client sees (same key and same body returns the first result, a different body is `422`, a
-key still running is `409`) is in `aidw/api-design-rules` and the contract; the procedure is the backend Skill on
+key still running in the cross-boundary flow is `409`) is in `aidw/api-design-rules` and the contract; the procedure is the backend Skill on
 repeat-safe writes. This file is the storage behind it. The table is a schema change: if it does not exist, it is a
-`database` task (stop and report, or ask).
+`database` task: ask `database-architect` (a Consultation), and report it under Owed if nothing is planned.
 
 ## The table
 
@@ -33,10 +33,10 @@ One transaction holds the key and the effect:
 
 1. `INSERT ... (state = 'running') ON CONFLICT DO NOTHING RETURNING ...`.
 2. Inserted: do the work, `UPDATE` the row to `done` with the response, commit, answer.
-3. Not inserted: read the row. Different fingerprint: `422`. `done`: replay the stored response. `running`: `409`.
+3. Not inserted: read the row. Different fingerprint: `422`. `done`: replay the stored response.
 
-In PostgreSQL a second request with the same key waits on the first one's uncommitted insert and then sees the
-committed row, so two concurrent duplicates give one effect. A rollback removes the key with the work, so a failed
+A concurrent duplicate does not see `running` here: in PostgreSQL it blocks on the first one's uncommitted insert,
+then sees the committed row and replays it, so two concurrent duplicates give one effect. A rollback removes the key with the work, so a failed
 attempt can be retried with the same key.
 
 ## The flow when the effect crosses a boundary (a payment, an email)
@@ -45,7 +45,8 @@ A transaction cannot hold an outside call. Split it into recorded steps:
 
 1. Transaction 1: insert the key as `running` together with the intent ("payment requested"), commit.
 2. Call the provider, passing your own idempotency key for that call (the `library/resilient-integration` Skill).
-3. Transaction 2: store the result and mark the key `done` with the response.
+3. Transaction 2: store the result and mark the key `done` with the response. A duplicate that arrives between the
+   two transactions finds the key `running` and gets `409`.
 4. A row stuck in `running` past a timeout is resolved by a job that asks the provider what happened, never by
    calling it again blind.
 

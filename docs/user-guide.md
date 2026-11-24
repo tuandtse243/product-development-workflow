@@ -98,7 +98,10 @@ cùng bằng chứng; task bị sửa hoặc mới sẽ chạy lại (output `ai
 **Commit.** Mọi commit theo Conventional Commits (`docs/commit-guide.md`). aidw tự dựng message `type(capability): title` từ trường
 `type` của task.
 
-**Stack pack.** Công cụ theo ngôn ngữ nằm ở `plugins/aidw/stacks/<ngôn ngữ>.md` (hiện có `node.md`); thêm ngôn ngữ mới là thêm một file.
+**Stack pack.** Công cụ theo ngôn ngữ nằm ở `plugins/aidw/stacks/<ngôn ngữ>.md` (`node.md`, `python.md`); thêm ngôn ngữ mới là thêm một file.
+Cách xây theo framework nằm ở framework pack và server pack (`nestjs.md`, `nextjs.md`, `nuxt.md`, `sveltekit.md`, `django.md`,
+`fastapi.md`, `express.md`, `fastify.md`, `hono.md`); brief của task và brief review đều trỏ tới language pack và pack của
+framework mà dự án dùng.
 
 ## 4. Đường đi của một change
 

@@ -26,7 +26,8 @@ checks it, ADR-0001). `aidw detect` reports Fastify as the project's `server`; t
 - **Validation through route schemas.** Every route declares `schema: { body, params, querystring, headers, response }`.
   Fastify validates the input with Ajv before the handler runs and answers `400` on failure. Use a type provider
   (`@fastify/type-provider-typebox` or `fastify-type-provider-zod`) so the schema is also the handler's type; never cast
-  `request.body`.
+  `request.body`. Fastify 5 requires full JSON Schema for `querystring`, `params` and `headers`
+  (`{ type: 'object', properties: {...} }`); the v4 shorthand of a bare properties map is removed.
 - **The response schema is a filter.** With `response: { 200: schema }` Fastify serializes only the listed fields, which
   both speeds serialization and keeps an unlisted column from leaking. Declare it for every status the route returns,
   error shapes included.

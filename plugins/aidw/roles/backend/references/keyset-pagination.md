@@ -38,6 +38,9 @@ LIMIT $2 + 1;
 
 - Encode the last row's sort values and id, for example base64url of `{"v":["2026-11-20T10:00:00Z"],"id":"b_81"}`. The
   client treats it as opaque.
+- Keep the sort value at the database's full precision in the cursor. A PostgreSQL `timestamptz` has microseconds, a
+  JavaScript `Date` ISO string only milliseconds: rows inside the same millisecond are skipped or repeated. Carry the
+  value as the database's text, or truncate the column to milliseconds.
 - Decode and validate it like any input: a malformed cursor is `400`, not a crash and not page 1.
 - A cursor belongs to one sort and one set of filters. Put the sort (or a hash of sort and filters) in the cursor and
   refuse it with `400` when the request's sort or filters differ.

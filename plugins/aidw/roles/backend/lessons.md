@@ -1,7 +1,7 @@
 # Lessons of the backend Role
 
 What real Changes taught this Role that its rules, skills and references do not say yet. The backend Agent reads it
-when a task resembles an entry; it is not loaded by default.
+at the start of a task.
 
 **Only the owner adds an entry, after reviewing it.** An Agent, a reviewer or a run may propose a lesson (in its
 report, a finding or a note to the owner); none writes to this file. An entry is added when the owner has checked

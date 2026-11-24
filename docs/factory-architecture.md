@@ -180,7 +180,8 @@ tooling questions (install, format, lint, test). A framework pack answers how to
 `node` plus `nextjs`; `backend` on a NestJS project loads `node` plus `nestjs`. Next.js and NestJS are the
 first framework packs. Express, Fastify and Hono are HTTP libraries that `aidw detect` reports as the `server`, not
 the `framework`: their packs say `detected_as: server` and load only when no framework pack matches, so a NestJS
-project that also lists `express` gets `nestjs` alone.
+project that also lists `express` gets `nestjs` alone. Selection has limits: a Next.js app with a separate Express
+server in the same `package.json` gets `nextjs` only, and `aidw detect` keeps only the first server dependency it finds.
 
 **What a backend task receives (audit, 2026-11-24, plan T17).** Read from a real implement brief (`aidw brief`) for a
 task with `role: backend`, Touches `src/bookings/**`, an API contract, a data model and Express in `package.json`, and

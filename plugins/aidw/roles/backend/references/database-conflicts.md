@@ -3,7 +3,7 @@
 Lookup material for the backend Role, read when a task writes more than one row, guards a rule under concurrent
 requests, or must map a database refusal to the contract. How to choose the guard is the procedure of the backend
 Skill on transactions and races; this file is the reference it leans on. A constraint or an index that does not exist
-yet is a `database` task: stop and report, or ask.
+yet is a `database` task: ask `database-architect` (a Consultation), and report it under Owed if nothing is planned.
 
 ## Isolation levels
 
@@ -52,18 +52,19 @@ No network call while a transaction is open: it holds locks for as long as the o
 | Check violation | `23514` | `3819` (MySQL 8.0.16 and later) | `SQLITE_CONSTRAINT_CHECK` | `409` or `422`, as the contract names the rule |
 | Serialization failure | `40001` | - | - | retry the whole transaction, bounded |
 | Deadlock | `40P01` | `1213` (transaction rolled back) | - | retry the whole transaction, bounded |
-| Lock not available or lock wait timeout | `55P03` | `1205` (by default only the statement is rolled back) | `SQLITE_BUSY` | retry, or `409` when `NOWAIT` was the design |
+| Lock not available or lock wait timeout | `55P03` | `1205` (by default only the statement is rolled back); `3572` `ER_LOCK_NOWAIT` for `NOWAIT` | `SQLITE_BUSY` | retry, or `409` when `NOWAIT` was the design |
 | Statement timeout | `57014` | `3024` (`MAX_EXECUTION_TIME` exceeded) | - | `503` or `500`; look at the query |
 
 Map by code, never by message text, and in one place (the repository or the error mapper), so the rest of the code
 sees the application's own error (`SlotTaken`) and not the driver's. A retry after `40001`, `40P01` or `1213` reruns
-the whole transaction from its first statement, at most a few times; when it still fails the answer is a server error,
-never a `409`, because the client did nothing wrong. ORMs wrap these codes: Prisma reports a unique violation as
-`P2002`, a missing record for an update as `P2025`; check the project's ORM documentation for the rest.
+the whole transaction from its first statement, at most a few times; when it still fails the answer is `503` with
+`Retry-After`, or `409` only if the contract uses it for concurrency conflicts (AIP-193 maps ABORTED to `409`); not
+`500`. ORMs wrap these codes: Prisma reports a unique violation as `P2002`, a missing record for an update as `P2025`,
+a write conflict or deadlock as `P2034` (retry the transaction); check the project's ORM documentation for the rest.
 
 ## Sources
 
 PostgreSQL 18 documentation: "Transaction Isolation", "Explicit Locking", `SELECT` (the locking clause), `INSERT` (`ON
 CONFLICT`), Appendix A "PostgreSQL Error Codes". MySQL 8.4 Reference Manual: "Transaction Isolation Levels", "Locking
 Reads", "Server Error Message Reference". SQLite documentation: "Result and Error Codes", "Transaction" (`BEGIN
-IMMEDIATE`), "Isolation in SQLite". Prisma error reference. Written for aidw; no text copied.
+IMMEDIATE`), "Isolation in SQLite". Google AIP-193. Prisma error reference. Written for aidw; no text copied.

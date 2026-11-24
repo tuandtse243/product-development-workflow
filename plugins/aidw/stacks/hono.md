@@ -51,8 +51,8 @@ keeps its own structure and `.aidw/constitution.md` first.
 ## Environment variables
 
 List every variable in `.env.example` (or `.dev.vars.example` on Workers); none is committed with a real value. On Node,
-parse `process.env` once at start-up in `src/config.ts`. On Workers there is no `process.env`: variables and secrets are
-bindings, read through `c.env` (or `env(c)` from `hono/adapter` when the code runs on several runtimes) and validated in a
+parse `process.env` once at start-up in `src/config.ts`. On Workers variables and secrets are bindings; `process.env` is
+populated only with the `nodejs_compat` flag and a compatibility date of 2025-04-01 or later. Read them through `c.env` (or `env(c)` from `hono/adapter` when the code runs on several runtimes) and validated in a
 middleware. A missing required variable fails at start-up or on the first request with a clear message, never a silent
 `undefined`.
 
@@ -68,7 +68,8 @@ middleware. A missing required variable fails at start-up or on the first reques
 
 ## Common mistakes
 
-- Reading `process.env` in code that runs on Workers, or importing a Node built-in (`node:fs`, or any `node:` module
+- Reading `process.env` in code that runs on Workers without `nodejs_compat` and a compatibility date of 2025-04-01 or
+  later (and even then prefer `c.env` or `env(c)`), or importing a Node built-in (`node:fs`, or any `node:` module
   without the `nodejs_compat` flag) in a Workers app.
 - `c.req.json()` read directly instead of a validator and `c.req.valid()`, so nothing is checked.
 - The validator's default error body reaching the client instead of the contract's error shape.

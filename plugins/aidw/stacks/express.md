@@ -26,7 +26,8 @@ existing Express project keeps its own structure and `.aidw/constitution.md` fir
 
 - **Middleware order is the program.** Security headers (`helmet`), `express.json({ limit: '100kb' })`, request id and
   logging, then the routers, then the 404 handler, then the error handler, last. Without a body parser `req.body` is
-  `undefined` (Express 5) or `{}` (Express 4).
+  `undefined` in Express 4 and 5. What Express 5 (body-parser 2) changed: when a parser is mounted but the request's
+  `Content-Type` does not match, `req.body` stays `undefined`, where Express 4 gave `{}`.
 - **Validation.** Parse `req.body`, `req.params` and `req.query` with a schema (zod or the project's validator) at the top
   of the handler or in a `validate(schema)` middleware, and use only the parsed value. In Express 5 `req.query` is a
   getter: write the parsed result to `res.locals` or a local, never back to `req.query`. Unknown fields are stripped or
@@ -50,8 +51,9 @@ existing Express project keeps its own structure and `.aidw/constitution.md` fir
   carry a column the contract does not list.
 - A write that touches several rows runs in one transaction in the service. A migration is its own task.
 - Pagination, sorting and filters come from a parsed query schema with defaults and a maximum page size.
-- `return` after sending (`return res.status(404).json(...)`): a second send throws "Cannot set headers after they are
-  sent".
+- Stop after sending: in an `async` handler write `res.status(404).json(...); return;` (the `@types/express` 5 handler
+  type requires `void`, so `return res.status(...)` does not type-check). A second send throws "Cannot set headers
+  after they are sent".
 
 ## Environment variables
 
@@ -71,8 +73,8 @@ object in. A missing required variable stops the process at boot with a clear me
 ## Common mistakes
 
 - An `async` handler on Express 4 without a wrapper: a thrown error never reaches the error handler.
-- The error handler declared with three parameters, or registered before the routers: Express treats it as ordinary
-  middleware.
+- The error handler declared with three parameters (Express treats it as ordinary middleware), or registered before
+  the routers (it is still error middleware, but it never sees errors from routes registered after it).
 - Business rules or SQL inside route handlers; a handler calling another capability's repository.
 - `app.listen` in the module tests import, leaving open handles and port clashes in parallel test runs.
 - Sending `err.message` or a stack trace to the client from the error handler.
