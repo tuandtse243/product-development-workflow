@@ -66,7 +66,7 @@ Các lệnh CLI hữu ích khi bạn tự gõ `aidw` (xem mục 2 để đưa n�
 | `aidw doctor [<id>]` | kiểm máy trước khi chạy: binary của các lệnh chất lượng, pnpm store, registry, Chrome CDP, đăng nhập và liên kết Vercel. Thoát mã 1 nếu có FAIL |
 | `aidw browser start\|status\|url\|stop` | trình duyệt test riêng của project cho các layer e2e, a11y, ui-ux, performance (`aidw run` tự khởi động nó trước mỗi phiên vì runner chạy ngoài sandbox): Chrome chạy headless trên cổng trống do chính Chrome chọn (không cố định 9222), mỗi project một profile. Các layer nhận `E2E_CDP_URL` và `E2E_CDP_PORT` tự động. Nếu sandbox chặn việc mở Chrome, chạy `aidw browser start` trong terminal của bạn. |
 | `aidw task reopen <T> [--revert]` | task đã xong nhưng sai: về pending; `--revert` hoàn tác commit của nó (chỉ code, `.aidw/` giữ nguyên) |
-| `aidw pr [<id>] [--create]` | sau bàn giao: in nội dung PR; `--create` push nhánh và mở PR bằng `gh` (luôn hỏi bạn trước) |
+| `aidw pr [<id>] [--create]` | sau bàn giao: in nội dung PR; `--create` push nhánh và mở PR bằng `gh` (hỏi bạn trước, trừ khi bạn đã cấp quyền push ở cổng duyệt) |
 
 **Trang quyết định (Decision Page).** Khi cần bạn chọn, aidw không in một khối chữ dài vào terminal nữa. Nó in một link
 `file://…/.aidw/run/pages/<tên>.html` kèm một hai dòng tóm tắt. Giữ Cmd và bấm link (hoặc gõ `! open <đường dẫn>`) để mở
@@ -219,13 +219,30 @@ Xem [`diagrams/components.html`](diagrams/components.html).
 
 | Hook | Chạy khi | Làm gì |
 |---|---|---|
-| **gate** (PreToolUse) | trước mỗi lần Claude dùng tool | chặn ghi code trước approve; chặn sửa gói đã đóng băng; chặn đọc secret; **hỏi bạn** với lệnh nguy hiểm (push, deploy production, trả tiền) và với `aidw approve` |
+| **gate** (PreToolUse) | trước mỗi lần Claude dùng tool | chặn ghi code trước approve; chặn sửa gói đã đóng băng; chặn đọc secret; **hỏi bạn** với lệnh nguy hiểm (push, deploy production, trả tiền) và với `aidw approve`; push Change Branch và mở PR không hỏi nếu bạn đã cấp ở cổng duyệt |
 | **backstop** (Stop) | khi session dừng | báo file bị sửa mà không do bước aidw nào giải thích (file do tool sinh ra như `*.tsbuildinfo` được bỏ qua) |
 | **pause** (StopFailure) | khi API lỗi hoặc hết quota | đặt change về `paused`, ghi lý do |
 
 Quyền được chia theo bậc (xem [`plugins/aidw/company/permissions.md`](../plugins/aidw/company/permissions.md)):
 bậc 0 và 1 tự do sau approve; bậc 2 (deploy preview, dự án cloud miễn phí) chỉ khi có trong danh sách bạn đã
 duyệt; bậc 3 (tốn tiền, production, push) luôn hỏi bạn; bậc x (secret cá nhân) không bao giờ.
+
+**Quyền cấp ở cổng duyệt (grants).** Trang Decision Page của cổng duyệt có mục "Grants for this Change", ghi trong
+`quality.yaml` ở khối `grants:` và được duyệt (băm, đóng băng) cùng gói:
+
+```yaml
+grants:
+  push: { remote: origin, base: main }  # push Change Branch lên remote này và mở một PR (kể cả draft) vào base này
+  envelope: true                        # tài nguyên miễn phí của provider đang dùng; migration đổi dữ liệu ở DB local/dev khi đảo ngược được và đã thử trên seed
+  agent_runs: 30                        # trần số lượt chạy Agent; bỏ trống = 3 lần số task trong plan
+```
+
+Có `push`, gate cho qua không hỏi đúng các lệnh `git push [-u] <remote> <Change Branch>`,
+`gh pr create --base <base> --head <Change Branch> [--draft]` và `aidw pr <id> --create`, chỉ cho Orchestrator, chỉ khi
+change đang mở hoặc đã bàn giao và gói còn khớp hash. Nhánh khác (kể cả nhánh của Task Worktree), remote khác, base
+khác, `--force`, lệnh nối chuỗi: vẫn hỏi. Envelope và trần chỉ được ghi lại (trong brief và trang cổng duyệt) để
+Agent và vòng chạy đọc; gate không đoán được "miễn phí". Không bao giờ tự động, dù cấp gì: credential ngoài `.env`
+của project, mọi thứ tốn tiền, deploy production, xóa dữ liệu cloud.
 
 **Vì sao đôi lúc bạn thấy hộp thoại xác nhận:** gate hỏi `aidw approve` đúng một lần. Các lệnh bậc 3 hoặc lệnh
 bậc 2 chưa nằm trong danh sách cũng hỏi. Hộp thoại lặp lại quá nhiều là dấu hiệu lệnh bị nhận nhầm: kiểm bằng
@@ -354,4 +371,4 @@ task sửa lỗi của layer có reviewer riêng được tự duyệt, orchestr
 - **Monorepo chưa được hỗ trợ** (pnpm workspaces, turbo, nx). `aidw init` và `aidw detect` cảnh báo; chạy aidw trong
   một package thì được, nhưng `touches`, lệnh verify và quality layer phải tự chỉnh.
 - Từ lúc `executing`, aidw commit mọi task lên branch `aidw/<change-id>` (hoặc feature branch bạn đang đứng), không
-  commit lên `main`. aidw không tự merge hay push: bạn merge, hoặc mở PR từ branch đó.
+  commit lên `main`. aidw không tự merge; nó chỉ push branch đó và mở PR khi bạn đã cấp quyền ở cổng duyệt (nếu không thì hỏi).
