@@ -173,7 +173,9 @@ Hai trường hợp đặc biệt:
   bị mất. Sau cổng duyệt, câu hỏi không trả lời được hoặc câu trả lời đòi đổi thứ đã duyệt cũng không đến tay bạn
   ([ADR-0014](adr/0014-after-the-approval-gate-the-run-does-not-ask-the-user.md)): nó được ghi lại để Role tác giả
   quyết định như một Deviation (T9), và pull request sẽ nêu ra. Trước cổng duyệt, câu hỏi không ai trả lời được thành
-  câu hỏi mở trong Artifact, bạn thấy nó ở trang duyệt.
+  câu hỏi mở trong Artifact và được liệt kê (kèm nguyên văn câu hỏi) trên trang duyệt; stage còn Consultation dở thì
+  chưa được báo xong và package chưa duyệt được. Hook chỉ cho implementer ghi `<task>.request.md` của task nó đang chạy,
+  và chỉ Role được hỏi mới ghi được `C01.answer.md` của câu hỏi đó.
 
 ## Task, phiên và worktree: ba khái niệm cần phân biệt
 

@@ -316,21 +316,30 @@ files, so the lead in its session and a short runner session (`claude -p /aidw:r
 | Step | Who | What happens |
 |---|---|---|
 | ask | the asking Agent | writes `.aidw/changes/<id>/consult/<name>.request.md` (the path is in its brief: `<task>.request.md` in the build, `<stage>-<role>.request.md` before the gate) with a front matter `from`, `task` or `stage`, `to` and two sections, `## Question` and `## Progress` (done so far, next step, files touched); replies `CONSULT <path>` |
-| check and record | `aidw consult <request>` | refuses a pair the asker's `consults` does not declare, a consulted Agent asking in turn (depth 1: a `consultation:` field, or the asker is the Role an open Consultation waits for), a third question of one Agent run (`task:<T>#<attempt>`, or `stage:<stage>:<role>`) and, in the build, a Role that wrote no contract the task reads (the owners in `artifacts.yaml` of the Artifacts the task's brief points at that exist in this Change: `api-designer` for the API contract, `database-architect` for the data model, `software-architect` for the architecture). Records `C<NN>` in `changes/<id>/consultations.yaml` (outside the approved package), keeps the request as `consult/C<NN>.request.md`, writes the consulted Role's brief and prints its `SPAWN` |
-| answer | the consulted Agent | writes `consult/C<NN>.answer.md`, first line `STATUS: answered`, `cannot-answer` or `changes-approved` |
+| check and record | `aidw consult <request>` | refuses a pair the asker's `consults` does not declare, a consulted Agent asking in turn (depth 1: a `consultation:` field, or the asker is the Role an open Consultation waits for), a request from an Agent run that still waits for an open Consultation (its asker ended its turn with that question),
+a request path that is a recorded `C<NN>` copy or a request already recorded (a crash between the record and removing
+the original), a `brief:` outside `.aidw/run/briefs/<id>/`, a third question of one Agent run (`task:<T>#<run>`, where
+`runs` in tasks.yaml rises on every new attempt and is never reset, so a retry the user grants is a new run; or
+`stage:<stage>:<role>`, one budget per stage and Role, not reset by plan-review fix rounds) and, in the build, a Role that wrote no contract the task reads (the owners in `artifacts.yaml` of the Artifacts the task's brief reads that exist in this Change, from one list,
+`src/briefreads.ts`, that also builds the brief's pointers: `api-designer` for the API contract, `database-architect` for the data model, `software-architect` for the architecture). Records `C<NN>` in `changes/<id>/consultations.yaml` (outside the approved package), keeps the request as `consult/C<NN>.request.md`, writes the consulted Role's brief and prints its `SPAWN` |
+| answer | the consulted Agent | writes `consult/C<NN>.answer.md`, first line `STATUS: answered`, `cannot-answer` or `changes-approved` (`next` then says `record`, not spawn again) |
 | route | `aidw consult answer C<NN>` | reads the status and always writes a resume brief (`.aidw/run/briefs/<id>/C<NN>.resume.md`): the original brief, the progress note, the question and the answer path |
 | resume | `aidw consult resume C<NN>` | marks it resumed and prints both ways on: SendMessage to the asker if it still runs in this session (an optimisation), otherwise a fresh Agent of the same Role with the resume brief (the guaranteed path) |
 
 `aidw next` and `aidw stages` put an open Consultation (get the answer) or an answered one (resume the asker) before
-anything else, so a fresh session finds it; the other tasks of a Wave and the other stages carry on meanwhile. A later
+anything else, so a fresh session finds it. The other tasks of a Wave carry on meanwhile: `next` computes the rest of the
+Change without the tasks that wait for an answer and returns it as `meanwhile`, done in the same message. The depth rule
+is checked by Role, which holds with today's stage order (no Role answers while an Agent of it runs its own work). A later
 brief of the task lists every answered Consultation of it, so the answer survives a resumed Agent that was lost too.
 After the Approval Gate the run never asks the user ([ADR-0014](adr/0014-after-the-approval-gate-the-run-does-not-ask-the-user.md)):
 an answer that cannot be given, or would change something approved, is recorded as `needs-deviation` with
-`route: deviation` and goes to the author Role as a Deviation (built by T9; until then the asker resumes, builds what the
+`route: deviation` and `deviation: pending` (T9 sets `recorded`) and goes to the author Role as a Deviation (built by T9; until then the asker resumes, builds what the
 approved package states and reports the gap). Before the gate a question nobody could answer becomes an open question
-in the asker's Artifact, which the Approval Gate shows. The request, the answer and the resume brief are the only new
-files: the gate hook lets an implementing Agent write only its own request file under `consult/` (never a `C<NN>` file),
-an authoring Role writes its answer under its usual `.aidw/` rule, and no Agent writes `consultations.yaml`.
+in the asker's Artifact and is listed, with its words, on the gate's Decision Page beside the open findings; a stage is
+not reported done, and the package is not approved, while a Consultation of it is in flight. The request, the answer and the resume brief are the only new
+files: the gate hook lets an implementing Agent write only `<task>.request.md` of a task running in that Change, only the Role
+consulted in an open Consultation write its `C<NN>.answer.md`, no Agent any other `C<NN>` file (compared without case),
+and no Agent `consultations.yaml`; an authoring Role writes its own request under its usual `.aidw/` rule.
 `aidw consult` is a state command, so only the Orchestrator runs it.
 
 **Triage.** When a task runs out of attempts, a fresh `software-architect` Agent classifies the cause from the

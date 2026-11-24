@@ -68,8 +68,10 @@ guess a fact another Role owns: it writes `.aidw/changes/<id>/consult/<stage>-<r
 4. `aidw consult resume C<NN> --change <id>`: while the asking Agent still runs in this session, continue it with
    SendMessage and the printed line; otherwise spawn a fresh Agent of its Role with the resume brief. Report the stage
    when that Agent is done.
-A question the consulted Role cannot answer goes back to the asker as an open question in its Artifact, which the
-Approval Gate shows; you do not answer it yourself. `aidw stages` prints an open or answered Consultation first, so a new
+A question the consulted Role cannot answer goes back to the asker as an open question in its Artifact, and the gate's
+Decision Page lists it with its words ("Questions no Role could answer"); you do not answer it yourself.
+`aidw stages --done <stage>` and `aidw approve` refuse while a Consultation of the stage is in flight (open, or answered
+and not yet resumed). `aidw stages` prints an open or answered Consultation first, so a new
 session picks it up. Give a drafting Agent its stage id and your brief's path in the prompt, so its request can name them.
 
 The CLI already leaves out a stage that reads another's output or writes the same Artifact, a second browser user (the
