@@ -59,11 +59,13 @@ import { detachRun, runLoop, runnerPid, stopRunner } from "./runner.js";
 import { deliver } from "./deliver.js";
 import { deploy, parseQuality, qualityFile, recordLayerReview, verify } from "./quality.js";
 import { firstDeploy } from "./firstdeploy.js";
-import { reconcileDoneTasks, reopenTask } from "./run.js";
-import { autoReview, buildBrief, buildTriageBrief, buildUpstreamBrief, checkpoint, integrateChange, MAX_UPSTREAM_ROUNDS, nextAction, parseVerdict, recordReview, recordTriage, recordUpstream, retryTask, startTask, triageFile, type ConsultAction, type NextAction } from "./run.js";
+import { markNotBuilt, reconcileDoneTasks, reopenTask } from "./run.js";
+import { autoReview, buildBrief, buildTriageBrief, buildUpstreamBrief, checkpoint, integrateChange, MAX_UPSTREAM_ROUNDS, nextAction, parseVerdict, recordReview, recordTriage, recordUpstream, retryTask, startTask, triageFile, type ConsultAction, type DeviationAction, type NextAction } from "./run.js";
 import { countAgentRun, type AgentRunKind } from "./agentruns.js";
 import { recordStageDone, stagesNext, stagesView } from "./stages.js";
 import { changeOfRequest, consultNextText, unansweredSection, pendingConsultation, recordAnswer, requestConsultation, resumeConsultation } from "./consult.js";
+import { abandonDeviation, closeDeviation, finishDeviations, openDeviationFor } from "./deviation.js";
+import { loadDeviations } from "./deviationrecord.js";
 import { buildPlanReviewBrief, MAX_FIX_ROUNDS, openFindingsSection, recordPlanReview } from "./planreview.js";
 import { buildConflictBrief, buildMergeReviewBrief, resolveConflict } from "./conflict.js";
 import { VERSION } from "./version.js";
@@ -124,11 +126,21 @@ function consultText(n: ConsultAction): string {
       ? `consultation ${n.consultation}: ${asker} asks ${n.to}; spawn aidw:${n.to} with: Consultation brief: ${n.brief}. Read it and answer as it says. (If you already spawned it and it has not replied, wait for it.) Then \`aidw consult answer ${n.consultation}\``
       : n.step === "record"
         ? `consultation ${n.consultation}: ${n.to} wrote its answer; run \`aidw consult answer ${n.consultation}\` (do not spawn it again)`
+        : n.step === "deviation"
+          ? `consultation ${n.consultation} needs a Deviation: ${n.to} could not answer without changing what was approved. Read its answer, then \`aidw deviation open --role <the Role that wrote the file> --files <the approved files it names> --reason "<why>" --consultation ${n.consultation}\` (ADR-0014; the user is not asked). If nothing approved has to change after all, resume the asker: \`aidw consult resume ${n.consultation}\``
         : `consultation ${n.consultation} is ${n.status}: resume ${asker} with \`aidw consult resume ${n.consultation}\``;
   return n.meanwhile ? `${step}. Meanwhile, in the same message: ${nextText(n.meanwhile)}` : step;
 }
 
+/** An open Deviation, and the work already in flight beside it. */
+function deviationText(n: DeviationAction): string {
+  const roles = [...new Set(Object.values(n.authors))];
+  const step = `Deviation ${n.deviation} is open (${Object.entries(n.authors).map(([f, r]) => `${f}: ${r}`).join(", ")}): spawn ${roles.map((r) => `aidw:${r}`).join(" and ")} with: Deviation brief: ${n.brief}. Read it and change only your files under its three rules. (If you already spawned it and it has not replied, wait.) Then \`aidw deviation close\` (add --remove-reason "..." when an approved scenario was removed and the author said why)`;
+  return n.meanwhile ? `${step}. Meanwhile, in the same message: ${nextText(n.meanwhile)}` : step;
+}
+
 function nextText(n: NextAction): string {
+  if (n.action === "deviation") return deviationText(n);
   return n.action === "implement"
     ? `implement ${n.task} (${n.reason}): ${n.title}${n.reason === "interrupted" ? " (if an implementer you spawned for it has not reported yet, it is still running: wait for it, do not spawn another)" : ""}`
     : n.action === "review"
@@ -247,6 +259,17 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
                                          contracts the task reads; record it and brief the consulted Role
   consult answer <C01>                   read the answer (STATUS: answered|cannot-answer|changes-approved) and write the resume brief
   consult resume <C01>                   continue the asker: SendMessage to it while it runs, else a fresh Agent of its Role
+  deviation open [<id>] --role R --files a,b --reason R [--consultation C01] [--task T]
+                                         after the gate, something approved must change (ADR-0014): only Role R, the
+                                         author of every file named, may edit those files until it closes
+  deviation close [<id>] [--remove-reason R] [--scope-reason R] [--summary S]
+                                         check the change (no other drift, still valid, no approved scenario removed
+                                         without a reason, grants untouched, new tasks serve an approved scenario,
+                                         contracts additive or breaking), rehash the package, rerun the affected tasks
+  deviation abandon [<id>] | list [<id>] put the files back as they were | the Deviations of a change
+  not-built <task> --reason R [--cause envelope|environment]
+                                         work outside what the user granted (the permission envelope) or blocked by the
+                                         environment: the task and the tasks that depend on it are marked not built
   ids [<id>]                             requirement and scenario ids (after applying the change)
   vendor-path <upstream>/<skill>         absolute path of a vendored SKILL.md (e.g. pocock/grilling)
   diff-coverage <lcov> [--min 80] [--base <ref>]  coverage of the lines added since the change's first task started
@@ -316,7 +339,7 @@ interface Args {
   flags: Record<string, string | true>;
 }
 
-const VALUE_FLAGS = new Set(["session", "last", "root", "title", "input-type", "workflow", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude", "model", "case", "runs", "text", "lang", "weights", "to", "done", "cannot"]);
+const VALUE_FLAGS = new Set(["role", "files", "consultation", "remove-reason", "scope-reason", "summary", "cause", "task", "session", "last", "root", "title", "input-type", "workflow", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude", "model", "case", "runs", "text", "lang", "weights", "to", "done", "cannot"]);
 
 export function parseArgs(argv: string[]): Args {
   const pos: string[] = [];
@@ -420,6 +443,14 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
     if (!dir) throw new OpError("no .aidw/ found in this directory or its parents; run `aidw init`");
     const p = pathsFor(dir);
     assertProject(p);
+    // ADR-0014: a Deviation's close that a crash interrupted is finished before anything reads the Change
+    for (const id of listChangeIds(p)) {
+      try {
+        finishDeviations(p, id);
+      } catch {
+        // an unreadable Change is reported by the command itself
+      }
+    }
     // The commands that run layer or verify commands pass the project's test browser on to them (no fixed port).
     if (env === process.env) for (const [k, v] of Object.entries(browserEnv(p))) if (!process.env[k]) process.env[k] = v;
     return p;
@@ -1159,7 +1190,8 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
             const tasks = c.tasks ? `tasks ${c.tasks.done}/${c.tasks.total}` : "no tasks";
             const paused = c.paused ? `  paused(${c.paused.reason ?? "?"})` : "";
             const appr = c.approval === "drift" ? "APPROVAL DRIFT" : `approval ${c.approval}`;
-            return `  ${c.id}  [${c.state}]  ${appr}  ${tasks}  deltas ${c.deltas}${paused}`;
+            const dev = c.deviation ? `\n    Deviation ${c.deviation.id} open (${c.deviation.roles.join(", ")}): ${c.deviation.files.join(", ")}` : "";
+            return `  ${c.id}  [${c.state}]  ${appr}  ${tasks}  deltas ${c.deltas}${paused}${dev}`;
           }),
         ];
         emit(s, `${lines.join("\n")}\n`);
@@ -1413,11 +1445,11 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
             const c = r.consultation;
             const route =
               c.status === "needs-deviation"
-                ? `ROUTE: after the Approval Gate this goes to the Role that wrote the approved Artifact, as a Deviation (ADR-0014; not built yet, T9). The run does not stop and does not wait for anyone: the asker resumes and builds what the approved package states.\n`
+                ? `ROUTE: after the Approval Gate this goes to the Role that wrote the approved Artifact, as a Deviation (ADR-0014); the user is not asked. Read the answer, then: aidw deviation open --role <author> --files <approved files> --reason "<why>" --consultation ${cid}\n`
                 : c.status === "unanswered"
                   ? `ROUTE: before the gate the asker records it as an open question in its Artifact, which the Approval Gate shows.\n`
                   : "";
-            emit({ ok: true, change: id, ...r }, `${cid} ${c.outcome} -> ${c.status}\nresume brief ${r.resume}\n${route}Then: aidw consult resume ${cid}\n`);
+            emit({ ok: true, change: id, ...r }, `${cid} ${c.outcome} -> ${c.status}\nresume brief ${r.resume}\n${route}${c.status === "needs-deviation" ? "Then, once the Deviation is closed" : "Then"}: aidw consult resume ${cid}\n`);
             return 0;
           }
           const r = resumeConsultation(p, id, cid);
@@ -1440,6 +1472,82 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           { ok: true, change: id, ...r },
           `${c.id} recorded: ${c.from} (${c.task ?? `stage ${c.stage}`}) asks ${c.to}\nbrief ${r.brief}\nSPAWN ${r.agent} with: Consultation brief: ${r.brief}. Read it and answer as it says.\nThen: aidw consult answer ${c.id}\nMeanwhile the other tasks or stages carry on.\n`,
         );
+        return 0;
+      }
+
+      case "deviation": {
+        // ADR-0014: after the gate the author Role changes what it wrote; the lead opens and closes it (a state command).
+        const p = project();
+        const sub = rest[0];
+        const id = resolveChangeId(p, str(args.flags.change) ?? rest[1]);
+        if (sub === "open") {
+          const files = (str(args.flags.files) ?? "").split(",").map((f) => f.trim()).filter(Boolean);
+          const consultation = str(args.flags.consultation);
+          const task = str(args.flags.task);
+          const r = openDeviationFor(p, id, {
+            role: need(str(args.flags.role), "--role <the Role that wrote the files>[,<another>]"),
+            files,
+            reason: str(args.flags.reason) ?? "",
+            ...(consultation ? { consultation } : {}),
+            ...(task ? { task } : {}),
+            pluginRoot: pluginRoot(env),
+            cwd,
+          });
+          const d = r.deviation;
+          emit(
+            { ok: true, change: id, deviation: d, brief: r.brief },
+            `${d.id} open: ${d.files.map((f) => `${f} (${d.authors[f]})`).join(", ")}\nbrief ${r.brief}\n${d.roles.map((role) => `SPAWN aidw:${role} with: Deviation brief: ${r.brief}. Read it and change only your files under its three rules.`).join("\n")}\nThen: aidw deviation close\n`,
+          );
+          return 0;
+        }
+        if (sub === "close") {
+          const removeReason = str(args.flags["remove-reason"]);
+          const scopeReason = str(args.flags["scope-reason"]);
+          const summary = str(args.flags.summary);
+          const d = closeDeviation(p, id, { ...(removeReason ? { removeReason } : {}), ...(scopeReason ? { scopeReason } : {}), ...(summary ? { summary } : {}), pluginRoot: pluginRoot(env) });
+          const lines = [
+            `${d.id} recorded: ${d.roles.join(", ")} changed ${(d.changed ?? []).join(", ")}`,
+            `  approval ${d.previous} -> ${d.hash}`,
+            ...(d.scenarios?.removed.length ? [`  approved scenario(s) removed: ${d.scenarios.removed.map((x) => `${x.scenario} (${x.reason})`).join(", ")}`] : []),
+            ...(d.requirements?.added.length ? [`  requirement(s) added: ${d.requirements.added.join(", ")} (${d.scope_reason})`] : []),
+            ...(d.scenarios?.added.length ? [`  scenario(s) added: ${d.scenarios.added.join(", ")}`] : []),
+            ...(d.contracts ?? []).map((c) => `  ${c.file}: ${c.class}${c.changes.length ? ` (${c.changes.slice(0, 5).join("; ")}${c.changes.length > 5 ? `; and ${c.changes.length - 5} more` : ""})` : ""}`),
+            ...(d.tasks?.added.length ? [`  task(s) added: ${d.tasks.added.join(", ")}`] : []),
+            `  run again: ${d.rerun?.length ? d.rerun.join(", ") : "none"}${d.reset?.length ? ` (reset to pending: ${d.reset.join(", ")})` : ""}`,
+            ...(d.consultation ? [`  ${d.consultation}: deviation recorded; resume the asker: aidw consult resume ${d.consultation}`] : []),
+          ];
+          emit({ ok: true, change: id, deviation: d }, `${lines.join("\n")}\n${nextLine(p, id)}`);
+          return 0;
+        }
+        if (sub === "abandon") {
+          const d = abandonDeviation(p, id);
+          emit({ ok: true, change: id, deviation: d }, `${d.id} abandoned: ${d.files.join(", ")} put back as approved\n${nextLine(p, id)}`);
+          return 0;
+        }
+        if (sub === "list") {
+          const all = loadDeviations(loadChange(p, id));
+          emit({ change: id, deviations: all }, all.length ? `${all.map((d) => `${d.id} ${d.status} ${d.roles.join(", ")}: ${d.files.join(", ")} (${d.reason})`).join("\n")}\n` : `no Deviations in ${id}\n`);
+          return 0;
+        }
+        throw new UsageError("usage: aidw deviation open|close|abandon|list [<id>]");
+      }
+
+      case "not-built": {
+        // D10: work outside the permission envelope is marked not built, never done.
+        const p = project();
+        const id = resolveChangeId(p, str(args.flags.change));
+        const cause = str(args.flags.cause) ?? "envelope";
+        if (cause !== "envelope" && cause !== "environment") throw new UsageError("--cause is envelope (outside what the user granted) or environment (a missing key, the network)");
+        const taskId = need(rest[0], "task id");
+        const reason = (str(args.flags.reason) ?? "").trim();
+        if (!reason) throw new OpError('say why it is not built (--reason "...")');
+        const tf = loadTasks(p, id);
+        const t = tf.tasks.find((x) => x.id === taskId);
+        if (!t) throw new OpError(`change "${id}" has no task ${taskId}`);
+        if (String(t.status ?? "pending") === "done") throw new OpError(`task ${taskId} is done; reopen it first if what it built lies outside the grants`);
+        if (String(t.status ?? "pending") === "not_built") throw new OpError(`task ${taskId} is already not built`);
+        const marked = markNotBuilt(p, tf, taskId, reason, cause);
+        emit({ ok: true, change: id, not_built: marked }, `not built: ${marked.join(", ")}\n${nextLine(p, id)}`);
         return 0;
       }
 

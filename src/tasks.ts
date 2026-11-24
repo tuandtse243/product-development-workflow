@@ -12,6 +12,7 @@ import { typeProblem } from "./commit.js";
  *                                       with `not_built: { cause, reason, at }`, and so is every task that depends on it (ADR-0014)
  * review -> conflict -> review -> done           (a wave task whose merge conflicts: integration resolves it, T7)
  *              \-> pending (sequential)      (the resolution failed: dropped, reruns on the latest code)
+ * any open task -> not_built                  (D10: its work lies outside what the user granted; never done)
  */
 export const TASK_STATUSES = ["pending", "running", "review", "done", "failed", "blocked", "escalated", "conflict", "not_built"] as const;
 

@@ -9,6 +9,7 @@
  *                 that goes through the normal implement -> checkpoint -> review loop
  *   aidw deploy   runs the approved preview deploy, then smoke checks against its URL
  */
+import { approvedText } from "./deviationrecord.js";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { AGENTS, defaultTaskRole } from "./roles.js";
 import { join } from "node:path";
@@ -200,7 +201,7 @@ export function grantedResources(p: Paths, ids: string[], openStates: ReadonlySe
       const c = loadChange(p, id);
       const state = stateOf(c);
       if (!state || !openStates.has(state) || approvalStatus(p, c).status !== "valid") continue;
-      const text = readText(qualityFile(c));
+      const text = approvedText(c, qualityFile(c)); // the approved permissions while a Deviation has quality.yaml open
       if (text === null) continue;
       for (const r of parseQuality(text, "quality.yaml").config?.permissions ?? []) out.add(r);
     } catch {

@@ -128,8 +128,9 @@ export function fingerprint(p: Paths, id: string): string {
   if (archived(p, id)) return "archived";
   try {
     const c = loadChange(p, id);
-    const parts = [String(c.data.state)];
-    for (const f of ["tasks.yaml", "evidence/quality/summary.json", "evidence/converge.json", "evidence/deploy.json", "evidence/integration.json", "consultations.yaml"]) {
+    // a Deviation opened or closed, and the package rehashed, are progress too
+    const parts = [String(c.data.state), String((c.data.approval as { hash?: unknown } | null | undefined)?.hash ?? "-")];
+    for (const f of ["tasks.yaml", "evidence/quality/summary.json", "evidence/converge.json", "evidence/deploy.json", "evidence/integration.json", "consultations.yaml", "deviations.yaml"]) {
       const file = join(c.dir, f);
       // Timestamps alone are not progress: a session that only re-ran the same check changed nothing.
       parts.push(existsSync(file) ? createHash("sha1").update(readFileSync(file, "utf8").replace(ISO_TIME, "")).digest("hex").slice(0, 12) : "-");
