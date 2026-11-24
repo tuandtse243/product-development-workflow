@@ -11696,7 +11696,7 @@ function converge(p, id) {
   const gaps = Object.entries(scenarios).filter(([, r]) => r.status !== "pass").map(([s]) => s);
   const tf = loadTasks(p, id);
   const config = loadQuality(p, change);
-  const record = { at: now2(), head: headCommit(p.project), mode, ok: gaps.length === 0, scenarios, added: [], not_built: [] };
+  const record2 = { at: now2(), head: headCommit(p.project), mode, ok: gaps.length === 0, scenarios, added: [], not_built: [] };
   const st = (t) => String(t.status ?? "pending");
   const scenariosOf = (t) => Array.isArray(t.scenarios) ? t.scenarios.map(String) : [];
   const notBuiltTask = (s) => tf.tasks.find((t) => st(t) === "not_built" && scenariosOf(t).includes(s));
@@ -11706,13 +11706,13 @@ function converge(p, id) {
   for (const s of gaps) {
     const off = notBuiltTask(s);
     const tried = coveredBefore(s);
-    if (off) record.not_built.push({ scenario: s, reason: `its task ${off.id} was not built: ${String(off.not_built?.reason ?? "")}`.slice(0, 500) });
-    else if (tried) record.not_built.push({ scenario: s, reason: `still no passing test after converge task ${tried.id}` });
-    else if (cap.reached) record.not_built.push({ scenario: s, reason: `${capReason(cap)}; no converge task starts` });
+    if (off) record2.not_built.push({ scenario: s, reason: `its task ${off.id} was not built: ${String(off.not_built?.reason ?? "")}`.slice(0, 500) });
+    else if (tried) record2.not_built.push({ scenario: s, reason: `still no passing test after converge task ${tried.id}` });
+    else if (cap.reached) record2.not_built.push({ scenario: s, reason: `${capReason(cap)}; no converge task starts` });
     else fresh.push(s);
   }
   fresh = fresh.sort();
-  record.ok = fresh.length === 0;
+  record2.ok = fresh.length === 0;
   if (fresh.length) {
     const testLayers = config.layers.filter((l) => l.name !== "code");
     const verify2 = (testLayers.length ? testLayers : config.layers).flatMap((l) => [...l.setup, ...l.run]);
@@ -11746,21 +11746,21 @@ ${problems.join("\n")}`,
           status: "pending"
         })
       );
-      record.added.push(taskId);
+      record2.added.push(taskId);
     }
     saveTasksDoc(tf);
-    writeRecord(change, record);
+    writeRecord(change, record2);
     transition(p, id, "executing", {});
-    return { ...record, summary: `${fresh.length} scenario gap(s): converge task(s) ${record.added.join(", ")} added; change is executing again` };
+    return { ...record2, summary: `${fresh.length} scenario gap(s): converge task(s) ${record2.added.join(", ")} added; change is executing again` };
   }
-  writeRecord(change, record);
-  if (record.not_built.length) {
-    const passing = Object.keys(scenarios).length - record.not_built.length;
-    return { ...record, summary: `${passing} scenario(s) have a passing test (${mode} evidence); not built: ${record.not_built.map((x) => x.scenario).join(", ")} (the pull request lists them)` };
+  writeRecord(change, record2);
+  if (record2.not_built.length) {
+    const passing = Object.keys(scenarios).length - record2.not_built.length;
+    return { ...record2, summary: `${passing} scenario(s) have a passing test (${mode} evidence); not built: ${record2.not_built.map((x) => x.scenario).join(", ")} (the pull request lists them)` };
   }
-  return { ...record, summary: `all ${Object.keys(scenarios).length} scenario(s) have a passing test (${mode} evidence)` };
+  return { ...record2, summary: `all ${Object.keys(scenarios).length} scenario(s) have a passing test (${mode} evidence)` };
 }
-function writeRecord(change, record) {
+function writeRecord(change, record2) {
   const f = convergeFile(change);
   (0, import_node_fs18.mkdirSync)((0, import_node_path23.join)(change.dir, "evidence"), { recursive: true });
   let runs = [];
@@ -11771,7 +11771,7 @@ function writeRecord(change, record) {
       runs = [];
     }
   }
-  (0, import_node_fs18.writeFileSync)(f, `${JSON.stringify({ runs: [...runs, record] }, null, 2)}
+  (0, import_node_fs18.writeFileSync)(f, `${JSON.stringify({ runs: [...runs, record2] }, null, 2)}
 `);
 }
 function lastConverge(change) {
@@ -13303,39 +13303,39 @@ function integrate(p, id, deps) {
   }
   const failed = runs.find((r) => r.exit !== 0);
   const ok = !failed && runs.length === commands.length;
-  const record = { at: now3(), head: headCommit(p.project), ok, tasks: covered.map((t) => t.id), runs };
+  const record2 = { at: now3(), head: headCommit(p.project), ok, tasks: covered.map((t) => t.id), runs };
   const history = integrationRuns(change);
   const write = () => {
     (0, import_node_fs25.mkdirSync)((0, import_node_path30.join)(change.dir, "evidence"), { recursive: true });
-    (0, import_node_fs25.writeFileSync)(integrationFile(change), `${JSON.stringify({ runs: [...history, record] }, null, 2)}
+    (0, import_node_fs25.writeFileSync)(integrationFile(change), `${JSON.stringify({ runs: [...history, record2] }, null, 2)}
 `);
   };
   if (ok) {
     write();
-    return { ok, tasks: record.tasks, runs, summary: `wave ${record.tasks.join(", ")} integrates: ${commands.length} command(s) pass on the merged code` };
+    return { ok, tasks: record2.tasks, runs, summary: `wave ${record2.tasks.join(", ")} integrates: ${commands.length} command(s) pass on the merged code` };
   }
   const since = lastPassAt(change);
   const failures = history.filter((r) => !r.ok && r.at > since).length + 1;
   const max = deps.quality?.maxFixRounds ?? 3;
   const cap = agentRunStatus(p, change);
   if (failures > max || cap.reached) {
-    record.not_built = failures > max ? `integration verify still failing after ${failures - 1} fix round(s)` : `${capReason(cap)}; no fix task starts`;
+    record2.not_built = failures > max ? `integration verify still failing after ${failures - 1} fix round(s)` : `${capReason(cap)}; no fix task starts`;
     write();
-    return { ok: false, tasks: record.tasks, runs, notBuilt: true, summary: `integration verify of ${record.tasks.join(", ")} failed and is not built: ${record.not_built}; the run carries on` };
+    return { ok: false, tasks: record2.tasks, runs, notBuilt: true, summary: `integration verify of ${record2.tasks.join(", ")} failed and is not built: ${record2.not_built}; the run carries on` };
   }
   const n = tf.tasks.filter((t) => t.origin === "integration").length + 1;
   const taskId = `I${String(n).padStart(2, "0")}`;
-  const problem = failed ? `Integration verify after merging ${record.tasks.join(", ")} failed: \`${failed.command}\`${failed.timedOut ? " timed out" : ` exited ${failed.exit}`}.
+  const problem = failed ? `Integration verify after merging ${record2.tasks.join(", ")} failed: \`${failed.command}\`${failed.timedOut ? " timed out" : ` exited ${failed.exit}`}.
 Each task passed on its own; the merged code does not. Find the interaction between the tasks.
 
 ${failed.tail}` : "Integration verify did not complete.";
   tf.doc.get("tasks").add(
-    tf.doc.createNode({ id: taskId, title: `Fix the integration of ${record.tasks.join(", ")}`, role: defaultTaskRole(), origin: "integration", depends_on: [], touches: ["**"], verify: commands, problem, status: "pending" })
+    tf.doc.createNode({ id: taskId, title: `Fix the integration of ${record2.tasks.join(", ")}`, role: defaultTaskRole(), origin: "integration", depends_on: [], touches: ["**"], verify: commands, problem, status: "pending" })
   );
   deps.save(tf);
-  record.fixTask = taskId;
+  record2.fixTask = taskId;
   write();
-  return { ok: false, tasks: record.tasks, runs, fixTask: taskId, summary: `integration verify failed: fix task ${taskId} added (round ${failures}/${max})` };
+  return { ok: false, tasks: record2.tasks, runs, fixTask: taskId, summary: `integration verify failed: fix task ${taskId} added (round ${failures}/${max})` };
 }
 function linkDependencies(p, dir) {
   const source = (0, import_node_path30.join)(p.project, "node_modules");
@@ -15050,32 +15050,32 @@ function deploy(p, id, opts = {}) {
   const timeoutMs = opts.timeoutMs ?? 20 * 60 * 1e3;
   const head = headCommit(p.project);
   const base2 = { at: now5(), target: config.deploy.target, head, runs: [], smoke: [] };
-  let record;
+  let record2;
   if (config.deploy.target !== "preview" || !config.deploy.command) {
-    record = { ...base2, ok: true, skipped: true, url: null };
+    record2 = { ...base2, ok: true, skipped: true, url: null };
   } else {
     const runs = runCommands([config.deploy.command], p.project, timeoutMs, runner2);
     const failed = failedRun(runs);
     const url = deploymentUrl(runs[0]?.tail ?? "");
     recordBaseline(p);
     if (failed || !url) {
-      record = { ...base2, runs, ok: false, skipped: false, url, error: failed ? `deploy command exited ${failed.exit}${deployHint(failed.tail) ? `: ${deployHint(failed.tail)}` : ""}` : "no https URL in the deploy output" };
+      record2 = { ...base2, runs, ok: false, skipped: false, url, error: failed ? `deploy command exited ${failed.exit}${deployHint(failed.tail) ? `: ${deployHint(failed.tail)}` : ""}` : "no https URL in the deploy output" };
     } else {
       const smoke = runCommands(config.deploy.smoke, p.project, timeoutMs, runner2, { AIDW_DEPLOY_URL: url });
       const smokeFailed = failedRun(smoke);
-      record = { ...base2, runs, smoke, url, ok: !smokeFailed, skipped: false, ...smokeFailed ? { error: `smoke check failed: ${smokeFailed.command}` } : {} };
+      record2 = { ...base2, runs, smoke, url, ok: !smokeFailed, skipped: false, ...smokeFailed ? { error: `smoke check failed: ${smokeFailed.command}` } : {} };
     }
   }
-  appendHistory(deployFile(change), record);
-  return record;
+  appendHistory(deployFile(change), record2);
+  return record2;
 }
 function recordBlockedDeploy(p, id, problem) {
   const change = loadChange(p, id);
   if (stateOf(change) !== "deploying") throw new OpError(`change "${id}" is "${String(change.data.state)}"; a deploy is recorded in state deploying`);
   const config = loadQuality(p, change);
-  const record = { at: now5(), target: config.deploy.target, ok: false, skipped: false, url: null, head: headCommit(p.project), runs: [], smoke: [], error: `the machine check before the deploy failed, so it did not run: ${problem}` };
-  appendHistory(deployFile(change), record);
-  return record;
+  const record2 = { at: now5(), target: config.deploy.target, ok: false, skipped: false, url: null, head: headCommit(p.project), runs: [], smoke: [], error: `the machine check before the deploy failed, so it did not run: ${problem}` };
+  appendHistory(deployFile(change), record2);
+  return record2;
 }
 var DEPLOY_HINTS = [
   {
@@ -15985,7 +15985,7 @@ function openDeviationFor(p, id, o) {
   (0, import_node_fs35.mkdirSync)(dir, { recursive: true });
   (0, import_node_fs35.writeFileSync)((0, import_node_path40.join)(dir, "approved.json"), `${JSON.stringify({ files: Object.fromEntries(packageDigests(p, change)), ...specIndex(p, id) }, null, 2)}
 `);
-  const record = {
+  const record2 = {
     id: did,
     status: "open",
     roles,
@@ -15998,9 +15998,9 @@ function openDeviationFor(p, id, o) {
     previous: String(change.data.approval.hash),
     before
   };
-  all2.push(record);
+  all2.push(record2);
   saveDeviations(change, all2);
-  return { deviation: record, brief: writeBrief(p, change, record, c ? (0, import_node_path40.join)(change.dir, c.answer) : null) };
+  return { deviation: record2, brief: writeBrief(p, change, record2, c ? (0, import_node_path40.join)(change.dir, c.answer) : null) };
 }
 function writeBrief(p, change, d, answer) {
   const lines = [
@@ -16984,7 +16984,7 @@ function checkpoint(p, id, taskId, opts = {}) {
   const packages = packageEvidence(dir, base2, changed);
   const guardsOk = tamperOk && !config?.locked.length && secrets.length === 0 && !packages?.blocked.length;
   const ok = verifyOk && missing.length === 0 && designOk && regressionOk && guardsOk;
-  const record = {
+  const record2 = {
     attempt: attemptsOf(t),
     at: now7(),
     ok,
@@ -17002,7 +17002,7 @@ function checkpoint(p, id, taskId, opts = {}) {
     ...regression ? { regression } : {}
   };
   const ev = readEvidence2(tf.change, t);
-  ev.checkpoints.push(record);
+  ev.checkpoints.push(record2);
   writeEvidence(tf.change, ev);
   const problems = [];
   if (missing.length) problems.push(`no test names scenario ${missing.join(", ")}`);
@@ -17020,15 +17020,15 @@ function checkpoint(p, id, taskId, opts = {}) {
     const why = `environment: \`${failed.command}\` was refused by the machine (${refused}), not by the code`;
     const evidence = rel(p, (0, import_node_path42.join)(tf.change.dir, evidenceRel(taskId)));
     const marked = noteBlocked(p, tf, i, why);
-    if (marked) return { ...record, task: taskId, status: "not_built", not_built: marked, problems: [why], evidence };
-    return { ...record, task: taskId, status: "blocked", problems: [why, ...problems.filter((x) => !x.startsWith("verify failed"))], evidence };
+    if (marked) return { ...record2, task: taskId, status: "not_built", not_built: marked, problems: [why], evidence };
+    return { ...record2, task: taskId, status: "blocked", problems: [why, ...problems.filter((x) => !x.startsWith("verify failed"))], evidence };
   }
   setField2(tf, i, "blocked_runs", null);
   setField2(tf, i, "status", ok ? "review" : "failed");
   setField2(tf, i, "evidence", evidenceRel(taskId));
   setField2(tf, i, "notes", ok ? null : `checkpoint: ${problems.join("; ")}`);
   saveTasks(tf);
-  return { ...record, task: taskId, status: ok ? "review" : "failed", problems, evidence: rel(p, (0, import_node_path42.join)(tf.change.dir, evidenceRel(taskId))) };
+  return { ...record2, task: taskId, status: ok ? "review" : "failed", problems, evidence: rel(p, (0, import_node_path42.join)(tf.change.dir, evidenceRel(taskId))) };
 }
 function noteBlocked(p, tf, i, why) {
   const t = tf.tasks[i];
@@ -17827,11 +17827,11 @@ var realBrowserDeps = {
 var BrowserError = class extends Error {
 };
 function browserStatus(p, deps = realBrowserDeps) {
-  const record = readBrowser(p);
-  if (!record) return { running: false, record: null };
-  const browser = deps.probe(record.url);
-  if (browser) return { running: true, record, browser };
-  return { running: false, record, stale: deps.alive(record.pid) ? `pid ${record.pid} is alive but ${record.url} does not answer` : `pid ${record.pid} has exited` };
+  const record2 = readBrowser(p);
+  if (!record2) return { running: false, record: null };
+  const browser = deps.probe(record2.url);
+  if (browser) return { running: true, record: record2, browser };
+  return { running: false, record: record2, stale: deps.alive(record2.pid) ? `pid ${record2.pid} is alive but ${record2.url} does not answer` : `pid ${record2.pid} has exited` };
 }
 function activePort(profile) {
   try {
@@ -17875,11 +17875,11 @@ function startBrowser(p, opts = {}, deps = realBrowserDeps) {
       const url = `http://127.0.0.1:${port}`;
       const browser = deps.probe(url);
       if (browser) {
-        const record = { port, url, pid, profile, headless, started_at: (/* @__PURE__ */ new Date()).toISOString() };
+        const record2 = { port, url, pid, profile, headless, started_at: (/* @__PURE__ */ new Date()).toISOString() };
         (0, import_node_fs38.mkdirSync)(p.run, { recursive: true });
-        (0, import_node_fs38.writeFileSync)(browserFile(p), `${JSON.stringify(record, null, 2)}
+        (0, import_node_fs38.writeFileSync)(browserFile(p), `${JSON.stringify(record2, null, 2)}
 `);
-        return { running: true, record, browser, started: true };
+        return { running: true, record: record2, browser, started: true };
       }
     }
     if (!deps.alive(pid)) break;
@@ -17901,12 +17901,12 @@ function whyChromeFailed(log) {
   return last ? ` Chrome said: ${last.slice(0, 160)}` : "";
 }
 function stopBrowser(p, deps = realBrowserDeps) {
-  const record = readBrowser(p);
-  if (!record) return "none";
-  if (deps.alive(record.pid) && !deps.kill(record.pid)) return "denied";
+  const record2 = readBrowser(p);
+  if (!record2) return "none";
+  if (deps.alive(record2.pid) && !deps.kill(record2.pid)) return "denied";
   (0, import_node_fs38.rmSync)(browserFile(p), { force: true });
   try {
-    (0, import_node_fs38.rmSync)((0, import_node_path43.join)(record.profile, "DevToolsActivePort"), { force: true });
+    (0, import_node_fs38.rmSync)((0, import_node_path43.join)(record2.profile, "DevToolsActivePort"), { force: true });
   } catch {
   }
   return "stopped";
@@ -18238,18 +18238,34 @@ function loadEvalCases(root, id) {
   return { cases, diags: d };
 }
 var resultsFile = (root, id) => (0, import_node_path45.join)(roleDir(root, id), "evals", "results.json");
-function roleDigest(root, id) {
+function caseEntries(cases) {
+  return Array.isArray(cases) ? cases.filter((c) => !!c && typeof c === "object" && typeof c.name === "string") : [];
+}
+var RESULTS_FORMAT = 2;
+function roleFiles(root, id, noCases) {
   const files = [];
+  const evals = `roles/${id}/evals/`;
   const walk = (rel2) => {
     const abs = (0, import_node_path45.join)(root, rel2);
     if (!(0, import_node_fs40.existsSync)(abs)) return;
     if ((0, import_node_fs40.statSync)(abs).isDirectory()) {
       for (const n of (0, import_node_fs40.readdirSync)(abs).sort()) if (!n.startsWith(".")) walk(`${rel2}/${n}`);
-    } else if (rel2 !== `roles/${id}/evals/results.json`) files.push(rel2);
+    } else if (rel2 === `${evals}results.json`) return;
+    else if (noCases && rel2.startsWith(evals) && !rel2.slice(evals.length).includes("/") && rel2.endsWith(".md")) return;
+    else files.push(rel2);
   };
   walk(`roles/${id}`);
   walk(`agents/${id}.md`);
-  for (const sk of loadRole(root, id)?.skills ?? []) if (LIBRARY_SKILL.test(sk.name)) walk(skillFile(id, sk.name));
+  const roleMd = (0, import_node_path45.join)(root, "roles", id, "role.md");
+  const head = (0, import_node_fs40.existsSync)(roleMd) ? parseRoleText((0, import_node_fs40.readFileSync)(roleMd, "utf8").replace(/\r\n/g, "\n"))?.header : void 0;
+  const skills = Array.isArray(head?.skills) ? head.skills.flatMap((e) => e && typeof e === "object" ? Object.keys(e) : []) : [];
+  for (const sk of skills) if (LIBRARY_SKILL.test(sk)) walk(skillFile(id, sk));
+  const includes = Array.isArray(head?.includes) ? head.includes.map(String) : [];
+  for (const f of includes) if (!f.split("/").includes("..")) walk(f);
+  walk("tiers.yaml");
+  return files;
+}
+function digestOf2(root, files) {
   const h = (0, import_node_crypto8.createHash)("sha256");
   for (const f of [...new Set(files)].sort()) {
     const raw = (0, import_node_fs40.readFileSync)((0, import_node_path45.join)(root, f));
@@ -18257,6 +18273,15 @@ function roleDigest(root, id) {
     h.update(`${f}\0`).update(text2 ? raw.toString("utf8").replace(/\r\n/g, "\n") : raw).update("\0");
   }
   return `sha256:${h.digest("hex")}`;
+}
+function roleDigest(root, id) {
+  return digestOf2(root, roleFiles(root, id, false));
+}
+function sharedDigest(root, id) {
+  return digestOf2(root, roleFiles(root, id, true));
+}
+function caseDigest(root, caseFile) {
+  return digestOf2(root, (0, import_node_fs40.existsSync)((0, import_node_path45.join)(root, caseFile)) ? [caseFile] : []);
 }
 function checkCoverage(root, id, cases, d) {
   const table = loadRuleTable(root, id);
@@ -18280,10 +18305,43 @@ function checkCoverage(root, id, cases, d) {
     d.warn(rf, `not readable: run \`aidw eval ${id}\` again`);
     return;
   }
-  if (rec.digest !== roleDigest(root, id)) d.warn(rf, `older than the Role's content (it changed after the run of ${rec.date}): run \`aidw eval ${id}\` again`);
+  if (!rec || typeof rec !== "object" || Array.isArray(rec)) {
+    d.warn(rf, `not readable: run \`aidw eval ${id}\` again`);
+    return;
+  }
+  const tm = tierModel(root, id) ?? null;
+  const name = (m) => typeof m === "string" ? m : "default";
+  const modelOk = (rec.model ?? null) === tm;
+  if (!modelOk) d.warn(rf, `made with model ${name(rec.model)}, not its tier's model (${name(tm)}): run \`aidw eval ${id}\` again`);
+  if (rec.format === RESULTS_FORMAT) {
+    if (rec.digest !== sharedDigest(root, id)) {
+      d.warn(rf, `older than the Role's content (it changed after ${rec.date}): run \`aidw eval ${id}\` again`);
+      return;
+    }
+    if (modelOk) {
+      const other = caseEntries(rec.cases).filter((c) => c.model !== void 0 && (c.model ?? null) !== tm);
+      for (const c of other) d.warn(rf, `case ${c.name} was made with model ${name(c.model)}, not its tier's model (${name(tm)}): run \`aidw eval ${id} --case ${c.name}\``);
+    }
+    const entries = new Map(caseEntries(rec.cases).map((c) => [c.name, c]));
+    const missing = [];
+    const fresh = [];
+    for (const c of cases) {
+      const e = entries.get(c.name);
+      if (!e) missing.push(c.name);
+      else if (e.digest !== caseDigest(root, c.file)) d.warn(rf, `made from another version of its case file ${c.file}: run \`aidw eval ${id} --case ${c.name}\``);
+      else fresh.push(e);
+    }
+    if (missing.length) d.warn(rf, `no result for case(s): ${missing.join(", ")}: run \`aidw eval ${id} --case <name>\` for each`);
+    const few = fresh.filter((c) => !(Number(c.runs?.total) >= 3)).map((c) => c.name);
+    if (few.length) d.warn(rf, `${few.length} case(s) last ran fewer than 3 times: ${few.join(", ")}; a case passes level 1 only with 3 of 3: run it again without --runs`);
+    const failed = fresh.filter((c) => !c.pass).map((c) => c.name);
+    if (failed.length) d.warn(rf, `the last run did not pass ${failed.length} case(s): ${failed.join(", ")}`);
+    return;
+  }
+  if (rec.digest !== roleDigest(root, id)) d.warn(rf, `older than the Role's content (it changed after ${rec.date}): run \`aidw eval ${id}\` again`);
   else {
     if (!(Number(rec.runs) >= 3)) d.warn(rf, `the last run had ${String(rec.runs)} run(s) per case; a case passes level 1 only with 3 of 3: run it again without --runs`);
-    const failed = Array.isArray(rec.cases) ? rec.cases.filter((c) => !c.pass).map((c) => c.name) : [];
+    const failed = caseEntries(rec.cases).filter((c) => !c.pass).map((c) => c.name);
     if (failed.length) d.warn(rf, `the last run did not pass ${failed.length} case(s): ${failed.join(", ")}`);
   }
 }
@@ -18333,7 +18391,7 @@ function roleSystem(root, id, without) {
     body = strip((0, import_node_fs41.readFileSync)(file, "utf8"));
   }
   const dir = (0, import_node_path46.join)(root, "roles", id, "skills");
-  const own = (0, import_node_fs41.existsSync)(dir) ? (0, import_node_fs41.readdirSync)(dir).filter((n) => n.endsWith(".md")).map((n) => n.slice(0, -3)) : [];
+  const own = (0, import_node_fs41.existsSync)(dir) ? (0, import_node_fs41.readdirSync)(dir).filter((n) => !n.startsWith(".") && n.endsWith(".md")).map((n) => n.slice(0, -3)) : [];
   const names2 = [...index, ...own.filter((n) => !index.includes(n) && !out.includes(n)).sort()];
   const skills = names2.map((n) => ({ n, file: (0, import_node_path46.join)(root, skillFile(id, n)) })).filter((x) => (0, import_node_fs41.existsSync)(x.file)).map((x) => `### Skill: ${x.n}
 
@@ -18477,26 +18535,69 @@ function runCases(root, role, caseName, exec, onCase, runs = 1, without, bare = 
   if (dropped.length && !out.length) throw new Error(`no case of ${role} covers ${dropped.map((x) => `"${x}"`).join(" or ")}`);
   return out;
 }
-function writeResults(root, id, results, meta) {
-  const record = {
+function takeDigests(root, id) {
+  return { shared: sharedDigest(root, id), cases: new Map(loadEvalCases(root, id).cases.map((c) => [c.name, caseDigest(root, c.file)])) };
+}
+function caseRecords(root, id, results, date, model, digests) {
+  const fileOf = new Map(loadEvalCases(root, id).cases.map((c) => [c.name, c.file]));
+  return results.filter((r) => r.role === id && fileOf.has(r.name)).map((r) => ({
+    name: r.name,
+    pass: r.pass,
+    runs: r.runs ?? { total: 1, passed: r.pass ? 1 : 0, errors: r.error ? 1 : 0 },
+    failed: r.criteria.filter((x) => !x.pass).map((x) => x.criterion),
+    ...r.error ? { error: r.error } : {},
+    digest: digests.cases.get(r.name) ?? caseDigest(root, fileOf.get(r.name)),
+    date,
+    model
+  }));
+}
+function record(root, id, model, date, shared, cases) {
+  return {
+    format: RESULTS_FORMAT,
     role: id,
-    date: (meta.date ?? /* @__PURE__ */ new Date()).toISOString(),
-    model: meta.model ?? null,
+    date,
+    model,
     tier: loadRole(root, id)?.tier ?? "",
-    runs: meta.runs,
-    digest: roleDigest(root, id),
-    cases: results.filter((r) => r.role === id).map((r) => ({
-      name: r.name,
-      pass: r.pass,
-      runs: r.runs ?? { total: 1, passed: r.pass ? 1 : 0, errors: r.error ? 1 : 0 },
-      failed: r.criteria.filter((x) => !x.pass).map((x) => x.criterion),
-      ...r.error ? { error: r.error } : {}
-    }))
+    runs: cases.length ? Math.min(...cases.map((c) => c.runs.total)) : 0,
+    digest: shared,
+    cases
   };
+}
+var CHANGED = "the Role changed during the run: run it again";
+function save(root, id, rec) {
   const file = resultsFile(root, id);
-  (0, import_node_fs41.writeFileSync)(file, `${JSON.stringify(record, null, 2)}
+  (0, import_node_fs41.writeFileSync)(file, `${JSON.stringify(rec, null, 2)}
 `);
   return file;
+}
+function writeResults(root, id, results, meta) {
+  const digests = meta.digests ?? takeDigests(root, id);
+  if (sharedDigest(root, id) !== digests.shared) return { refused: CHANGED };
+  const date = (meta.date ?? /* @__PURE__ */ new Date()).toISOString();
+  const model = meta.model ?? null;
+  return { file: save(root, id, record(root, id, model, date, digests.shared, caseRecords(root, id, results, date, model, digests))) };
+}
+function mergeResults(root, id, results, meta) {
+  const file = resultsFile(root, id);
+  const all2 = `run \`aidw eval ${id}\` for all cases`;
+  if (!(0, import_node_fs41.existsSync)(file)) return { refused: `there is no results.json yet: ${all2} once` };
+  let old;
+  try {
+    old = JSON.parse((0, import_node_fs41.readFileSync)(file, "utf8"));
+  } catch {
+    return { refused: `results.json is not readable: ${all2}` };
+  }
+  if (old?.format !== RESULTS_FORMAT || !Array.isArray(old.cases)) return { refused: `results.json is the old format: ${all2} once` };
+  const digests = meta.digests ?? takeDigests(root, id);
+  if (sharedDigest(root, id) !== digests.shared) return { refused: CHANGED };
+  if (old.digest !== digests.shared) return { refused: `the Role's shared content changed since the last full run: ${all2}` };
+  const model = meta.model ?? null;
+  if ((old.model ?? null) !== model) return { refused: `results.json was made with model ${old.model ?? "default"}, this run with ${model ?? "default"}: ${all2}` };
+  const date = (meta.date ?? /* @__PURE__ */ new Date()).toISOString();
+  const fresh = new Map(caseRecords(root, id, results, date, model, digests).map((c) => [c.name, c]));
+  const kept = new Map(caseEntries(old.cases).map((c) => [c.name, c]));
+  const cases = loadEvalCases(root, id).cases.map((c) => fresh.get(c.name) ?? kept.get(c.name)).filter((c) => c !== void 0);
+  return { file: save(root, id, record(root, id, model, date, digests.shared, cases)) };
 }
 function printResults(rs, showAnswers = false, every = false) {
   const lines = [];
@@ -19222,7 +19323,7 @@ function runLoop(p, id, opts = {}) {
   const env = opts.env ?? process.env;
   const logFile = (0, import_node_path50.join)(p.run, "runner.log");
   (0, import_node_fs45.mkdirSync)(p.run, { recursive: true });
-  const record = (line) => {
+  const record2 = (line) => {
     log(line);
     (0, import_node_fs45.appendFileSync)(logFile, `${now9().toISOString()} ${line}
 `);
@@ -19235,7 +19336,7 @@ function runLoop(p, id, opts = {}) {
   let checked = false;
   const result = (outcome, state, message) => {
     if (env.AIDW_RUN_DETACHED === "1") (0, import_node_fs45.rmSync)(pidFile(p), { force: true });
-    record(`stop: ${outcome}: ${message}`);
+    record2(`stop: ${outcome}: ${message}`);
     try {
       opts.onFinish?.(outcome);
     } catch {
@@ -19258,7 +19359,7 @@ function runLoop(p, id, opts = {}) {
       const reason = String(change.data.run?.paused?.reason ?? "");
       const w = waitMs(reason, backoff++, now9());
       waits++;
-      record(`paused (${reason || "no reason"}): waiting ${Math.round(w.ms / MINUTE)} min, ${w.why}`);
+      record2(`paused (${reason || "no reason"}): waiting ${Math.round(w.ms / MINUTE)} min, ${w.why}`);
       sleep2(w.ms);
     }
     if (opts.prepare) {
@@ -19271,7 +19372,7 @@ function runLoop(p, id, opts = {}) {
       if (problem && state === "deploying" && opts.deployBlocked) {
         const failed = opts.deployBlocked(problem);
         if (failed) return result("needs_user", state, `${problem} (${failed})`);
-        record(`machine check before the deploy: ${problem}; recorded as a failed deploy, the Change goes on to a draft pull request`);
+        record2(`machine check before the deploy: ${problem}; recorded as a failed deploy, the Change goes on to a draft pull request`);
         continue;
       }
       if (problem) return result("needs_user", state, problem);
@@ -19279,7 +19380,7 @@ function runLoop(p, id, opts = {}) {
     if (runs >= maxRuns) return result("max_runs", state, `${runs} sessions ran; raise --max-runs to continue`);
     const prompt = state === "delivered" && (!pr || ready) ? `/aidw:deliver ${id}` : `/aidw:resume ${id}`;
     const args = ["-p", prompt, "--permission-mode", mode, ...opts.keepMcp ? [] : ["--strict-mcp-config"], ...opts.extraArgs ?? []];
-    record(`session ${runs + 1}: ${claude} ${args.map((a) => /\s/.test(a) ? JSON.stringify(a) : a).join(" ")}`);
+    record2(`session ${runs + 1}: ${claude} ${args.map((a) => /\s/.test(a) ? JSON.stringify(a) : a).join(" ")}`);
     const r = (0, import_node_child_process12.spawnSync)(claude, args, {
       cwd: p.project,
       encoding: "utf8",
@@ -19291,7 +19392,7 @@ function runLoop(p, id, opts = {}) {
     const output = `${r.stdout ?? ""}
 ${r.stderr ?? ""}`.trim();
     const tail = output.split("\n").filter((l) => !NOISE.test(l)).slice(-8).join("\n");
-    record(`session ${runs} ended: exit ${r.status ?? r.error?.message ?? "?"}${tail ? `
+    record2(`session ${runs} ended: exit ${r.status ?? r.error?.message ?? "?"}${tail ? `
 ${tail.replace(/^/gm, "  | ")}` : ""}`);
     if (r.error && r.error.code === "ENOENT") {
       return result("claude_failed", state, `cannot run "${claude}": install Claude Code or pass --claude <path>`);
@@ -19300,7 +19401,7 @@ ${tail.replace(/^/gm, "  | ")}` : ""}`);
     if (after !== "paused" && r.status !== 0 && LIMIT_TEXT.test(output)) {
       const w = waitMs(output, backoff++, now9());
       waits++;
-      record(`limit in the output: waiting ${Math.round(w.ms / MINUTE)} min, ${w.why}`);
+      record2(`limit in the output: waiting ${Math.round(w.ms / MINUTE)} min, ${w.why}`);
       sleep2(w.ms);
       continue;
     }
@@ -19526,14 +19627,14 @@ function resolveConflict(p, id, taskId, opts = {}) {
   const withIds = partners.map((x) => x.id);
   const base2 = { ok: false, task: taskId, with: withIds, files, resolution: null, checks: [] };
   const evidenceFile = (0, import_node_path51.join)(tf.change.dir, "evidence", `merge-${taskId}.json`);
-  const record = (r) => {
+  const record2 = (r) => {
     (0, import_node_fs46.mkdirSync)((0, import_node_path51.join)(tf.change.dir, "evidence"), { recursive: true });
     (0, import_node_fs46.writeFileSync)(evidenceFile, `${JSON.stringify({ at: now8(), onto, ...r }, null, 2)}
 `);
     return { ...r, evidence: rel(p, evidenceFile) };
   };
   const fail = (reason, r = base2) => {
-    const out = record({ ...r, ok: false, reason });
+    const out = record2({ ...r, ok: false, reason });
     dropConflictTask(p, id, taskId, `merge conflict not resolved: ${reason}`);
     return out;
   };
@@ -19612,7 +19713,7 @@ function resolveConflict(p, id, taskId, opts = {}) {
   const refused = checks.flatMap((x) => x.runs).find((r) => r.exit !== 0 && !r.timedOut && ENVIRONMENT_FAILURE.test(r.tail));
   if (refused) {
     const why = `environment: \`${refused.command}\` was refused by the machine (${ENVIRONMENT_FAILURE.exec(refused.tail)?.[0]}), not by the code`;
-    return record({ ...guarded, checks, ok: false, blocked: true, reason: why });
+    return record2({ ...guarded, checks, ok: false, blocked: true, reason: why });
   }
   const result = { ...guarded, checks };
   const bad = checks.find((x) => !x.ok);
@@ -19625,7 +19726,7 @@ function resolveConflict(p, id, taskId, opts = {}) {
   setField2(tf, o.i, "conflict", { ...c, phase: "review", resolution, ...configFiles.length ? { config: configFiles } : {} });
   setField2(tf, o.i, "notes", `merge conflict resolved by integration (${resolution?.slice(0, 8)}); both tasks' checks pass; the merge waits for its review`);
   saveTasksDoc(tf);
-  return { ...record({ ...result, ok: true }) };
+  return { ...record2({ ...result, ok: true }) };
 }
 function buildMergeReviewBrief(p, id, taskId) {
   const { t, c, dir, partners, tf } = openConflict(p, id, taskId, "review");
@@ -19856,7 +19957,10 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
                                          both print every criterion's verdict and never write the result file
                                          --answers also prints each answer, to see why a case failed
                                          A full run from a source checkout on the tier's model writes
-                                         roles/<id>/evals/results.json (commit it with the Role's change)
+                                         roles/<id>/evals/results.json (commit it with the Role's change); --model is
+                                         refused for a tier that uses the session's model. --case updates only that
+                                         case's entry, and needs an existing format-2 file from a full run, the same
+                                         shared content (all of the Role but its case files) and the same model
   roster [--write] [--strict]            the factory's Roles; checks roster.yaml, role profiles, rules.md tables, artifacts.yaml
                                          (one owner per artifact, reads/writes of each Role), workflows/*.yaml, the cases (a Role
                                          whose rules.md is a table covers every rule and skill), and the generated agent files;
@@ -20584,6 +20688,7 @@ ${lines.length ? `${lines.join("\n")}
 `);
         const results = [];
         const modelOf = /* @__PURE__ */ new Map();
+        const digestsOf = /* @__PURE__ */ new Map();
         try {
           if (without !== void 0 && !rest[0]) throw new Error("--without needs a Role: rule ids and skills belong to one Role");
           if (bare && !rest[0]) throw new Error("--bare needs a Role: it runs that Role's cases with none of its instructions");
@@ -20594,6 +20699,7 @@ ${lines.length ? `${lines.join("\n")}
           for (const id of ids) {
             const model = asked ?? (roster.roles[id] ? tierModel(root, id) : void 0);
             modelOf.set(id, model);
+            if (roster.roles[id] && !without && !bare) digestsOf.set(id, takeDigests(root, id));
             results.push(...runCases(root, id, caseName, (io.modelExec ?? claudeExec)(model), progress, runs, without, bare));
           }
         } catch (e) {
@@ -20612,18 +20718,26 @@ ${lines.length ? `${lines.join("\n")}
           return still.length === 0 ? 0 : 1;
         }
         const inGit = (0, import_node_child_process14.spawnSync)("git", ["rev-parse", "--is-inside-work-tree"], { cwd: root, encoding: "utf8" }).stdout?.trim() === "true";
-        if (caseName) io.err("  no result file written: --case runs only part of a Role's cases\n");
-        else if (!inGit) io.err(`  no result file written: ${root} is not a source checkout
+        if (!inGit) io.err(`  no result file written: ${root} is not a source checkout
 `);
         else {
           for (const id of [...new Set(results.map((r) => r.role))]) {
             const tm = tierModel(root, id);
             const mine = results.filter((r) => r.role === id);
-            if (asked && tm && asked !== tm) io.err(`  no result file written for ${id}: --model ${asked} is not its tier's model (${tm})
+            const digests = digestsOf.get(id);
+            const meta = { runs, ...modelOf.get(id) ? { model: modelOf.get(id) } : {}, ...digests ? { digests } : {} };
+            if (asked && !tm) io.err(`  no result file written for ${id}: its tier uses the session's model; run without --model
+`);
+            else if (asked && asked !== tm) io.err(`  no result file written for ${id}: --model ${asked} is not its tier's model (${tm})
 `);
             else if (mine.every((r) => r.error)) io.err(`  no result file written for ${id}: no case was graded
 `);
-            else written.push((0, import_node_path52.relative)(root, writeResults(root, id, results, { runs, ...modelOf.get(id) ? { model: modelOf.get(id) } : {} })));
+            else {
+              const m = caseName ? mergeResults(root, id, results, meta) : writeResults(root, id, results, meta);
+              if ("refused" in m) io.err(`  no result file written for ${id}: ${m.refused}
+`);
+              else written.push((0, import_node_path52.relative)(root, m.file));
+            }
           }
         }
         emit({ ok, results, written }, printResults(results, args.flags.answers === true) + written.map((f) => `wrote ${f}
@@ -20996,7 +21110,7 @@ ${r.problems.map((x) => `  - ${x}`).join("\n")}
 Fix the file and render again.`);
           return r.page;
         };
-        const save = (name, data) => {
+        const save2 = (name, data) => {
           (0, import_node_fs47.mkdirSync)(pagesDir(p), { recursive: true });
           (0, import_node_fs47.writeFileSync)(pageDataFile(p, name), typeof data === "string" ? data : (0, import_yaml25.stringify)(data));
         };
@@ -21019,7 +21133,7 @@ NEXT: when they paste it, run \`aidw page answers ${name} --text "<the pasted te
           const name = need(rest[1], "page name");
           if (args.flags.stdin === true) {
             if (!PAGE_NAME.test(name)) throw new UsageError(`invalid page name "${name}": lowercase letters, digits and "-"`);
-            save(name, io.stdin?.() ?? "");
+            save2(name, io.stdin?.() ?? "");
           }
           return show(name);
         }
@@ -21044,7 +21158,7 @@ Ask the user about exactly these; do not guess an answer for them.
           if (r.diags.errors.length) throw new OpError("the audit report is not complete: run `aidw audit report` first", r.diags);
           if (!r.findings.length) throw new OpError("the audit has no findings: there is nothing to pick");
           const name = `audit-${id}`.toLowerCase().replace(/[^a-z0-9-]/g, "-").slice(0, 64);
-          save(
+          save2(
             name,
             picksData({
               title: lang === "vi" ? `Audit ${id}: ch\u1ECDn ph\xE1t hi\u1EC7n c\u1EA7n s\u1EEDa` : `Audit ${id}: pick the findings to fix`,
@@ -21066,7 +21180,7 @@ Ask the user about exactly these; do not guess an answer for them.
           if (diagnosis === null) throw new OpError(`no triage diagnosis at ${rel(p, file)}: this task was not triaged, so put the decision to the user in the chat`);
           const cause = /^CAUSE:\s*(\S+)/m.exec(diagnosis)?.[1] ?? "unknown";
           const name = `triage-${taskId}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");
-          save(name, triageData({ task: taskId, cause, diagnosis, ...lang ? { lang } : {} }));
+          save2(name, triageData({ task: taskId, cause, diagnosis, ...lang ? { lang } : {} }));
           return show(name);
         }
         throw new UsageError("usage: aidw page render <name> [--stdin] | answers <name> [--text T] | audit | triage <task>");

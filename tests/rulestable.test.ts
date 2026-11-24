@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
-import { checkEvals, loadEvalCases, roleDigest } from "../src/evals.js";
+import { takeDigests, writeResults as writeRecord, type CaseResult } from "../src/evalrun.js";
+import { caseDigest, checkEvals, loadEvalCases, roleDigest, sharedDigest } from "../src/evals.js";
 import { checkRoster, loadRuleTable, parseRulesTable, writeAgents } from "../src/roles.js";
 import { bareBackend } from "./fixtures.js";
 
@@ -307,5 +308,193 @@ describe("follows_rules in role.md", () => {
     root = copy();
     follows(root, "fullstack", "backend");
     expect(rosterErrs(root)).toMatch(/follows_rules must be a list of role ids/);
+  });
+});
+
+describe("the per-case result file (format 2)", () => {
+  const NAMES = ["entity-is-not-a-response", "validates-authorizes-and-does-not-leak"];
+  const result = (name: string, pass = true, total = 3): CaseResult => ({ role: "backend", name, pass, criteria: [], answer: "", runs: { total, passed: pass ? total : 0, errors: 0 } });
+  const evalsDir = (root: string) => join(root, "roles", "backend", "evals");
+  const touch = (root: string, rel: string) => writeFileSync(join(root, rel), readFileSync(join(root, rel), "utf8") + "\nmore\n");
+  const fresh = () => {
+    const root = copy();
+    tableRole(root);
+    writeRecord(root, "backend", NAMES.map((n) => result(n)), { runs: 3 });
+    return root;
+  };
+
+  it("leaves the case files out of the shared digest and gives each its own", () => {
+    const root = copy();
+    tableRole(root);
+    const shared = sharedDigest(root, "backend");
+    const one = caseDigest(root, `roles/backend/evals/${NAMES[0]}.md`);
+    const other = caseDigest(root, `roles/backend/evals/${NAMES[1]}.md`);
+    touch(root, `roles/backend/evals/${NAMES[0]}.md`);
+    expect(sharedDigest(root, "backend")).toBe(shared);
+    expect(caseDigest(root, `roles/backend/evals/${NAMES[0]}.md`)).not.toBe(one);
+    expect(caseDigest(root, `roles/backend/evals/${NAMES[1]}.md`)).toBe(other);
+    writeFileSync(join(evalsDir(root), "notes.txt"), "other files under evals/ are shared content\n");
+    expect(sharedDigest(root, "backend")).not.toBe(shared);
+  });
+
+  it("is fresh after a full write, and editing one case file makes only that entry stale", () => {
+    const root = fresh();
+    const rec = JSON.parse(readFileSync(join(evalsDir(root), "results.json"), "utf8"));
+    expect(rec).toMatchObject({ format: 2, digest: sharedDigest(root, "backend"), runs: 3 });
+    expect(rec.cases[0]).toMatchObject({ name: NAMES[0], digest: caseDigest(root, `roles/backend/evals/${NAMES[0]}.md`) });
+    expect(Number.isNaN(Date.parse(rec.cases[0].date))).toBe(false);
+    expect(warns(checkEvals(root))).toBe("");
+    touch(root, `roles/backend/evals/${NAMES[0]}.md`);
+    expect(warns(checkEvals(root))).toBe(
+      `roles/backend/evals/results.json: made from another version of its case file roles/backend/evals/${NAMES[0]}.md: run \`aidw eval backend --case ${NAMES[0]}\``,
+    );
+  });
+
+  it("is stale as a whole when the shared content changes (role.md)", () => {
+    const root = fresh();
+    touch(root, "roles/backend/role.md");
+    const w = warns(checkEvals(root));
+    expect(w).toMatch(/older than the Role's content/);
+    expect(w).not.toMatch(/case file/);
+  });
+
+  it("warns about a case with no entry, and drops the entry of a deleted case on write", () => {
+    const root = fresh();
+    const f = join(evalsDir(root), "a-new-case.md");
+    writeFileSync(f, readFileSync(join(evalsDir(root), `${NAMES[0]}.md`), "utf8").replace(`case: ${NAMES[0]}`, "case: a-new-case"));
+    expect(warns(checkEvals(root))).toMatch(/no result for case\(s\): a-new-case: run `aidw eval backend --case <name>` for each/);
+    rmSync(f);
+    writeRecord(root, "backend", [...NAMES, "gone"].map((n) => result(n)), { runs: 3 });
+    expect(JSON.parse(readFileSync(join(evalsDir(root), "results.json"), "utf8")).cases.map((c: { name: string }) => c.name)).toEqual(NAMES);
+    expect(warns(checkEvals(root))).toBe("");
+  });
+
+  it("ignores an entry whose case was deleted", () => {
+    const root = fresh();
+    rmSync(join(evalsDir(root), `${NAMES[1]}.md`));
+    // B2 lost its only case: put it on the remaining one so coverage holds.
+    const f = join(evalsDir(root), `${NAMES[0]}.md`);
+    writeFileSync(f, readFileSync(f, "utf8").replace("covers: [B1", "covers: [B1, B2"));
+    writeRecord(root, "backend", [result(NAMES[0]!)], { runs: 3 });
+    const rec = JSON.parse(readFileSync(join(evalsDir(root), "results.json"), "utf8"));
+    rec.cases.push({ name: NAMES[1], pass: false, runs: { total: 1, passed: 0, errors: 0 }, failed: [], digest: "sha256:x", date: rec.date });
+    writeFileSync(join(evalsDir(root), "results.json"), JSON.stringify(rec));
+    expect(warns(checkEvals(root))).toBe("");
+  });
+
+  it("warns per case about fewer than 3 runs and a failed case", () => {
+    const root = copy();
+    tableRole(root);
+    writeRecord(root, "backend", [result(NAMES[0]!, true, 1), result(NAMES[1]!, false)], { runs: 1 });
+    const w = warns(checkEvals(root));
+    expect(w).toContain(`1 case(s) last ran fewer than 3 times: ${NAMES[0]}; a case passes level 1 only with 3 of 3`);
+    expect(w).toContain(`the last run did not pass 1 case(s): ${NAMES[1]}`);
+  });
+
+  it("gives a CRLF case file the digest of its LF form", () => {
+    const root = copy();
+    const rel = `roles/backend/evals/${NAMES[0]}.md`;
+    const lf = caseDigest(root, rel);
+    writeFileSync(join(root, rel), readFileSync(join(root, rel), "utf8").replace(/\n/g, "\r\n"));
+    expect(caseDigest(root, rel)).toBe(lf);
+  });
+
+  it("counts subfolders of evals/, the agent file and the library skills the Role lists as shared content", () => {
+    const root = copy();
+    tableRole(root);
+    const shared = sharedDigest(root, "backend");
+    mkdirSync(join(evalsDir(root), "fixtures"));
+    writeFileSync(join(evalsDir(root), "fixtures", "input.md"), "not a case: a file a case may point to\n");
+    const withSub = sharedDigest(root, "backend");
+    expect(withSub).not.toBe(shared);
+    expect(loadEvalCases(root, "backend").cases.map((c) => c.name)).toEqual(NAMES);
+    touch(root, "agents/backend.md");
+    const withAgent = sharedDigest(root, "backend");
+    expect(withAgent).not.toBe(withSub);
+    const role = join(root, "roles", "backend", "role.md");
+    writeFileSync(role, readFileSync(role, "utf8").replace(/^skills:\n/m, "skills:\n  - library/external-api: when the task calls a third-party service\n"));
+    const withLib = sharedDigest(root, "backend");
+    expect(withLib).not.toBe(withAgent);
+    touch(root, "library/skills/external-api/SKILL.md");
+    expect(sharedDigest(root, "backend")).not.toBe(withLib);
+  });
+
+  it("treats a renamed case as a new case with no entry", () => {
+    const root = fresh();
+    const from = join(evalsDir(root), `${NAMES[0]}.md`);
+    writeFileSync(join(evalsDir(root), "renamed-case.md"), readFileSync(from, "utf8").replace(`case: ${NAMES[0]}`, "case: renamed-case"));
+    rmSync(from);
+    expect(warns(checkEvals(root))).toBe("roles/backend/evals/results.json: no result for case(s): renamed-case: run `aidw eval backend --case <name>` for each");
+  });
+
+  it("does not trip over a malformed format-2 file", () => {
+    const root = fresh();
+    const rf = join(evalsDir(root), "results.json");
+    const rec = JSON.parse(readFileSync(rf, "utf8"));
+    for (const cases of [[null, 5, "x", rec.cases[1]], "not a list", null]) {
+      writeFileSync(rf, JSON.stringify({ ...rec, cases }));
+      expect(warns(checkEvals(root))).toContain(`no result for case(s): ${NAMES[0]}`);
+    }
+    for (const bad of ["null", "5", "[]"]) {
+      writeFileSync(rf, bad);
+      expect(() => checkEvals(root), bad).not.toThrow();
+      expect(warns(checkEvals(root)), bad).toMatch(/results\.json: /);
+    }
+  });
+
+  it("still reads an old-format file against the whole Role's digest", () => {
+    const root = copy();
+    tableRole(root);
+    const cases = NAMES.map((name) => ({ name, pass: true, runs: { total: 3, passed: 3, errors: 0 }, failed: [] }));
+    const old = { role: "backend", date: "2026-11-24T00:00:00.000Z", model: null, tier: "deep", runs: 3, digest: roleDigest(root, "backend"), cases };
+    writeFileSync(join(evalsDir(root), "results.json"), JSON.stringify(old));
+    expect(warns(checkEvals(root))).toBe("");
+    touch(root, `roles/backend/evals/${NAMES[0]}.md`);
+    expect(warns(checkEvals(root))).toMatch(/older than the Role's content/);
+  });
+});
+
+describe("review fixes: model and shared content of the result file", () => {
+  const NAMES = ["entity-is-not-a-response", "validates-authorizes-and-does-not-leak"];
+  const result = (name: string): CaseResult => ({ role: "backend", name, pass: true, criteria: [], answer: "", runs: { total: 3, passed: 3, errors: 0 } });
+  const file = (root: string) => join(root, "roles", "backend", "evals", "results.json");
+
+  it("warns when the file was made on a model other than its tier's, top level or per case (M1)", () => {
+    const root = copy();
+    tableRole(root);
+    writeRecord(root, "backend", NAMES.map(result), { runs: 3, model: "sonnet" });
+    expect(warns(checkEvals(root))).toContain("made with model sonnet, not its tier's model (default): run `aidw eval backend` again");
+    writeRecord(root, "backend", NAMES.map(result), { runs: 3 });
+    expect(warns(checkEvals(root))).toBe("");
+    const rec = JSON.parse(readFileSync(file(root), "utf8"));
+    rec.cases[0].model = "haiku";
+    writeFileSync(file(root), JSON.stringify(rec));
+    expect(warns(checkEvals(root))).toBe(
+      `roles/backend/evals/results.json: case ${NAMES[0]} was made with model haiku, not its tier's model (default): run \`aidw eval backend --case ${NAMES[0]}\``,
+    );
+  });
+
+  it("covers the included shared procedures and tiers.yaml directly, without regenerating the agent file (L2)", () => {
+    const root = copy();
+    tableRole(root);
+    const shared = sharedDigest(root, "backend");
+    const whole = roleDigest(root, "backend");
+    const inc = join(root, "library", "implement-a-task.md");
+    writeFileSync(inc, readFileSync(inc, "utf8") + "\nmore\n");
+    expect(sharedDigest(root, "backend")).not.toBe(shared);
+    expect(roleDigest(root, "backend")).not.toBe(whole);
+    const again = sharedDigest(root, "backend");
+    const tiers = join(root, "tiers.yaml");
+    writeFileSync(tiers, readFileSync(tiers, "utf8") + "# a comment\n");
+    expect(sharedDigest(root, "backend")).not.toBe(again);
+  });
+
+  it("refuses to write when the shared content differs from the digests taken at the start (L3)", () => {
+    const root = copy();
+    tableRole(root);
+    const digests = takeDigests(root, "backend");
+    const role = join(root, "roles", "backend", "role.md");
+    writeFileSync(role, readFileSync(role, "utf8") + "\nmore\n");
+    expect(writeRecord(root, "backend", NAMES.map(result), { runs: 3, digests })).toEqual({ refused: "the Role changed during the run: run it again" });
   });
 });

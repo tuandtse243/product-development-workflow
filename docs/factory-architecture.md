@@ -732,14 +732,25 @@ In the user's project, `.aidw/` keeps its current shape and gains `roles/<id>/` 
   id or a skill of the Role has no case covering it. A `covers:` entry that names neither a rule id nor a skill of
   the Role fails for every Role. Roles still in prose are not held to coverage.
 - **Result file (plan C6).** A run of all the cases of a Role (no `--case`, no `--without`), from a source checkout
-  (the plugin root is in a git work tree) and on the tier's model, writes `roles/<id>/evals/results.json`: per case
-  its runs, pass or fail and the criteria that failed, with the date, the model (`null` for the claude CLI's
-  default), the tier and a digest of the Role's content: every file under `roles/<id>/` but the result file, the
-  generated `agents/<id>.md` (so a shared procedure it includes counts) and the library skills its index lists;
-  dotfiles are left out and line endings are read as LF. A run where no case was graded writes nothing. The file is
-  committed with the change to the Role. For a table Role, `aidw roster` warns (it does not fail; `--strict` makes
-  it fail) when the file is missing, when its digest differs from the Role's content (the Role changed after the
-  run), when the run had fewer than 3 runs per case, or when it did not pass every case.
+  (the plugin root is in a git work tree) and on the tier's model, writes `roles/<id>/evals/results.json`
+  (`format: 2`). The file holds the date of its last write, the model, the tier and a digest of the Role's shared
+  content: every file under `roles/<id>/` but the result file and the case files (`evals/*.md`), the generated
+  `agents/<id>.md`, the shared procedures its `includes` names, the library skills its index lists and `tiers.yaml`;
+  dotfiles are left out and line endings are read as LF. The runner's own prompts (the answer and grading prompts
+  in `src/evalrun.ts`) are not in the digest. Each case entry holds its runs, pass or fail, the criteria that
+  failed, the date that case ran, the model asked for and a digest of its case file. A model of `null` means the
+  claude CLI's default on that entry's date, so a file merged over time can mix the defaults of different dates;
+  the actual model is not detected. For a tier that maps to `inherit`, `--model` writes nothing. The digests are
+  taken before the run starts, and if the shared content changes during the run nothing is written. A case's answer
+  depends only on the shared content and its own case file, so `aidw eval <id> --case <name>` (same conditions)
+  replaces only that case's entry. It needs an existing format-2 file from a full run, with the same shared digest
+  and the same model; otherwise (including a file of the old format, one digest over the whole Role) it writes
+  nothing and says to run all the cases. A run where no case was graded writes nothing; entries of deleted cases are
+  dropped on each write. The file is committed with the change to the Role. For a table Role, `aidw roster` warns
+  (it does not fail; `--strict` makes it fail) when the file is missing, when it was made on a model other than its
+  tier's, when its shared digest differs (the Role changed after the last write: run all cases), when a case has no
+  entry or one made from another version of its case file (run that case), when a case had fewer than 3 runs, or
+  when a case did not pass. A file of the old format is still checked against the digest of the whole Role.
 - **End to end:** the existing fixtures (`evals/fixtures/brownfield-app`, `greenfield-jd`) and `aidw cost`,
   which already reports cost per agent type, catch coordination problems and cost regressions.
 

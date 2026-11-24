@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSy
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
-import { loadEvalCases, resultsFile, roleDigest, type EvalCase, type RunRecord } from "./evals.js";
+import { caseDigest, caseEntries, loadEvalCases, RESULTS_FORMAT, resultsFile, sharedDigest, type CaseRecord, type EvalCase, type RunRecord } from "./evals.js";
 import { loadRole, loadRoster, loadRuleTable, loadTiers, renderAgent, skillFile, type RoleProfile } from "./roles.js";
 
 /**
@@ -67,7 +67,7 @@ export function roleSystem(root: string, id: string, without?: string | string[]
   }
   // The skills of the index (own and library), then any other file in the Role's skills/ folder.
   const dir = join(root, "roles", id, "skills");
-  const own = existsSync(dir) ? readdirSync(dir).filter((n) => n.endsWith(".md")).map((n) => n.slice(0, -3)) : [];
+  const own = existsSync(dir) ? readdirSync(dir).filter((n) => !n.startsWith(".") && n.endsWith(".md")).map((n) => n.slice(0, -3)) : [];
   const names = [...index, ...own.filter((n) => !index.includes(n) && !out.includes(n)).sort()];
   const skills = names
     .map((n) => ({ n, file: join(root, skillFile(id, n)) }))
@@ -275,31 +275,98 @@ export function runCases(
   return out;
 }
 
-/**
- * The record of a run of all the cases of one Role (C6), written to `roles/<id>/evals/results.json` and committed with the
- * Role's change; `aidw roster` compares its digest with the Role's content. Returns the file written.
- */
-export function writeResults(root: string, id: string, results: CaseResult[], meta: { model?: string; runs: number; date?: Date }): string {
-  const record: RunRecord = {
+/** A Role's shared digest and the digest of each case file (by case name), taken before a run starts. */
+export interface RunDigests {
+  shared: string;
+  cases: Map<string, string>;
+}
+export function takeDigests(root: string, id: string): RunDigests {
+  return { shared: sharedDigest(root, id), cases: new Map(loadEvalCases(root, id).cases.map((c) => [c.name, caseDigest(root, c.file)])) };
+}
+
+/** `digests`: taken before the run (takeDigests); without them they are taken now. */
+type ResultsMeta = { model?: string; runs: number; date?: Date; digests?: RunDigests };
+
+/** The entries of `results` for Role `id`, each with the digest of its case file, the date and the model of this run. */
+function caseRecords(root: string, id: string, results: CaseResult[], date: string, model: string | null, digests: RunDigests): CaseRecord[] {
+  const fileOf = new Map(loadEvalCases(root, id).cases.map((c) => [c.name, c.file]));
+  return results
+    .filter((r) => r.role === id && fileOf.has(r.name))
+    .map((r) => ({
+      name: r.name,
+      pass: r.pass,
+      runs: r.runs ?? { total: 1, passed: r.pass ? 1 : 0, errors: r.error ? 1 : 0 },
+      failed: r.criteria.filter((x) => !x.pass).map((x) => x.criterion),
+      ...(r.error ? { error: r.error } : {}),
+      digest: digests.cases.get(r.name) ?? caseDigest(root, fileOf.get(r.name) as string),
+      date,
+      model,
+    }));
+}
+
+function record(root: string, id: string, model: string | null, date: string, shared: string, cases: CaseRecord[]): RunRecord {
+  return {
+    format: RESULTS_FORMAT,
     role: id,
-    date: (meta.date ?? new Date()).toISOString(),
-    model: meta.model ?? null,
+    date,
+    model,
     tier: loadRole(root, id)?.tier ?? "",
-    runs: meta.runs,
-    digest: roleDigest(root, id),
-    cases: results
-      .filter((r) => r.role === id)
-      .map((r) => ({
-        name: r.name,
-        pass: r.pass,
-        runs: r.runs ?? { total: 1, passed: r.pass ? 1 : 0, errors: r.error ? 1 : 0 },
-        failed: r.criteria.filter((x) => !x.pass).map((x) => x.criterion),
-        ...(r.error ? { error: r.error } : {}),
-      })),
+    runs: cases.length ? Math.min(...cases.map((c) => c.runs.total)) : 0,
+    digest: shared,
+    cases,
   };
+}
+
+/** Nothing is written when the Role's shared content changed between the digests and now: the answers may mix both. */
+const CHANGED = "the Role changed during the run: run it again";
+
+function save(root: string, id: string, rec: RunRecord): string {
   const file = resultsFile(root, id);
-  writeFileSync(file, `${JSON.stringify(record, null, 2)}\n`);
+  writeFileSync(file, `${JSON.stringify(rec, null, 2)}\n`);
   return file;
+}
+
+/**
+ * The record of a run of all the cases of one Role (C6), written to `roles/<id>/evals/results.json` (format 2, see
+ * RunRecord) and committed with the Role's change; `aidw roster` compares its digests with the Role's content. Returns
+ * the file written, or `refused` when the Role's shared content changed during the run.
+ */
+export function writeResults(root: string, id: string, results: CaseResult[], meta: ResultsMeta): { file: string } | { refused: string } {
+  const digests = meta.digests ?? takeDigests(root, id);
+  if (sharedDigest(root, id) !== digests.shared) return { refused: CHANGED };
+  const date = (meta.date ?? new Date()).toISOString();
+  const model = meta.model ?? null;
+  return { file: save(root, id, record(root, id, model, date, digests.shared, caseRecords(root, id, results, date, model, digests))) };
+}
+
+/**
+ * The run of some cases of one Role (`--case`) merged into its result file: their entries are replaced or added, the
+ * others kept, entries of cases that no longer exist dropped. Only into a format-2 file of the same shared content and
+ * model, since the kept entries stand for that content; otherwise nothing is written and `refused` says why.
+ */
+export function mergeResults(root: string, id: string, results: CaseResult[], meta: ResultsMeta): { file: string } | { refused: string } {
+  const file = resultsFile(root, id);
+  const all = `run \`aidw eval ${id}\` for all cases`;
+  if (!existsSync(file)) return { refused: `there is no results.json yet: ${all} once` };
+  let old: RunRecord;
+  try {
+    old = JSON.parse(readFileSync(file, "utf8")) as RunRecord;
+  } catch {
+    return { refused: `results.json is not readable: ${all}` };
+  }
+  if (old?.format !== RESULTS_FORMAT || !Array.isArray(old.cases)) return { refused: `results.json is the old format: ${all} once` };
+  const digests = meta.digests ?? takeDigests(root, id);
+  if (sharedDigest(root, id) !== digests.shared) return { refused: CHANGED };
+  if (old.digest !== digests.shared) return { refused: `the Role's shared content changed since the last full run: ${all}` };
+  const model = meta.model ?? null;
+  if ((old.model ?? null) !== model) return { refused: `results.json was made with model ${old.model ?? "default"}, this run with ${model ?? "default"}: ${all}` };
+  const date = (meta.date ?? new Date()).toISOString();
+  const fresh = new Map(caseRecords(root, id, results, date, model, digests).map((c) => [c.name, c]));
+  const kept = new Map(caseEntries(old.cases).map((c) => [c.name, c]));
+  const cases = loadEvalCases(root, id)
+    .cases.map((c) => fresh.get(c.name) ?? kept.get(c.name))
+    .filter((c): c is CaseRecord => c !== undefined);
+  return { file: save(root, id, record(root, id, model, date, digests.shared, cases)) };
 }
 
 /** `every`: list every criterion with its verdict, not only the failing ones (a C3 run is read per criterion). */
