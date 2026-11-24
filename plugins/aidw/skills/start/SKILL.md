@@ -331,6 +331,10 @@ user can check:
 
 ## 10. Approve and build (same session)
 
+Only when the user, **in this session**, answered the gate page agreeing to every section, or said "approve" (or typed
+`/aidw:approve`). Anything else (a section marked for a change, a question, silence) is not an approval: never run
+`aidw approve` on your own reading of the package.
+
 Follow steps 2 to 6 of `$(aidw plugin-path skills/approve/SKILL.md)`, as if the user had typed `/aidw:approve <id>`:
 validate and analyze, confirm the push grant when `quality.yaml` has one, `aidw approve <id>` (the user confirms its
 permission prompt; if they decline, stop and do not retry), then follow the `NEXT:` line it prints. The CLI decides

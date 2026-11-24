@@ -274,8 +274,11 @@ theo số task còn lại (ngưỡng cố định là 3), không phải Claude:
 | tối đa 3 | `build here: follow the /aidw:run steps` | build ngay trong phiên, như `/aidw:run` |
 | hơn 3 | `start the runner: aidw run <id> --detach --permission-mode auto` | tự chạy đúng lệnh đó (ngoài sandbox, vì runner mở các phiên Claude Code cần mạng và đăng nhập), báo bạn cách theo dõi rồi dừng |
 
-Gate chỉ cho phép đúng dạng lệnh đó, từ phiên chính (không phải subagent, không phải phiên do runner mở), khi change đã
-được duyệt. Lệnh có thêm tùy chọn khác (`--claude`, permission mode khác, tham số gửi cho `claude`) thì hỏi bạn; `aidw run`
+Gate chỉ cho phép không hỏi đúng dạng lệnh đó: chính CLI của plugin (`aidw` hoặc `<plugin>/bin/aidw`), từ phiên chính
+(không phải subagent, không phải phiên do runner mở), cho đúng change được nêu tên khi change đó đã được duyệt, và sau `--`
+chỉ được có `--plugin-dir` trỏ tới chính thư mục plugin aidw (CLI tự thêm khi plugin được nạp từ thư mục thay vì cài đặt).
+Lệnh này chạy ngoài sandbox mà không có hộp thoại nào khác, nên mọi dạng khác (một file `aidw` khác, plugin khác,
+`--claude`, permission mode khác, tham số khác gửi cho `claude`, xuống dòng hay cú pháp shell) đều hỏi bạn; `aidw run`
 chạy nổi trong phiên hoặc trước khi duyệt thì bị chặn. Runner chạy mọi phiên ở chế độ `auto`: sau cổng duyệt không còn gì
 hỏi bạn ([ADR-0014](adr/0014-after-the-approval-gate-the-run-does-not-ask-the-user.md)); việc vượt ngoài quyền đã cấp kết thúc
 bằng escalation chứ không chờ bạn.
