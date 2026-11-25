@@ -166,4 +166,34 @@ describe.skipIf(!nodeModules)("the backend-api fixture (cached packages)", () =>
     },
     300_000,
   );
+
+  it.skipIf(!existsSync(join(plugin, "bin", "aidw")))(
+    "a correct route whose own tests lack the access cases fails B2: the held-out tests are gone before the checks",
+    () => {
+      const ownTests = (cwd: string) =>
+        writeFileSync(
+          join(cwd, "tests/tasks/create-task.test.ts"),
+          [
+            'import { afterEach, beforeEach, expect, it } from "vitest";',
+            'import { testApp, type TestApp } from "../helpers.ts";',
+            "let t: TestApp;",
+            "beforeEach(async () => { t = await testApp(); });",
+            "afterEach(() => t.close());",
+            'it("tasks/create-a-task/member-creates-a-task: tasks/create-a-task/no-session tasks/create-a-task/project-of-another-team tasks/create-a-task/team-named-in-the-request tasks/create-a-task/due-date-in-the-past", async () => {',
+            '  const u = await t.seed.user("ana");',
+            '  const team = await t.seed.team("A", [u]);',
+            "  const p = await t.seed.project(team.id);",
+            '  const res = await t.http().post(`/api/projects/${p.id}/tasks`).set(t.auth(u)).send({ title: "x" });',
+            "  expect(res.body.title).toBe(\"x\");",
+            "});",
+            "",
+          ].join("\n"),
+        );
+      const [r] = runLevel2({ root: plugin, role: "backend", runs: 1, agent: overlayAgent(["team-comes-from-the-session"], ownTests), exec: () => "[]", install: noInstall, runsDir: runsDir() }, "team-comes-from-the-session");
+      const x = r!.results[0]!;
+      expect(x.steps.find((s) => s.step === "tests")!.pass).toBe(true); // the route is right
+      expect(x.steps.find((s) => s.step === "checks")!.failed).toEqual([expect.stringMatching(/^the route has its three access tests \(B2, route-inventory\): output does not hold the expected JSON/)]);
+    },
+    300_000,
+  );
 });
