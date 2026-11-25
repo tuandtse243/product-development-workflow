@@ -1,0 +1,16 @@
+tasks:
+  - id: T01
+    title: Create a task in a project, server side
+    role: backend
+    type: feat
+    specs: [tasks/create-a-task]
+    scenarios:
+      - tasks/create-a-task/member-creates-a-task
+      - tasks/create-a-task/no-session
+      - tasks/create-a-task/project-of-another-team
+      - tasks/create-a-task/team-named-in-the-request
+      - tasks/create-a-task/due-date-in-the-past
+    depends_on: []
+    touches: ["src/tasks/**", "tests/tasks/**", "src/app.ts"]
+    verify: ["npm test", "npm run typecheck"]
+    status: pending
