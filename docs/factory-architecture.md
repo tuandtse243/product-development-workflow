@@ -751,6 +751,47 @@ In the user's project, `.aidw/` keeps its current shape and gains `roles/<id>/` 
   tier's, when its shared digest differs (the Role changed after the last write: run all cases), when a case has no
   entry or one made from another version of its case file (run that case), when a case had fewer than 3 runs, or
   when a case did not pass. A file of the old format is still checked against the digest of the whole Role.
+- **Level 2: a real task with tools (plan C4, `src/evallevel2.ts`).** `aidw eval <role> --level 2 [--case <name>]
+  [--runs <n>] [--bare] [--model <m>]` runs each case of `roles/<id>/evals/level2/` from a source checkout. A case is a
+  folder: `case.md` (front matter `case` = the folder name, `covers`, `fixture`, `task`, optional `change`, `must_read`,
+  `must_not_read`, `timeout_min` (default 25), `max_turns` (default 60); `## Criteria` holds only what no machine can
+  check), an optional `checks.yaml` (commands with an expected exit, JSON subset or regex), and `held-out/` (test files
+  laid over the project at the same relative path after the session ends, so the Agent never sees them). A path in
+  `must_read` is relative to the project, or `plugin:<path>` for a plugin file. Level 1 never reads these folders, and
+  they are not part of level 1's shared digest.
+- **The fixture.** `evals/fixtures/<name>` is a small real project with a committed lockfile and an aidw Change made
+  with the CLI (for backend: `backend-api`, Express 5, TypeScript, PGlite, Vitest, Change `create-task`). Its packages
+  are installed once (`npm ci --ignore-scripts`, needs the network) into a cache keyed by the lockfile:
+  `$AIDW_FIXTURE_CACHE`, else `$XDG_CACHE_HOME/aidw/fixtures`, else `~/.cache/aidw/fixtures`. Each run copies the
+  fixture to a fresh temp folder, links the cached `node_modules`, commits it to git, and starts the task and writes its
+  brief with the CLI's own code (`aidw task start`). The session's prompt is the orchestrator's: `Task brief: <path>.
+  Read it and implement the task.`
+- **The session.** One `claude -p --output-format stream-json --verbose --plugin-dir <plugin> --agent aidw:<role>`
+  in the copy, with `--tools Read,Write,Edit,Glob,Grep,Bash`, `--permission-mode acceptEdits --permission-prompts
+  none`, `--setting-sources project`, `--strict-mcp-config` and a `--settings` file. No network: Bash runs only in
+  Claude Code's sandbox with no allowed hosts and no unsandboxed escape, and is allowed only because it is sandboxed
+  (where the sandbox cannot run, Bash would ask, and no one answers); WebFetch and WebSearch are absent and denied. A
+  small watcher enforces the limits (25 minutes, 60 turns: the CLI has no turn flag) and keeps the raw log. `--bare`
+  drops `--plugin-dir` and `--agent`: only the brief.
+- **Grading, in order.** (1) The held-out tests, run with the fixture's `npm test -- <files>`; (2) the case's checks
+  (the Role's scripts through `aidw plugin-path`, `$AIDW_BASE` is the starting commit); (3) the tool log: each
+  `must_read` file was read and no `must_not_read` file was (a Read, a Grep of the file, or a Bash `cat`/`head`/`sed`...
+  naming it; a command that only prints a path does not count); (4) a model, with level 1's grader, given the brief,
+  the diff, the final reply and the report file, only for `## Criteria`, and only when 1 to 3 passed. A session stopped
+  at a limit fails; one that never ran is an ERROR. A run passes when all four pass; a case passes with 3 of 3 runs.
+  Each run's folder (the copy, `session.jsonl`, `diff.patch`, `held-out.txt`, `checks.txt`, `result.json`) is printed.
+  `--bare` (C3 at level 2) is judged by 1 and 2 only, with no model call: a case that passes bare prints PASSES BARE
+  (exit 1).
+- **Level 2 result file.** `roles/<id>/evals/level2/results.json` (`format: 2`, `level: 2`), written under level 1's
+  rules (source checkout, tier's model, `--case` merges, nothing written when content changed during the run). Its
+  shared digest is level 1's; each entry adds the digest of its case folder and of its fixture. For a Role with level 2
+  cases, `aidw roster` warns (never fails without `--strict`) when the file is missing, made on another model, older
+  than the Role, a case folder or a fixture, from fewer than 3 runs, or not passed. A malformed level 2 case is an
+  error, as for level 1.
+- **Not yet proven by a real run** (the harness is tested with fakes only): that `--agent aidw:<role>` with `-p` runs
+  the Role's agent as the main session; that the sandbox keys (`sandbox.enabled`, `autoAllowBashIfSandboxed`,
+  `allowUnsandboxedCommands: false`, no allowed domains) block the network as intended; and that
+  `--setting-sources project` keeps the user's own `~/.claude/CLAUDE.md` out of the session.
 - **End to end:** the existing fixtures (`evals/fixtures/brownfield-app`, `greenfield-jd`) and `aidw cost`,
   which already reports cost per agent type, catch coordination problems and cost regressions.
 
