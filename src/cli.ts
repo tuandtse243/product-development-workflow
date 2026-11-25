@@ -322,11 +322,12 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
                                          level 2: each case of roles/<id>/evals/level2/ is a real task with tools. A run
                                          copies the case's fixture (evals/fixtures/<name>, packages installed once into a
                                          cache) to a temp dir, starts the task, and runs one claude -p session as the Role's
-                                         agent (sandboxed, no network, 25 minutes, 60 turns). Graded in order: held-out
-                                         tests, the case's checks, the files the session read, a model for the rest. Each
-                                         run's folder (copy, log, diff) is printed. --bare runs it with no Role: each case
-                                         must fail the tests or the checks. Writes roles/<id>/evals/level2/results.json as
-                                         level 1 writes its file
+                                         agent on a plugin copy without the Roles' cases (sandboxed, no network, 25
+                                         minutes, 60 turns). Graded in order: held-out tests, the case's checks, the files
+                                         the session read, a model for the rest. Each run's folder (copy, log, diff) is
+                                         printed and kept. --bare runs it once with no Role: each case must fail the tests
+                                         or the checks. Writes roles/<id>/evals/level2/results.json as level 1 writes its
+                                         file. Run it outside Claude Code's sandbox
   roster [--write] [--strict]            the factory's Roles; checks roster.yaml, role profiles, rules.md tables, artifacts.yaml
                                          (one owner per artifact, reads/writes of each Role), workflows/*.yaml, the cases (a Role
                                          whose rules.md is a table covers every rule and skill), and the generated agent files;
@@ -519,10 +520,11 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
     const id = rest[0];
     if (!id) throw new OpError("--level 2 needs a Role: its cases are real tasks, run one Role at a time");
     if (args.flags.without !== undefined) throw new OpError("--without is level 1 only: a level 2 run with no Role is --bare");
-    const runs = args.flags.runs === undefined ? 3 : Number(args.flags.runs);
+    const bare = args.flags.bare === true;
+    // A bare run is a baseline: one run says whether the task can be done with no Role (any run passing is enough).
+    const runs = args.flags.runs === undefined ? (bare ? 1 : 3) : Number(args.flags.runs);
     if (!Number.isInteger(runs) || runs < 1 || runs > 10) throw new OpError("--runs takes a whole number from 1 to 10");
     const caseName = str(args.flags.case);
-    const bare = args.flags.bare === true;
     const asked = str(args.flags.model);
     const roster = loadRoster(root);
     if (!roster.roles[id]) throw new OpError(`"${id}" is not a Role in roster.yaml`);

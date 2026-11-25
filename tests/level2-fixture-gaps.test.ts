@@ -3,7 +3,7 @@ import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { ensureFixturePackages, fixturesDir, loadLevel2Cases, prepareCopy, runCheck, type Level2Check } from "../src/evallevel2.js";
+import { ensureFixturePackages, fixturesDir, loadLevel2Cases, prepareCopy, removeTree, runCheck, type Level2Check } from "../src/evallevel2.js";
 
 /**
  * The pilot's deterministic graders on the backend-api fixture, with no model and no Agent: the reference solution
@@ -25,7 +25,7 @@ try {
 }
 const ready = !!nodeModules && existsSync(join(plugin, "bin", "aidw"));
 const temps: string[] = [];
-afterAll(() => temps.forEach((t) => rmSync(t, { recursive: true, force: true })));
+afterAll(() => temps.forEach(removeTree));
 const pilot = () => loadLevel2Cases(plugin, "backend").cases.find((c) => c.name === "team-comes-from-the-session")!;
 
 /** A prepared copy with the overlays laid over it (as an Agent would leave it), then the held-out files. */

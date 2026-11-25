@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { run } from "../src/cli.js";
 import type { Exec } from "../src/evalrun.js";
 import {
@@ -14,6 +14,7 @@ import {
   loadLevel2Cases,
   mergeLevel2Results,
   parseStreamLog,
+  removeTree,
   runCheck,
   runLevel2,
   takeLevel2Digests,
@@ -25,15 +26,17 @@ import { roleDigest, sharedDigest } from "../src/evals.js";
 
 /**
  * Gaps and edge cases of the level 2 harness (T18), found by the test agent. No model is reached: the Agent session
- * is a fake AgentRunner or a fake `claude` script, the grader a fake Exec. Tests named "BUG:" fail on purpose: each
- * shows a defect in src/evallevel2.ts that is reported, not fixed here.
+ * is a fake AgentRunner or a fake `claude` script, the grader a fake Exec. Tests once named "BUG:" showed a
+ * defect in src/evallevel2.ts; each is fixed and the test now guards it.
  */
 
 const repo = join(__dirname, "..");
 const plugin = join(repo, "plugins", "aidw");
 const realFixture = join(repo, "evals", "fixtures", "backend-api");
+// Each run copies a plugin and a fixture and runs real commands: slow when the whole suite runs at once.
+vi.setConfig({ testTimeout: 120_000 });
 const temps: string[] = [];
-afterAll(() => temps.forEach((t) => rmSync(t, { recursive: true, force: true })));
+afterAll(() => temps.forEach(removeTree));
 const temp = (p: string) => {
   const d = mkdtempSync(join(tmpdir(), p));
   temps.push(d);
@@ -218,13 +221,13 @@ describe("level 2 gaps: malformed checks.yaml and held-out/", () => {
     expect(ran).toBe(0);
   });
 
-  it("BUG: an invalid regex in expect.matches is reported when the case loads, not thrown in the middle of a run", () => {
+  it("an invalid regex in expect.matches is reported when the case loads, not thrown in the middle of a run", () => {
     const checks = 'checks:\n  - name: bad regex\n    run: echo x\n    expect: { matches: "(" }\n';
     const s = setup(["tiny"], { checks });
     expect(errs(s.root)).toEqual([expect.stringMatching(/bad regex.*regular expression/)]);
   });
 
-  it("BUG: runLevel2 never throws on a check whose expected JSON holds an invalid /regex/ (a run is an error result at worst)", () => {
+  it("runLevel2 never throws on a check whose expected JSON holds an invalid /regex/ (a run is an error result at worst)", () => {
     const checks = "checks:\n  - name: bad json regex\n    run: echo '{\"a\":\"x\"}'\n    expect: { json: { a: \"/(/\" } }\n";
     const s = setup(["tiny"], { checks });
     let r: ReturnType<typeof go> | undefined;
@@ -239,7 +242,7 @@ describe("level 2 gaps: a check's JSON", () => {
   const env = { ...process.env };
   const cwd = tmpdir();
 
-  it("BUG: parses stdout as JSON as checks.yaml documents, so a warning on stderr does not fail the check", () => {
+  it("parses stdout as JSON as checks.yaml documents, so a warning on stderr does not fail the check", () => {
     const r = runCheck({ name: "j", run: `echo '{"a":1}'; echo "(node:1) ExperimentalWarning: x" >&2`, expect: { exit: 0, json: { a: 1 } } }, cwd, env);
     expect(r).toEqual({ pass: true, why: "" });
   });
@@ -277,17 +280,17 @@ describe("level 2 gaps: a malformed stream-json log", () => {
     expect(s.finalText).toBe("");
   });
 
-  it("BUG: a line that is valid JSON but not an object (null, a number) is skipped, not a crash", () => {
+  it("a line that is valid JSON but not an object (null, a number) is skipped, not a crash", () => {
     const text = [JSON.stringify(ok), "null", "42", JSON.stringify({ type: "result", subtype: "success", result: "done" })].join("\n");
     expect(() => parseStreamLog(text)).not.toThrow();
   });
 
-  it("BUG: a null content block is skipped, not a crash", () => {
+  it("a null content block is skipped, not a crash", () => {
     const text = JSON.stringify({ type: "assistant", message: { id: "a", content: [null, { type: "text", text: "hi" }] } });
     expect(() => parseStreamLog(text)).not.toThrow();
   });
 
-  it("BUG: a run whose session log holds a `null` line is graded, and runLevel2 does not throw", () => {
+  it("a run whose session log holds a `null` line is graded, and runLevel2 does not throw", () => {
     const s = setup();
     const agent: AgentRunner = (i) => {
       writeFileSync(join(i.cwd, "src", "value.txt"), "new\n");
@@ -335,7 +338,7 @@ describe("level 2 gaps: the session runner with a fake claude", () => {
     expect(took).toBeLessThan(12_000);
   }, 30_000);
 
-  it("BUG: a background process the session left holding stdout does not keep the run past the time limit", () => {
+  it("a background process the session left holding stdout does not keep the run past the time limit", () => {
     // The session starts a long command that inherits its stdout (as `cmd &` in a Bash tool call would), then hangs.
     const t0 = Date.now();
     const r = claudeAgentRunner(fakeClaude(['spawn("sleep", ["10"], { stdio: ["ignore", "inherit", "inherit"] });', turn(0), "setInterval(() => {}, 1000);"]))(input({ timeoutMs: 500 }));
@@ -391,7 +394,7 @@ describe("level 2 gaps: the run folder", () => {
       expect(existsSync(join(x.dir, "project", "src", "added.txt"))).toBe(true);
       const saved = JSON.parse(readFileSync(join(x.dir, "result.json"), "utf8"));
       expect(saved).toMatchObject({ case: "tiny", bare: false, pass: x.pass, steps: x.steps, dir: x.dir });
-      expect(lstatSync(join(x.dir, "project", "node_modules")).isSymbolicLink()).toBe(true);
+      expect(lstatSync(join(x.dir, "project", "node_modules", "marker")).isSymbolicLink()).toBe(true); // links into the cache
     }
     expect(fixtureDigest(join(s.fixtures, "tiny-app"))).toBe(before);
     expect(existsSync(join(s.fixtures, "tiny-app", "src", "added.txt"))).toBe(false);
@@ -424,7 +427,7 @@ describe("level 2 gaps: the run folder", () => {
     expect(r!.results[0]!.steps.find((x) => x.step === "tests")).toMatchObject({ pass: false, failed: ["the value is new"] });
   });
 
-  it("BUG: the held-out files are never written outside the run folder through a symlink the session made", () => {
+  it("the held-out files are never written outside the run folder through a symlink the session made", () => {
     const s = setup();
     const outside = temp("aidw-l2g-outside-");
     const [r] = go(s, fakeAgent({ value: "new", also: (i) => symlinkSync(outside, join(i.cwd, "tests"), "dir") }));

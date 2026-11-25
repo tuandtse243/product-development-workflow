@@ -1,10 +1,10 @@
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import type { Exec } from "../src/evalrun.js";
-import { ensureFixturePackages, fixturesDir, loadLevel2Cases, prepareCopy, runLevel2, type AgentRunner } from "../src/evallevel2.js";
+import { ensureFixturePackages, fixturesDir, loadLevel2Cases, prepareCopy, removeTree, runLevel2, type AgentRunner } from "../src/evallevel2.js";
 
 /**
  * The backend-api fixture and the pilot level 2 case, with no model: the fixture's own suite passes, the held-out tests
@@ -26,7 +26,7 @@ try {
   nodeModules = null;
 }
 const temps: string[] = [];
-afterAll(() => temps.forEach((t) => rmSync(t, { recursive: true, force: true })));
+afterAll(() => temps.forEach(removeTree));
 const pilot = () => loadLevel2Cases(plugin, "backend").cases.find((c) => c.name === "team-comes-from-the-session")!;
 
 function copy(): string {
@@ -69,9 +69,10 @@ describe.skipIf(!nodeModules)("the backend-api fixture (cached packages)", () =>
 
   /** A session that lays `overlays` of evals/level2-reference/ over the copy and reads what the case asks. */
   const overlayAgent =
-    (...overlays: string[]): AgentRunner =>
+    (overlays: string[], also?: (cwd: string) => void): AgentRunner =>
     (i) => {
       for (const o of overlays) cpSync(join(reference, o), i.cwd, { recursive: true });
+      also?.(i.cwd);
       const brief = i.prompt.replace(/^Task brief: (.*)\. Read it.*$/, "$1");
       const calls = [
         { name: "Read", input: { file_path: brief } },
@@ -95,7 +96,7 @@ describe.skipIf(!nodeModules)("the backend-api fixture (cached packages)", () =>
   it.skipIf(!existsSync(join(plugin, "bin", "aidw")))(
     "passes a whole run of the pilot on the reference solution: tests, checks (route-inventory included), reads",
     () => {
-      const agent = overlayAgent("team-comes-from-the-session");
+      const agent = overlayAgent(["team-comes-from-the-session"]);
       const prompts: string[] = [];
       const exec: Exec = (prompt) => {
         prompts.push(prompt);
@@ -117,11 +118,49 @@ describe.skipIf(!nodeModules)("the backend-api fixture (cached packages)", () =>
       const exec: Exec = () => {
         throw new Error("the grader is not reached");
       };
-      const [r] = runLevel2({ root: plugin, role: "backend", runs: 1, agent: overlayAgent("team-comes-from-the-session", "team-comes-from-the-session-trusts-header"), exec, install: noInstall, runsDir: runsDir() }, "team-comes-from-the-session");
+      const [r] = runLevel2({ root: plugin, role: "backend", runs: 1, agent: overlayAgent(["team-comes-from-the-session", "team-comes-from-the-session-trusts-header"]), exec, install: noInstall, runsDir: runsDir() }, "team-comes-from-the-session");
       const tests = r!.results[0]!.steps.find((s) => s.step === "tests")!;
       expect(tests.pass).toBe(false);
       expect(tests.failed.join("\n")).toMatch(/ignores x-team-id: a caller of another team who names the project's team still gets 404/);
       expect(r!.pass).toBe(false);
+    },
+    300_000,
+  );
+
+  it.skipIf(!existsSync(join(plugin, "bin", "aidw")))(
+    "a change outside Touches that the session committed still fails the Touches check",
+    () => {
+      const commit = (cwd: string) => {
+        const f = join(cwd, "src/projects/routes.ts");
+        writeFileSync(f, readFileSync(f, "utf8").replace("x-team-id is required", "x-team-id is needed"));
+        const g = (...a: string[]) => spawnSync("git", ["-c", "user.email=a@b", "-c", "user.name=a", "-c", "core.hooksPath=/dev/null", ...a], { cwd });
+        g("add", "-A");
+        g("commit", "-qm", "hide it");
+      };
+      const [r] = runLevel2({ root: plugin, role: "backend", runs: 1, agent: overlayAgent(["team-comes-from-the-session"], commit), exec: () => "[]", install: noInstall, runsDir: runsDir() }, "team-comes-from-the-session");
+      const checks = r!.results[0]!.steps.find((s) => s.step === "checks")!;
+      expect(checks.failed).toEqual([expect.stringMatching(/^nothing outside Touches changed \(B15\): exit 1, expected 0: src\/projects\/routes\.ts/)]);
+    },
+    300_000,
+  );
+
+  it.skipIf(!existsSync(join(plugin, "bin", "aidw")))(
+    "a test script made to pass and a config that drops the held-out tests are put back: every held-out test runs",
+    () => {
+      const cheat = (cwd: string) => {
+        const pj = join(cwd, "package.json");
+        writeFileSync(pj, readFileSync(pj, "utf8").replace('"test": "vitest run"', '"test": "exit 0"'));
+        writeFileSync(join(cwd, "vitest.config.ts"), 'export default { test: { include: ["tests/**/*.test.ts"], exclude: ["tests/held-out/**"] } };\n');
+        writeFileSync(join(cwd, "tests/helpers.ts"), "export const testApp = () => { throw new Error('x'); };\n");
+      };
+      const [r] = runLevel2({ root: plugin, role: "backend", runs: 1, agent: overlayAgent(["team-comes-from-the-session", "team-comes-from-the-session-trusts-header"], cheat), exec: () => "[]", install: noInstall, runsDir: runsDir() }, "team-comes-from-the-session");
+      const x = r!.results[0]!;
+      const tests = x.steps.find((s) => s.step === "tests")!;
+      expect(tests.pass).toBe(false);
+      expect(tests.failed.join("\n")).toMatch(/ignores x-team-id/);
+      const rep = JSON.parse(readFileSync(join(x.dir, "held-out.json"), "utf8"));
+      expect(rep.numPassedTests + rep.numFailedTests).toBe(12);
+      expect(x.steps.find((s) => s.step === "checks")!.failed.join("\n")).toMatch(/package\.json[\s\S]*vitest\.config\.ts|vitest\.config\.ts[\s\S]*package\.json/);
     },
     300_000,
   );

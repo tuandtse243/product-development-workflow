@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { run } from "../src/cli.js";
 import type { Exec } from "../src/evalrun.js";
 import {
@@ -13,6 +13,7 @@ import {
   level2ResultsFile,
   loadLevel2Cases,
   parseStreamLog,
+  removeTree,
   runLevel2,
   sessionSettings,
   wasRead,
@@ -25,8 +26,10 @@ import { loadEvalCases, sharedDigest } from "../src/evals.js";
 const repo = join(__dirname, "..");
 const plugin = join(repo, "plugins", "aidw");
 const realFixture = join(repo, "evals", "fixtures", "backend-api");
+// Each run copies a plugin and a fixture and runs real commands: slow when the whole suite runs at once.
+vi.setConfig({ testTimeout: 120_000 });
 const temps: string[] = [];
-afterAll(() => temps.forEach((t) => rmSync(t, { recursive: true, force: true })));
+afterAll(() => temps.forEach(removeTree));
 const temp = (p: string) => {
   const d = mkdtempSync(join(tmpdir(), p));
   temps.push(d);
@@ -340,7 +343,7 @@ describe("level 2: a run", () => {
 });
 
 describe("level 2: the session", () => {
-  const base = { cwd: "/w/copy", bare: false, pluginRoot: "/p/aidw", agent: "aidw:backend", settingsFile: "/w/settings.json" };
+  const base = { cwd: "/w/copy", bare: false, pluginRoot: "/p/aidw", agent: "aidw:backend", settingsFile: "/w/settings.json", maxTurns: 60 };
 
   it("builds the claude command line, with the plugin and agent only when not bare", () => {
     expect(agentArgs(base)).toEqual([
@@ -350,6 +353,7 @@ describe("level 2: the session", () => {
       "--permission-mode", "acceptEdits", "--permission-prompts", "none",
       "--setting-sources", "project", "--settings", "/w/settings.json",
       "--strict-mcp-config", "--no-session-persistence",
+      "--max-turns", "60",
     ]);
     const bare = agentArgs({ ...base, bare: true, model: "sonnet" });
     expect(bare).not.toContain("--plugin-dir");
@@ -358,11 +362,15 @@ describe("level 2: the session", () => {
   });
 
   it("sandboxes Bash with no network and never allows it by a rule", () => {
-    const st = sessionSettings("/p/aidw") as { permissions: { allow: string[]; deny: string[] }; sandbox: Record<string, unknown> };
-    expect(st.sandbox).toEqual({ enabled: true, autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false, network: { allowedDomains: [] } });
-    expect(st.permissions.allow).toEqual(["Read", "Glob", "Grep", "Read(//p/aidw/**)"]);
+    const st = sessionSettings({ pluginRoot: "/p/aidw", project: "/w/copy", denyRead: ["/repo/evals/**", "/real/roles/*/evals/**"] }) as { permissions: { allow: string[]; deny: string[] }; sandbox: Record<string, unknown> };
+    expect(st.sandbox).toEqual({ enabled: true, failIfUnavailable: true, autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false, network: { allowedDomains: [] } });
+    // no bare Read: reads outside the copy only in the session's plugin copy
+    expect(st.permissions.allow).toEqual(["Read(//p/aidw/**)"]);
     expect(st.permissions.allow.some((x) => x.startsWith("Bash"))).toBe(false);
-    expect(st.permissions.deny).toEqual(["WebFetch", "WebSearch"]);
+    expect(st.permissions.deny).toEqual(["WebFetch", "WebSearch", "Read(//repo/evals/**)", "Read(//real/roles/*/evals/**)", "Edit(//w/copy/.claude/**)", "Write(//w/copy/.claude/**)"]);
+    const bare = sessionSettings({ pluginRoot: "/p/aidw", project: "/w/copy", bare: true }) as { permissions: { allow: string[]; deny: string[] } };
+    expect(bare.permissions.allow).toEqual([]);
+    expect(bare.permissions.deny).toContain("Read(//p/aidw/**)");
   });
 
   /** A stand-in for claude: prints `turns` assistant messages, `gap` ms apart, then a result; echoes its args and stdin. */
