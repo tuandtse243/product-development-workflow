@@ -752,36 +752,70 @@ In the user's project, `.aidw/` keeps its current shape and gains `roles/<id>/` 
   entry or one made from another version of its case file (run that case), when a case had fewer than 3 runs, or
   when a case did not pass. A file of the old format is still checked against the digest of the whole Role.
 - **Level 2: a real task with tools (plan C4, `src/evallevel2.ts`).** `aidw eval <role> --level 2 [--case <name>]
-  [--runs <n>] [--bare] [--model <m>]` runs each case of `roles/<id>/evals/level2/` from a source checkout. A case is a
-  folder: `case.md` (front matter `case` = the folder name, `covers`, `fixture`, `task`, optional `change`, `must_read`,
-  `must_not_read`, `timeout_min` (default 25), `max_turns` (default 60); `## Criteria` holds only what no machine can
-  check), an optional `checks.yaml` (commands with an expected exit, JSON subset or regex), and `held-out/` (test files
-  laid over the project at the same relative path after the session ends, so the Agent never sees them). A path in
-  `must_read` is relative to the project, or `plugin:<path>` for a plugin file. Level 1 never reads these folders, and
-  they are not part of level 1's shared digest.
+  [--runs <n>] [--bare] [--model <m>]` runs each case of `roles/<id>/evals/level2/` from a source checkout, and must run
+  outside Claude Code's own sandbox (the session it starts sets up its sandbox itself, and the grading uses
+  `sandbox-exec`). A case is a folder: `case.md` (front matter `case` = the folder name, `covers`, `fixture`, `task`,
+  optional `change`, `must_read`, `must_not_read`, `restore`, `timeout_min` (default 25), `max_turns` (default 60);
+  `## Criteria` holds only what no machine can check), an optional `checks.yaml` (commands with an expected exit, a JSON
+  subset of stdout or a regex; a bad `matches` regex is an error when the case loads), and `held-out/` (test files laid
+  over the project at the same relative path after the session ends). A path in `must_read` is relative to the project,
+  or `plugin:<path>` for a plugin file. Level 1 never reads these folders, and they are not part of level 1's shared
+  digest.
 - **The fixture.** `evals/fixtures/<name>` is a small real project with a committed lockfile and an aidw Change made
-  with the CLI (for backend: `backend-api`, Express 5, TypeScript, PGlite, Vitest, Change `create-task`). Its packages
-  are installed once (`npm ci --ignore-scripts`, needs the network) into a cache keyed by the lockfile:
-  `$AIDW_FIXTURE_CACHE`, else `$XDG_CACHE_HOME/aidw/fixtures`, else `~/.cache/aidw/fixtures`. Each run copies the
-  fixture to a fresh temp folder, links the cached `node_modules`, commits it to git, and starts the task and writes its
-  brief with the CLI's own code (`aidw task start`). The session's prompt is the orchestrator's: `Task brief: <path>.
-  Read it and implement the task.`
-- **The session.** One `claude -p --output-format stream-json --verbose --plugin-dir <plugin> --agent aidw:<role>`
-  in the copy, with `--tools Read,Write,Edit,Glob,Grep,Bash`, `--permission-mode acceptEdits --permission-prompts
-  none`, `--setting-sources project`, `--strict-mcp-config` and a `--settings` file. No network: Bash runs only in
-  Claude Code's sandbox with no allowed hosts and no unsandboxed escape, and is allowed only because it is sandboxed
-  (where the sandbox cannot run, Bash would ask, and no one answers); WebFetch and WebSearch are absent and denied. A
-  small watcher enforces the limits (25 minutes, 60 turns: the CLI has no turn flag) and keeps the raw log. `--bare`
-  drops `--plugin-dir` and `--agent`: only the brief.
-- **Grading, in order.** (1) The held-out tests, run with the fixture's `npm test -- <files>`; (2) the case's checks
-  (the Role's scripts through `aidw plugin-path`, `$AIDW_BASE` is the starting commit); (3) the tool log: each
-  `must_read` file was read and no `must_not_read` file was (a Read, a Grep of the file, or a Bash `cat`/`head`/`sed`...
-  naming it; a command that only prints a path does not count); (4) a model, with level 1's grader, given the brief,
-  the diff, the final reply and the report file, only for `## Criteria`, and only when 1 to 3 passed. A session stopped
-  at a limit fails; one that never ran is an ERROR. A run passes when all four pass; a case passes with 3 of 3 runs.
-  Each run's folder (the copy, `session.jsonl`, `diff.patch`, `held-out.txt`, `checks.txt`, `result.json`) is printed.
-  `--bare` (C3 at level 2) is judged by 1 and 2 only, with no model call: a case that passes bare prints PASSES BARE
-  (exit 1).
+  with the CLI (for backend: `backend-api`, Express 5, TypeScript, PGlite, Vitest, Change `create-task`; one PGlite per
+  test file, emptied per test, and one HTTP server per test, so its suite holds under parallel load). Its files are what
+  git lists in it. Its packages are installed once (`npm ci --ignore-scripts`, needs the network) into a cache keyed by
+  the lockfile: `$AIDW_FIXTURE_CACHE`, else `$XDG_CACHE_HOME/aidw/fixtures`, else `~/.cache/aidw/fixtures`. The entry is
+  made read-only and its digest is recorded in `.complete`; an entry that changed is refused (delete it to reinstall),
+  and a finished entry is never deleted by a run. Each run copies the fixture to a fresh temp folder, links each cached
+  package into a real `node_modules` folder, commits it to git, and starts the task and writes its brief with the CLI's
+  own code (`aidw task start`). The session's prompt is the orchestrator's: `Task brief: <path>. Read it and implement
+  the task.`
+- **What the session can reach.** The session sees a copy of the plugin without any Role's `evals/` folder: its
+  `--plugin-dir`, its `bin/` on PATH and every plugin path in the brief point at that copy, so the held-out tests,
+  `case.md` and `checks.yaml` are not in it. Its settings allow reads outside the project only in that copy (none for a
+  bare run) and deny reads of the source repo's `evals/` (fixtures and `evals/level2-reference/`) and of every
+  `roles/*/evals/` of the real plugin. The Role's own cases folder and `evals/level2-reference/` are added to every
+  case's `must_not_read`, so a read shows in the tool log. Writes to the copy's `.claude/` are denied, so the session
+  cannot give itself settings.
+- **The session.** One `claude -p --output-format stream-json --verbose --plugin-dir <plugin copy> --agent
+  aidw:<role>` in the copy, with `--tools Read,Write,Edit,Glob,Grep,Bash`, `--permission-mode acceptEdits
+  --permission-prompts none`, `--setting-sources project`, `--strict-mcp-config`, `--max-turns <n>` and a `--settings`
+  file, in a trimmed environment (PATH, HOME, TMPDIR, the locale, the user and the variables that sign claude in; the
+  calling session's `CLAUDECODE`, `CLAUDE_CODE_*` settings, `ANTHROPIC_MODEL` and `MAX_THINKING_TOKENS` are dropped). No
+  network: Bash runs only in Claude Code's sandbox (`failIfUnavailable`) with no allowed hosts and no unsandboxed escape,
+  and is allowed only because it is sandboxed (where the sandbox cannot run, Bash would ask, and no one answers);
+  WebFetch and WebSearch are absent and denied. A watcher starts the session in its own process group, keeps the raw
+  log, and stops the whole group at the limits (25 minutes; 60 turns, which `--max-turns` also enforces) or when it is
+  stopped itself; it settles on the session's exit, so a background process left holding stdout cannot hold the run.
+  `--bare` drops `--plugin-dir` and `--agent`, and its brief has no Skills section, no rules of other Roles and no path
+  into the plugin.
+- **Before grading.** The harness puts back `.git/config` (no filter, alias, hook or fsmonitor of the session's runs;
+  git also runs with hooks and fsmonitor off), every `.gitignore` the session changed (so no rule of its own hides a file),
+  then takes the diff and the list of changed files against the base commit (committed changes included), then puts
+  back the files the grading runs as they were at the base: `package.json`, the lockfile, `.npmrc`, `tsconfig.json`, the
+  vitest and vite configs, `.gitignore`, and the case's `restore:` (the backend pilot: `tests/helpers.ts`); the
+  `node_modules` links are made afresh. Held-out files are written only inside the project (a symlink on the way is
+  removed).
+- **Grading, in order.** (1) The held-out tests: with vitest from the cached packages and the fixture's own config
+  (`node_modules/.bin/vitest run --config <config>`), else the fixture's `npm test -- <files>`; with vitest, a run that
+  reaches fewer tests than the held-out files declare fails. (2) The case's checks (the Role's scripts through `aidw
+  plugin-path`; `$AIDW_BASE` is the starting commit, `$AIDW_CHANGED` names the list of changed files). (3) The tool log:
+  each `must_read` file was read and no `must_not_read` one was (a Read of it, a Grep or Glob whose path holds it, or a
+  part of a Bash command, split at `;`, `&`, `|`, that runs `cat`, `head`, `sed`, `grep`... and names it; a command that
+  only prints a path does not count). (4) A model, with level 1's grader, given the brief and, fenced as data it must not
+  take instructions from, the diff, the final reply and the report file; only for `## Criteria`, and only when 1 to 3
+  passed. The grading commands get the same trimmed environment, and run under `sandbox-exec` with outbound network
+  denied except to localhost on macOS, or `unshare -rn` on Linux (not tried here); where neither can be applied (inside
+  another sandbox, a container without user namespaces) they run unconfined and the output says so: the remaining risk
+  is that a held-out test or check runs code the session wrote with the user's own rights and network.
+  `AIDW_GRADE_SANDBOX=off` turns it off. A session stopped at a limit fails; one that never ran is an ERROR. A run passes
+  when all four pass; a case passes with 3 of 3 runs. `--bare` (C3 at level 2) runs once by default and is judged by 1
+  and 2 only, with no model call: a case where any bare run passes prints PASSES BARE (exit 1).
+- **Run folders.** Each run keeps its folder in the system temp dir (`aidw-l2-<role>-<case>-<n>-*`): `project/` (the
+  copy), `plugin/` (the session's plugin), `session.jsonl`, `diff.patch`, `changed.txt`, `held-out.txt` and
+  `held-out.json`, `checks.txt`, `settings.json`, `prompt.txt` and `result.json`; the path is printed. They are not
+  removed; delete them when done. A copy that cannot be prepared keeps `result.json` only.
 - **Level 2 result file.** `roles/<id>/evals/level2/results.json` (`format: 2`, `level: 2`), written under level 1's
   rules (source checkout, tier's model, `--case` merges, nothing written when content changed during the run). Its
   shared digest is level 1's; each entry adds the digest of its case folder and of its fixture. For a Role with level 2
@@ -789,9 +823,10 @@ In the user's project, `.aidw/` keeps its current shape and gains `roles/<id>/` 
   than the Role, a case folder or a fixture, from fewer than 3 runs, or not passed. A malformed level 2 case is an
   error, as for level 1.
 - **Not yet proven by a real run** (the harness is tested with fakes only): that `--agent aidw:<role>` with `-p` runs
-  the Role's agent as the main session; that the sandbox keys (`sandbox.enabled`, `autoAllowBashIfSandboxed`,
-  `allowUnsandboxedCommands: false`, no allowed domains) block the network as intended; and that
-  `--setting-sources project` keeps the user's own `~/.claude/CLAUDE.md` out of the session.
+  the Role's agent as the main session; that the sandbox keys (`sandbox.enabled`, `failIfUnavailable`,
+  `autoAllowBashIfSandboxed`, `allowUnsandboxedCommands: false`, no allowed domains) block the network as intended and
+  that the `Read(...)` deny rules also stop a sandboxed Bash `cat`; and that `--setting-sources project` keeps the
+  user's own `~/.claude/CLAUDE.md` out of the session.
 - **End to end:** the existing fixtures (`evals/fixtures/brownfield-app`, `greenfield-jd`) and `aidw cost`,
   which already reports cost per agent type, catch coordination problems and cost regressions.
 
