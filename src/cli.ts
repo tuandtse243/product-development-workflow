@@ -569,6 +569,9 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
     else if (asked && !tm) io.err(`  no result file written for ${id}: its tier uses the session's model; run without --model\n`);
     else if (asked && asked !== tm) io.err(`  no result file written for ${id}: --model ${asked} is not its tier's model (${tm})\n`);
     else if (results.every((r) => r.runs.errors === r.runs.total)) io.err(`  no result file written for ${id}: no case was graded\n`);
+    // A record of grading that ran the session's code with no sandbox is kept only when that was asked for.
+    else if (results.some((r) => r.gradingSandbox === "none") && env.AIDW_GRADE_SANDBOX !== "off")
+      io.err(`  no result file written for ${id}: the grading commands ran with no sandbox (sandbox-exec or bwrap was not available); run it where one works, or set AIDW_GRADE_SANDBOX=off to record it anyway\n`);
     else {
       const m = caseName ? mergeLevel2Results(root, id, results, meta) : writeLevel2Results(root, id, results, meta);
       if ("refused" in m) io.err(`  no result file written for ${id}: ${m.refused}\n`);

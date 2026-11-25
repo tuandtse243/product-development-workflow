@@ -132,7 +132,7 @@ const grader = (pass: boolean, seen: string[] = []): Exec => (prompt) => {
 function setup(caseOpts: Parameters<typeof pluginWithCase>[0] = {}) {
   const root = pluginWithCase(caseOpts);
   const fixtures = tinyFixture();
-  const env = { ...process.env, AIDW_FIXTURES_DIR: fixtures, AIDW_FIXTURE_CACHE: temp("aidw-l2-cache-") };
+  const env = { ...process.env, AIDW_GRADE_SANDBOX: "off", AIDW_FIXTURES_DIR: fixtures, AIDW_FIXTURE_CACHE: temp("aidw-l2-cache-") };
   const installs: string[] = [];
   const install: Installer = (dir) => {
     installs.push(dir);
@@ -367,7 +367,7 @@ describe("level 2: the session", () => {
     // no bare Read: reads outside the copy only in the session's plugin copy
     expect(st.permissions.allow).toEqual(["Read(//p/aidw/**)"]);
     expect(st.permissions.allow.some((x) => x.startsWith("Bash"))).toBe(false);
-    expect(st.permissions.deny).toEqual(["WebFetch", "WebSearch", "Read(//repo/evals/**)", "Read(//real/roles/*/evals/**)", "Edit(//w/copy/.claude/**)", "Write(//w/copy/.claude/**)"]);
+    expect(st.permissions.deny).toEqual(["WebFetch", "WebSearch", "Read(//repo/evals/**)", "Read(//real/roles/*/evals/**)", "Edit(//p/aidw/**)", "Write(//p/aidw/**)", "Edit(//w/copy/.claude/**)", "Write(//w/copy/.claude/**)"]);
     const bare = sessionSettings({ pluginRoot: "/p/aidw", project: "/w/copy", bare: true }) as { permissions: { allow: string[]; deny: string[] } };
     expect(bare.permissions.allow).toEqual([]);
     expect(bare.permissions.deny).toContain("Read(//p/aidw/**)");
@@ -551,7 +551,10 @@ describe("aidw roster and level 2", () => {
     const code = run(["roster"], { ...s.env, AIDW_PLUGIN_ROOT: s.root }, process.cwd(), { out: (x) => (out += x), err: (x) => (out += x) });
     return { code, out };
   };
-  const l2 = (out: string) => out.split("\n").filter((l) => l.includes("level2/results.json"));
+  // These runs grade with AIDW_GRADE_SANDBOX=off (no sandbox can be applied inside a Claude Code session): that
+  // warning is tested on its own below, and left out here.
+  const NO_SANDBOX = /graded with no sandbox/;
+  const l2 = (out: string) => out.split("\n").filter((l) => l.includes("level2/results.json") && !NO_SANDBOX.test(l));
 
   it("warns, never fails, when the results are missing, stale or failing", () => {
     const s = setup();
@@ -579,6 +582,16 @@ describe("aidw roster and level 2", () => {
     // the Role changed
     put(s.root, "roles/backend/lessons.md", "a new lesson\n");
     expect(l2(roster(s).out)).toEqual([expect.stringMatching(/older than the Role's content/)]);
+  });
+
+  it("warns when the grading ran with no sandbox", () => {
+    const s = setup();
+    execFileSync("git", ["init", "-q"], { cwd: s.root });
+    run(["eval", "backend", "--level", "2", "--runs", "3"], { ...s.env, AIDW_PLUGIN_ROOT: s.root }, process.cwd(), { out: () => undefined, err: () => undefined, agentRunner: fakeAgent({ value: "new" }), modelExec: () => grader(true), installer: s.install });
+    expect(JSON.parse(readFileSync(level2ResultsFile(s.root, "backend"), "utf8")).cases[0].gradingSandbox).toBe("none");
+    const r = roster(s);
+    expect(r.code).toBe(0);
+    expect(r.out).toMatch(/WARN .*level2\/results\.json .*1 level 2 case\(s\) were graded with no sandbox around the grading commands: tiny/);
   });
 
   it("reports a level 2 case whose covers names nothing of the Role", () => {

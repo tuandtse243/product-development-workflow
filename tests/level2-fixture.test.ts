@@ -160,6 +160,8 @@ describe.skipIf(!nodeModules)("the backend-api fixture (cached packages)", () =>
       expect(tests.failed.join("\n")).toMatch(/ignores x-team-id/);
       const rep = JSON.parse(readFileSync(join(x.dir, "held-out.json"), "utf8"));
       expect(rep.numPassedTests + rep.numFailedTests).toBe(12);
+      // what the held-out files declare, as vitest lists them under the restored config
+      expect(JSON.parse(readFileSync(join(x.dir, "held-out-list.json"), "utf8"))).toHaveLength(12);
       expect(x.steps.find((s) => s.step === "checks")!.failed.join("\n")).toMatch(/package\.json[\s\S]*vitest\.config\.ts|vitest\.config\.ts[\s\S]*package\.json/);
     },
     300_000,

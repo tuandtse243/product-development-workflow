@@ -128,7 +128,7 @@ const grader = (pass: boolean, seen: string[] = []): Exec => (prompt) => {
 function setup(names?: string[], opts: Parameters<typeof pluginWithCases>[1] = {}) {
   const root = pluginWithCases(names, opts);
   const fixtures = tinyFixture();
-  const env = { ...process.env, AIDW_FIXTURES_DIR: fixtures, AIDW_FIXTURE_CACHE: temp("aidw-l2g-cache-") };
+  const env = { ...process.env, AIDW_GRADE_SANDBOX: "off", AIDW_FIXTURES_DIR: fixtures, AIDW_FIXTURE_CACHE: temp("aidw-l2g-cache-") };
   const install: Installer = (dir) => {
     mkdirSync(join(dir, "node_modules"));
     writeFileSync(join(dir, "node_modules", "marker"), "x");
@@ -593,7 +593,8 @@ describe("level 2 gaps: roster warnings", () => {
   const roster = (s: S) => {
     let out = "";
     const code = run(["roster"], { ...s.env, AIDW_PLUGIN_ROOT: s.root }, process.cwd(), { out: (x) => (out += x), err: (x) => (out += x) });
-    return { code, lines: out.split("\n").filter((l) => l.includes("level2/results.json")) };
+    // graded with AIDW_GRADE_SANDBOX=off on purpose: that warning is tested in level2.test.ts
+    return { code, lines: out.split("\n").filter((l) => l.includes("level2/results.json") && !/graded with no sandbox/.test(l)) };
   };
 
   it("warns on an unreadable file, a level 1 file, another model, fewer than 3 runs and a case with no entry, never failing", () => {

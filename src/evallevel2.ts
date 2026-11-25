@@ -269,19 +269,30 @@ export function loadLevel2Cases(root: string, id: string): { cases: Level2Case[]
 
 // ---------------------------------------------------------------- the environment
 
-/** The variables the session and the grading commands keep: the basics and the ones that sign claude in. */
+/** The variables every command keeps: the basics. */
 const ENV_KEEP = new Set(["PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "LC_CTYPE", "USER", "LOGNAME"]);
-const ENV_AUTH = /^(ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN|ANTHROPIC_BASE_URL|ANTHROPIC_CUSTOM_HEADERS|CLAUDE_CODE_OAUTH_TOKEN|CLAUDE_CODE_USE_BEDROCK|CLAUDE_CODE_USE_VERTEX|ANTHROPIC_VERTEX_PROJECT_ID|CLOUD_ML_REGION|GOOGLE_APPLICATION_CREDENTIALS|AWS_[A-Z0-9_]+|HTTPS?_PROXY|https?_proxy|NO_PROXY|no_proxy)$/;
+/** And what the session needs to sign claude in and reach it (API key, OAuth token, Bedrock/Vertex, proxies, certificates). */
+const ENV_SESSION = /^(ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN|ANTHROPIC_BASE_URL|ANTHROPIC_CUSTOM_HEADERS|CLAUDE_CODE_OAUTH_TOKEN|CLAUDE_CODE_USE_BEDROCK|CLAUDE_CODE_USE_VERTEX|CLAUDE_CONFIG_DIR|ANTHROPIC_VERTEX_PROJECT_ID|CLOUD_ML_REGION|GOOGLE_APPLICATION_CREDENTIALS|AWS_[A-Z0-9_]+|HTTPS?_PROXY|https?_proxy|NO_PROXY|no_proxy|NODE_EXTRA_CA_CERTS|SSL_CERT_FILE)$/;
+
+const pick = (env: NodeJS.ProcessEnv, keep: (k: string) => boolean, extra: Record<string, string>): NodeJS.ProcessEnv => {
+  const out: NodeJS.ProcessEnv = {};
+  for (const [k, v] of Object.entries(env)) if (v !== undefined && keep(k)) out[k] = v;
+  return { ...out, ...extra };
+};
 
 /**
- * An allowlist of the caller's environment: PATH, HOME, TMPDIR, the locale, the user, and the variables that sign claude
- * in (API key, OAuth token, Bedrock/Vertex, proxies). Everything else is dropped: the calling session's CLAUDECODE and
- * other CLAUDE_CODE_* settings, ANTHROPIC_MODEL, MAX_THINKING_TOKENS, and any secret the caller happens to hold.
+ * The session's environment, an allowlist: PATH, HOME, TMPDIR, the locale, the user, and the variables that sign claude
+ * in and let it reach the API (API key, OAuth token, CLAUDE_CONFIG_DIR, Bedrock/Vertex, proxies, CA certificates).
+ * Everything else is dropped: the calling session's CLAUDECODE and other CLAUDE_CODE_* settings, ANTHROPIC_MODEL,
+ * MAX_THINKING_TOKENS, and any secret the caller happens to hold.
  */
 export function trimmedEnv(env: NodeJS.ProcessEnv, extra: Record<string, string> = {}): NodeJS.ProcessEnv {
-  const out: NodeJS.ProcessEnv = {};
-  for (const [k, v] of Object.entries(env)) if (v !== undefined && (ENV_KEEP.has(k) || ENV_AUTH.test(k))) out[k] = v;
-  return { ...out, ...extra };
+  return pick(env, (k) => ENV_KEEP.has(k) || ENV_SESSION.test(k), extra);
+}
+
+/** The grading commands' environment: the basics only; they sign in nowhere and reach no network. */
+export function gradingEnv(env: NodeJS.ProcessEnv, extra: Record<string, string> = {}): NodeJS.ProcessEnv {
+  return pick(env, (k) => ENV_KEEP.has(k), extra);
 }
 
 /**
@@ -291,6 +302,7 @@ export function trimmedEnv(env: NodeJS.ProcessEnv, extra: Record<string, string>
 const GIT_SAFE_ENV: Record<string, string> = {
   GIT_CONFIG_NOSYSTEM: "1",
   GIT_CONFIG_GLOBAL: "/dev/null",
+  GIT_NO_REPLACE_OBJECTS: "1",
   GIT_CONFIG_COUNT: "3",
   GIT_CONFIG_KEY_0: "core.fsmonitor",
   GIT_CONFIG_VALUE_0: "false",
@@ -304,15 +316,43 @@ const GIT_SAFE_ENV: Record<string, string> = {
   GIT_COMMITTER_EMAIL: "eval@aidw.invalid",
 };
 
-function git(cwd: string, args: string[]): string {
+function git(cwd: string, args: string[], env: Record<string, string> = {}): string {
   const r = spawnSync("git", ["-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", "-c", "commit.gpgsign=false", ...args], {
     cwd,
     encoding: "utf8",
-    env: trimmedEnv(process.env, GIT_SAFE_ENV),
+    env: gradingEnv(process.env, { ...GIT_SAFE_ENV, ...env }),
     maxBuffer: 64 * 1024 * 1024,
   });
   if (r.error || r.status !== 0) throw new Error(`git ${args[0]} failed in ${cwd}: ${r.error?.message ?? (r.stderr || "").trim().slice(0, 400)}`);
   return r.stdout;
+}
+
+/**
+ * Git on the harness's own snapshot of the base (`base.git`, made before the session started) with the project as its
+ * work tree and an index in the run folder: nothing of the session's `.git` (objects, replace refs, info/exclude,
+ * info/attributes, config) is read, and no excludes or attributes file outside the snapshot either. Checks get the same
+ * variables, so their git sees the same.
+ */
+export function snapshotGitEnv(snapshot: string, project: string, index: string): Record<string, string> {
+  return {
+    GIT_DIR: snapshot,
+    GIT_WORK_TREE: project,
+    GIT_INDEX_FILE: index,
+    GIT_NO_REPLACE_OBJECTS: "1",
+    GIT_CONFIG_NOSYSTEM: "1",
+    GIT_CONFIG_GLOBAL: "/dev/null",
+    GIT_CONFIG_COUNT: "5",
+    GIT_CONFIG_KEY_0: "core.fsmonitor",
+    GIT_CONFIG_VALUE_0: "false",
+    GIT_CONFIG_KEY_1: "core.hooksPath",
+    GIT_CONFIG_VALUE_1: "/dev/null",
+    GIT_CONFIG_KEY_2: "core.excludesFile",
+    GIT_CONFIG_VALUE_2: "/dev/null",
+    GIT_CONFIG_KEY_3: "core.attributesFile",
+    GIT_CONFIG_VALUE_3: "/dev/null",
+    GIT_CONFIG_KEY_4: "core.bare",
+    GIT_CONFIG_VALUE_4: "false",
+  };
 }
 
 // ---------------------------------------------------------------- fixtures and the package cache
@@ -335,7 +375,7 @@ const FIXTURE_SKIP = ["node_modules", ".cache", ".DS_Store"];
  * node_modules/ and .cache/.
  */
 export function fixtureFiles(dir: string): string[] {
-  const r = spawnSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "."], { cwd: dir, encoding: "utf8", env: trimmedEnv(process.env, GIT_SAFE_ENV), maxBuffer: 64 * 1024 * 1024 });
+  const r = spawnSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "."], { cwd: dir, encoding: "utf8", env: gradingEnv(process.env, GIT_SAFE_ENV), maxBuffer: 64 * 1024 * 1024 });
   if (!r.error && r.status === 0) {
     const files = [...new Set(r.stdout.split("\0").filter(Boolean))].filter((f) => !f.split("/").some((p) => FIXTURE_SKIP.includes(p)) && existsSync(join(dir, f)) && lstatSync(join(dir, f)).isFile());
     if (files.length) return files.sort();
@@ -487,12 +527,13 @@ function changeOf(project: string, c: Level2Case): string {
 /**
  * The plugin as the session sees it: a copy without any Role's cases (`roles/<id>/evals/`), so neither the held-out
  * tests, the case nor its checks are within reach of the Agent. The brief, `--plugin-dir` and the plugin's bin point
- * here.
+ * here. Symlinks are copied as the files they point to, so the copy never leads back into the source checkout.
  */
 export function copyPluginForSession(root: string, into: string): string {
   const roles = resolve(root, "roles");
   cpSync(root, into, {
     recursive: true,
+    dereference: true,
     filter: (src) => {
       const r = relative(roles, resolve(src));
       if (!r.startsWith("..") && r.split(sep)[1] === "evals") return false;
@@ -519,17 +560,20 @@ export interface PreparedCopy {
   change: string;
   brief: string;
   briefText: string;
-  /** `.git/config` as the harness wrote it, put back before grading */
-  gitConfig: string;
+  /** the harness's own bare clone of the base, outside the project, read-only: what the grading compares with */
+  snapshot: string;
+  /** treeDigest of `snapshot` when it was made: checked before grading */
+  snapshotDigest: string;
 }
 
 /**
  * A fresh copy of the fixture in `into`: its files (fixtureFiles), links to the cached packages, a git repository with
  * one commit on the Change's branch, and the task started and its brief written by the CLI's own code, as `aidw task
  * start <task>` does in a real run, with `opts.plugin` (default `root`) as the plugin the brief points into. A bare
- * brief has no skills, no rules of other Roles and no pointer into the plugin.
+ * brief has no skills, no rules of other Roles and no pointer into the plugin. The base commit is also cloned to
+ * `opts.snapshot` (default `base.git` beside `into`), made read-only: the session's `.git` is never trusted for the base.
  */
-export function prepareCopy(root: string, c: Level2Case, fixture: string, nodeModules: string, into: string, opts: { plugin?: string; bare?: boolean } = {}): PreparedCopy {
+export function prepareCopy(root: string, c: Level2Case, fixture: string, nodeModules: string, into: string, opts: { plugin?: string; bare?: boolean; snapshot?: string } = {}): PreparedCopy {
   mkdirSync(into, { recursive: true });
   for (const f of fixtureFiles(fixture)) {
     mkdirSync(dirname(join(into, f)), { recursive: true });
@@ -548,6 +592,10 @@ export function prepareCopy(root: string, c: Level2Case, fixture: string, nodeMo
   git(into, ["add", "-A"]);
   git(into, ["commit", "-q", "-m", `fixture ${c.fixture}`]);
   const base = git(into, ["rev-parse", "HEAD"]).trim();
+  const snapshot = opts.snapshot ?? join(dirname(into), "base.git");
+  git(dirname(into), ["clone", "-q", "--bare", "--no-local", into, snapshot]);
+  makeReadOnly(snapshot);
+  const snapshotDigest = treeDigest(snapshot);
   const p = pathsFor(into);
   startTask(p, change, c.task);
   const plugin = opts.plugin ?? root;
@@ -557,7 +605,7 @@ export function prepareCopy(root: string, c: Level2Case, fixture: string, nodeMo
     briefText = bareBrief(b.text, resolve(plugin));
     writeFileSync(b.path, briefText);
   }
-  return { project: into, base, change, brief: b.path, briefText, gitConfig: readFileSync(join(into, ".git", "config"), "utf8") };
+  return { project: into, base, change, brief: b.path, briefText, snapshot, snapshotDigest };
 }
 
 // ---------------------------------------------------------------- the Agent session
@@ -602,8 +650,10 @@ export const AGENT_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "Bash"];
  * besides. Reads outside the copy are allowed only in the session's plugin copy (and not at all for a bare run); reads
  * of `denyRead` (the source repo's evals/, the real plugin's Role cases) are denied, which Claude Code also applies to
  * the sandbox's reads. Writes to the copy's `.claude/` are denied, so the session cannot give itself settings.
+ * `hidden` (the run folder's own files: the snapshot of the base, settings, prompt, log) can be neither read nor
+ * written, and the plugin copy cannot be written.
  */
-export function sessionSettings(o: { pluginRoot: string; project: string; denyRead?: string[]; bare?: boolean }): Record<string, unknown> {
+export function sessionSettings(o: { pluginRoot: string; project: string; denyRead?: string[]; hidden?: string[]; bare?: boolean }): Record<string, unknown> {
   const abs = (p: string) => `/${resolve(p)}`;
   return {
     permissions: {
@@ -613,6 +663,9 @@ export function sessionSettings(o: { pluginRoot: string; project: string; denyRe
         "WebSearch",
         ...(o.bare ? [`Read(${abs(o.pluginRoot)}/**)`] : []),
         ...(o.denyRead ?? []).map((d) => `Read(${abs(d)})`),
+        ...(o.hidden ?? []).flatMap((h) => [`Read(${abs(h)})`, `Edit(${abs(h)})`, `Write(${abs(h)})`]),
+        `Edit(${abs(o.pluginRoot)}/**)`,
+        `Write(${abs(o.pluginRoot)}/**)`,
         `Edit(${abs(o.project)}/.claude/**)`,
         `Write(${abs(o.project)}/.claude/**)`,
       ],
@@ -696,6 +749,36 @@ child.on("close", () => finish({}));
 child.stdin.end(fs.readFileSync(0));
 `;
 
+/**
+ * Kills processes still working in `dir` once the session is over: a command the session's Bash put in a group or
+ * session of its own escapes the group kill. Best effort: it finds them by their working directory with `lsof` (where it
+ * is installed and allowed to see them) and returns the pids it killed.
+ */
+export function killLeftovers(dir: string): number[] {
+  const r = spawnSync("lsof", ["-a", "-d", "cwd", "-F", "pn"], { encoding: "utf8", timeout: 20_000, maxBuffer: 16 * 1024 * 1024 });
+  if (r.error || typeof r.stdout !== "string") return [];
+  let top: string;
+  try {
+    top = norm(realpathSync(dir));
+  } catch {
+    return [];
+  }
+  const killed: number[] = [];
+  let pid = 0;
+  for (const line of r.stdout.split("\n")) {
+    if (line.startsWith("p")) pid = Number(line.slice(1));
+    else if (line.startsWith("n") && pid && pid !== process.pid && within(norm(line.slice(1)), top)) {
+      try {
+        process.kill(pid, "SIGKILL");
+        killed.push(pid);
+      } catch {
+        /* gone, or not ours */
+      }
+    }
+  }
+  return killed;
+}
+
 /** The real session: `claude` (or `command`, for tests of the limits) run through the watcher, in a trimmed environment. */
 export const claudeAgentRunner =
   (command: string[] = ["claude"], env: NodeJS.ProcessEnv = process.env): AgentRunner =>
@@ -711,6 +794,7 @@ export const claudeAgentRunner =
       timeout: i.timeoutMs + 60_000,
       maxBuffer: 16 * 1024 * 1024,
     });
+    killLeftovers(i.cwd);
     let s: { exit?: number | null; killed?: string | null; turns?: number; error?: string; stderr?: string } = {};
     try {
       s = JSON.parse(r.stdout || "{}");
@@ -817,6 +901,15 @@ export function wasRead(calls: ToolCall[], ref: string, ctx: { project: string; 
   });
 }
 
+/** Whether any tool call names `path` anywhere in its input (a command, a file path, a pattern): for places the session has no business in at all. */
+export function mentions(calls: ToolCall[], path: string): boolean {
+  const forms = [...new Set([resolve(path), norm(path), `/private${norm(path)}`])];
+  return calls.some((c) => {
+    const text = JSON.stringify(c.input);
+    return forms.some((f) => text.includes(f));
+  });
+}
+
 // ---------------------------------------------------------------- grading
 
 export type StepName = "agent" | "tests" | "checks" | "reads" | "criteria";
@@ -838,8 +931,8 @@ export interface RunResult {
   /** the run could not be graded (no session, a broken fixture): an ERROR, not a FAIL */
   error?: string;
   criteria: CriterionResult[];
-  /** how the grading commands were confined: `sandbox-exec`, `unshare`, or `none` (see gradingSandbox) */
-  gradingSandbox?: string;
+  /** how the grading commands were confined (see gradingSandbox) */
+  gradingSandbox?: SandboxKind;
 }
 export interface Level2Result {
   role: string;
@@ -850,41 +943,83 @@ export interface Level2Result {
   failed: string[];
   results: RunResult[];
   bare: boolean;
+  /** `none` when any run's grading commands ran unconfined */
+  gradingSandbox: SandboxKind;
 }
 
-/** A way to run a grading command with no network: a command prefix, or none. */
+export type SandboxKind = "sandbox-exec" | "bwrap" | "unshare" | "none";
+
+/** A way to run a grading command confined: a command prefix, or none. */
 export interface GradingSandbox {
-  how: "sandbox-exec" | "unshare" | "none";
+  how: SandboxKind;
   wrap: (command: string) => string[];
 }
 
-const SB_PROFILE = [
-  "(version 1)",
-  "(allow default)",
-  '(deny network-outbound (remote ip "*:*"))',
-  '(allow network-outbound (remote ip "localhost:*"))',
-  '(deny network-outbound (literal "/private/var/run/mDNSResponder"))',
-].join("");
+/** Where a run's grading commands may write: the project, the run folder but its snapshot, and the temp dir. */
+export interface GradingScope {
+  project: string;
+  run: string;
+  snapshot: string;
+}
 
-let probed: GradingSandbox | null = null;
+const sbQuote = (p: string) => {
+  if (/["\\]/.test(p)) throw new Error(`a path the sandbox profile cannot name: ${p}`);
+  return `"${p}"`;
+};
+const real = (p: string) => {
+  try {
+    return realpathSync(p);
+  } catch {
+    return resolve(p);
+  }
+};
+
 /**
- * The confinement of the grading commands (the held-out tests and the checks run code the session wrote): on macOS
- * `sandbox-exec` with outbound network denied except to localhost (the tests' own servers); on Linux `unshare -rn`
- * (a network namespace with only loopback). Each is probed once; where neither works (inside another sandbox, a
- * container without user namespaces) commands run unconfined and the run says so. `AIDW_GRADE_SANDBOX=off` turns it off.
+ * The macOS profile: outbound network only to localhost (the tests' own servers), no Unix sockets, and with a scope no
+ * writes but to the project, the run folder (its snapshot of the base excepted) and the temp dir. Later rules win.
  */
-export function gradingSandbox(env: NodeJS.ProcessEnv = process.env): GradingSandbox {
-  if (env.AIDW_GRADE_SANDBOX === "off") return { how: "none", wrap: (cmd) => ["sh", "-c", cmd] };
-  if (probed) return probed;
-  const ok = (cmd: string, args: string[]) => {
-    const r = spawnSync(cmd, args, { encoding: "utf8", timeout: 10_000 });
-    return !r.error && r.status === 0;
-  };
-  if (platform() === "darwin" && ok("sandbox-exec", ["-p", SB_PROFILE, "/usr/bin/true"])) probed = { how: "sandbox-exec", wrap: (cmd) => ["sandbox-exec", "-p", SB_PROFILE, "sh", "-c", cmd] };
-  else if (platform() === "linux" && ok("unshare", ["-rn", "true"]))
-    probed = { how: "unshare", wrap: (cmd) => ["unshare", "-rn", "sh", "-c", `ip link set lo up >/dev/null 2>&1 || true; ${cmd}`] };
-  else probed = { how: "none", wrap: (cmd) => ["sh", "-c", cmd] };
-  return probed;
+export function sandboxProfile(scope?: GradingScope): string {
+  const net = ["(version 1)", "(allow default)", '(deny network-outbound (remote ip "*:*"))', '(allow network-outbound (remote ip "localhost:*"))', "(deny network-outbound (remote unix-socket))"];
+  if (!scope) return net.join("");
+  const sub = (p: string) => `(subpath ${sbQuote(real(p))})`;
+  return [
+    ...net,
+    "(deny file-write*)",
+    `(allow file-write* ${sub(tmpdir())} ${sub(scope.project)} ${sub(scope.run)} (subpath "/dev"))`,
+    `(deny file-write* ${sub(scope.snapshot)})`,
+  ].join("");
+}
+
+let probed: SandboxKind | null = null;
+/**
+ * The confinement of the grading commands (the held-out tests and the checks run code the session wrote):
+ *   macOS  `sandbox-exec` with sandboxProfile(scope): localhost only, no Unix sockets, writes only in the scope
+ *   Linux  `bwrap` with / read-only, the scope writable, the snapshot read-only and its own network (loopback only);
+ *          without bwrap, `unshare -rn` (network only: writes are not confined)
+ * Each is probed once; where none works (inside another sandbox, a container without user namespaces) commands run
+ * unconfined and the run records `none`. `AIDW_GRADE_SANDBOX=off` turns it off.
+ */
+export function gradingSandbox(env: NodeJS.ProcessEnv = process.env, scope?: GradingScope): GradingSandbox {
+  const none: GradingSandbox = { how: "none", wrap: (cmd) => ["sh", "-c", cmd] };
+  if (env.AIDW_GRADE_SANDBOX === "off") return none;
+  if (probed === null) {
+    const ok = (cmd: string, args: string[]) => {
+      const r = spawnSync(cmd, args, { encoding: "utf8", timeout: 10_000 });
+      return !r.error && r.status === 0;
+    };
+    if (platform() === "darwin" && ok("sandbox-exec", ["-p", sandboxProfile(), "/usr/bin/true"])) probed = "sandbox-exec";
+    else if (platform() === "linux" && ok("bwrap", ["--ro-bind", "/", "/", "--dev", "/dev", "--unshare-net", "true"])) probed = "bwrap";
+    else if (platform() === "linux" && ok("unshare", ["-rn", "true"])) probed = "unshare";
+    else probed = "none";
+  }
+  const how: SandboxKind = probed;
+  if (how === "sandbox-exec") return { how, wrap: (cmd) => ["sandbox-exec", "-p", sandboxProfile(scope), "sh", "-c", cmd] };
+  if (how === "bwrap") {
+    const binds = scope ? [tmpdir(), scope.project, scope.run].flatMap((p) => ["--bind", real(p), real(p)]).concat(["--ro-bind", real(scope.snapshot), real(scope.snapshot)]) : [];
+    return { how, wrap: (cmd) => ["bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", ...binds, "--unshare-net", "--die-with-parent", "sh", "-c", cmd] };
+  }
+  if (how === "unshare") return { how, wrap: (cmd) => ["unshare", "-rn", "sh", "-c", `ip link set lo up >/dev/null 2>&1 || true; ${cmd}`] };
+  return none;
 }
 
 function sh(command: string, cwd: string, env: NodeJS.ProcessEnv, sandbox?: GradingSandbox, timeoutMs = 10 * 60 * 1000): { exit: number; stdout: string; out: string } {
@@ -972,29 +1107,98 @@ function safeTarget(project: string, rel: string): string {
   return target;
 }
 
-/** The changes of the run, before anything is put back: the diff from the base, untracked and committed files included. */
-function captureDiff(project: string, base: string): { diff: string; changed: string[] } {
-  // .aidw/run/ is ignored by .aidw/.gitignore; the task's start changed .aidw/changes/, which is not the Agent's work.
-  git(project, ["add", "-A", "--", ".", ":(exclude).aidw/changes"]);
-  const diff = git(project, ["diff", "--cached", base, "--", ".", ":(exclude).aidw/changes"]);
-  const changed = git(project, ["diff", "--name-only", "-z", base, "--", "."]).split("\0").filter(Boolean);
+/** Git on the run's snapshot of the base, with the project as its work tree and an index and new objects in the run folder. */
+interface GradeGit {
+  env: Record<string, string>;
+  run: (args: string[]) => string;
+  show: (path: string) => Buffer | null;
+}
+function gradeGit(prep: PreparedCopy, run: string): GradeGit {
+  const objects = join(run, "grade-objects");
+  mkdirSync(objects, { recursive: true });
+  const env = {
+    ...snapshotGitEnv(prep.snapshot, prep.project, join(run, "grade.index")),
+    // The snapshot is read-only: what git writes (the session's blobs) goes beside it, its objects are read as alternates.
+    GIT_OBJECT_DIRECTORY: objects,
+    GIT_ALTERNATE_OBJECT_DIRECTORIES: join(prep.snapshot, "objects"),
+  };
+  return {
+    env,
+    run: (args) => git(prep.project, args, env),
+    show: (path) => {
+      const r = spawnSync("git", ["show", `${prep.base}:${path}`], { cwd: prep.project, env: gradingEnv(process.env, env), maxBuffer: 64 * 1024 * 1024 });
+      return r.status === 0 ? (r.stdout as Buffer) : null;
+    },
+  };
+}
+
+/** Files git reads rules from inside the work tree: put back from the snapshot before git lists anything. */
+const RULE_FILES = [".gitignore", ".gitattributes"];
+
+/**
+ * The .gitignore and .gitattributes files the session changed or added, put back as they were at the base (an added one
+ * removed) before git lists the changes, so no rule of the session's hides a file or blanks a diff. Returns their paths
+ * and a diff of what the session had in them.
+ */
+function normalizeRuleFiles(prep: PreparedCopy, g: GradeGit): { changed: string[]; diff: string } {
+  const inBase = g.run(["ls-tree", "-r", "-z", "--name-only", prep.base]).split("\0").filter(Boolean);
+  const found: string[] = [];
+  const walk = (rel: string) => {
+    const abs = rel ? join(prep.project, rel) : prep.project;
+    for (const n of readdirSync(abs)) {
+      const r = rel ? `${rel}/${n}` : n;
+      if (r === ".git" || r === "node_modules") continue;
+      const st = lstatSync(join(abs, n));
+      if (st.isDirectory()) walk(r);
+      else if (RULE_FILES.includes(n)) found.push(r);
+    }
+  };
+  walk("");
+  const changed: string[] = [];
+  let diff = "";
+  const isRule = (f: string) => RULE_FILES.some((r) => f === r || f.endsWith(`/${r}`));
+  for (const f of [...new Set([...found, ...inBase.filter(isRule)])].sort()) {
+    const was = g.show(f)?.toString("utf8") ?? null;
+    const p = join(prep.project, f);
+    const now = existsSync(p) && lstatSync(p).isFile() ? readFileSync(p, "utf8") : isLink(p) ? `(a symlink to ${readlinkSync(p)})` : null;
+    if (was === now) continue;
+    changed.push(f);
+    diff += `--- a/${f}\n+++ b/${f}\n${(was ?? "").split("\n").map((l) => `-${l}`).join("\n")}\n${(now ?? "").split("\n").map((l) => `+${l}`).join("\n")}\n`;
+    if (was !== null) writeFileSync(safeTarget(prep.project, f), was);
+    else rmSync(safeTarget(prep.project, f), { force: true });
+  }
+  return { changed, diff };
+}
+
+/**
+ * The changes of the run against the snapshot of the base, before anything else is put back: the diff for the grader
+ * (without .aidw/changes, which the task's start changed) and the changed files (for the Touches check). Committed,
+ * replaced or excluded files cannot hide: the session's .git is not read.
+ */
+function captureDiff(prep: PreparedCopy, g: GradeGit): { diff: string; changed: string[] } {
+  g.run(["read-tree", prep.base]);
+  g.run(["add", "-A", "--", "."]);
+  const diff = g.run(["diff", "--cached", "--no-ext-diff", "--no-textconv", "--binary", prep.base, "--", ".", ":(exclude).aidw/changes"]);
+  const changed = g.run(["diff", "--cached", "--name-only", "-z", "--no-renames", prep.base, "--", "."]).split("\0").filter(Boolean);
   return { diff, changed };
 }
 
 /**
- * Puts the copy back in the shape the grading relies on: `.git/config` as the harness wrote it (no filters, aliases or
- * hooks of the session's), `.git` a real folder, `node_modules` the links to the cache made afresh, and the RESTORED files
- * and the case's `restore:` as they were at the base (removed when they were not there).
+ * Puts the copy back in the shape the grading relies on: files git ignores removed (but .aidw/, which holds the report),
+ * `node_modules` the links to the cache made afresh, and the RESTORED files and the case's `restore:` as they were in
+ * the snapshot of the base (removed when they were not there).
  */
-function restoreForGrading(prep: PreparedCopy, nodeModules: string, extra: string[]): void {
-  const dotGit = join(prep.project, ".git");
-  const st = lstatSync(dotGit);
-  if (st.isSymbolicLink() || !st.isDirectory()) throw new Error(".git is no longer a folder: the session replaced it");
-  writeFileSync(join(dotGit, "config"), prep.gitConfig);
+function restoreForGrading(prep: PreparedCopy, g: GradeGit, nodeModules: string, extra: string[]): void {
+  // git clean cannot spare a folder (.aidw/run/) from -X: list the ignored files and folders and remove them here.
+  for (const f of g.run(["ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory"]).split("\0").filter(Boolean)) {
+    const rel = f.replace(/\/$/, "");
+    if (rel === ".aidw" || rel.startsWith(".aidw/")) continue;
+    rmSync(safeTarget(prep.project, rel), { recursive: true, force: true });
+  }
   linkPackages(nodeModules, prep.project);
   for (const f of [...RESTORED, ...extra]) {
-    const r = spawnSync("git", ["-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", "show", `${prep.base}:${f}`], { cwd: prep.project, env: trimmedEnv(process.env, GIT_SAFE_ENV), maxBuffer: 64 * 1024 * 1024 });
-    if (r.status === 0) writeFileSync(safeTarget(prep.project, f), r.stdout);
+    const was = g.show(f);
+    if (was !== null) writeFileSync(safeTarget(prep.project, f), was);
     else if (existsSync(join(prep.project, f)) || isLink(join(prep.project, f))) rmSync(safeTarget(prep.project, f), { recursive: true, force: true });
   }
 }
@@ -1006,7 +1210,10 @@ const isLink = (p: string) => {
   }
 };
 
-/** The tests a test file declares (`it(`, `test(`, `it.each(...)(`...): what a run of the held-out files must reach. */
+/**
+ * The tests a test file declares by its text (`it(`, `test(`, `it.each(...)(`...): the fallback when vitest cannot list
+ * the held-out tests (see runLevel2Once).
+ */
 export function countDeclaredTests(text: string): number {
   return (text.match(/(?<![\w.$])(?:it|test)(?:\.(?:each|concurrent|sequential|fails)(?:\([^)]*\))?)?\s*\(/g) ?? []).length;
 }
@@ -1056,48 +1263,23 @@ export interface Level2Options {
 }
 
 /**
- * What the session must never read. `hidden`: folders added to every case's must_not_read, so the tool log shows a read
- * (the Role's cases, the reference solutions). `denyRead`: the permission rules that refuse such reads (the source
- * repo's evals/ and every Role's cases in the real plugin).
+ * What the session must never reach. `hidden`: folders added to every case's must_not_read (the Role's cases, the
+ * reference solutions). `repo`: the source checkout the plugin sits in and its git common dir, which no tool call may
+ * even name (the hidden tests are in its history). `denyRead`: the permission rules that refuse such reads.
  */
-function hiddenFrom(o: Level2Options, env: NodeJS.ProcessEnv): { hidden: string[]; denyRead: string[] } {
+function hiddenFrom(o: Level2Options, env: NodeJS.ProcessEnv): { hidden: string[]; repo: string[]; denyRead: string[] } {
   const evals = resolve(fixturesDir(o.root, env), "..");
   const root = resolve(o.root);
-  return { hidden: [join(root, "roles", o.role, "evals"), join(evals, "level2-reference")], denyRead: [`${evals}/**`, `${root}/roles/*/evals/**`] };
-}
-
-/**
- * The .gitignore files the session changed or added, put back as they were at the base (an added one removed) before
- * git lists the changes, so no rule of the session's can hide a file from the diff. Returns their paths and a diff of
- * what the session had in them.
- */
-function normalizeIgnores(prep: PreparedCopy): { changed: string[]; diff: string } {
-  const inBase = new Set(git(prep.project, ["ls-tree", "-r", "-z", "--name-only", prep.base]).split("\0").filter(Boolean));
-  const found: string[] = [];
-  const walk = (rel: string) => {
-    const abs = rel ? join(prep.project, rel) : prep.project;
-    for (const n of readdirSync(abs)) {
-      const r = rel ? `${rel}/${n}` : n;
-      if (r === ".git" || r === "node_modules") continue;
-      const st = lstatSync(join(abs, n));
-      if (st.isDirectory()) walk(r);
-      else if (n === ".gitignore" && st.isFile()) found.push(r);
-    }
+  const ask = (args: string[]) => {
+    const r = spawnSync("git", ["-C", root, "rev-parse", ...args], { encoding: "utf8", env: gradingEnv(process.env, GIT_SAFE_ENV) });
+    return !r.error && r.status === 0 ? r.stdout.trim() : "";
   };
-  walk("");
-  const changed: string[] = [];
-  let diff = "";
-  for (const f of [...new Set([...found, ...[...inBase].filter((x) => x === ".gitignore" || x.endsWith("/.gitignore"))])]) {
-    const r = spawnSync("git", ["show", `${prep.base}:${f}`], { cwd: prep.project, env: trimmedEnv(process.env, GIT_SAFE_ENV), maxBuffer: 16 * 1024 * 1024 });
-    const was = r.status === 0 ? r.stdout.toString("utf8") : null;
-    const now = existsSync(join(prep.project, f)) && lstatSync(join(prep.project, f)).isFile() ? readFileSync(join(prep.project, f), "utf8") : null;
-    if (was === now) continue;
-    changed.push(f);
-    diff += `--- a/${f}\n+++ b/${f}\n${(was ?? "").split("\n").map((l) => `-${l}`).join("\n")}\n${(now ?? "").split("\n").map((l) => `+${l}`).join("\n")}\n`;
-    if (was !== null) writeFileSync(safeTarget(prep.project, f), was);
-    else rmSync(safeTarget(prep.project, f), { force: true });
-  }
-  return { changed, diff };
+  const repo = [ask(["--show-toplevel"]), ask(["--path-format=absolute", "--git-common-dir"])].filter(Boolean).map((p) => resolve(p));
+  return {
+    hidden: [join(root, "roles", o.role, "evals"), join(evals, "level2-reference")],
+    repo: [...new Set(repo)],
+    denyRead: [...new Set([...repo.map((r) => `${r}/**`), `${evals}/**`, `${root}/roles/*/evals/**`])],
+  };
 }
 
 /** One run of a case: a fresh copy, one session, the four graders. Never throws: a broken run is an `error` result. */
@@ -1106,9 +1288,9 @@ export function runLevel2Once(c: Level2Case, n: number, o: Level2Options, nodeMo
   const dir = mkdtempSync(join(o.runsDir ?? tmpdir(), `aidw-l2-${o.role}-${c.name}-${n}-`));
   const log = join(dir, "session.jsonl");
   const steps: StepResult[] = [];
-  const sandbox = gradingSandbox(env);
+  let sandboxKind: SandboxKind = gradingSandbox(env).how;
   const result = (extra: Partial<RunResult> = {}): RunResult => {
-    const r: RunResult = { pass: !extra.error && steps.length > 0 && steps.every((s) => s.pass), steps, dir, log, turns: 0, criteria: [], gradingSandbox: sandbox.how, ...extra };
+    const r: RunResult = { pass: !extra.error && steps.length > 0 && steps.every((s) => s.pass), steps, dir, log, turns: 0, criteria: [], gradingSandbox: sandboxKind, ...extra };
     writeFileSync(join(dir, "result.json"), `${JSON.stringify({ case: c.name, run: n, bare: !!o.bare, ...r }, null, 2)}\n`);
     return r;
   };
@@ -1119,12 +1301,14 @@ export function runLevel2Once(c: Level2Case, n: number, o: Level2Options, nodeMo
     prep = prepareCopy(o.root, c, join(fixturesDir(o.root, env), c.fixture), nodeModules, join(dir, "project"), { plugin: pluginCopy, bare: !!o.bare });
   } catch (e) {
     // Nothing of a half-made copy is worth keeping: the folder keeps result.json only.
-    for (const sub of ["project", "plugin"]) removeTree(join(dir, sub));
+    for (const sub of ["project", "plugin", "base.git"]) removeTree(join(dir, sub));
     return result({ error: `the copy could not be prepared: ${(e as Error).message}` });
   }
-  const { hidden, denyRead } = hiddenFrom(o, env);
+  const { hidden, repo, denyRead } = hiddenFrom(o, env);
   const settingsFile = join(dir, "settings.json");
-  writeFileSync(settingsFile, `${JSON.stringify(sessionSettings({ pluginRoot: pluginCopy, project: prep.project, denyRead, bare: !!o.bare }), null, 2)}\n`);
+  // The run folder's own files are neither readable nor writable by the session: only project/ is its, and plugin/ to read.
+  const runFiles = [`${prep.snapshot}/**`, settingsFile, join(dir, "prompt.txt"), log, join(dir, "grade.index"), `${join(dir, "grade-objects")}/**`];
+  writeFileSync(settingsFile, `${JSON.stringify(sessionSettings({ pluginRoot: pluginCopy, project: prep.project, denyRead, hidden: runFiles, bare: !!o.bare }), null, 2)}\n`);
   // The prompt the orchestrator sends a task's Agent (the SPAWN line of `aidw task start`).
   const prompt = `Task brief: ${prep.brief}. Read it and implement the task.`;
   writeFileSync(join(dir, "prompt.txt"), `${prompt}\n`);
@@ -1149,28 +1333,32 @@ export function runLevel2Once(c: Level2Case, n: number, o: Level2Options, nodeMo
   if (!limits.length && ag.exit !== 0) limits.push(`the session ended with exit ${String(ag.exit)}${session.resultSubtype ? ` (${session.resultSubtype})` : ""}`);
   steps.push({ step: "agent", pass: limits.length === 0, failed: limits });
 
-  // Before anything else reads the copy: its git config back, then the diff, then the files the grading runs.
+  // Before anything reads the copy: the snapshot must be as it was made; then the rule files back, the diff against the
+  // snapshot, and the files the grading runs back. The session's .git is never read.
   let diff = "";
   let changedFile = "";
+  let g: GradeGit;
   try {
-    const dotGit = join(prep.project, ".git");
-    if (!lstatSync(dotGit).isDirectory()) throw new Error(".git is no longer a folder: the session replaced it");
-    writeFileSync(join(dotGit, "config"), prep.gitConfig);
-    const ignores = normalizeIgnores(prep);
-    const cap = captureDiff(prep.project, prep.base);
-    diff = ignores.diff + cap.diff;
-    const changed = [...new Set([...cap.changed, ...ignores.changed])].sort();
+    if (treeDigest(prep.snapshot) !== prep.snapshotDigest) throw new Error("the snapshot of the base changed during the session");
+    g = gradeGit(prep, dir);
+    const rules = normalizeRuleFiles(prep, g);
+    const cap = captureDiff(prep, g);
+    diff = rules.diff + cap.diff;
+    const changed = [...new Set([...cap.changed, ...rules.changed])].sort();
     changedFile = join(dir, "changed.txt");
     writeFileSync(changedFile, changed.length ? `${changed.join("\n")}\n` : "");
     writeFileSync(join(dir, "diff.patch"), diff);
-    restoreForGrading(prep, nodeModules, c.restore);
+    restoreForGrading(prep, g, nodeModules, c.restore);
   } catch (e) {
     return result({ error: `the copy could not be read for grading: ${(e as Error).message}`, turns });
   }
   const reportFile = join(prep.project, ".aidw", "run", `report-${c.task}.md`);
   const report = existsSync(reportFile) && lstatSync(reportFile).isFile() ? readFileSync(reportFile, "utf8") : null;
-  const cmdEnv = trimmedEnv(env, {
-    ...GIT_SAFE_ENV,
+  const sandbox = gradingSandbox(env, { project: prep.project, run: dir, snapshot: prep.snapshot });
+  sandboxKind = sandbox.how;
+  // The basics only (no keys, no proxies), and git pointed at the snapshot: a check's git sees what the harness sees.
+  const cmdEnv = gradingEnv(env, {
+    ...g.env,
     PATH: [join(resolve(o.root), "bin"), env.PATH].filter(Boolean).join(":"),
     AIDW_BASE: prep.base,
     AIDW_PROJECT: prep.project,
@@ -1207,7 +1395,18 @@ export function runLevel2Once(c: Level2Case, n: number, o: Level2Options, nodeMo
         rep = {};
       }
       const ran = Number(rep.numPassedTests ?? 0) + Number(rep.numFailedTests ?? 0);
-      const declared = testFiles.reduce((k, f) => k + countDeclaredTests(readFileSync(join(caseDir, f), "utf8")), 0);
+      // What the held-out files declare, as vitest collects them under the same (restored) config; by their text if
+      // vitest cannot list them.
+      const listOut = join(dir, "held-out-list.json");
+      sh(`node_modules/.bin/vitest list --config ${q(config as string)} --json=${q(listOut)} ${testFiles.map(q).join(" ")}`, prep.project, cmdEnv, sandbox);
+      let listed: number | null = null;
+      try {
+        const v = JSON.parse(readFileSync(listOut, "utf8")) as unknown;
+        if (Array.isArray(v) && v.length) listed = v.length;
+      } catch {
+        listed = null;
+      }
+      const declared = listed ?? testFiles.reduce((k, f) => k + countDeclaredTests(readFileSync(join(caseDir, f), "utf8")), 0);
       if (ran < declared) failed.push(`ran ${ran} of the ${declared} held-out tests`);
       const named = (rep.testResults ?? []).flatMap((x) => x.assertionResults ?? []).filter((a) => a.status === "failed" && a.fullName).map((a) => a.fullName as string);
       if (named.length) failedTests = named;
@@ -1229,11 +1428,14 @@ export function runLevel2Once(c: Level2Case, n: number, o: Level2Options, nodeMo
   writeFileSync(join(dir, "checks.txt"), `${checkOut.join("\n")}\n`);
   steps.push({ step: "checks", pass: checkFails.length === 0, failed: checkFails });
 
-  // 3. The tool log: what the Agent read. The Role's cases and the reference solutions are never to be read.
+  // 3. The tool log: what the Agent read. The Role's cases and the reference solutions are never to be read, and the
+  // source checkout (whose git history holds the hidden tests) and the run folder's own files never even named.
   const ctx = { project: prep.project, pluginRoot: pluginCopy };
+  const offLimits = [...repo, prep.snapshot, settingsFile];
   const readFails = [
     ...c.mustRead.filter((f) => !wasRead(session.calls, f, ctx)).map((f) => `did not read ${f}`),
-    ...[...c.mustNotRead, ...hidden].filter((f) => wasRead(session.calls, f, ctx)).map((f) => `read ${f}, which it must not`),
+    ...[...c.mustNotRead, ...hidden].filter((f) => wasRead(session.calls, f, ctx) || (isAbsolute(f) && mentions(session.calls, f))).map((f) => `read ${f}, which it must not`),
+    ...offLimits.filter((f) => mentions(session.calls, f)).map((f) => `named ${f}, which it must not`),
   ];
   steps.push({ step: "reads", pass: readFails.length === 0, failed: readFails });
 
@@ -1295,6 +1497,7 @@ export function runLevel2(o: Level2Options, caseName?: string): Level2Result[] {
       failed: [...counts].map(([f, k]) => (runs > 1 ? `${f} (${k} of ${graded.length} runs)` : f)),
       results,
       bare: !!o.bare,
+      gradingSandbox: results.some((r) => r.gradingSandbox === "none") ? "none" : (results[0]?.gradingSandbox ?? "none"),
     });
   }
   return out;
@@ -1323,6 +1526,8 @@ export function printLevel2(rs: Level2Result[]): string {
 /** A level 2 entry also records the digest of its fixture (`fixture`), which lives outside the plugin. */
 export interface Level2CaseRecord extends CaseRecord {
   fixture?: string;
+  /** how the grading commands of its runs were confined; `none` only when AIDW_GRADE_SANDBOX=off was asked for */
+  gradingSandbox?: SandboxKind;
 }
 export interface Level2RunRecord extends Omit<RunRecord, "cases"> {
   level: 2;
@@ -1360,6 +1565,7 @@ function level2Records(root: string, id: string, rs: Level2Result[], date: strin
         ...(r.runs.errors === r.runs.total ? { error: r.results[0]?.error ?? "error" } : {}),
         digest: d.digest,
         ...(d.fixture ? { fixture: d.fixture } : {}),
+        gradingSandbox: r.gradingSandbox,
         date,
         model,
       };
@@ -1473,4 +1679,6 @@ export function checkLevel2(root: string, id: string, tierModel: string | null, 
   if (few.length) d.warn(rf, `${few.length} level 2 case(s) last ran fewer than 3 times: ${few.join(", ")}; a case passes only with 3 of 3`);
   const failed = fresh.filter((c) => !c.pass).map((c) => c.name);
   if (failed.length) d.warn(rf, `the last level 2 run did not pass ${failed.length} case(s): ${failed.join(", ")}`);
+  const loose = fresh.filter((c) => c.gradingSandbox === "none").map((c) => c.name);
+  if (loose.length) d.warn(rf, `${loose.length} level 2 case(s) were graded with no sandbox around the grading commands: ${loose.join(", ")}; run them where sandbox-exec or bwrap works`);
 }

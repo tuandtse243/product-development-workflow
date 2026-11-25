@@ -7466,12 +7466,12 @@ function parseBlock(block) {
   };
 }
 function extractRemovedMeta(raw) {
-  const pick = (label2) => {
+  const pick2 = (label2) => {
     const re = new RegExp(`(?:\\*\\*${label2}:?\\*\\*|^${label2})\\s*:?\\s*(.*\\S)`, "im");
     return raw.match(re)?.[1]?.trim();
   };
-  const reason = pick("Reason");
-  const migration = pick("Migration");
+  const reason = pick2("Reason");
+  const migration = pick2("Migration");
   return { ...reason ? { reason } : {}, ...migration ? { migration } : {} };
 }
 function parseSpec(text2) {
@@ -9834,15 +9834,15 @@ function inside(parent, child) {
   return r === "" || r !== ".." && !r.startsWith(`..${import_node_path12.sep}`) && !(0, import_node_path12.isAbsolute)(r);
 }
 function installedOutside(root, project) {
-  let real2;
+  let real3;
   let proj;
   try {
-    real2 = (0, import_node_fs10.realpathSync)(root);
+    real3 = (0, import_node_fs10.realpathSync)(root);
     proj = (0, import_node_fs10.realpathSync)(project);
   } catch {
     return false;
   }
-  return real2.split(import_node_path12.sep).join("/").includes("/.claude/plugins/") && !inside(proj, real2);
+  return real3.split(import_node_path12.sep).join("/").includes("/.claude/plugins/") && !inside(proj, real3);
 }
 
 // src/grants.ts
@@ -18822,15 +18822,22 @@ function loadLevel2Cases(root, id) {
   return { cases, diags: d };
 }
 var ENV_KEEP = /* @__PURE__ */ new Set(["PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "LC_CTYPE", "USER", "LOGNAME"]);
-var ENV_AUTH = /^(ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN|ANTHROPIC_BASE_URL|ANTHROPIC_CUSTOM_HEADERS|CLAUDE_CODE_OAUTH_TOKEN|CLAUDE_CODE_USE_BEDROCK|CLAUDE_CODE_USE_VERTEX|ANTHROPIC_VERTEX_PROJECT_ID|CLOUD_ML_REGION|GOOGLE_APPLICATION_CREDENTIALS|AWS_[A-Z0-9_]+|HTTPS?_PROXY|https?_proxy|NO_PROXY|no_proxy)$/;
-function trimmedEnv(env, extra = {}) {
+var ENV_SESSION = /^(ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN|ANTHROPIC_BASE_URL|ANTHROPIC_CUSTOM_HEADERS|CLAUDE_CODE_OAUTH_TOKEN|CLAUDE_CODE_USE_BEDROCK|CLAUDE_CODE_USE_VERTEX|CLAUDE_CONFIG_DIR|ANTHROPIC_VERTEX_PROJECT_ID|CLOUD_ML_REGION|GOOGLE_APPLICATION_CREDENTIALS|AWS_[A-Z0-9_]+|HTTPS?_PROXY|https?_proxy|NO_PROXY|no_proxy|NODE_EXTRA_CA_CERTS|SSL_CERT_FILE)$/;
+var pick = (env, keep, extra) => {
   const out = {};
-  for (const [k, v] of Object.entries(env)) if (v !== void 0 && (ENV_KEEP.has(k) || ENV_AUTH.test(k))) out[k] = v;
+  for (const [k, v] of Object.entries(env)) if (v !== void 0 && keep(k)) out[k] = v;
   return { ...out, ...extra };
+};
+function trimmedEnv(env, extra = {}) {
+  return pick(env, (k) => ENV_KEEP.has(k) || ENV_SESSION.test(k), extra);
+}
+function gradingEnv(env, extra = {}) {
+  return pick(env, (k) => ENV_KEEP.has(k), extra);
 }
 var GIT_SAFE_ENV = {
   GIT_CONFIG_NOSYSTEM: "1",
   GIT_CONFIG_GLOBAL: "/dev/null",
+  GIT_NO_REPLACE_OBJECTS: "1",
   GIT_CONFIG_COUNT: "3",
   GIT_CONFIG_KEY_0: "core.fsmonitor",
   GIT_CONFIG_VALUE_0: "false",
@@ -18843,15 +18850,36 @@ var GIT_SAFE_ENV = {
   GIT_COMMITTER_NAME: "aidw eval",
   GIT_COMMITTER_EMAIL: "eval@aidw.invalid"
 };
-function git2(cwd, args) {
+function git2(cwd, args, env = {}) {
   const r = (0, import_node_child_process10.spawnSync)("git", ["-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", "-c", "commit.gpgsign=false", ...args], {
     cwd,
     encoding: "utf8",
-    env: trimmedEnv(process.env, GIT_SAFE_ENV),
+    env: gradingEnv(process.env, { ...GIT_SAFE_ENV, ...env }),
     maxBuffer: 64 * 1024 * 1024
   });
   if (r.error || r.status !== 0) throw new Error(`git ${args[0]} failed in ${cwd}: ${r.error?.message ?? (r.stderr || "").trim().slice(0, 400)}`);
   return r.stdout;
+}
+function snapshotGitEnv(snapshot, project, index) {
+  return {
+    GIT_DIR: snapshot,
+    GIT_WORK_TREE: project,
+    GIT_INDEX_FILE: index,
+    GIT_NO_REPLACE_OBJECTS: "1",
+    GIT_CONFIG_NOSYSTEM: "1",
+    GIT_CONFIG_GLOBAL: "/dev/null",
+    GIT_CONFIG_COUNT: "5",
+    GIT_CONFIG_KEY_0: "core.fsmonitor",
+    GIT_CONFIG_VALUE_0: "false",
+    GIT_CONFIG_KEY_1: "core.hooksPath",
+    GIT_CONFIG_VALUE_1: "/dev/null",
+    GIT_CONFIG_KEY_2: "core.excludesFile",
+    GIT_CONFIG_VALUE_2: "/dev/null",
+    GIT_CONFIG_KEY_3: "core.attributesFile",
+    GIT_CONFIG_VALUE_3: "/dev/null",
+    GIT_CONFIG_KEY_4: "core.bare",
+    GIT_CONFIG_VALUE_4: "false"
+  };
 }
 function fixturesDir(root, env = process.env) {
   return env.AIDW_FIXTURES_DIR || (0, import_node_path47.resolve)(root, "..", "..", "evals", "fixtures");
@@ -18861,7 +18889,7 @@ function fixtureCacheRoot(env = process.env) {
 }
 var FIXTURE_SKIP = ["node_modules", ".cache", ".DS_Store"];
 function fixtureFiles(dir) {
-  const r = (0, import_node_child_process10.spawnSync)("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "."], { cwd: dir, encoding: "utf8", env: trimmedEnv(process.env, GIT_SAFE_ENV), maxBuffer: 64 * 1024 * 1024 });
+  const r = (0, import_node_child_process10.spawnSync)("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "."], { cwd: dir, encoding: "utf8", env: gradingEnv(process.env, GIT_SAFE_ENV), maxBuffer: 64 * 1024 * 1024 });
   if (!r.error && r.status === 0) {
     const files = [...new Set(r.stdout.split("\0").filter(Boolean))].filter((f) => !f.split("/").some((p) => FIXTURE_SKIP.includes(p)) && (0, import_node_fs42.existsSync)((0, import_node_path47.join)(dir, f)) && (0, import_node_fs42.lstatSync)((0, import_node_path47.join)(dir, f)).isFile());
     if (files.length) return files.sort();
@@ -18980,6 +19008,7 @@ function copyPluginForSession(root, into) {
   const roles = (0, import_node_path47.resolve)(root, "roles");
   (0, import_node_fs42.cpSync)(root, into, {
     recursive: true,
+    dereference: true,
     filter: (src) => {
       const r = (0, import_node_path47.relative)(roles, (0, import_node_path47.resolve)(src));
       if (!r.startsWith("..") && r.split(import_node_path47.sep)[1] === "evals") return false;
@@ -19010,6 +19039,10 @@ function prepareCopy(root, c, fixture, nodeModules, into, opts = {}) {
   git2(into, ["add", "-A"]);
   git2(into, ["commit", "-q", "-m", `fixture ${c.fixture}`]);
   const base2 = git2(into, ["rev-parse", "HEAD"]).trim();
+  const snapshot = opts.snapshot ?? (0, import_node_path47.join)((0, import_node_path47.dirname)(into), "base.git");
+  git2((0, import_node_path47.dirname)(into), ["clone", "-q", "--bare", "--no-local", into, snapshot]);
+  makeReadOnly(snapshot);
+  const snapshotDigest = treeDigest(snapshot);
   const p = pathsFor(into);
   startTask(p, change, c.task);
   const plugin = opts.plugin ?? root;
@@ -19019,7 +19052,7 @@ function prepareCopy(root, c, fixture, nodeModules, into, opts = {}) {
     briefText = bareBrief(b.text, (0, import_node_path47.resolve)(plugin));
     (0, import_node_fs42.writeFileSync)(b.path, briefText);
   }
-  return { project: into, base: base2, change, brief: b.path, briefText, gitConfig: (0, import_node_fs42.readFileSync)((0, import_node_path47.join)(into, ".git", "config"), "utf8") };
+  return { project: into, base: base2, change, brief: b.path, briefText, snapshot, snapshotDigest };
 }
 var AGENT_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "Bash"];
 function sessionSettings(o) {
@@ -19032,6 +19065,9 @@ function sessionSettings(o) {
         "WebSearch",
         ...o.bare ? [`Read(${abs(o.pluginRoot)}/**)`] : [],
         ...(o.denyRead ?? []).map((d) => `Read(${abs(d)})`),
+        ...(o.hidden ?? []).flatMap((h) => [`Read(${abs(h)})`, `Edit(${abs(h)})`, `Write(${abs(h)})`]),
+        `Edit(${abs(o.pluginRoot)}/**)`,
+        `Write(${abs(o.pluginRoot)}/**)`,
         `Edit(${abs(o.project)}/.claude/**)`,
         `Write(${abs(o.project)}/.claude/**)`
       ]
@@ -19110,6 +19146,29 @@ child.on("exit", (c) => { code = c; grace = setTimeout(() => finish({}), 1500); 
 child.on("close", () => finish({}));
 child.stdin.end(fs.readFileSync(0));
 `;
+function killLeftovers(dir) {
+  const r = (0, import_node_child_process10.spawnSync)("lsof", ["-a", "-d", "cwd", "-F", "pn"], { encoding: "utf8", timeout: 2e4, maxBuffer: 16 * 1024 * 1024 });
+  if (r.error || typeof r.stdout !== "string") return [];
+  let top;
+  try {
+    top = norm2((0, import_node_fs42.realpathSync)(dir));
+  } catch {
+    return [];
+  }
+  const killed = [];
+  let pid = 0;
+  for (const line of r.stdout.split("\n")) {
+    if (line.startsWith("p")) pid = Number(line.slice(1));
+    else if (line.startsWith("n") && pid && pid !== process.pid && within(norm2(line.slice(1)), top)) {
+      try {
+        process.kill(pid, "SIGKILL");
+        killed.push(pid);
+      } catch {
+      }
+    }
+  }
+  return killed;
+}
 var claudeAgentRunner = (command = ["claude"], env = process.env) => (i) => {
   const args = agentArgs(i);
   const path = i.bare ? env.PATH : [(0, import_node_path47.join)(i.pluginRoot, "bin"), env.PATH].filter(Boolean).join(":");
@@ -19121,6 +19180,7 @@ var claudeAgentRunner = (command = ["claude"], env = process.env) => (i) => {
     timeout: i.timeoutMs + 6e4,
     maxBuffer: 16 * 1024 * 1024
   });
+  killLeftovers(i.cwd);
   let s = {};
   try {
     s = JSON.parse(r.stdout || "{}");
@@ -19194,26 +19254,57 @@ function wasRead(calls, ref, ctx) {
     return false;
   });
 }
-var SB_PROFILE = [
-  "(version 1)",
-  "(allow default)",
-  '(deny network-outbound (remote ip "*:*"))',
-  '(allow network-outbound (remote ip "localhost:*"))',
-  '(deny network-outbound (literal "/private/var/run/mDNSResponder"))'
-].join("");
+function mentions(calls, path) {
+  const forms = [.../* @__PURE__ */ new Set([(0, import_node_path47.resolve)(path), norm2(path), `/private${norm2(path)}`])];
+  return calls.some((c) => {
+    const text2 = JSON.stringify(c.input);
+    return forms.some((f) => text2.includes(f));
+  });
+}
+var sbQuote = (p) => {
+  if (/["\\]/.test(p)) throw new Error(`a path the sandbox profile cannot name: ${p}`);
+  return `"${p}"`;
+};
+var real2 = (p) => {
+  try {
+    return (0, import_node_fs42.realpathSync)(p);
+  } catch {
+    return (0, import_node_path47.resolve)(p);
+  }
+};
+function sandboxProfile(scope) {
+  const net = ["(version 1)", "(allow default)", '(deny network-outbound (remote ip "*:*"))', '(allow network-outbound (remote ip "localhost:*"))', "(deny network-outbound (remote unix-socket))"];
+  if (!scope) return net.join("");
+  const sub = (p) => `(subpath ${sbQuote(real2(p))})`;
+  return [
+    ...net,
+    "(deny file-write*)",
+    `(allow file-write* ${sub((0, import_node_os4.tmpdir)())} ${sub(scope.project)} ${sub(scope.run)} (subpath "/dev"))`,
+    `(deny file-write* ${sub(scope.snapshot)})`
+  ].join("");
+}
 var probed = null;
-function gradingSandbox(env = process.env) {
-  if (env.AIDW_GRADE_SANDBOX === "off") return { how: "none", wrap: (cmd2) => ["sh", "-c", cmd2] };
-  if (probed) return probed;
-  const ok = (cmd2, args) => {
-    const r = (0, import_node_child_process10.spawnSync)(cmd2, args, { encoding: "utf8", timeout: 1e4 });
-    return !r.error && r.status === 0;
-  };
-  if ((0, import_node_os4.platform)() === "darwin" && ok("sandbox-exec", ["-p", SB_PROFILE, "/usr/bin/true"])) probed = { how: "sandbox-exec", wrap: (cmd2) => ["sandbox-exec", "-p", SB_PROFILE, "sh", "-c", cmd2] };
-  else if ((0, import_node_os4.platform)() === "linux" && ok("unshare", ["-rn", "true"]))
-    probed = { how: "unshare", wrap: (cmd2) => ["unshare", "-rn", "sh", "-c", `ip link set lo up >/dev/null 2>&1 || true; ${cmd2}`] };
-  else probed = { how: "none", wrap: (cmd2) => ["sh", "-c", cmd2] };
-  return probed;
+function gradingSandbox(env = process.env, scope) {
+  const none = { how: "none", wrap: (cmd2) => ["sh", "-c", cmd2] };
+  if (env.AIDW_GRADE_SANDBOX === "off") return none;
+  if (probed === null) {
+    const ok = (cmd2, args) => {
+      const r = (0, import_node_child_process10.spawnSync)(cmd2, args, { encoding: "utf8", timeout: 1e4 });
+      return !r.error && r.status === 0;
+    };
+    if ((0, import_node_os4.platform)() === "darwin" && ok("sandbox-exec", ["-p", sandboxProfile(), "/usr/bin/true"])) probed = "sandbox-exec";
+    else if ((0, import_node_os4.platform)() === "linux" && ok("bwrap", ["--ro-bind", "/", "/", "--dev", "/dev", "--unshare-net", "true"])) probed = "bwrap";
+    else if ((0, import_node_os4.platform)() === "linux" && ok("unshare", ["-rn", "true"])) probed = "unshare";
+    else probed = "none";
+  }
+  const how2 = probed;
+  if (how2 === "sandbox-exec") return { how: how2, wrap: (cmd2) => ["sandbox-exec", "-p", sandboxProfile(scope), "sh", "-c", cmd2] };
+  if (how2 === "bwrap") {
+    const binds = scope ? [(0, import_node_os4.tmpdir)(), scope.project, scope.run].flatMap((p) => ["--bind", real2(p), real2(p)]).concat(["--ro-bind", real2(scope.snapshot), real2(scope.snapshot)]) : [];
+    return { how: how2, wrap: (cmd2) => ["bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", ...binds, "--unshare-net", "--die-with-parent", "sh", "-c", cmd2] };
+  }
+  if (how2 === "unshare") return { how: how2, wrap: (cmd2) => ["unshare", "-rn", "sh", "-c", `ip link set lo up >/dev/null 2>&1 || true; ${cmd2}`] };
+  return none;
 }
 function sh(command, cwd, env, sandbox, timeoutMs = 10 * 60 * 1e3) {
   const argv = (sandbox ?? { wrap: (cmd2) => ["sh", "-c", cmd2] }).wrap(command);
@@ -19281,26 +19372,80 @@ function safeTarget(project, rel2) {
     if (st.isSymbolicLink() || st.isDirectory()) (0, import_node_fs42.rmSync)(target, { recursive: true, force: true });
   } catch {
   }
-  const real2 = (0, import_node_fs42.realpathSync)((0, import_node_path47.dirname)(target));
+  const real3 = (0, import_node_fs42.realpathSync)((0, import_node_path47.dirname)(target));
   const top = (0, import_node_fs42.realpathSync)(project);
-  if (!within(real2, top)) throw new Error(`${rel2} leads outside the project`);
+  if (!within(real3, top)) throw new Error(`${rel2} leads outside the project`);
   return target;
 }
-function captureDiff(project, base2) {
-  git2(project, ["add", "-A", "--", ".", ":(exclude).aidw/changes"]);
-  const diff = git2(project, ["diff", "--cached", base2, "--", ".", ":(exclude).aidw/changes"]);
-  const changed = git2(project, ["diff", "--name-only", "-z", base2, "--", "."]).split("\0").filter(Boolean);
+function gradeGit(prep, run2) {
+  const objects = (0, import_node_path47.join)(run2, "grade-objects");
+  (0, import_node_fs42.mkdirSync)(objects, { recursive: true });
+  const env = {
+    ...snapshotGitEnv(prep.snapshot, prep.project, (0, import_node_path47.join)(run2, "grade.index")),
+    // The snapshot is read-only: what git writes (the session's blobs) goes beside it, its objects are read as alternates.
+    GIT_OBJECT_DIRECTORY: objects,
+    GIT_ALTERNATE_OBJECT_DIRECTORIES: (0, import_node_path47.join)(prep.snapshot, "objects")
+  };
+  return {
+    env,
+    run: (args) => git2(prep.project, args, env),
+    show: (path) => {
+      const r = (0, import_node_child_process10.spawnSync)("git", ["show", `${prep.base}:${path}`], { cwd: prep.project, env: gradingEnv(process.env, env), maxBuffer: 64 * 1024 * 1024 });
+      return r.status === 0 ? r.stdout : null;
+    }
+  };
+}
+var RULE_FILES = [".gitignore", ".gitattributes"];
+function normalizeRuleFiles(prep, g) {
+  const inBase = g.run(["ls-tree", "-r", "-z", "--name-only", prep.base]).split("\0").filter(Boolean);
+  const found = [];
+  const walk = (rel2) => {
+    const abs = rel2 ? (0, import_node_path47.join)(prep.project, rel2) : prep.project;
+    for (const n of (0, import_node_fs42.readdirSync)(abs)) {
+      const r = rel2 ? `${rel2}/${n}` : n;
+      if (r === ".git" || r === "node_modules") continue;
+      const st = (0, import_node_fs42.lstatSync)((0, import_node_path47.join)(abs, n));
+      if (st.isDirectory()) walk(r);
+      else if (RULE_FILES.includes(n)) found.push(r);
+    }
+  };
+  walk("");
+  const changed = [];
+  let diff = "";
+  const isRule = (f) => RULE_FILES.some((r) => f === r || f.endsWith(`/${r}`));
+  for (const f of [.../* @__PURE__ */ new Set([...found, ...inBase.filter(isRule)])].sort()) {
+    const was = g.show(f)?.toString("utf8") ?? null;
+    const p = (0, import_node_path47.join)(prep.project, f);
+    const now9 = (0, import_node_fs42.existsSync)(p) && (0, import_node_fs42.lstatSync)(p).isFile() ? (0, import_node_fs42.readFileSync)(p, "utf8") : isLink(p) ? `(a symlink to ${(0, import_node_fs42.readlinkSync)(p)})` : null;
+    if (was === now9) continue;
+    changed.push(f);
+    diff += `--- a/${f}
++++ b/${f}
+${(was ?? "").split("\n").map((l) => `-${l}`).join("\n")}
+${(now9 ?? "").split("\n").map((l) => `+${l}`).join("\n")}
+`;
+    if (was !== null) (0, import_node_fs42.writeFileSync)(safeTarget(prep.project, f), was);
+    else (0, import_node_fs42.rmSync)(safeTarget(prep.project, f), { force: true });
+  }
+  return { changed, diff };
+}
+function captureDiff(prep, g) {
+  g.run(["read-tree", prep.base]);
+  g.run(["add", "-A", "--", "."]);
+  const diff = g.run(["diff", "--cached", "--no-ext-diff", "--no-textconv", "--binary", prep.base, "--", ".", ":(exclude).aidw/changes"]);
+  const changed = g.run(["diff", "--cached", "--name-only", "-z", "--no-renames", prep.base, "--", "."]).split("\0").filter(Boolean);
   return { diff, changed };
 }
-function restoreForGrading(prep, nodeModules, extra) {
-  const dotGit = (0, import_node_path47.join)(prep.project, ".git");
-  const st = (0, import_node_fs42.lstatSync)(dotGit);
-  if (st.isSymbolicLink() || !st.isDirectory()) throw new Error(".git is no longer a folder: the session replaced it");
-  (0, import_node_fs42.writeFileSync)((0, import_node_path47.join)(dotGit, "config"), prep.gitConfig);
+function restoreForGrading(prep, g, nodeModules, extra) {
+  for (const f of g.run(["ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory"]).split("\0").filter(Boolean)) {
+    const rel2 = f.replace(/\/$/, "");
+    if (rel2 === ".aidw" || rel2.startsWith(".aidw/")) continue;
+    (0, import_node_fs42.rmSync)(safeTarget(prep.project, rel2), { recursive: true, force: true });
+  }
   linkPackages(nodeModules, prep.project);
   for (const f of [...RESTORED, ...extra]) {
-    const r = (0, import_node_child_process10.spawnSync)("git", ["-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", "show", `${prep.base}:${f}`], { cwd: prep.project, env: trimmedEnv(process.env, GIT_SAFE_ENV), maxBuffer: 64 * 1024 * 1024 });
-    if (r.status === 0) (0, import_node_fs42.writeFileSync)(safeTarget(prep.project, f), r.stdout);
+    const was = g.show(f);
+    if (was !== null) (0, import_node_fs42.writeFileSync)(safeTarget(prep.project, f), was);
     else if ((0, import_node_fs42.existsSync)((0, import_node_path47.join)(prep.project, f)) || isLink((0, import_node_path47.join)(prep.project, f))) (0, import_node_fs42.rmSync)(safeTarget(prep.project, f), { recursive: true, force: true });
   }
 }
@@ -19344,48 +19489,25 @@ function buildLevel2GradePrompt(c, briefText, diff, reply, report) {
 function hiddenFrom(o, env) {
   const evals = (0, import_node_path47.resolve)(fixturesDir(o.root, env), "..");
   const root = (0, import_node_path47.resolve)(o.root);
-  return { hidden: [(0, import_node_path47.join)(root, "roles", o.role, "evals"), (0, import_node_path47.join)(evals, "level2-reference")], denyRead: [`${evals}/**`, `${root}/roles/*/evals/**`] };
-}
-function normalizeIgnores(prep) {
-  const inBase = new Set(git2(prep.project, ["ls-tree", "-r", "-z", "--name-only", prep.base]).split("\0").filter(Boolean));
-  const found = [];
-  const walk = (rel2) => {
-    const abs = rel2 ? (0, import_node_path47.join)(prep.project, rel2) : prep.project;
-    for (const n of (0, import_node_fs42.readdirSync)(abs)) {
-      const r = rel2 ? `${rel2}/${n}` : n;
-      if (r === ".git" || r === "node_modules") continue;
-      const st = (0, import_node_fs42.lstatSync)((0, import_node_path47.join)(abs, n));
-      if (st.isDirectory()) walk(r);
-      else if (n === ".gitignore" && st.isFile()) found.push(r);
-    }
+  const ask2 = (args) => {
+    const r = (0, import_node_child_process10.spawnSync)("git", ["-C", root, "rev-parse", ...args], { encoding: "utf8", env: gradingEnv(process.env, GIT_SAFE_ENV) });
+    return !r.error && r.status === 0 ? r.stdout.trim() : "";
   };
-  walk("");
-  const changed = [];
-  let diff = "";
-  for (const f of [.../* @__PURE__ */ new Set([...found, ...[...inBase].filter((x) => x === ".gitignore" || x.endsWith("/.gitignore"))])]) {
-    const r = (0, import_node_child_process10.spawnSync)("git", ["show", `${prep.base}:${f}`], { cwd: prep.project, env: trimmedEnv(process.env, GIT_SAFE_ENV), maxBuffer: 16 * 1024 * 1024 });
-    const was = r.status === 0 ? r.stdout.toString("utf8") : null;
-    const now9 = (0, import_node_fs42.existsSync)((0, import_node_path47.join)(prep.project, f)) && (0, import_node_fs42.lstatSync)((0, import_node_path47.join)(prep.project, f)).isFile() ? (0, import_node_fs42.readFileSync)((0, import_node_path47.join)(prep.project, f), "utf8") : null;
-    if (was === now9) continue;
-    changed.push(f);
-    diff += `--- a/${f}
-+++ b/${f}
-${(was ?? "").split("\n").map((l) => `-${l}`).join("\n")}
-${(now9 ?? "").split("\n").map((l) => `+${l}`).join("\n")}
-`;
-    if (was !== null) (0, import_node_fs42.writeFileSync)(safeTarget(prep.project, f), was);
-    else (0, import_node_fs42.rmSync)(safeTarget(prep.project, f), { force: true });
-  }
-  return { changed, diff };
+  const repo = [ask2(["--show-toplevel"]), ask2(["--path-format=absolute", "--git-common-dir"])].filter(Boolean).map((p) => (0, import_node_path47.resolve)(p));
+  return {
+    hidden: [(0, import_node_path47.join)(root, "roles", o.role, "evals"), (0, import_node_path47.join)(evals, "level2-reference")],
+    repo: [...new Set(repo)],
+    denyRead: [.../* @__PURE__ */ new Set([...repo.map((r) => `${r}/**`), `${evals}/**`, `${root}/roles/*/evals/**`])]
+  };
 }
 function runLevel2Once(c, n, o, nodeModules) {
   const env = o.env ?? process.env;
   const dir = (0, import_node_fs42.mkdtempSync)((0, import_node_path47.join)(o.runsDir ?? (0, import_node_os4.tmpdir)(), `aidw-l2-${o.role}-${c.name}-${n}-`));
   const log = (0, import_node_path47.join)(dir, "session.jsonl");
   const steps = [];
-  const sandbox = gradingSandbox(env);
+  let sandboxKind = gradingSandbox(env).how;
   const result = (extra = {}) => {
-    const r = { pass: !extra.error && steps.length > 0 && steps.every((s) => s.pass), steps, dir, log, turns: 0, criteria: [], gradingSandbox: sandbox.how, ...extra };
+    const r = { pass: !extra.error && steps.length > 0 && steps.every((s) => s.pass), steps, dir, log, turns: 0, criteria: [], gradingSandbox: sandboxKind, ...extra };
     (0, import_node_fs42.writeFileSync)((0, import_node_path47.join)(dir, "result.json"), `${JSON.stringify({ case: c.name, run: n, bare: !!o.bare, ...r }, null, 2)}
 `);
     return r;
@@ -19396,12 +19518,13 @@ function runLevel2Once(c, n, o, nodeModules) {
     pluginCopy = copyPluginForSession(o.root, (0, import_node_path47.join)(dir, "plugin"));
     prep = prepareCopy(o.root, c, (0, import_node_path47.join)(fixturesDir(o.root, env), c.fixture), nodeModules, (0, import_node_path47.join)(dir, "project"), { plugin: pluginCopy, bare: !!o.bare });
   } catch (e) {
-    for (const sub of ["project", "plugin"]) removeTree((0, import_node_path47.join)(dir, sub));
+    for (const sub of ["project", "plugin", "base.git"]) removeTree((0, import_node_path47.join)(dir, sub));
     return result({ error: `the copy could not be prepared: ${e.message}` });
   }
-  const { hidden, denyRead } = hiddenFrom(o, env);
+  const { hidden, repo, denyRead } = hiddenFrom(o, env);
   const settingsFile = (0, import_node_path47.join)(dir, "settings.json");
-  (0, import_node_fs42.writeFileSync)(settingsFile, `${JSON.stringify(sessionSettings({ pluginRoot: pluginCopy, project: prep.project, denyRead, bare: !!o.bare }), null, 2)}
+  const runFiles = [`${prep.snapshot}/**`, settingsFile, (0, import_node_path47.join)(dir, "prompt.txt"), log, (0, import_node_path47.join)(dir, "grade.index"), `${(0, import_node_path47.join)(dir, "grade-objects")}/**`];
+  (0, import_node_fs42.writeFileSync)(settingsFile, `${JSON.stringify(sessionSettings({ pluginRoot: pluginCopy, project: prep.project, denyRead, hidden: runFiles, bare: !!o.bare }), null, 2)}
 `);
   const prompt = `Task brief: ${prep.brief}. Read it and implement the task.`;
   (0, import_node_fs42.writeFileSync)((0, import_node_path47.join)(dir, "prompt.txt"), `${prompt}
@@ -19428,26 +19551,28 @@ function runLevel2Once(c, n, o, nodeModules) {
   steps.push({ step: "agent", pass: limits.length === 0, failed: limits });
   let diff = "";
   let changedFile = "";
+  let g;
   try {
-    const dotGit = (0, import_node_path47.join)(prep.project, ".git");
-    if (!(0, import_node_fs42.lstatSync)(dotGit).isDirectory()) throw new Error(".git is no longer a folder: the session replaced it");
-    (0, import_node_fs42.writeFileSync)((0, import_node_path47.join)(dotGit, "config"), prep.gitConfig);
-    const ignores = normalizeIgnores(prep);
-    const cap = captureDiff(prep.project, prep.base);
-    diff = ignores.diff + cap.diff;
-    const changed = [.../* @__PURE__ */ new Set([...cap.changed, ...ignores.changed])].sort();
+    if (treeDigest(prep.snapshot) !== prep.snapshotDigest) throw new Error("the snapshot of the base changed during the session");
+    g = gradeGit(prep, dir);
+    const rules = normalizeRuleFiles(prep, g);
+    const cap = captureDiff(prep, g);
+    diff = rules.diff + cap.diff;
+    const changed = [.../* @__PURE__ */ new Set([...cap.changed, ...rules.changed])].sort();
     changedFile = (0, import_node_path47.join)(dir, "changed.txt");
     (0, import_node_fs42.writeFileSync)(changedFile, changed.length ? `${changed.join("\n")}
 ` : "");
     (0, import_node_fs42.writeFileSync)((0, import_node_path47.join)(dir, "diff.patch"), diff);
-    restoreForGrading(prep, nodeModules, c.restore);
+    restoreForGrading(prep, g, nodeModules, c.restore);
   } catch (e) {
     return result({ error: `the copy could not be read for grading: ${e.message}`, turns });
   }
   const reportFile2 = (0, import_node_path47.join)(prep.project, ".aidw", "run", `report-${c.task}.md`);
   const report = (0, import_node_fs42.existsSync)(reportFile2) && (0, import_node_fs42.lstatSync)(reportFile2).isFile() ? (0, import_node_fs42.readFileSync)(reportFile2, "utf8") : null;
-  const cmdEnv = trimmedEnv(env, {
-    ...GIT_SAFE_ENV,
+  const sandbox = gradingSandbox(env, { project: prep.project, run: dir, snapshot: prep.snapshot });
+  sandboxKind = sandbox.how;
+  const cmdEnv = gradingEnv(env, {
+    ...g.env,
     PATH: [(0, import_node_path47.join)((0, import_node_path47.resolve)(o.root), "bin"), env.PATH].filter(Boolean).join(":"),
     AIDW_BASE: prep.base,
     AIDW_PROJECT: prep.project,
@@ -19477,7 +19602,16 @@ function runLevel2Once(c, n, o, nodeModules) {
         rep = {};
       }
       const ran = Number(rep.numPassedTests ?? 0) + Number(rep.numFailedTests ?? 0);
-      const declared = testFiles2.reduce((k, f) => k + countDeclaredTests((0, import_node_fs42.readFileSync)((0, import_node_path47.join)(caseDir, f), "utf8")), 0);
+      const listOut = (0, import_node_path47.join)(dir, "held-out-list.json");
+      sh(`node_modules/.bin/vitest list --config ${q(config)} --json=${q(listOut)} ${testFiles2.map(q).join(" ")}`, prep.project, cmdEnv, sandbox);
+      let listed = null;
+      try {
+        const v = JSON.parse((0, import_node_fs42.readFileSync)(listOut, "utf8"));
+        if (Array.isArray(v) && v.length) listed = v.length;
+      } catch {
+        listed = null;
+      }
+      const declared = listed ?? testFiles2.reduce((k, f) => k + countDeclaredTests((0, import_node_fs42.readFileSync)((0, import_node_path47.join)(caseDir, f), "utf8")), 0);
       if (ran < declared) failed.push(`ran ${ran} of the ${declared} held-out tests`);
       const named = (rep.testResults ?? []).flatMap((x) => x.assertionResults ?? []).filter((a) => a.status === "failed" && a.fullName).map((a) => a.fullName);
       if (named.length) failedTests = named;
@@ -19498,9 +19632,11 @@ function runLevel2Once(c, n, o, nodeModules) {
 `);
   steps.push({ step: "checks", pass: checkFails.length === 0, failed: checkFails });
   const ctx = { project: prep.project, pluginRoot: pluginCopy };
+  const offLimits = [...repo, prep.snapshot, settingsFile];
   const readFails = [
     ...c.mustRead.filter((f) => !wasRead(session.calls, f, ctx)).map((f) => `did not read ${f}`),
-    ...[...c.mustNotRead, ...hidden].filter((f) => wasRead(session.calls, f, ctx)).map((f) => `read ${f}, which it must not`)
+    ...[...c.mustNotRead, ...hidden].filter((f) => wasRead(session.calls, f, ctx) || (0, import_node_path47.isAbsolute)(f) && mentions(session.calls, f)).map((f) => `read ${f}, which it must not`),
+    ...offLimits.filter((f) => mentions(session.calls, f)).map((f) => `named ${f}, which it must not`)
   ];
   steps.push({ step: "reads", pass: readFails.length === 0, failed: readFails });
   let criteria = [];
@@ -19550,7 +19686,8 @@ ${diags.errors.map((x) => `  ${x.file}: ${x.message}`).join("\n")}`);
       runs: { total: runs, passed, errors: results.length - graded.length },
       failed: [...counts].map(([f, k]) => runs > 1 ? `${f} (${k} of ${graded.length} runs)` : f),
       results,
-      bare: !!o.bare
+      bare: !!o.bare,
+      gradingSandbox: results.some((r) => r.gradingSandbox === "none") ? "none" : results[0]?.gradingSandbox ?? "none"
     });
   }
   return out;
@@ -19593,6 +19730,7 @@ function level2Records(root, id, rs, date, model, digests) {
       ...r.runs.errors === r.runs.total ? { error: r.results[0]?.error ?? "error" } : {},
       digest: d.digest,
       ...d.fixture ? { fixture: d.fixture } : {},
+      gradingSandbox: r.gradingSandbox,
       date,
       model
     };
@@ -19689,6 +19827,8 @@ function checkLevel2(root, id, tierModel2, d, env = process.env) {
   if (few.length) d.warn(rf, `${few.length} level 2 case(s) last ran fewer than 3 times: ${few.join(", ")}; a case passes only with 3 of 3`);
   const failed = fresh.filter((c) => !c.pass).map((c) => c.name);
   if (failed.length) d.warn(rf, `the last level 2 run did not pass ${failed.length} case(s): ${failed.join(", ")}`);
+  const loose = fresh.filter((c) => c.gradingSandbox === "none").map((c) => c.name);
+  if (loose.length) d.warn(rf, `${loose.length} level 2 case(s) were graded with no sandbox around the grading commands: ${loose.join(", ")}; run them where sandbox-exec or bwrap works`);
 }
 
 // src/pause.ts
@@ -21249,6 +21389,9 @@ function run(argv, env, cwd, io) {
     else if (asked && asked !== tm) io.err(`  no result file written for ${id}: --model ${asked} is not its tier's model (${tm})
 `);
     else if (results.every((r) => r.runs.errors === r.runs.total)) io.err(`  no result file written for ${id}: no case was graded
+`);
+    else if (results.some((r) => r.gradingSandbox === "none") && env.AIDW_GRADE_SANDBOX !== "off")
+      io.err(`  no result file written for ${id}: the grading commands ran with no sandbox (sandbox-exec or bwrap was not available); run it where one works, or set AIDW_GRADE_SANDBOX=off to record it anyway
 `);
     else {
       const m = caseName ? mergeLevel2Results(root, id, results, meta) : writeLevel2Results(root, id, results, meta);
