@@ -19645,7 +19645,7 @@ function runLevel2Once(c, n, o, nodeModules) {
   } catch (e) {
     steps.push({ step: "tests", pass: false, failed: [`the held-out tests could not be laid over or run: ${e.message}`] });
   }
-  for (const f of c.heldOut) (0, import_node_fs42.rmSync)((0, import_node_path47.join)(prep.project, f), { force: true });
+  for (const f of c.heldOut) (0, import_node_fs42.rmSync)(safeTarget(prep.project, f), { force: true });
   const checkFails = [];
   const checkOut = [];
   for (const ch of c.checks) {

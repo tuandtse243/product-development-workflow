@@ -1455,7 +1455,8 @@ export function runLevel2Once(c: Level2Case, n: number, o: Level2Options, nodeMo
   } catch (e) {
     steps.push({ step: "tests", pass: false, failed: [`the held-out tests could not be laid over or run: ${(e as Error).message}`] });
   }
-  for (const f of c.heldOut) rmSync(join(prep.project, f), { force: true });
+  // safeTarget drops any symlink the session put on the way, so the removal stays inside the copy.
+  for (const f of c.heldOut) rmSync(safeTarget(prep.project, f), { force: true });
 
   // 2. The case's checks (the Role's scripts and the like), each with its own read-only inputs.
   const checkFails: string[] = [];
