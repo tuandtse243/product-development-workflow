@@ -1,0 +1,25 @@
+# Machine checks of a level 2 run, after the held-out tests. Each command runs in the temp copy with `sh -c`; the
+# plugin's bin/ is first on PATH, $AIDW_BASE is the commit the Agent started from. A check passes when the command
+# exits with `exit` (default 0), its stdout parsed as JSON contains `json` (a subset; a string "/re/" is a regex) and
+# matches `matches` (a regex), each when given.
+checks:
+  - name: the route has its three access tests (B2, route-inventory)
+    run: node "$(aidw plugin-path roles/backend/scripts/route-inventory.mjs)" --base "$AIDW_BASE" .
+    expect:
+      json:
+        routes:
+          - method: POST
+            path: "/^\\/api\\/projects\\/:[A-Za-z]+\\/tasks$/"
+            accessCases: { noIdentity: true, otherUser: true, owner: true }
+  - name: every scenario id names a test in tests/tasks
+    run: >-
+      for id in member-creates-a-task no-session project-of-another-team team-named-in-the-request due-date-in-the-past;
+      do grep -rqF "tasks/create-a-task/$id" tests/tasks || { echo "no test names tasks/create-a-task/$id"; exit 1; }; done
+  - name: the whole suite passes
+    run: npm test
+  - name: the typecheck passes
+    run: npm run typecheck
+  - name: nothing outside Touches changed (B15)
+    run: >-
+      out=$(git status --porcelain --untracked-files=all -- . ':(exclude)src/tasks' ':(exclude)tests/tasks'
+      ':(exclude)src/app.ts' ':(exclude)tests/held-out' ':(exclude).aidw'); test -z "$out" || { echo "$out"; exit 1; }
