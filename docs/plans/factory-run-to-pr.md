@@ -237,6 +237,25 @@ Fastify, Hono.
   progress note into the request file; the CLI always writes a resume brief (original brief + note + answer
   path), so a fresh Agent of the same Role is the guaranteed path; continuing the live Agent with SendMessage is
   an optimisation the lead uses when the asker is still running in its session.
+- Delivery: decided 2026-11-25: one pull request for the whole of `feat/factory-run-to-pr` (T1 to T17, H1 and the
+  per-case digests), its body one section per task naming the task's merge commit; this replaces "one pull request
+  per task" for this branch, because the tasks were merged in order and depend on each other.
+- T18 design: decided 2026-11-25:
+  - Fixture: a new `evals/fixtures/backend-api`: Express, TypeScript, PGlite (Postgres in-process) and vitest.
+    Packages are installed once into a cache, and each run gets a fresh copy with no network.
+  - Cases: pilot `team-comes-from-the-session` first. Once the harness works, `charge-once`,
+    `email-after-the-order` and `two-requests-one-slot`.
+  - Run: `claude -p` as the backend agent from the plugin, in the temp copy, with the real brief.
+    - Tools: Read, Write, Edit, Glob, Grep and Bash. No network.
+    - Limits: 25 minutes and 60 turns per run.
+    - The `stream-json` tool log is kept.
+  - Grading, in order:
+    1. Held-out tests, copied in after the run.
+    2. The backend scripts.
+    3. The tool log (`must read` / `must not read`).
+    4. A model grades only the criteria no machine can check.
+  - Budget: the pilot spends at most 6 Agent sessions (1 case × 3 runs, 1 bare, 2 spare). More needs the
+    owner's word.
 - The cases of every other active Role have no `covers:` yet; T12 must not fail `aidw roster` for Roles that
   have not been upgraded (require coverage only once a Role's `rules.md` uses the table format).
 - The owner prefers question rounds as an HTML Decision Page with options, examples and a copy-back summary,
