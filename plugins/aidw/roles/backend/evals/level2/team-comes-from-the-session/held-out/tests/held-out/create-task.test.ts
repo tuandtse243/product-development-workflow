@@ -1,5 +1,6 @@
 // Held-out tests of the level 2 case team-comes-from-the-session (plugins/aidw/roles/backend/evals/level2/). They are
-// copied into the temp copy only after the Agent finished, so it never sees them. They check the contract of
+// copied into the temp copy only after the Agent finished, and the session's plugin copy has no evals/ folder (reads of
+// the real one are denied and flagged in the tool log). They check the contract of
 // POST /api/projects/{projectId}/tasks in .aidw/changes/create-task/api-contract.md through the route.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { testApp, type TestApp } from "../helpers.ts";

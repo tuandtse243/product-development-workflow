@@ -1,7 +1,8 @@
 # Machine checks of a level 2 run, after the held-out tests. Each command runs in the temp copy with `sh -c`; the
-# plugin's bin/ is first on PATH, $AIDW_BASE is the commit the Agent started from. A check passes when the command
-# exits with `exit` (default 0), its stdout parsed as JSON contains `json` (a subset; a string "/re/" is a regex) and
-# matches `matches` (a regex), each when given.
+# plugin's bin/ is first on PATH, $AIDW_BASE is the commit the Agent started from, and $AIDW_CHANGED names a file that
+# lists the files the session changed. A check passes when the command exits with `exit` (default 0), its stdout parsed
+# as JSON contains `json` (a subset; a string "/re/" is a regex) and its output matches `matches` (a regex), each when
+# given.
 checks:
   - name: the route has its three access tests (B2, route-inventory)
     run: node "$(aidw plugin-path roles/backend/scripts/route-inventory.mjs)" --base "$AIDW_BASE" .
@@ -20,6 +21,10 @@ checks:
   - name: the typecheck passes
     run: npm run typecheck
   - name: nothing outside Touches changed (B15)
+    # Against the base commit, so a commit cannot hide a change. $AIDW_CHANGED lists the files the session changed, taken
+    # before the harness put back the files the grading runs; run by hand, the list is taken from git.
     run: >-
-      out=$(git status --porcelain --untracked-files=all -- . ':(exclude)src/tasks' ':(exclude)tests/tasks'
-      ':(exclude)src/app.ts' ':(exclude)tests/held-out' ':(exclude).aidw'); test -z "$out" || { echo "$out"; exit 1; }
+      changed=$(if [ -n "$AIDW_CHANGED" ]; then cat "$AIDW_CHANGED"; else git diff --name-only "$AIDW_BASE";
+      git ls-files --others --exclude-standard; fi);
+      out=$(printf '%s\n' "$changed" | grep -vE '^(src/tasks/|tests/tasks/|tests/held-out/|src/app\.ts$|\.aidw/)' | grep -v '^$');
+      test -z "$out" || { echo "$out"; exit 1; }

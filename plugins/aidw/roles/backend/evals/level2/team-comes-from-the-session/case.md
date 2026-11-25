@@ -3,6 +3,7 @@ case: team-comes-from-the-session
 covers: [B2, B3, endpoint-test-matrix]
 fixture: backend-api
 task: T01
+restore: [tests/helpers.ts]
 must_read:
   - .aidw/changes/create-task/api-contract.md
   - plugin:roles/backend/skills/endpoint-test-matrix.md
