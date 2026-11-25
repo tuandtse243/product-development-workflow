@@ -10,7 +10,6 @@ import { memoryMailer } from "../src/mail/mailer.ts";
  * testApp() empties it. Tests in a file run one after another, so each test still starts from an empty database.
  */
 let shared: Promise<Db> | null = null;
-const TABLES = "outbox, tasks, projects, team_members, teams, sessions, users";
 
 /**
  * A fresh app on an emptied database, served by its own HTTP server, with helpers to seed rows and sign in. Each test
@@ -19,7 +18,9 @@ const TABLES = "outbox, tasks, projects, team_members, teams, sessions, users";
 export async function testApp() {
   shared ??= createDb();
   const db: Db = await shared;
-  await db.query(`truncate table ${TABLES} restart identity cascade`);
+  // Every table of the schema, whatever a later migration adds.
+  const tables = await db.query<{ name: string }>("select quote_ident(tablename) as name from pg_tables where schemaname = 'public'");
+  if (tables.length) await db.query(`truncate table ${tables.map((t) => t.name).join(", ")} restart identity cascade`);
   const mailer = memoryMailer();
   const app = createApp({ db, mailer });
   // One server per test, closed with its connections: no kept-alive socket reaches another test's server.
