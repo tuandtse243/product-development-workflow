@@ -812,17 +812,21 @@ In the user's project, `.aidw/` keeps its current shape and gains `roles/<id>/` 
   whose path holds it, or a part of a Bash command, split at `;`, `&`, `|`, that runs `cat`, `head`, `sed`, `grep`...
   and names it; a command that only prints a path does not count). (4) A model, with level 1's grader, given the brief
   and, fenced as data it must not take instructions from, the diff, the final reply and the report file; only for
-  `## Criteria`, and only when 1 to 3 passed. The grading commands get only PATH, HOME, TMPDIR, the locale and the user
-  (no keys, no proxies), and run confined: on macOS `sandbox-exec` with outbound network only to localhost, no Unix
-  sockets, and writes only in the project, the run folder (not its snapshot) and the temp dir; on Linux `bwrap` with `/`
-  read-only, the same writable places and its own network, else `unshare -rn` (network only; writes not confined). The
-  Linux paths were not tried here. Where none can be applied (inside another sandbox, a container without user
+  `## Criteria`, and only when 1 to 3 passed. The held-out files are removed again after step 1, so the checks see only
+  the session's own tests (route-inventory's access tests must be the session's). The diff and the changed files are
+  kept in memory from before step 1: each check gets them, and a git index of the base read through the snapshot, in a
+  read-only folder of its own, and the run folder's records are written again after the checks. Each grading command
+  gets only PATH, HOME, the locale, the user and a fresh scratch folder as TMPDIR (no keys, no proxies), processes it
+  leaves in the copy are killed, and its report files are read out of the scratch folder. It runs confined: on macOS
+  `sandbox-exec` with outbound network only to localhost, no Unix sockets, and writes only in the project, its scratch
+  folder and `/dev`; on Linux `bwrap` with `/` read-only, the same writable places and its own network, else `unshare
+  -rn` (network only; writes not confined). The Linux paths were not tried here. Where none can be applied (inside another sandbox, a container without user
   namespaces) they run unconfined, the run records `none`, and the output says so. `AIDW_GRADE_SANDBOX=off` turns it
   off. A session stopped at a limit fails; one that never ran is an ERROR. A run passes when all four pass; a case
   passes with 3 of 3 runs. `--bare` (C3 at level 2) runs once by default and is judged by 1 and 2 only, with no model
   call: a case where any bare run passes prints PASSES BARE (exit 1).
 - **Run folders.** Each run keeps its folder in the system temp dir (`aidw-l2-<role>-<case>-<n>-*`): `project/` (the
-  copy), `plugin/` (the session's plugin), `base.git` (the snapshot), `session.jsonl`, `diff.patch`, `changed.txt`,
+  copy), `plugin/` (the session's plugin, without Roles' cases, also behind a symlink), `base.git` (the snapshot), `session.jsonl`, `diff.patch`, `changed.txt`,
   `held-out.txt`, `held-out.json` and `held-out-list.json`, `checks.txt`, `settings.json`, `prompt.txt` and
   `result.json`; the path is printed. They are not removed; delete them when done (`chmod -R u+w` first: the snapshot is
   read-only). A copy that cannot be prepared keeps `result.json` only.
@@ -840,8 +844,9 @@ In the user's project, `.aidw/` keeps its current shape and gains `roles/<id>/` 
   project (if it can write the run folder, the snapshot's digest still turns a changed snapshot into an ERROR); and that
   `--setting-sources project` keeps the user's own `~/.claude/CLAUDE.md` out of the session.
 - **Residual risks.** Where no grading sandbox can be applied, the held-out tests and checks run code the session wrote
-  with the user's own rights and network (such runs record `none` and are not written by default). `unshare` on Linux
-  confines only the network. Killing leftover processes depends on `lsof` seeing them. The `Read(...)` deny rules and
+  with the user's own rights and network (such runs record `none` and are not written by default); there the graded code
+  can also rewrite the run folder's files while it runs, though the grading reads its inputs from memory and fresh
+  folders and writes the records again. `unshare` on Linux confines only the network. Killing leftover processes depends on `lsof` seeing them. The `Read(...)` deny rules and
   the tool log are the only guards on what the session reads; a read through a path they do not name (another copy of
   the repository elsewhere on the disk) is not caught.
 - **End to end:** the existing fixtures (`evals/fixtures/brownfield-app`, `greenfield-jd`) and `aidw cost`,
