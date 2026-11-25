@@ -143,9 +143,10 @@ export interface RunRecord {
 }
 
 /**
- * Plugin-relative files of a Role's content: every file under `roles/<id>/` but the result file (and with `noCases` the
- * case files `roles/<id>/evals/*.md`), its generated agent file, the shared procedures its `includes` names, the shared
- * library skills its index lists and `tiers.yaml`. Dotfiles (`.DS_Store`) are left out. The runner's own prompts (the
+ * Plugin-relative files of a Role's content: every file under `roles/<id>/` but the result file, the level 2 cases
+ * (`roles/<id>/evals/level2/`, digested on their own) and, with `noCases`, the case files `roles/<id>/evals/*.md`; its
+ * generated agent file, the shared procedures its `includes` names, the shared library skills its index lists and
+ * `tiers.yaml`. Dotfiles (`.DS_Store`) are left out. The runner's own prompts (the
  * answer and grading prompts in src/evalrun.ts) are not Role content and are not in it.
  */
 function roleFiles(root: string, id: string, noCases: boolean): string[] {
@@ -155,6 +156,8 @@ function roleFiles(root: string, id: string, noCases: boolean): string[] {
     const abs = join(root, rel);
     if (!existsSync(abs)) return;
     if (statSync(abs).isDirectory()) {
+      // Level 2 cases (src/evallevel2.ts) have their own digests and result file: not level 1's shared content.
+      if (rel === `${evals}level2`) return;
       for (const n of readdirSync(abs).sort()) if (!n.startsWith(".")) walk(`${rel}/${n}`);
     } else if (rel === `${evals}results.json`) return;
     else if (noCases && rel.startsWith(evals) && !rel.slice(evals.length).includes("/") && rel.endsWith(".md")) return;
@@ -175,7 +178,7 @@ function roleFiles(root: string, id: string, noCases: boolean): string[] {
 }
 
 /** One hash of the files' paths and contents; text is hashed with LF line endings, so a `core.autocrlf` checkout agrees. */
-function digestOf(root: string, files: string[]): string {
+export function digestOf(root: string, files: string[]): string {
   const h = createHash("sha256");
   for (const f of [...new Set(files)].sort()) {
     const raw = readFileSync(join(root, f));

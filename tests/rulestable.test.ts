@@ -167,7 +167,7 @@ describe("cases cover rules and skills (C1)", () => {
     // A result file that is missing, stale or records a case not passed is the Role's C6 status, a warning for whoever
     // changes the Role, not a unit-test failure. Any other warning is.
     const warns = out.split("\n").filter((l) => l.startsWith("WARN"));
-    expect(warns.filter((l) => !/roles\/[a-z-]+\/evals\/results\.json/.test(l))).toEqual([]);
+    expect(warns.filter((l) => !/roles\/[a-z-]+\/evals\/(level2\/)?results\.json/.test(l))).toEqual([]);
   });
 });
 
