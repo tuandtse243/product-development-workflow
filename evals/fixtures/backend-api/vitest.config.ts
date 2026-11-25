@@ -6,5 +6,9 @@ export default defineConfig({
   test: {
     include: ["tests/**/*.test.ts"],
     testTimeout: 20_000,
+    // Each test file starts one PGlite (tests/helpers.ts), which takes seconds when many suites run at once: files run
+    // one after another, so a suite starts one database at a time, and the hook that starts it may wait.
+    fileParallelism: false,
+    hookTimeout: 120_000,
   },
 });
