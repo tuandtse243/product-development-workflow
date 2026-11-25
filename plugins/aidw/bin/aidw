@@ -19010,8 +19010,18 @@ function copyPluginForSession(root, into) {
     recursive: true,
     dereference: true,
     filter: (src) => {
-      const r = (0, import_node_path47.relative)(roles, (0, import_node_path47.resolve)(src));
-      if (!r.startsWith("..") && r.split(import_node_path47.sep)[1] === "evals") return false;
+      const inEvals = (p) => {
+        const r = (0, import_node_path47.relative)(roles, p);
+        return !r.startsWith("..") && r.split(import_node_path47.sep)[1] === "evals";
+      };
+      if (inEvals((0, import_node_path47.resolve)(src))) return false;
+      if (isLink(src)) {
+        try {
+          if (inEvals((0, import_node_fs42.realpathSync)(src)) || inEvals((0, import_node_path47.resolve)((0, import_node_path47.dirname)(src), (0, import_node_fs42.readlinkSync)(src)))) return false;
+        } catch {
+          return false;
+        }
+      }
       return !src.endsWith(`${import_node_path47.sep}.DS_Store`);
     }
   });
@@ -19276,12 +19286,7 @@ function sandboxProfile(scope) {
   const net = ["(version 1)", "(allow default)", '(deny network-outbound (remote ip "*:*"))', '(allow network-outbound (remote ip "localhost:*"))', "(deny network-outbound (remote unix-socket))"];
   if (!scope) return net.join("");
   const sub = (p) => `(subpath ${sbQuote(real2(p))})`;
-  return [
-    ...net,
-    "(deny file-write*)",
-    `(allow file-write* ${sub((0, import_node_os4.tmpdir)())} ${sub(scope.project)} ${sub(scope.run)} (subpath "/dev"))`,
-    `(deny file-write* ${sub(scope.snapshot)})`
-  ].join("");
+  return [...net, "(deny file-write*)", `(allow file-write* ${sub(scope.project)} ${sub(scope.scratch)} (subpath "/dev"))`].join("");
 }
 var probed = null;
 function gradingSandbox(env = process.env, scope) {
@@ -19300,7 +19305,7 @@ function gradingSandbox(env = process.env, scope) {
   const how2 = probed;
   if (how2 === "sandbox-exec") return { how: how2, wrap: (cmd2) => ["sandbox-exec", "-p", sandboxProfile(scope), "sh", "-c", cmd2] };
   if (how2 === "bwrap") {
-    const binds = scope ? [(0, import_node_os4.tmpdir)(), scope.project, scope.run].flatMap((p) => ["--bind", real2(p), real2(p)]).concat(["--ro-bind", real2(scope.snapshot), real2(scope.snapshot)]) : [];
+    const binds = scope ? [scope.project, scope.scratch].flatMap((p) => ["--bind", real2(p), real2(p)]) : [];
     return { how: how2, wrap: (cmd2) => ["bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", ...binds, "--unshare-net", "--die-with-parent", "sh", "-c", cmd2] };
   }
   if (how2 === "unshare") return { how: how2, wrap: (cmd2) => ["unshare", "-rn", "sh", "-c", `ip link set lo up >/dev/null 2>&1 || true; ${cmd2}`] };
@@ -19331,9 +19336,9 @@ function jsonContains(actual, expected) {
   }
   return actual === expected;
 }
-function runCheck(ch, cwd, env, sandbox) {
+function runCheckWith(ch, exec) {
   try {
-    const r = sh(ch.run, cwd, env, sandbox);
+    const r = exec(ch.run);
     if (r.exit !== ch.expect.exit) return { pass: false, why: `exit ${r.exit}, expected ${ch.expect.exit}: ${tail(r.out, 300).replace(/\s+/g, " ")}` };
     if (ch.expect.matches !== void 0 && !new RegExp(ch.expect.matches, "m").test(r.out)) return { pass: false, why: `output does not match /${ch.expect.matches}/` };
     if (ch.expect.json !== void 0) {
@@ -19550,37 +19555,51 @@ function runLevel2Once(c, n, o, nodeModules) {
   if (!limits.length && ag.exit !== 0) limits.push(`the session ended with exit ${String(ag.exit)}${session.resultSubtype ? ` (${session.resultSubtype})` : ""}`);
   steps.push({ step: "agent", pass: limits.length === 0, failed: limits });
   let diff = "";
-  let changedFile = "";
-  let g;
+  let changed = [];
   try {
     if (treeDigest(prep.snapshot) !== prep.snapshotDigest) throw new Error("the snapshot of the base changed during the session");
-    g = gradeGit(prep, dir);
+    const g = gradeGit(prep, dir);
     const rules = normalizeRuleFiles(prep, g);
     const cap = captureDiff(prep, g);
     diff = rules.diff + cap.diff;
-    const changed = [.../* @__PURE__ */ new Set([...cap.changed, ...rules.changed])].sort();
-    changedFile = (0, import_node_path47.join)(dir, "changed.txt");
-    (0, import_node_fs42.writeFileSync)(changedFile, changed.length ? `${changed.join("\n")}
-` : "");
-    (0, import_node_fs42.writeFileSync)((0, import_node_path47.join)(dir, "diff.patch"), diff);
+    changed = [.../* @__PURE__ */ new Set([...cap.changed, ...rules.changed])].sort();
     restoreForGrading(prep, g, nodeModules, c.restore);
   } catch (e) {
     return result({ error: `the copy could not be read for grading: ${e.message}`, turns });
   }
+  const records = () => {
+    (0, import_node_fs42.writeFileSync)((0, import_node_path47.join)(dir, "changed.txt"), changed.length ? `${changed.join("\n")}
+` : "");
+    (0, import_node_fs42.writeFileSync)((0, import_node_path47.join)(dir, "diff.patch"), diff);
+  };
+  records();
   const reportFile2 = (0, import_node_path47.join)(prep.project, ".aidw", "run", `report-${c.task}.md`);
   const report = (0, import_node_fs42.existsSync)(reportFile2) && (0, import_node_fs42.lstatSync)(reportFile2).isFile() ? (0, import_node_fs42.readFileSync)(reportFile2, "utf8") : null;
-  const sandbox = gradingSandbox(env, { project: prep.project, run: dir, snapshot: prep.snapshot });
-  sandboxKind = sandbox.how;
-  const cmdEnv = gradingEnv(env, {
-    ...g.env,
-    PATH: [(0, import_node_path47.join)((0, import_node_path47.resolve)(o.root), "bin"), env.PATH].filter(Boolean).join(":"),
-    AIDW_BASE: prep.base,
-    AIDW_PROJECT: prep.project,
-    AIDW_CHANGED: changedFile,
-    CI: "1",
-    NO_COLOR: "1",
-    FORCE_COLOR: "0"
-  });
+  sandboxKind = gradingSandbox(env).how;
+  const basics = { PATH: [(0, import_node_path47.join)((0, import_node_path47.resolve)(o.root), "bin"), env.PATH].filter(Boolean).join(":"), CI: "1", NO_COLOR: "1", FORCE_COLOR: "0" };
+  const grade = (command, extraEnv, keep = []) => {
+    const scratch = (0, import_node_fs42.mkdtempSync)((0, import_node_path47.join)(dir, "scratch-"));
+    const inputs = (0, import_node_fs42.mkdtempSync)((0, import_node_path47.join)(dir, "inputs-"));
+    try {
+      const e = gradingEnv(env, { ...basics, TMPDIR: scratch, ...extraEnv(inputs) });
+      makeReadOnly(inputs);
+      const r = sh(command, prep.project, e, gradingSandbox(env, { project: prep.project, scratch }));
+      killLeftovers(prep.project);
+      const kept = new Map(keep.map((k) => [k, (0, import_node_fs42.existsSync)((0, import_node_path47.join)(scratch, k)) && (0, import_node_fs42.lstatSync)((0, import_node_path47.join)(scratch, k)).isFile() ? (0, import_node_fs42.readFileSync)((0, import_node_path47.join)(scratch, k), "utf8") : null]));
+      return { ...r, kept };
+    } finally {
+      removeTree(scratch);
+      removeTree(inputs);
+    }
+  };
+  const checkInputs = (inputs) => {
+    (0, import_node_fs42.writeFileSync)((0, import_node_path47.join)(inputs, "changed.txt"), changed.length ? `${changed.join("\n")}
+` : "");
+    (0, import_node_fs42.mkdirSync)((0, import_node_path47.join)(inputs, "objects"));
+    const gitEnv = { ...snapshotGitEnv(prep.snapshot, prep.project, (0, import_node_path47.join)(inputs, "index")), GIT_OBJECT_DIRECTORY: (0, import_node_path47.join)(inputs, "objects"), GIT_ALTERNATE_OBJECT_DIRECTORIES: (0, import_node_path47.join)(prep.snapshot, "objects") };
+    git2(prep.project, ["read-tree", prep.base], gitEnv);
+    return { ...gitEnv, AIDW_BASE: prep.base, AIDW_PROJECT: prep.project, AIDW_CHANGED: (0, import_node_path47.join)(inputs, "changed.txt") };
+  };
   const caseDir = (0, import_node_path47.join)(o.root, c.dir, "held-out");
   const testFiles2 = c.heldOut.filter((f) => /\.(test|spec)\.[cm]?[jt]sx?$/.test(f));
   try {
@@ -19588,26 +19607,31 @@ function runLevel2Once(c, n, o, nodeModules) {
     const q = (f) => `'${f.replace(/'/g, "'\\''")}'`;
     const vitest = (0, import_node_path47.join)(prep.project, "node_modules", ".bin", "vitest");
     const config = RESTORED.filter((f) => /^vite(st)?\.config\./.test(f)).find((f) => (0, import_node_fs42.existsSync)((0, import_node_path47.join)(prep.project, f)));
-    const jsonOut = (0, import_node_path47.join)(dir, "held-out.json");
-    const command = (0, import_node_fs42.existsSync)(vitest) && config ? `node_modules/.bin/vitest run --config ${q(config)} --reporter=default --reporter=json --outputFile=${q(jsonOut)} ${testFiles2.map(q).join(" ")}` : `npm test --silent -- ${testFiles2.map(q).join(" ")}`;
-    const t = sh(command, prep.project, cmdEnv, sandbox);
+    const useVitest = (0, import_node_fs42.existsSync)(vitest) && !!config;
+    const command = useVitest ? `node_modules/.bin/vitest run --config ${q(config)} --reporter=default --reporter=json --outputFile="$TMPDIR/held-out.json" ${testFiles2.map(q).join(" ")}` : `npm test --silent -- ${testFiles2.map(q).join(" ")}`;
+    const t = grade(command, () => ({}), ["held-out.json"]);
     (0, import_node_fs42.writeFileSync)((0, import_node_path47.join)(dir, "held-out.txt"), t.out);
     let failedTests = [...new Set(t.out.split("\n").map((l) => /^\s*(?:×|✗|FAIL)\s+(.+?)(?:\s+\d+ms)?\s*$/.exec(l)?.[1]?.trim()).filter((x) => !!x))];
     const failed = [];
-    if ((0, import_node_fs42.existsSync)(jsonOut)) {
+    const jsonText = t.kept.get("held-out.json");
+    if (useVitest) {
       let rep = {};
       try {
-        rep = JSON.parse((0, import_node_fs42.readFileSync)(jsonOut, "utf8"));
+        rep = JSON.parse(jsonText ?? "");
+        (0, import_node_fs42.writeFileSync)((0, import_node_path47.join)(dir, "held-out.json"), jsonText);
       } catch {
         rep = {};
       }
       const ran = Number(rep.numPassedTests ?? 0) + Number(rep.numFailedTests ?? 0);
-      const listOut = (0, import_node_path47.join)(dir, "held-out-list.json");
-      sh(`node_modules/.bin/vitest list --config ${q(config)} --json=${q(listOut)} ${testFiles2.map(q).join(" ")}`, prep.project, cmdEnv, sandbox);
+      const l = grade(`node_modules/.bin/vitest list --config ${q(config)} --json="$TMPDIR/held-out-list.json" ${testFiles2.map(q).join(" ")}`, () => ({}), ["held-out-list.json"]);
       let listed = null;
       try {
-        const v = JSON.parse((0, import_node_fs42.readFileSync)(listOut, "utf8"));
-        if (Array.isArray(v) && v.length) listed = v.length;
+        const listText = l.kept.get("held-out-list.json") ?? "";
+        const v = JSON.parse(listText);
+        if (Array.isArray(v) && v.length) {
+          listed = v.length;
+          (0, import_node_fs42.writeFileSync)((0, import_node_path47.join)(dir, "held-out-list.json"), listText);
+        }
       } catch {
         listed = null;
       }
@@ -19621,16 +19645,23 @@ function runLevel2Once(c, n, o, nodeModules) {
   } catch (e) {
     steps.push({ step: "tests", pass: false, failed: [`the held-out tests could not be laid over or run: ${e.message}`] });
   }
+  for (const f of c.heldOut) (0, import_node_fs42.rmSync)((0, import_node_path47.join)(prep.project, f), { force: true });
   const checkFails = [];
   const checkOut = [];
   for (const ch of c.checks) {
-    const r = runCheck(ch, prep.project, cmdEnv, sandbox);
+    let r;
+    try {
+      r = runCheckWith(ch, (command) => grade(command, checkInputs));
+    } catch (e) {
+      r = { pass: false, why: `the check could not run: ${e.message}` };
+    }
     checkOut.push(`${r.pass ? "ok  " : "FAIL"} ${ch.name}${r.pass ? "" : `: ${r.why}`}`);
     if (!r.pass) checkFails.push(`${ch.name}: ${r.why}`);
   }
   (0, import_node_fs42.writeFileSync)((0, import_node_path47.join)(dir, "checks.txt"), `${checkOut.join("\n")}
 `);
   steps.push({ step: "checks", pass: checkFails.length === 0, failed: checkFails });
+  records();
   const ctx = { project: prep.project, pluginRoot: pluginCopy };
   const offLimits = [...repo, prep.snapshot, settingsFile];
   const readFails = [

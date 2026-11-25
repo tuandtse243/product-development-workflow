@@ -170,23 +170,82 @@ describe("N4, L2: what the grading commands get", () => {
 
   const scopeDirs = () => {
     const run = temp("aidw-l2r-scope-");
-    for (const d of ["project", "base.git"]) mkdirSync(join(run, d));
-    return { run, project: join(run, "project"), snapshot: join(run, "base.git") };
+    for (const d of ["project", "scratch", "base.git"]) mkdirSync(join(run, d));
+    return { run, project: join(run, "project"), scratch: join(run, "scratch"), snapshot: join(run, "base.git") };
   };
   const probe = gradingSandbox(process.env);
   // Only where the sandbox can be applied (not inside another sandbox, as in a Claude Code session).
-  it.skipIf(probe.how === "none")("cannot write outside the project and the run folder, nor into the snapshot, nor reach a Unix socket", () => {
+  it.skipIf(probe.how === "none")("writes only in the project and its scratch folder, and reaches no Unix socket", () => {
     const sc = scopeDirs();
-    const sb = gradingSandbox(process.env, sc);
+    const sb = gradingSandbox(process.env, { project: sc.project, scratch: sc.scratch });
     const home = join(process.env.HOME as string, `.aidw-l2r-${process.pid}`);
+    const outside = temp("aidw-l2r-outside-");
     const ok = (run: string) => runCheck({ name: "x", run, expect: { exit: 0 } }, sc.project, gradingEnv(process.env), sb);
     expect(ok("echo a > inside.txt")).toEqual({ pass: true, why: "" });
-    expect(ok(`echo a > ${join(sc.run, "result.txt")}`)).toEqual({ pass: true, why: "" });
+    expect(ok(`echo a > ${join(sc.scratch, "out.json")}`)).toEqual({ pass: true, why: "" });
+    expect(ok(`echo a > ${join(sc.run, "changed.txt")}`).pass).toBe(false); // the run folder
     expect(ok(`echo a > ${join(sc.snapshot, "HEAD")}`).pass).toBe(false);
+    expect(ok(`echo a > ${join(outside, "x")}`).pass).toBe(false); // the temp dir
     expect(ok(`echo a > ${home}`).pass).toBe(false);
     expect(existsSync(home)).toBe(false);
     const unix = 'node -e \'require("net").connect("/var/run/syslog").on("connect",()=>process.exit(0)).on("error",()=>process.exit(7))\'';
     expect(runCheck({ name: "unix", run: unix, expect: { exit: 7 } }, sc.project, gradingEnv(process.env), sb)).toEqual({ pass: true, why: "" });
+  });
+});
+
+describe("N6: code the session wrote cannot rewrite what the grading reads", () => {
+  it("a module that rewrites the changed list, the index and the diff when imported changes nothing, and B15 still catches its edit", () => {
+    const s = setup();
+    // The held-out test imports the session's module, as a real held-out test imports the session's route.
+    put(s.root, `${L2}/tiny/held-out/tests/value.test.mjs`, [
+      'import { readFileSync } from "node:fs";',
+      'await import("../src/mod.mjs");',
+      'if (readFileSync("src/value.txt", "utf8").trim() !== "new") { console.log("  × the value is new"); process.exit(1); }',
+      'console.log("  ✓ the value is new");',
+      "",
+    ].join("\n"));
+    put(s.root, `${L2}/tiny/checks.yaml`, [
+      "checks:",
+      "  - name: nothing outside src/ changed",
+      "    run: >-",
+      "      out=$(grep -v '^src/' \"$AIDW_CHANGED\" | grep -v '^\\.aidw/' | grep -v '^$'); test -z \"$out\" || { echo \"$out\"; exit 1; }",
+      "  - name: git through the snapshot sees the edit outside src/",
+      '    run: git diff --name-only "$AIDW_BASE"; git ls-files --others --exclude-standard',
+      "    expect: { matches: \"^outside\\\\.txt$\" }",
+      "",
+    ].join("\n"));
+    const also = (i: AgentRunInput) => {
+      put(i.cwd, "outside.txt", "an edit outside src/\n");
+      // what the module does when imported: rewrite every record it can find beside the project
+      put(i.cwd, "src/mod.mjs", [
+        'import { readdirSync, writeFileSync } from "node:fs";',
+        'import { join } from "node:path";',
+        'const run = join(process.cwd(), "..");',
+        "const hit = (f, text) => { try { writeFileSync(f, text); } catch {} };",
+        'for (const v of ["AIDW_CHANGED", "GIT_INDEX_FILE"]) if (process.env[v]) hit(process.env[v], "");',
+        'hit(join(run, "changed.txt"), "");',
+        'hit(join(run, "grade.index"), "garbage");',
+        'hit(join(run, "diff.patch"), "nothing changed");',
+        'for (const n of readdirSync(run)) if (n.startsWith("inputs-")) hit(join(run, n, "changed.txt"), "");',
+        "",
+      ].join("\n"));
+    };
+    const r = go(s, agent({ value: "new", also }));
+    expect(r.error).toBeUndefined();
+    expect(r.steps.find((x) => x.step === "tests")!.pass).toBe(true);
+    const checks = r.steps.find((x) => x.step === "checks")!;
+    expect(checks.failed).toEqual([expect.stringMatching(/^nothing outside src\/ changed: exit 1, expected 0: outside\.txt/)]);
+    expect(runFile(r, "changed.txt").split("\n")).toEqual(expect.arrayContaining(["outside.txt", "src/mod.mjs", "src/value.txt"]));
+    expect(runFile(r, "diff.patch")).toMatch(/\+an edit outside src\//);
+    expect(r.pass).toBe(false);
+  });
+
+  it("the checks see none of the held-out files", () => {
+    const s = setup();
+    put(s.root, `${L2}/tiny/checks.yaml`, "checks:\n  - name: no held-out file\n    run: test ! -e tests/value.test.mjs\n");
+    const r = go(s, agent({ value: "new" }));
+    expect(r.steps.find((x) => x.step === "tests")!.pass).toBe(true);
+    expect(r.steps.find((x) => x.step === "checks")).toMatchObject({ pass: true, failed: [] });
   });
 });
 
