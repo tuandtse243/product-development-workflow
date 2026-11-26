@@ -213,14 +213,27 @@ function routeHits(route, content) {
     const tail = segsOfFile.slice(segsOfFile.indexOf("app") + 1).join("/").replace(/\.[cm]?[jt]sx?$/, "");
     if (content.includes(tail)) hits.push(-1); // the test imports the handler: the whole file is its test
   }
+  // A hit inside a one-line helper (`const post = (id) => http.post(`/x/${id}`)`, `function post(id) { … }`): each
+  // call of that helper is a call of the route too.
+  const helpers = new Set();
+  for (const h of hits) {
+    if (h < 0) continue;
+    const start = content.lastIndexOf("\n", h) + 1;
+    const m = /^\s*(?:export\s+)?(?:(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>|(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\()/.exec(content.slice(start, h));
+    if (m) helpers.add(m[1] ?? m[2]);
+  }
+  for (const name of helpers) {
+    const esc2 = name.replace(/[$]/g, "\\$");
+    for (const m of content.matchAll(new RegExp(`(?<![\\w$.])${esc2}\\(`, "g"))) hits.push(m.index);
+  }
   return hits;
 }
 
 const STATUS_ASSERTION = /(?:\bexpect\(\s*|\b(?:toBe|toEqual|toStrictEqual|toHaveStatus|toHaveHTTPStatus|toHaveStatusCode)\(\s*|\bstatus(?:_code|Code)?\s*(?:===?|:)\s*|\bHTTP_)(\d{3})(?!\d)/g;
 const NEAR = 15;
 // A test helper named expect…/assert… that takes the response and then a status: `expectProblem(res, 401, …)`,
-// or a constant that holds one: `expectProblem(res, UNAUTH)`.
-const HELPER_ASSERTION = /\b(?:expect|assert)[A-Z_]\w*\(\s*[\w.$[\]]+\s*,\s*(?:(\d{3})(?!\d)|([A-Za-z_$][\w$]*)\b)/g;
+// a call that builds one: `expectProblem(res, problem(401, …))`, or a constant that holds one: `expectProblem(res, UNAUTH)`.
+const HELPER_ASSERTION = /\b(?:expect|assert)[A-Z_]\w*\(\s*[\w.$[\]]+\s*,\s*(?:[\w$.]+\(\s*(?:\{\s*status\s*:\s*)?)?(?:(\d{3})(?!\d)|([A-Za-z_$][\w$]*)\b(?!\s*\())/g;
 // A constant whose value starts with a status: `const UNAUTH = problem(401, …)`, `= { status: 404, … }`, `= 403`.
 const STATUS_CONST = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:[\w$.]+\(\s*|\{\s*status\s*:\s*)?(\d{3})(?!\d)/g;
 
