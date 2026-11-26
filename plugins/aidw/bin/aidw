@@ -10608,7 +10608,8 @@ var SKILLS_WITH_NOTES = /* @__PURE__ */ new Set([
   "vue/vue-best-practices",
   "astral/uv",
   "anthropic/frontend-design",
-  "emil/animate"
+  "emil/animate",
+  "humanlayer/show-me"
 ]);
 function selectSkills(t, kind, opts = {}) {
   const picks = [];
