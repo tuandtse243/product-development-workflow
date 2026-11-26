@@ -91,7 +91,10 @@ export function planRefProblems(t: Task): string[] {
   }
   if (t.manual !== undefined && !(Array.isArray(t.manual) && t.manual.every((x) => typeof x === "string" && x.trim() !== ""))) {
     out.push(': "manual" must be a list of checks a human makes, each a non-empty line');
-  }
+  } else if (Array.isArray(t.manual))
+    t.manual.forEach((x, i) => {
+      if (/[\r\n]/.test(String(x).trim())) out.push(`: manual[${i + 1}]: a check must be one line (it is one checklist line in the handoff and the pull request)`);
+    });
   return out;
 }
 
