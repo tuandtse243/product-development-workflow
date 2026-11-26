@@ -1,6 +1,6 @@
 ---
 name: resume
-description: Resume an aidw change after an interruption - killed session, quota or rate limit, or an escalation the user has resolved. Use when the user runs /aidw:resume.
+description: Resume an aidw change after an interruption - killed session, quota or rate limit, an escalation the user has resolved, or a draft pull request to finish. Use when the user runs /aidw:resume.
 allowed-tools: Bash(aidw *)
 disable-model-invocation: true
 argument-hint: "[change id]"
@@ -21,13 +21,25 @@ All progress lives in `.aidw/` and git, so resuming needs no memory of the previ
 2. By state:
    - `paused`: `aidw transition <id> resume` (returns to the state it paused from).
    - `escalated`: show the user why (the escalation reason and the task's evidence) and ask what to do. When the task
-     has a triage diagnosis whose cause is `plan`, `spec` or `architecture`, ask with a Decision Page: `aidw page triage <T>
+     has a triage diagnosis whose cause is `plan`, `spec` or `architecture` (a Change escalated by an aidw from before
+     ADR-0014, which no longer escalates them), ask with a Decision Page: `aidw page triage <T>
      --change <id> --lang <en|vi>` prints its link; give the user the link and two lines, and when they paste the answer
      check it with `aidw page answers triage-<t>` (the task id in lowercase) before acting on it:
      - the cause is resolved (they fixed it, or gave the missing decision): `aidw transition <id> executing`,
        then for each task that is `escalated`, `aidw task retry <T>` (fresh attempt budget). Only on the
        user's explicit go-ahead: retrying is their decision.
      - the scope must change: `aidw transition <id> analyzing`, revise, approve again.
+   - `delivered` with a draft pull request (`aidw status` / change.yaml `run.pr`; the body's "Needed from the user to
+     finish" says what was missing): finish it (D12). `aidw transition <id> executing` reopens it: the tasks not built
+     for the environment, or at the cap once the user raised it (`aidw cap <id> --raise <runs>`, the user's command:
+     it asks), run again with the tasks that depend on them; layers not built run again; a failed deploy runs again at
+     the end. Its output lists what stays not built. A task not built after Triage or its fix rounds is retried only on
+     the user's explicit go-ahead: `aidw task retry <T>` (never headless). Then follow the run skill below; at its end
+     `aidw pr <id> --create` updates the same pull request (pushes again, replaces the body, marks it ready when
+     everything passed) and a ready Change is archived. When the transition is refused because nothing can run again,
+     what is left is the user's own action from the "Needed" section (work outside the grants, the cap): say so and stop.
+   - `delivered` without a pull request yet: the delivery was interrupted; follow
+     `$(aidw plugin-path skills/deliver/SKILL.md)`.
    - `approved`, `executing`: nothing to do here.
    - drift or anything before approval: explain (`/aidw:status`) and stop.
 3. Read `$(aidw plugin-path skills/run/SKILL.md)` and follow it from its step 1 to its last step. Do not try to invoke
@@ -37,7 +49,9 @@ All progress lives in `.aidw/` and git, so resuming needs no memory of the previ
    when `aidw next` says `complete`. A wave task keeps its worktree across sessions: its brief
    points the new implementer there. `aidw next` returns the interrupted task first
    (`implement <T> (interrupted)`): its brief tells the new implementer to continue from the work already in
-   the working tree rather than start over.
+   the working tree rather than start over. A Consultation in flight comes before it (`consult`, `step: answer` or
+   `resume`): the run skill's *consult* step says what to run; the resume brief lets a fresh Agent of the asking Role
+   continue.
 4. Headless (`claude -p` from `aidw run`): never ask the user anything and never offer choices ("tell me which you
    want"): the next step is in the run skill, so do it. If a decision is really needed, escalate with the
    question and stop; the runner reports it.

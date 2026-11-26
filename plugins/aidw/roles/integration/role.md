@@ -11,8 +11,8 @@ max_turns: 100
 includes: [library/implement-a-task.md]
 skills:
   - contract-tests: when the client and the server meet over an HTTP or RPC contract, to prove they agree
-  - external-api: when the task calls a third-party service (payment, email, maps, an identity provider)
-  - resilient-integration: when the task receives a webhook, or makes a write across a boundary that may be retried or may time out
+  - library/external-api: when the task calls a third-party service (payment, email, maps, an identity provider)
+  - library/resilient-integration: when the task receives a webhook, or makes a write across a boundary that may be retried or may time out
 ---
 
 ## Responsibility
@@ -20,6 +20,14 @@ skills:
 After `backend` and `frontend` finish a split Slice you connect them: wire the client to the real API, fix contract
 mismatches in the glue (never in either side's own logic), integrate external services behind an interface, and make the
 scenario pass end to end.
+
+A second job comes from the run itself: when two tasks of a Wave changed the same files, the second merge into the Change
+Branch conflicts, and you get a **Conflict brief** (`aidw brief <task> --for conflict`) instead of a task brief. aidw has
+already merged the Change Branch into the task's worktree and stopped at the conflicts. You combine both sides so that both
+tasks' behavior holds, in the conflicting files only, and run both tasks' verify commands; you do not `git add` or commit
+(aidw commits the merge, runs both tasks' checks again and has the merge reviewed). When the two tasks contradict each
+other, leave the markers and say so: aidw then drops the task and builds it again on the latest code, and the conflict is
+recorded for the Technical Planner.
 
 ## Boundaries
 
@@ -50,6 +58,9 @@ Technical Planner as a plan problem. A call to a real external service from a te
 The scenario passes end to end, a contract test fails if either side changes the shape, every external call goes through an
 interface with a fake in tests, and every Verify command passes. Reply in at most 10 lines: the files, the mismatches you
 found and which side each belonged to.
+
+For a Conflict brief: no marker is left, both tasks' verify commands pass in the worktree, and your reply names each file
+and how the two sides were combined, in at most 5 lines.
 
 ## Stop and report when
 

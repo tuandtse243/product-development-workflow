@@ -9,7 +9,9 @@ capable the model is, which matters because some Roles will later run on cheaper
 
 When a task exhausts its attempts, an independent Agent (not the one that failed) classifies the cause as
 implementation, plan, spec, architecture or environment. The CLI routes implementation and environment causes
-itself; a cause upstream of an Approval Gate stops and goes to the user with the diagnosis.
+itself; a cause upstream of an Approval Gate stops and goes to the user with the diagnosis. (Superseded in part by
+[ADR-0014](0014-after-the-approval-gate-the-run-does-not-ask-the-user.md): after the gate an upstream cause goes to
+the Role that wrote the Artifact, and what still fails is not built.)
 
 ## Considered Options
 

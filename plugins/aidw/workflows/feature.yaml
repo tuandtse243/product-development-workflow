@@ -29,7 +29,7 @@ transitions:
   verifying: [executing, converging, paused, escalated]
   converging: [executing, deploying, paused, escalated]
   deploying: [delivered, paused, escalated]
-  delivered: []
+  delivered: [executing]  # /aidw:resume finishes a draft pull request (D12)
   archived: []
   escalated: [executing, verifying, converging, deploying, analyzing]
 
@@ -87,7 +87,7 @@ stages:
     title: Discovery interview, one conversation in stages (the job, the rules and edges, the users)
     states: [analyzing]
     roles: [product-manager, business-analyst, ux-research]
-    reads: [intake]
+    reads: [intake, analysis-existing-system, architecture]
     writes: [analysis-discovery-qa]
 
   - id: research
@@ -108,7 +108,7 @@ stages:
     title: Domain model and requirements (Product Manager), then delta specs (Business Analyst)
     states: [analyzing]
     roles: [product-manager, business-analyst]
-    reads: [intake, analysis-discovery-qa]
+    reads: [intake, analysis-discovery-qa, research-note, user-journeys]
     writes: [domain-model, decisions-domain, requirements, delta-specs, specs, analysis-scope, analysis-domain, analysis-specs]
 
   - id: design
@@ -117,6 +117,7 @@ stages:
     roles: [ui-ux-designer]
     reads: [requirements, delta-specs]
     writes: [design-direction, design-tokens, decision-design-needed, analysis-design]
+    browser: true # screenshots the mocks in the test browser (aidw mock shots); one browser user at a time
 
   - id: architecture
     title: Stack, architecture and constitution
@@ -145,6 +146,13 @@ stages:
     roles: [qa, release]
     reads: [delta-specs, tasks, architecture]
     writes: [test-plan, quality, analysis-quality-profile, analysis-deploy-strategy, analysis-permissions]
+
+  - id: plan-review
+    title: Independent review of architecture and plan against a fixed list, after aidw analyze (at most 2 fix rounds)
+    states: [analyzing]
+    roles: [code-reviewer]
+    reads: [requirements, delta-specs, analysis-scope, architecture, constitution, data-model-notes, api-contract-notes, tasks, test-plan, quality]
+    writes: [plan-review]
 
   - id: approval
     title: Analyze, present and approve

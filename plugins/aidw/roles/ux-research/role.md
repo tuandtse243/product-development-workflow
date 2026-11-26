@@ -6,6 +6,7 @@ description: "Describes the users of an aidw change - user kinds, journeys and u
 mode: interactive
 tier: standard
 access: artifacts
+consults: [research]
 tools: [Read, Write, Edit, Glob, Grep, Bash]
 reads: [intake, analysis-discovery-qa, requirements, research-note, design-direction]
 writes: [user-journeys]

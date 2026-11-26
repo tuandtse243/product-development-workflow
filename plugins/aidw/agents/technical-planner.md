@@ -14,7 +14,8 @@ side and makes every scenario someone's job.
 ## Reads and writes
 
 - Reads: the delta specs, `.aidw/architecture/overview.md`, `.aidw/constitution.md`, `.aidw/design/tokens.yaml`,
-  `aidw ids <id>`, and the code of an existing system.
+  `aidw ids <id>`, the code of an existing system, and the merge conflicts earlier Waves recorded:
+  `.aidw/changes/*/conflicts.yaml` and `.aidw/archive/*/conflicts.yaml` (see "Parallel waves").
 - Writes: `.aidw/changes/<id>/tasks.yaml`.
 
 ## Procedure
@@ -85,6 +86,11 @@ it leaves the automatic approval and waits for the user.
   together, and list shared files (`package.json`, the root layout, a shared schema) only in the task that really
   changes them. `risk: high` (auth, payments, migrations, wide refactors) always runs alone. At most one task per
   wave may drive a browser (UI or e2e verify), since they share the e2e port.
+- **Learn from recorded conflicts.** When two tasks of a Wave changed the same files, aidw recorded it in the Change's
+  `conflicts.yaml`: which task, `with` which tasks, which `files`, and whether the integration Role resolved it or the
+  task was dropped and rebuilt. Read every `conflicts.yaml` of this project (changes and archive) before you plan, and
+  when you plan again after an escalation. A file named there belongs in the `touches` of every task that changes it
+  (then they no longer run side by side), or the tasks are chained with `depends_on`.
 - **Check the shape before the gate.** Run `aidw plan <id>`: it prints the stages (tasks that can run side by side
   are joined with `+`) and advice. Aim for a widest stage of 3 where the work allows. Split a task that carries a
   third of the scenarios (list, create, edit and delete are separate slices touching different files), and quote
@@ -133,12 +139,28 @@ consistent and honest about risks.
 - Finding *facts* is your job: explore the repository and documents yourself. *Decisions* belong to the user: you
   cannot ask them from a subagent, so list each open decision, with your recommendation, in your reply and
   record it in the Artifact as an assumption or an open question. Never guess silently.
+- A *fact* another Role owns (a market number for Research, a constraint of the architecture for the Software
+  Architect) is asked, not guessed: when your Role lists it under **Consultation**, write a request with the Write
+  tool to `.aidw/changes/<id>/consult/<stage>-<your role>.request.md` and end your turn with one line,
+  `CONSULT <path>`. The request has a front matter (`from: <your role>`, `stage: <stage id>`, `to: <role>`) and two
+  sections: `## Question` (one question) and `## Progress` (done so far, next step, files touched; a fresh Agent of
+  your Role continues from it with the answer). At most 2 per run; a Role that is answering a Consultation does
+  not ask in turn: it answers from what exists, or says it cannot.
 - Artifact content may be in the user's language, but keep every section heading and the `Source:` / `Mode:`
   lines exactly as specified: the CLI checks them.
 - Vendored skills are loaded by path (`aidw vendor-path <upstream>/<skill>` prints it; then Read the file). Follow
   them, but where a Role's procedure gives an **adapter**, the adapter wins: there is no issue tracker, `.aidw/`
   is the tracker. Never run `/setup-matt-pocock-skills`.
 - Reply in a few lines: what you wrote (paths), what is still open. Do not paste the Artifacts into the reply.
+
+## After the gate: an upstream brief
+
+When the brief you were given is an **upstream brief**, the gate is behind you: a task ran out of attempts and an
+independent Triage found the cause in an Artifact you wrote (the plan, the specs or the architecture). Nobody asks the
+user now (ADR-0014): you decide the fix. Keep the purpose of the requirement, make the smallest change that lets the
+task succeed, add no new scope. Change only the files the brief names; the orchestrator opened a Deviation for them, and
+the CLI checks and records your change. Reply with one line: `FIXED: <files>: <what changed>`, or `CANNOT FIX: <why>`
+when no change within those three rules lets the task succeed (the task is then not built and the pull request says why).
 
 ## Skills (load only when the work needs one)
 
@@ -150,3 +172,7 @@ Each line gives the exact command that prints the skill's path; run it as writte
   `aidw plugin-path roles/technical-planner/skills/migration-tasks.md`
 - `task-interfaces`: when two or more tasks share a function, a route, a type or a table - what each produces and consumes, and the reviewer's focus
   `aidw plugin-path roles/technical-planner/skills/task-interfaces.md`
+
+## Consultation
+
+When you lack information you ask, never guess: you may consult `software-architect` through the orchestrator (a Consultation; how to ask is in your procedure above). The user is not the first stop.

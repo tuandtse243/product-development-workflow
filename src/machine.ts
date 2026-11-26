@@ -65,11 +65,14 @@ export function machineById(workflow: string): Machine | null {
   return m;
 }
 
+/** The Workflow a Change runs under when it names none: the default of the project kind. */
+export const defaultWorkflowId = (p: Paths): string => (projectKind(p) === "brownfield" ? "feature" : "product");
+
 /** The Workflow a Change runs under: the one named in change.yaml, else the default of the project kind. */
 export function workflowIdOf(p: Paths, change: Change): string {
   const named = change.data.workflow;
   if (typeof named === "string" && named) return named;
-  return projectKind(p) === "brownfield" ? "feature" : "product";
+  return defaultWorkflowId(p);
 }
 
 /** The machine of a Change. Throws when its Workflow is unknown or broken: nothing can be decided without it. */

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import type { Paths } from "./project.js";
+import { SCOPE_QUESTIONS, SCOPE_ROUND_HEADING } from "./scope.js";
 
 /**
  * Decision Pages (ADR-0007): one round of questions, a pick list or an Approval Gate summary rendered as one
@@ -120,10 +121,11 @@ function unique(values: string[], what: string, where: string, problems: string[
 }
 
 /**
- * Reads the data of a page. `extra` are sections the CLI adds to a gate page itself (Decision Points, plan size).
+ * Reads the data of a page. `extra` are sections the CLI adds to a gate page itself (Decision Points, plan size), after
+ * the authored ones; `lead` go before them (the open findings of the plan review).
  * Problems name the field, so the Role that wrote the data can fix it without guessing.
  */
-export function parsePage(name: string, source: string, extra: PageSection[] = []): { page: Page; problems: string[] } {
+export function parsePage(name: string, source: string, extra: PageSection[] = [], lead: PageSection[] = []): { page: Page; problems: string[] } {
   const problems: string[] = [];
   let raw: Record<string, unknown> = {};
   try {
@@ -204,6 +206,17 @@ export function parsePage(name: string, source: string, extra: PageSection[] = [
     if (!page.questions.length) problems.push("questions: missing or empty");
     unique(page.questions.map((q) => q.id), "question id", "questions", problems);
   }
+  // The scope round of the discovery interview (scope.ts): its answer is recorded where `aidw analyze` looks for it.
+  if (page.kind === "scope") {
+    if (layout !== "questions") problems.push("kind: scope is a round of questions (layout: questions)");
+    else
+      for (const id of SCOPE_QUESTIONS) {
+        const q = page.questions.find((x) => x.id === id);
+        if (!q) problems.push(`kind: scope needs the question "${id}" (${SCOPE_QUESTIONS.join(", ")})`);
+        else if (q.optional) problems.push(`kind: scope: the question "${id}" may not be optional; the round records an answer to each`);
+        if (q && id === "scope" && (!q.multi || q.options.length < 2)) problems.push('kind: scope: the question "scope" is a multi choice with one option per capability (multi: true, options)');
+      }
+  }
 
   if (layout === "picks") {
     page.items = rows(raw.items).map((it, i) => {
@@ -220,6 +233,7 @@ export function parsePage(name: string, source: string, extra: PageSection[] = [
 
   if (layout === "gate") {
     page.sections = [
+      ...lead,
       ...rows(raw.sections).map((s, i) => {
         const id = text(s.id);
         const where = `sections[${id || i + 1}]`;
@@ -593,6 +607,7 @@ export function parseAnswers(page: Page, pasted: string): Answers {
     );
   }
   for (const id of given.keys()) if (!known.has(id)) problems.push(`"${id}" is not part of this page`);
+  if (page.kind === "scope" && !problems.length) next.push(`record these lines word for word under "### ${SCOPE_ROUND_HEADING}" in the discovery appendix of analysis.md`);
   return { ok: problems.length === 0, problems, answers, note: given.get("note") ?? "", next };
 }
 

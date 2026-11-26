@@ -33,7 +33,11 @@ _Avoid_: Stub, placeholder
 
 **Orchestrator**:
 The coordinator of a run: the main session together with the CLI. It is not a Role and is not in the Roster.
-_Avoid_: Manager agent, supervisor
+_Avoid_: Manager agent, supervisor, master agent
+
+**Consultation**:
+One question an Agent puts to another Role through the Orchestrator while it works; the answer comes back as an Artifact.
+_Avoid_: Agent call, delegation, handoff
 
 **Run mode**:
 How a Role's Agent runs: interactive (in the main session, talking with the user) or worker (in a fresh context).
@@ -61,7 +65,8 @@ fails, the work is refused or sent back.
 _Avoid_: Gate (a Gate is the condition; a Guard is a check that enforces one), lint rule, hook
 
 **Approval Gate**:
-A Gate that only the user can pass.
+A Gate that only the user can pass. Every Workflow that builds has exactly one, after the plan (ADR-0011); the
+read-only audit has none. Choices settled earlier, like the scope of a new product, are rounds of questions.
 _Avoid_: Checkpoint (that word means the per-task evidence check)
 
 **Decision Point**:
@@ -81,6 +86,22 @@ _Avoid_: Debugging, post-mortem
 The tasks that together deliver one behavior end to end; the Technical Planner gives it to one Agent or
 splits it by Role along a contract.
 _Avoid_: Feature, story
+
+**Deviation**:
+A change made after the Approval Gate to something that was approved, decided by the Role that wrote it and listed in the pull request.
+_Avoid_: Drift (that is an approved file changed with no recorded decision), override
+
+**Change Branch**:
+The one branch that carries a Change; every task's work is merged into it and it is the only branch that is ever pushed.
+_Avoid_: Main branch (that is the project's default branch), feature branch
+
+**Wave**:
+The pieces of work of one Change that run at the same time because none of them writes what another reads or writes.
+_Avoid_: Batch, parallel group
+
+**Task Worktree**:
+The private working copy one task of a Wave is built in; its branch is merged into the Change Branch and never pushed.
+_Avoid_: Agent branch, sandbox
 
 ### Knowledge
 
@@ -104,3 +125,43 @@ The knowledge about one technology that any Role loads when the project uses tha
 **Project Overlay**:
 Rules and reference material a project adds to a Role without replacing the Role's own definition.
 _Avoid_: Override, customization
+
+### Design
+
+**Design Direction**:
+The look chosen for one product: its character, type, color, density and layout, and the exceptions it allows itself.
+_Avoid_: Theme, style, brand
+
+**Brand**:
+The name and the mark of one product. It is separate from the Design Direction, which is how the product looks.
+_Avoid_: Identity, logo (when the name is meant too), Design Direction
+
+**Design Mock**:
+A static screen that shows one Design Direction at real size. Candidates are compared by the user; the approved
+one is an Artifact, and the screens built later follow its structure and treatment.
+_Avoid_: Prototype, wireframe, mockup, Decision Page
+
+**Direction Library**:
+The Design Directions the factory's owner accepted as examples. They set
+the format and the bar for the three directions composed for each product; they are not the candidates.
+_Avoid_: Theme pack, presets, templates
+
+**Screen Kind**:
+What a screen is for: an app screen (operated) or a landing page (read). A Design Direction sets rules per kind.
+_Avoid_: Page type
+
+**Usability Rule**:
+A rule about whether a person can do the job on a screen, with its source and a fixed severity: blocking, fix or
+remark. It applies to every project, on the screens a Change touches.
+_Avoid_: UX law, heuristic, best practice, guideline
+
+**Dark Pattern**:
+A design that deceives or traps the people who use the product (false urgency, false social proof, hidden costs,
+a cancellation harder than the sign-up). The factory does not build one.
+_Avoid_: Growth tactic, nudge
+
+**Slop Check**:
+A deterministic check for the signs of a generic generated interface, applied to a Change whose design the factory
+authors; only an exception written in the approved Design Direction lifts one of its rules. It is not a Guard:
+failures of use (contrast, overflow, clipped text, a blank state) are checked by a Guard on every project.
+_Avoid_: Guard, lint, taste review

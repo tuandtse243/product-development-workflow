@@ -1,10 +1,10 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import YAML from "yaml";
 import { describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
 import { loadWorkflow } from "../src/workflow.js";
-import { ANALYSIS_MD, QUALITY_YAML, REQ, TOKENS_YAML, tempProject, write } from "./fixtures.js";
+import { ANALYSIS_MD, QUALITY_YAML, REQ, TOKENS_YAML, tempProject, write, planReviewed } from "./fixtures.js";
 
 const plugin = join(__dirname, "..", "plugins", "aidw");
 const ID = "2026-11-14-fix-cancel";
@@ -36,6 +36,7 @@ function atGate(opts: { tasks?: string; delta?: boolean; workflow?: string | nul
     write(root, `${c}/specs/booking/spec.md`, `## MODIFIED Requirements\n\n${REQ("Cancel appointment")}`);
   }
   if (opts.workflow !== undefined) write(root, `${c}/change.yaml`, readFileSync(join(root, c, "change.yaml"), "utf8").replace("skip_specs: false", "skip_specs: true")); // a change with no delta spec
+  planReviewed(root, ID);
   for (const s of ["intake", "analyzing", "awaiting_approval"]) {
     const r = cli(root, "transition", ID, s);
     expect(r.code, `${s}: ${r.err}${r.out}`).toBe(0);
@@ -59,6 +60,19 @@ describe("the bugfix workflow", () => {
 });
 
 describe("aidw approve --auto", () => {
+  it("leaves the decision to the user when the plan review ended with findings still open", () => {
+    const root = atGate();
+    const findings = [{ item: 4, target: "T01", text: "a retry queue no scenario needs -> drop it" }];
+    const rounds = [1, 2, 3].map((round) => ({ round, cycle: 1, verdict: "fix", digest: "sha256:x", at: "2026-11-24T00:00:00.000Z", findings }));
+    write(root, `.aidw/changes/${ID}/plan-review.yaml`, YAML.stringify({ cycle: 1, briefed: 3, rounds }));
+    rmSync(join(root, ".aidw/run", `review-plan-${ID}.md`));
+    const r = cli(root, "approve", ID, "--auto");
+    expect(r.code).toBe(1);
+    expect(r.err).toMatch(/the plan review ended with 1 finding\(s\) still open: the user decides/);
+    expect(change(root).state).toBe("awaiting_approval");
+    expect(cli(root, "approve", ID).code).toBe(0);
+  });
+
   it("approves a small fix itself, and keeps the hash and the drift protection", () => {
     const root = atGate({ tasks: task(1) + task(2) + task(3) });
     const r = cli(root, "approve", ID, "--auto");

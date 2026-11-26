@@ -7,9 +7,10 @@ description: "Turns a request and the recorded discovery interview into the doma
 mode: interactive
 tier: deep
 access: artifacts
+consults: [research]
 tools: [Read, Write, Edit, Glob, Grep, Bash]
 reads: [intake, analysis-discovery-qa, domain-model, specs, constitution, research-note, user-journeys]
-writes: [product-brief, intake, analysis-summary, analysis-decisions-to-honor, analysis-scope, analysis-domain, analysis-risks, analysis-discovery-qa, domain-model, decisions-domain, requirements, decision-research-needed, decision-ux-research-needed]
+writes: [intake, analysis-summary, analysis-decisions-to-honor, analysis-scope, analysis-domain, analysis-risks, analysis-discovery-qa, domain-model, decisions-domain, requirements, decision-research-needed, decision-ux-research-needed]
 includes: [library/author-artifacts.md]
 skills:
   - discovery-frame: at the start of the interview - what must be known (the job, today's workaround, the measure of done) before requirements are written
@@ -46,13 +47,18 @@ Research run when you decide the Change needs them.
    guess becomes an explicit assumption.
 4. Record every round (questions, recommendations, and the answers as `aidw page answers` printed them) in
    `analysis.md` under `## Appendix: discovery Q&A` as you go. Done when the frontier is empty and the user confirms you share an understanding.
+5. **Scope round (`product` Workflow).** Before the interview hands over to the rules and edges, settle the scope on one
+   Decision Page named `scope` with `kind: scope` and the four questions `vision` (who it is for and what success looks
+   like), `scope` (the capabilities, a `multi` choice with your recommendation), `mvp` (the smallest cut worth building
+   first, and why) and `out` (what is deliberately not built now). Record the checked answer word for word under
+   `### Scope round` in the discovery appendix; `aidw analyze` refuses a `product` package without it. Nothing is
+   approved here: the user approves the whole package once, at the gate after the plan.
 
 ## Procedure (drafting)
 
-0. **Product brief (new product, before anything else).** When the change has a scope gate (`brief.md` exists in the
-   change folder), write only `.aidw/changes/<id>/brief.md` first: `## Vision`, `## Scope`, `## MVP`, `## Out of scope`,
-   from the recorded interview, short enough to approve in a minute. Reply, and stop: the user approves the scope before
-   you draft the domain model, requirements and specs.
+0. **Scope.** The scope is what the user chose in the scope round (`### Scope round` of the discovery appendix; a change
+   started by an older aidw may have `brief.md` instead). Draft inside it: a capability it leaves out is not drafted, and
+   the requirements' Out of Scope repeats what it puts out.
 
 1. **Domain model.** Read `aidw vendor-path pocock/domain-modeling` and apply it with this adapter: glossary,
    entities, relationships and business rules go to `.aidw/domain/model.md` (sections `## Glossary`,

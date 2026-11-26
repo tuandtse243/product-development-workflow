@@ -38,6 +38,20 @@ const WORKFLOW_TOUCH = /(^|\/)\.github\/(workflows|actions)(\/|$)/;
 const PYTHON_PROJECT_TOUCH = /(^|\/)(pyproject\.toml|uv\.lock)$/;
 const MOTION_HINT = /\b(animat\w*|transitions?|motion|easing|gestures?|drag|swipe)\b/i;
 const OBSERVABILITY_HINT = /\b(logging|logs?|metrics?|tracing|traces?|telemetry|observability|monitoring|alerts?|health ?checks?)\b/i;
+// sentry/secret-serialization (plan section 5, T14 S7): narrow on purpose. Either the task works on a sink that
+// serializes whole objects (logs, traces, error reports), or a credential goes onto a config or client object.
+// Title and scenarios say what the task is about; Touches only say where (never read a credential from Touches alone).
+const SINK_WORDS = /\b(logging|loggers?|log(ged)? (to|with|the|failed|errors?)|logs (failed|errors?)|structured logs?|tracing|spans?|telemetry|opentelemetry|otel|instrumentation|error (reporting|tracking|context)|sentry|redact\w*)\b/i;
+const SINK_TOUCH = /(^|\/)(logging|loggers?|telemetry|tracing|instrumentation|observability|sentry)(\/|\.|$)/i;
+const CREDENTIAL_WORDS = /\b(secrets?|api ?keys?|apikeys?|credentials?|access ?keys?|private ?keys?|signing ?keys?|client ?secrets?|tokens?|passwords?)\b/i;
+/** Values that live only on a config or client object: no holder needed. */
+const SELF_HELD_CREDENTIAL = /\b(dsn|connection ?strings?)\b/i;
+/** "the OpenAI key from the environment": a bare "key" counts only next to env or environment. */
+const ENV_WORDS = /\b(env|environment)\b/i;
+const HOLDER_WORDS = /\b(config|configuration)\b/i;
+const CONFIG_TOUCH = /(^|\/)(config|settings)(\/|\.\w+$)/i;
+const ENV_EXAMPLE_TOUCH = /(^|\/)\.env\.example$/;
+const ADAPTER_TOUCH = /(^|\/)(adapters?|clients?|integrations?|providers?|gateways?)(\/|[.-])/i;
 
 const list = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : []);
 
@@ -47,6 +61,25 @@ export function isSecuritySensitive(t: Task): boolean {
   const text = [t.title ?? "", ...list(t.touches), ...list(t.specs), ...list(t.scenarios)].join(" ").replace(/[/_.-]/g, " ");
   return SECURITY_HINT.test(text);
 }
+
+/** True for a backend or fullstack task that stores a credential on a config or client object, or works on a sink
+ * that serializes whole objects: the signal for `sentry/secret-serialization`. A task with no role is fullstack. */
+export function handlesSecretSerialization(t: Task): boolean {
+  const role = String(t.role ?? "");
+  if (role && role !== "backend" && role !== "fullstack") return false;
+  const touches = list(t.touches);
+  const text = [t.title ?? "", ...list(t.scenarios)].join(" ").replace(/[/_.-]/g, " ").replace(/\blog in\b/gi, "");
+  if (SINK_WORDS.test(text) || touches.some((g) => SINK_TOUCH.test(g))) return true;
+  if (SELF_HELD_CREDENTIAL.test(text)) return true;
+  const credential = CREDENTIAL_WORDS.test(text);
+  if (credential && (HOLDER_WORDS.test(text) || touches.some((g) => CONFIG_TOUCH.test(g)))) return true;
+  if ((credential || /\bkeys?\b/i.test(text)) && ENV_WORDS.test(text)) return true;
+  return touches.some((g) => ENV_EXAMPLE_TOUCH.test(g)) && touches.some((g) => ADAPTER_TOUCH.test(g));
+}
+
+const SECRET_SERIALIZATION = "sentry/secret-serialization";
+const SECRET_SERIALIZATION_READ =
+  "read its SKILL.md and only the reference for the project's language (references/python.md or references/javascript-typescript.md); skip SPEC.md and SOURCES.md";
 
 export function touchesApi(t: Task): boolean {
   return list(t.touches).some((g) => API_TOUCH.test(g));
@@ -72,6 +105,7 @@ export const SKILLS_WITH_NOTES: ReadonlySet<string> = new Set([
   "docker/docker-compose-patterns",
   "sentry/gha-security-review",
   "sentry/django-perf-review",
+  "sentry/secret-serialization",
   "fastapi/fastapi",
   "svelte/svelte-core-bestpractices",
   "vue/vue-best-practices",
@@ -93,6 +127,7 @@ export function selectSkills(t: Task, kind: BriefKind, opts: { retry?: boolean; 
     add("code-review-and-quality", "every review");
     if (isSecuritySensitive(t)) add("security-and-hardening", "security-sensitive task (risk or auth/payment/permissions)");
     if (touches.some((g) => WORKFLOW_TOUCH.test(g))) add("sentry/gha-security-review", "the task changes a GitHub Actions workflow");
+    if (handlesSecretSerialization(t)) add(SECRET_SERIALIZATION, `a credential on a config or client object, or a sink that serializes whole objects: check holder and sink; ${SECRET_SERIALIZATION_READ}`);
     return picks;
   }
 
@@ -100,9 +135,9 @@ export function selectSkills(t: Task, kind: BriefKind, opts: { retry?: boolean; 
   add("test-driven-development", "core: tests per scenario before code");
   add("obra/verification-before-completion", "core: run the proof before you say it works");
 
-  const ui = touchesUi(t) || role === "frontend-engineer";
-  const api = touches.some((g) => API_TOUCH.test(g)) || role === "backend-engineer";
-  const data = touches.some((g) => DATA_TOUCH.test(g)) || role === "database-engineer";
+  const ui = touchesUi(t) || role === "frontend";
+  const api = touches.some((g) => API_TOUCH.test(g)) || role === "backend";
+  const data = touches.some((g) => DATA_TOUCH.test(g)) || role === "database";
   if (ui) add("frontend-ui-engineering", "touches UI files");
   if (ui) add("anthropic/frontend-design", "touches UI files: an interface with a point of view, inside the approved design tokens");
   if (ui && MOTION_HINT.test([t.title ?? "", ...list(t.scenarios)].join(" ").replace(/[/_.-]/g, " "))) add("emil/animate", "the task is about motion");
@@ -119,6 +154,7 @@ export function selectSkills(t: Task, kind: BriefKind, opts: { retry?: boolean; 
     add("docker/docker-build-strategies", "touches a Dockerfile");
   }
   if (touches.some((g) => COMPOSE_TOUCH.test(g))) add("docker/docker-compose-patterns", "touches a compose file");
+  if (handlesSecretSerialization(t)) add(SECRET_SERIALIZATION, `a credential on a config or client object, or a sink that serializes whole objects: keep the secret out of logs, traces and error reports; ${SECRET_SERIALIZATION_READ}`);
   if (OBSERVABILITY_HINT.test([t.title ?? "", ...list(t.scenarios)].join(" ").replace(/[/_.-]/g, " "))) add("observability-and-instrumentation", "the task is about logs, metrics or traces");
   if (touches.some((g) => PYTHON_PROJECT_TOUCH.test(g))) {
     add("astral/uv", "the task sets up or changes the Python project file");

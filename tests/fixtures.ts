@@ -1,6 +1,9 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import YAML from "yaml";
+import { digestOf } from "../src/planreview.js";
+import { writeAgents } from "../src/roles.js";
 
 export const MAIN_SPEC = `# Booking
 
@@ -37,6 +40,25 @@ The system SHALL ${name.toLowerCase()}.${extra}
 - **THEN** it happens
 `;
 
+/**
+ * Puts the backend Role of a plugin copy back to its shape before the rules table, whatever backend holds today: no
+ * rules.md, no skills index, only its two original cases with no `covers:` or `expect:` and no result file, and
+ * fullstack without `follows_rules`. Tests of the rules table (T12) build their own table Role from this.
+ */
+export function bareBackend(root: string): void {
+  const dir = join(root, "roles", "backend");
+  rmSync(join(dir, "rules.md"), { force: true });
+  const role = join(dir, "role.md");
+  writeFileSync(role, readFileSync(role, "utf8").replace(/^skills:\n(?:[ \t]+-.*\n)*/m, ""));
+  const evals = join(dir, "evals");
+  const kept = ["entity-is-not-a-response.md", "validates-authorizes-and-does-not-leak.md"];
+  for (const f of readdirSync(evals)) if (!kept.includes(f)) rmSync(join(evals, f), { recursive: true, force: true });
+  for (const f of kept) writeFileSync(join(evals, f), readFileSync(join(evals, f), "utf8").replace(/^(covers|expect): .*\n/gm, ""));
+  const fullstack = join(root, "roles", "fullstack", "role.md");
+  if (existsSync(fullstack)) writeFileSync(fullstack, readFileSync(fullstack, "utf8").replace(/^follows_rules: .*\n/m, ""));
+  writeAgents(root);
+}
+
 export function tempProject(): string {
   return mkdtempSync(join(tmpdir(), "aidw-test-"));
 }
@@ -47,6 +69,22 @@ export function write(root: string, rel: string, content: string): string {
   writeFileSync(file, content);
   return file;
 }
+
+/**
+ * The scope round of the discovery interview (a \`product\` change records it word for word from the \`scope\` page).
+ * Part of ANALYSIS_MD because a change created on a greenfield project, with or without --workflow, is a product
+ * change that records scope_round: true. Tests of a change that owes no round strip it (scoperound.test.ts).
+ */
+export const SCOPE_ROUND = `
+## Appendix: discovery Q&A
+
+### Scope round
+
+vision Who it is for: clinics whose patients book by phone today
+scope Capabilities in scope: booking, rescheduling
+mvp The first cut: booking and rescheduling; cancelling comes with staff tools
+out Out of scope: payments
+`;
 
 export const ANALYSIS_MD = `# Analysis: Booking
 
@@ -106,7 +144,7 @@ Vercel preview.
 ## Risks and assumptions
 
 Assumes one clinic, one timezone.
-`;
+${SCOPE_ROUND}`;
 
 export const TOKENS_YAML = `tokens:
   - name: accent
@@ -158,3 +196,14 @@ export const TASKS_YAML = `tasks:
     verify: ["pnpm playwright test booking"]
     status: pending
 `;
+
+export const PLAN_REVIEW_PASS = "VERDICT: pass\n";
+
+/**
+ * The independent review before the gate (D4) as if it had run and passed: the code-reviewer's verdict and the CLI's
+ * record of round 1. Tests that are not about the review call it before \`transition awaiting_approval\`.
+ */
+export function planReviewed(root: string, id: string): void {
+  write(root, `.aidw/run/review-plan-${id}.md`, PLAN_REVIEW_PASS);
+  write(root, `.aidw/changes/${id}/plan-review.yaml`, YAML.stringify({ rounds: [{ round: 1, verdict: "pass", digest: digestOf(PLAN_REVIEW_PASS), at: "2026-11-24T00:00:00.000Z", findings: [] }] }));
+}

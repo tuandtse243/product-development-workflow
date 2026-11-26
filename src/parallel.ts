@@ -7,7 +7,9 @@
  *              `aidw/<change>.<task>` (beside the change branch `aidw/<change>`), created by aidw (not the Agent tool's isolation), so the gate, the
  *              checkpoint and resume work the same for every runtime
  *   merge      review pass commits the worktree and merges it into the change branch (one commit per task);
- *              a conflict drops the branch and reruns the task sequentially on the latest code
+ *              a conflict goes to the integration Role (src/conflict.ts, D11); when that fails the branch is
+ *              dropped and the task reruns sequentially on the latest code. Each conflict is recorded in
+ *              `changes/<id>/conflicts.yaml` for the Technical Planner
  *   integrate  after a wave, the merged code runs every wave task's verify plus the `code` layer; a failure
  *              becomes a fix task (origin: integration) before anything new starts
  */
@@ -25,6 +27,7 @@ import { DEFAULT_PARALLEL, parseQuality, qualityFile, type ParallelConfig, type 
 import { touchesUi } from "./skills.js";
 import { globsOverlap, staticPrefix, touchesOverlap } from "./touches.js";
 import type { Task } from "./tasks.js";
+import { agentRunStatus, capReason } from "./agentruns.js";
 import type { CommandRunner, VerifyRun } from "./run.js";
 
 const list = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : []);
@@ -57,6 +60,28 @@ export function planWave(tasks: Task[], max: number): Task[] {
     if (mustRunAlone(t)) continue;
     if (wave.some((w) => touchesOverlap(list(w.touches), list(t.touches)))) continue;
     if (drivesBrowser(t) && wave.some(drivesBrowser)) continue;
+    wave.push(t);
+  }
+  return wave;
+}
+
+/**
+ * New wave tasks that may start beside tasks already running (`busy`, e.g. one paused on a Consultation): each busy
+ * task holds its slot of `max`, its touches and its browser, and one that must run alone holds the whole Change.
+ */
+export function planWaveBeside(tasks: Task[], max: number, busy: Task[]): Task[] {
+  if (busy.some(mustRunAlone)) return [];
+  const room = max - busy.length;
+  if (room <= 0) return [];
+  const byId = new Map(tasks.map((t) => [t.id, t]));
+  const ready = tasks.filter((t) => statusOf(t) === "pending" && list(t.depends_on).every((d) => statusOf(byId.get(d) ?? { id: d }) === "done"));
+  const wave: Task[] = [];
+  for (const t of ready) {
+    if (wave.length >= room) break;
+    if (mustRunAlone(t)) continue;
+    const all = [...busy, ...wave];
+    if (all.some((w) => touchesOverlap(list(w.touches), list(t.touches)))) continue;
+    if (drivesBrowser(t) && all.some(drivesBrowser)) continue;
     wave.push(t);
   }
   return wave;
@@ -140,7 +165,7 @@ export function removeSnapshot(p: Paths, folder: string): void {
   rmSync(join(p.project, folder), { recursive: true, force: true });
 }
 
-export type MergeOutcome = { ok: true } | { ok: false; conflict: string };
+export type MergeOutcome = { ok: true } | { ok: false; conflict: string; files: string[] };
 
 /**
  * Commits the task's work in its worktree (never its stale .aidw/ copy) and merges the branch into the main
@@ -169,9 +194,80 @@ export function mergeWorktree(p: Paths, t: Task, message: string): MergeOutcome 
   }
   const m = git(p.project, ["merge", "--no-ff", "--no-commit", "-q", branch]);
   if (m.ok) return { ok: true };
+  const files = git(p.project, ["diff", "--name-only", "--diff-filter=U"]).out.split("\n").filter(Boolean);
   git(p.project, ["merge", "--abort"]);
-  const files = git(p.project, ["diff", "--name-only", "--diff-filter=U"]).out;
-  return { ok: false, conflict: (m.out || m.err || files).split("\n").slice(0, 8).join("; ") };
+  return { ok: false, conflict: (m.out || m.err || files.join("\n")).split("\n").slice(0, 8).join("; "), files };
+}
+
+// ---------------------------------------------------------------- merge conflicts (T7, D11)
+
+/**
+ * The tasks already on the change branch that changed the conflicting files since `base`: read from the `Task:`
+ * footer of the task commits (src/commit.ts). A file changed by a commit that is no task's has no partner.
+ */
+export function conflictPartners(p: Paths, taskId: string, base: string | null, files: string[]): string[] {
+  if (!base || !files.length) return [];
+  const log = git(p.project, ["log", "--format=%B", `${base}..HEAD`, "--", ...files]);
+  if (!log.ok) return [];
+  const ids = [...log.out.matchAll(/^Task: (\S+)$/gm)].map((m) => m[1] as string);
+  return [...new Set(ids)].filter((x) => x !== taskId);
+}
+
+export type ConflictOutcome = "open" | "resolved" | "dropped";
+
+export interface ConflictRecord {
+  at: string;
+  task: string;
+  with: string[];
+  files: string[];
+  outcome: ConflictOutcome;
+  reason?: string;
+}
+
+/** Where the Change keeps its merge conflicts; the Technical Planner reads it when it plans again (roles/technical-planner). */
+export const conflictsFile = (change: Change) => join(change.dir, "conflicts.yaml");
+
+const CONFLICTS_HEADER =
+  "# Merge conflicts between tasks of a Wave (written by aidw). Each names the tasks whose work met in the same\n" +
+  "# files. The Technical Planner reads it when it plans: list those files in the touches of every task that\n" +
+  "# changes them, or chain the tasks with depends_on, so they never run side by side again.\n";
+
+export function readConflicts(change: Change): ConflictRecord[] {
+  const text = readText(conflictsFile(change));
+  if (text === null) return [];
+  try {
+    const data = YAML.parse(text) as { conflicts?: ConflictRecord[] } | null;
+    return Array.isArray(data?.conflicts) ? data.conflicts : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeConflicts(change: Change, records: ConflictRecord[]): void {
+  writeFileSync(conflictsFile(change), `${CONFLICTS_HEADER}${YAML.stringify({ conflicts: records })}`);
+}
+
+/** Opens a record for a conflict found at a task's merge. */
+export function recordConflict(change: Change, entry: Omit<ConflictRecord, "at" | "outcome">): void {
+  writeConflicts(change, [...readConflicts(change), { at: now(), ...entry, outcome: "open" }]);
+}
+
+/** Updates the task's latest record (the files and tasks found again when the merge is started, or reopened). */
+export function updateConflict(change: Change, taskId: string, patch: Partial<Pick<ConflictRecord, "with" | "files" | "outcome">>): void {
+  const records = readConflicts(change);
+  const last = records.map((r) => r.task).lastIndexOf(taskId);
+  if (last < 0) return;
+  records[last] = { ...(records[last] as ConflictRecord), ...patch };
+  writeConflicts(change, records);
+}
+
+/** Closes the task's latest record: resolved by integration, or dropped (the task reruns sequentially). */
+export function closeConflict(change: Change, taskId: string, outcome: Exclude<ConflictOutcome, "open">, reason?: string): void {
+  const records = readConflicts(change);
+  const last = records.map((r) => r.task).lastIndexOf(taskId);
+  if (last < 0) return;
+  records[last] = { ...(records[last] as ConflictRecord), outcome, ...(reason ? { reason: reason.slice(0, 300) } : {}) };
+  writeConflicts(change, records);
 }
 
 // ---------------------------------------------------------------- integration verify
@@ -183,6 +279,8 @@ export interface IntegrationRun {
   tasks: string[];
   runs: VerifyRun[];
   fixTask?: string;
+  /** ADR-0014: the run gave up on this integration (fix rounds exhausted or the Agent-run cap); the quality layers judge the merged code */
+  not_built?: string;
 }
 
 const integrationFile = (change: Change) => join(change.dir, "evidence", "integration.json");
@@ -197,8 +295,9 @@ export function integrationRuns(change: Change): IntegrationRun[] {
   }
 }
 
+/** The last integration that closed its wave: one that passed, or one the run gave up on (ADR-0014). */
 function lastPassAt(change: Change): string {
-  return integrationRuns(change).filter((r) => r.ok).at(-1)?.at ?? "";
+  return integrationRuns(change).filter((r) => r.ok || r.not_built).at(-1)?.at ?? "";
 }
 
 /** Wave tasks merged since the last passing integration verify. */
@@ -212,7 +311,8 @@ export interface IntegrateResult {
   tasks: string[];
   runs: VerifyRun[];
   fixTask?: string;
-  escalated?: boolean;
+  /** the integration is not built (fix rounds exhausted or the Agent-run cap): the run carries on, the PR lists it */
+  notBuilt?: boolean;
   summary: string;
 }
 
@@ -251,10 +351,12 @@ export function integrate(
   const since = lastPassAt(change);
   const failures = history.filter((r) => !r.ok && r.at > since).length + 1;
   const max = deps.quality?.maxFixRounds ?? 3;
-  if (failures > max) {
+  const cap = agentRunStatus(p, change);
+  if (failures > max || cap.reached) {
+    // Nobody is asked after the gate (ADR-0014): the wave stays merged, the quality layers judge it, the PR lists this.
+    record.not_built = failures > max ? `integration verify still failing after ${failures - 1} fix round(s)` : `${capReason(cap)}; no fix task starts`;
     write();
-    transition(p, id, "escalated", { reason: `integration verify of ${record.tasks.join(", ")} still failing after ${failures - 1} fix round(s)` });
-    return { ok: false, tasks: record.tasks, runs, escalated: true, summary: `integration verify failed; fix rounds exhausted (${failures - 1}/${max}): escalated` };
+    return { ok: false, tasks: record.tasks, runs, notBuilt: true, summary: `integration verify of ${record.tasks.join(", ")} failed and is not built: ${record.not_built}; the run carries on` };
   }
   const n = tf.tasks.filter((t) => t.origin === "integration").length + 1;
   const taskId = `I${String(n).padStart(2, "0")}`;

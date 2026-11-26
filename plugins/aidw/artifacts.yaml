@@ -3,7 +3,7 @@
 #
 #   path      inside .aidw/ (<id> = change id, <T> = task id, <capability>, NNNN-<slug> are placeholders)
 #   owner     exactly ONE Role writes it; a Role's `writes:` header lists only what it owns, `reads:` any artifact
-#   validate  how it is checked: `aidw validate` | `aidw analyze` | `aidw plan` | `none` (the user reads it at the gate)
+#   validate  how it is checked: `aidw validate` | `aidw analyze` | `aidw plan` | `aidw plan-review` | `none` (the user reads it at the gate)
 #   part      only when several artifacts share one file or folder: which part this one is (the heading of an
 #             analysis.md section, or what kind of ADR). Two artifacts never share a path without a `part`.
 #
@@ -93,10 +93,6 @@ analysis-discovery-qa:
   validate: aidw analyze
 
 # --- Product and analysis -------------------------------------------------------------------------------------
-product-brief:
-  path: changes/<id>/brief.md
-  owner: product-manager
-  validate: aidw analyze
 domain-model:
   path: domain/model.md
   owner: product-manager
@@ -214,6 +210,10 @@ task-review:
   path: run/review-<T>.md
   owner: code-reviewer
   validate: none
+plan-review:
+  path: run/review-plan-<id>.md
+  owner: code-reviewer
+  validate: aidw plan-review
 decision-audit-lenses:
   path: changes/<id>/decisions.yaml
   part: "audit-lenses: the lenses an audit looks through"

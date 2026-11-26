@@ -3,7 +3,7 @@
  * formats of the common providers. Only formats that identify themselves are listed: a generic "password = ..."
  * rule would fail every test fixture. A line that carries `gitleaks:allow` is skipped. The secret is never printed.
  */
-import { git } from "./git.js";
+import { git, isEnvFile, isGeneratedPath } from "./git.js";
 import { addedLines } from "./tamper.js";
 
 const RULES: { kind: string; re: RegExp }[] = [
@@ -50,8 +50,8 @@ export function secretsInChanges(dir: string, base: string | null, changed: stri
 }
 
 /** Credentials in the staged diff: the last check before aidw commits. */
-export function stagedSecrets(cwd: string): SecretFinding[] {
-  const r = git(cwd, ["diff", "--cached", "-U0", "--no-color"]);
+export function stagedSecrets(cwd: string, paths: string[] = []): SecretFinding[] {
+  const r = git(cwd, ["diff", "--cached", "-U0", "--no-color", ...(paths.length ? ["--", ...paths] : [])]);
   if (!r.ok) return [];
   const out: SecretFinding[] = [];
   let file = "";
@@ -73,3 +73,21 @@ export const secretsProblem = (found: SecretFinding[]): string =>
 
 export const secretsMessage = (found: SecretFinding[]): string =>
   `refusing to commit: ${secretsProblem(found)}. Read it from an environment variable and put only its name in .env.example; a key that was real must also be revoked. A line that only looks like a key (a documented example) can carry the comment \`gitleaks:allow\`.`;
+
+/** Why one commit must not be pushed: it adds a secrets file, build output or a credential; null when clean. */
+export function commitProblem(cwd: string, commit: string): string | null {
+  const names = git(cwd, ["show", "--name-only", "--format=", commit]).out.split("\n").filter(Boolean);
+  const junk = names.filter((f) => isEnvFile(f) || isGeneratedPath(f));
+  if (junk.length) return `it adds ${junk.slice(0, 3).join(", ")} (a secrets file or build output)`;
+  const r = git(cwd, ["show", "--format=", "-U0", "--no-color", commit]);
+  const found: SecretFinding[] = [];
+  let file = "";
+  for (const l of r.out.split("\n")) {
+    if (l.startsWith("+++ ")) file = l.slice(4).replace(/^b\//, "");
+    else if (l.startsWith("+") && !BINARY.test(file)) {
+      const kind = scanLine(l.slice(1));
+      if (kind) found.push({ kind, file, line: 0 });
+    }
+  }
+  return found.length ? secretsProblem(found) : null;
+}

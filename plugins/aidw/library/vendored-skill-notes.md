@@ -72,6 +72,27 @@ evaluates the input (the `script:` of `actions/github-script`); and under `issue
 A new project has no production data. Take data volume and hot paths from the scale the spec states, not from
 "verified row counts"; report a problem that the stated scale makes real.
 
+## sentry/secret-serialization
+
+Written as a reviewer's skill for Sentry's Warden. Read `SKILL.md` and only the reference for the project's
+language; ignore `SPEC.md` and `SOURCES.md`. `security-review` in its Boundary is not available: direct leaks are
+backend rule B14 and the security Role's review.
+
+- **Implementing Role**: you file no findings. Fix a holder or a sink inside your Touches; a sink outside them is a
+  Consultation or a line in your report naming the file. Write the regression test it describes (serialize with the
+  sink's own serializer, assert the secret is absent) even though the skill calls a missing test "not a finding".
+- **Config objects**: keep one validated config module (rule B13), but never pass the whole config or a client
+  object to a logger, a span, an error context or a response, and do not keep secrets on objects that travel.
+- **Reviewer**: its severity words map to the verdict file's shape. Report a sink outside the diff only when the
+  diff connects to it.
+
+Statements to check before relying on them (read-through 2026-11-24):
+
+- pino, winston's `json` format and the Sentry JavaScript normaliser probably honour `toJSON`, so a `toJSON`
+  allowlist is partial only against `console.log` and `util.inspect`.
+- `enumerable: false` is visible to `util.inspect` with `showHidden: true`.
+- Fastify response schemas drop unlisted properties and count as a filtered sink.
+
 ## fastapi/fastapi
 
 Never run `fastapi deploy` and do not suggest FastAPI Cloud. Type-check with Pyright, not ty. The skill assumes a
@@ -104,6 +125,22 @@ tokens and the brief override the skill; it adds character inside them, never a 
 Ignore its "Initial Response" section (it tells the agent to wait for a question) and every pointer to
 `../<other>/SKILL.md`. `var(--transform-origin)` and `data-starting-style` belong to one component library: use the
 project's own equivalents. Add no motion library for an effect CSS can do.
+
+## impeccable (craft-floor.md, antipatterns.json, clarify.md, harden.md)
+
+Lookup material, not a skill: there is no hook and no `impeccable` command for you to run, so check each line
+yourself on the rendered screen. Where it says "the brief" or "the committed visual world", read the approved
+Design Direction: only an exception written there lifts a rule. The `<codex>` block applies to every model. In
+`antipatterns.json` the `quality` rules are failures of use and the `slop` rules are signs of a generic interface.
+`clarify.md` (interface wording) and `harden.md` (edge cases) each end by handing off to an `impeccable` command:
+skip that line. Where they conflict with aidw's usability rules, the usability rules win.
+
+## vercel (command.md)
+
+A checklist for the code, not a skill: ignore its "Output Format" (your report shape is in your brief) and do not
+fetch anything. Its Animation, Typography, Images, Performance and Hydration sections are covered elsewhere; the
+approved Design Direction decides motion. Its examples are React and Tailwind: apply the rule, not the class name.
+Where it conflicts with aidw's usability rules (for example the size of a touch target), the usability rules win.
 
 ## mongodb/mongodb-schema-design
 

@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import YAML from "yaml";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -8,8 +9,8 @@ import { run } from "../src/cli.js";
 import { decide, type HookInput } from "../src/gate.js";
 import { globToRegExp, matchesAny } from "../src/glob.js";
 import { findScenarioTests } from "../src/run.js";
-import { selectSkills } from "../src/skills.js";
-import { ANALYSIS_MD, TOKENS_YAML, MAIN_SPEC, QUALITY_YAML, REQ, tempProject, write } from "./fixtures.js";
+import { selectSkills, skillPath, SKILLS_WITH_NOTES } from "../src/skills.js";
+import { ANALYSIS_MD, TOKENS_YAML, MAIN_SPEC, QUALITY_YAML, REQ, tempProject, write, planReviewed } from "./fixtures.js";
 
 const ID = "2026-11-08-booking";
 const SCENARIO = "booking/reschedule-appointment/reschedule-appointment-works";
@@ -61,7 +62,7 @@ function gitInit(root: string) {
 }
 
 /** Approved change in state executing. */
-export function executingProject(opts: { git?: boolean; t2Verify?: string; quality?: string } = {}): string {
+export function executingProject(opts: { git?: boolean; t2Verify?: string; quality?: string; tasks?: string } = {}): string {
   const root = tempProject();
   expect(cli(root, "init").code).toBe(0);
   write(root, ".aidw/specs/booking/spec.md", MAIN_SPEC);
@@ -70,11 +71,12 @@ export function executingProject(opts: { git?: boolean; t2Verify?: string; quali
   write(root, `${c}/analysis.md`, ANALYSIS_MD);
   write(root, ".aidw/design/tokens.yaml", TOKENS_YAML);
   write(root, "app/globals.css", ":root { --accent: #e5533d; --surface: #faf5ec; font-family: Inter; }\n.dark { --accent: #ff7a66; }\n");
-  write(root, `${c}/tasks.yaml`, RUN_TASKS(opts.t2Verify));
+  write(root, `${c}/tasks.yaml`, opts.tasks ?? RUN_TASKS(opts.t2Verify));
   write(root, `${c}/quality.yaml`, opts.quality ?? QUALITY_YAML);
   write(root, `${c}/specs/booking/spec.md`, `## ADDED Requirements\n\n${REQ("Reschedule appointment")}`);
   write(root, ".aidw/domain/model.md", "# Domain\n");
   write(root, ".aidw/decisions/0001-supabase.md", "# Use Supabase for auth and data\n");
+  planReviewed(root, ID);
   for (const s of ["intake", "analyzing", "awaiting_approval"]) expect(cli(root, "transition", ID, s).code).toBe(0);
   expect(cli(root, "approve", ID).code).toBe(0);
   if (opts.git) gitInit(root);
@@ -151,7 +153,7 @@ describe("execution loop (exit criterion [4])", () => {
     expect(ev.reviews[0].verdict).toBe("pass");
   });
 
-  it("feeds review notes back to the implementer and escalates when attempts run out", () => {
+  it("feeds review notes back to the implementer and sends a spec cause back to its author when attempts run out", () => {
     root = executingProject({ t2Verify: FAIL });
     write(root, "tests/booking.test.ts", SCENARIO_TEST);
     cli(root, "task", "start", "T01");
@@ -171,20 +173,19 @@ describe("execution loop (exit criterion [4])", () => {
     expect(task(root, "T02").notes).toMatch(/verify failed: `node -e .*` \(exit 3\)/);
     cli(root, "task", "start", "T02");
     cli(root, "checkpoint", "T02");
-    // out of attempts: one independent triage first (step 3); a spec cause stops for the user
+    // out of attempts: one independent triage first (step 3); a spec cause goes back to its author, never to the user (ADR-0014)
     expect(cli(root, "next", "--json").json()).toMatchObject({ action: "triage", task: "T02" });
     write(root, ".aidw/run/triage-T02.md", "CAUSE: spec\nThe THEN of the scenario cannot be observed.\n");
     expect(cli(root, "triage", "T02").code).toBe(0);
     const n = cli(root, "next", "--json").json();
-    expect(n).toMatchObject({ action: "escalate", task: "T02" });
-    expect(n.reason).toMatch(/triage: spec/);
-    expect(task(root, "T02").status).toBe("escalated");
-
-    // the orchestrator escalates the change; the user resolves it and grants a retry
+    expect(n).toMatchObject({ action: "upstream", task: "T02", cause: "spec", role: "business-analyst", round: 1 });
+    expect(task(root, "T02").status).toBe("failed");
     expect(cli(root, "transition", ID, "escalated", "--reason", "T02 keeps failing").code).toBe(0);
     expect(cli(root, "task", "retry", "T02").err).toMatch(/tasks run only in state executing/);
     expect(cli(root, "transition", ID, "executing").code).toBe(0);
-    expect(cli(root, "task", "retry", "T01").err).toMatch(/only escalated or failed tasks can be retried/);
+
+    // a retry the user grants by hand still gives a fresh attempt budget
+    expect(cli(root, "task", "retry", "T01").err).toMatch(/only escalated, failed or not built tasks can be retried/);
     expect(cli(root, "task", "retry", "T02").code).toBe(0);
     expect(cli(root, "next", "--json").json()).toMatchObject({ action: "implement", task: "T02", reason: "retry" });
     expect(cli(root, "task", "start", "T02", "--json").json().attempt).toBe(1);
@@ -245,6 +246,62 @@ describe("briefs", () => {
     expect(review).toMatch(/`VERDICT: pass` or `VERDICT: fix`/);
     expect(review).toMatch(/addy\/code-review-and-quality\/SKILL\.md/);
     expect(review).not.toMatch(/test-driven-development/);
+    // fullstack has no rules.md of its own; it follows backend's (follows_rules), so the review points at that one
+    expect(review).toContain("## Rules of the Role that built it (fullstack)");
+    expect(review).toMatch(/roles\/backend\/rules\.md`: rules of backend, one per row with an id\./);
+  });
+
+  it("the review brief points at the rules.md of the Role that built the task and asks for rule ids (R2)", () => {
+    const pluginCopy = mkdtempSync(join(tmpdir(), "aidw-plugin-"));
+    const plugin = join(__dirname, "..", "plugins", "aidw");
+    cpSync(plugin, pluginCopy, { recursive: true, filter: (src) => !src.startsWith(join(plugin, "bin")) });
+    const rules = join(pluginCopy, "roles", "backend", "rules.md");
+    writeFileSync(rules, "| id | rule | applies when | checked by |\n|---|---|---|---|\n| B1 | One. | always | reviewer |\n| B2 | Two. | always | script |\n");
+    const root = executingProject({ tasks: RUN_TASKS().replace(/fullstack-engineer/g, "backend") });
+    cli(root, "task", "start", "T01");
+    const brief = (env: Record<string, string>) => {
+      let out = "";
+      expect(run(["brief", "T01", "--for", "review", "--root", root], env, root, { out: (s) => (out += s), err: () => {} })).toBe(0);
+      return readFileSync(out.trim(), "utf8");
+    };
+    const review = brief({ AIDW_PLUGIN_ROOT: pluginCopy });
+    expect(review).toContain(`## Rules of the Role that built it (backend)`);
+    expect(review).toContain(`\`${rules}\``);
+    expect(review).toMatch(/cite its id \(for example `B1`\)/);
+    expect(review).toMatch(/Your verdict[\s\S]*name the rule id/);
+    expect(review).toMatch(/A rule checked only by the CLI is already proven by the checkpoint; when reviewer is also listed, judge it/);
+    expect(review).toMatch(/kept when the implementer asked instead of guessing/);
+    // a Role that follows another's rules (follows_rules) gets both files in the review of its tasks
+    const fsRole = join(pluginCopy, "roles", "fullstack", "role.md");
+    expect(readFileSync(fsRole, "utf8")).toMatch(/^follows_rules: \[backend\]$/m);
+    writeFileSync(join(pluginCopy, "roles", "fullstack", "rules.md"), "- Keep the slice whole.\n");
+    const fsRoot = executingProject();
+    cli(fsRoot, "task", "start", "T01");
+    let fsOut = "";
+    run(["brief", "T01", "--for", "review", "--root", fsRoot], { AIDW_PLUGIN_ROOT: pluginCopy }, fsRoot, { out: (s) => (fsOut += s), err: () => {} });
+    const fsReview = readFileSync(fsOut.trim(), "utf8");
+    expect(fsReview).toContain("## Rules of the Role that built it (fullstack)");
+    expect(fsReview).toContain(`\`${join(pluginCopy, "roles", "fullstack", "rules.md")}\`: rules of fullstack.`);
+    expect(fsReview).toContain(`\`${rules}\`: rules of backend, one per row with an id.`);
+    expect(fsReview).toMatch(/cite its id \(for example `B1`\)/);
+    // the implement brief does not carry it: the implementer's agent already has its rules
+    let out = "";
+    run(["brief", "T01", "--root", root], { AIDW_PLUGIN_ROOT: pluginCopy }, root, { out: (s) => (out += s), err: () => {} });
+    expect(readFileSync(out.trim(), "utf8")).not.toMatch(/Rules of the Role that built it/);
+    // ...but the implement brief of a Role that follows another's rules points at those: they are not in its profile
+    let fsImpl = "";
+    run(["brief", "T01", "--root", fsRoot], { AIDW_PLUGIN_ROOT: pluginCopy }, fsRoot, { out: (s) => (fsImpl += s), err: () => {} });
+    const fsBrief = readFileSync(fsImpl.trim(), "utf8");
+    expect(fsBrief).toContain("## Rules of the Roles yours follows");
+    expect(fsBrief).toContain(`\`${rules}\`: rules of backend, one per row with an id.`);
+    expect(fsBrief).not.toContain(`\`${join(pluginCopy, "roles", "fullstack", "rules.md")}\``); // its own are in its profile
+    expect(readFileSync(out.trim(), "utf8")).not.toMatch(/Rules of the Roles yours follows/); // backend follows no one
+    // a rules.md in prose is pointed at, without asking for ids
+    writeFileSync(rules, "- Never return an entity.\n");
+    const prose = brief({ AIDW_PLUGIN_ROOT: pluginCopy });
+    expect(prose).toContain(`\`${rules}\``);
+    expect(prose).not.toMatch(/cite its id/);
+    rmSync(pluginCopy, { recursive: true, force: true });
   });
 });
 
@@ -344,6 +401,140 @@ describe("skill selection", () => {
   });
 });
 
+describe("skill selection by Role", () => {
+  const core = ["addy/incremental-implementation", "addy/test-driven-development", "obra/verification-before-completion"];
+  const pick = (role: string, touches: string[]) =>
+    selectSkills({ id: "T", title: "x", role, type: "feat", verify: ["pnpm vitest"], touches } as never, "implement").map((s) => s.id);
+
+  it("a backend task gets the API skills even when its Touches do not look like server code", () => {
+    expect(pick("backend", ["src/bookings/**"])).toEqual([...core, "addy/api-and-interface-design", "aidw/api-design-rules"]);
+  });
+
+  it("a frontend task gets the UI skills", () => {
+    expect(pick("frontend", ["src/bookings/**"])).toEqual([...core, "addy/frontend-ui-engineering", "anthropic/frontend-design"]);
+  });
+
+  it("a database task gets the data skills", () => {
+    expect(pick("database", ["src/bookings/**"])).toEqual([
+      ...core,
+      "addy/api-and-interface-design",
+      "aidw/schema-evolution",
+      "supabase/supabase-postgres-best-practices",
+    ]);
+  });
+
+  it("a fullstack task is chosen by its Touches alone", () => {
+    expect(pick("fullstack", ["src/bookings/**"])).toEqual(core);
+    expect(pick("fullstack", ["app/api/bookings/**", "components/calendar/**"])).toEqual(
+      expect.arrayContaining(["addy/frontend-ui-engineering", "addy/api-and-interface-design", "aidw/api-design-rules"]),
+    );
+  });
+});
+
+describe("secret-serialization signal", () => {
+  const S = "sentry/secret-serialization";
+  const pick = (t: Record<string, unknown>, kind: "implement" | "review" = "implement") =>
+    selectSkills({ id: "T", title: "x", role: "backend", type: "feat", verify: ["pnpm vitest"], touches: ["src/orders/**"], ...t } as never, kind);
+  const has = (t: Record<string, unknown>, kind: "implement" | "review" = "implement") => pick(t, kind).some((s) => s.id === S);
+
+  it("loads when a credential goes onto a config or client object", () => {
+    expect(has({ title: "Add the Stripe secret key to the config" })).toBe(true);
+    expect(has({ title: "Read the mail API key", touches: ["src/config/**", ".env.example"] })).toBe(true);
+    expect(has({ title: "Read the OpenAI key from the environment" })).toBe(true);
+    expect(has({ title: "Rotate the database connection string" })).toBe(true);
+    expect(has({ title: "Stripe payment adapter", touches: ["src/adapters/stripe.ts", ".env.example"] })).toBe(true);
+    expect(has({ title: "Payments API client with credentials" })).toBe(false); // no config module, no env
+  });
+
+  it("loads when the task works on a sink that serializes whole objects", () => {
+    expect(has({ title: "Structured logging for the order routes" })).toBe(true);
+    expect(has({ touches: ["src/telemetry/**"] })).toBe(true);
+    expect(has({ title: "Send errors to Sentry" })).toBe(true);
+    expect(has({ title: "x", scenarios: ["ops/tracing/span-per-request"] })).toBe(true);
+    expect(has({ title: "Log failed webhook deliveries" })).toBe(true);
+  });
+
+  it("stays narrow: a credential word alone, a plain route, or a non-server Role does not load it", () => {
+    expect(has({ title: "Reset a forgotten password" })).toBe(false);
+    expect(has({ title: "Refresh the session token" })).toBe(false);
+    expect(has({ title: "List orders", touches: ["src/api/orders/**"] })).toBe(false);
+    expect(has({ title: "Log in page" })).toBe(false);
+    expect(has({ title: "DRF serializers for orders", touches: ["app/orders/serializers.py"] })).toBe(false);
+    expect(has({ title: "Show the audit logs to admins" })).toBe(false);
+    expect(has({ title: "Stripe payment adapter", touches: ["src/adapters/stripe.ts"] })).toBe(false);
+    expect(has({ role: "frontend", title: "Structured logging for the order routes" })).toBe(false);
+    expect(has({ role: "database", title: "Store the API key in config" })).toBe(false);
+  });
+
+  it("loads for fullstack and role-less tasks, in implement and review briefs, with notes and the reading rule", () => {
+    expect(has({ role: "fullstack", title: "Send errors to Sentry" })).toBe(true);
+    expect(has({ role: undefined, title: "Send errors to Sentry" })).toBe(true);
+    expect(has({ title: "Send errors to Sentry" }, "review")).toBe(true);
+    expect(has({ title: "List orders" }, "review")).toBe(false);
+    const s = pick({ title: "Send errors to Sentry" }).find((x) => x.id === S);
+    expect(s?.reason).toMatch(/only the reference for the project's language/);
+    expect(SKILLS_WITH_NOTES.has(S)).toBe(true);
+  });
+});
+
+describe("selected skills resolve", () => {
+  const vendor = join(__dirname, "..", "plugins", "aidw", "library", "vendor");
+  const base = { id: "T", title: "x", role: "fullstack", type: "feat", verify: ["pnpm vitest"], touches: ["lib/x/**"] };
+  // One task per branch of selectSkills.
+  const cases: [string, Record<string, unknown>, "implement" | "review", { retry?: boolean; reviewFix?: boolean }?][] = [
+    ["core", {}, "implement"],
+    ["UI", { touches: ["components/calendar/**"] }, "implement"],
+    ["UI by Role", { role: "frontend" }, "implement"],
+    ["motion", { touches: ["components/calendar/**"], title: "Animate the day transition" }, "implement"],
+    ["API", { touches: ["app/api/bookings/**"] }, "implement"],
+    ["API by Role", { role: "backend" }, "implement"],
+    ["data", { touches: ["supabase/migrations/**"] }, "implement"],
+    ["data by Role", { role: "database" }, "implement"],
+    ["security", { risk: "high" }, "implement"],
+    ["browser verify", { verify: ["pnpm playwright test"] }, "implement"],
+    ["Docker", { touches: ["Dockerfile"] }, "implement"],
+    ["compose", { touches: ["docker-compose.yml"] }, "implement"],
+    ["GH workflow", { touches: [".github/workflows/ci.yml"] }, "review"],
+    ["Python project", { touches: ["pyproject.toml"] }, "implement"],
+    ["observability", { title: "Structured logging for the export job" }, "implement"],
+    ["retry", {}, "implement", { retry: true }],
+    ["quality origin", { origin: "quality" }, "implement"],
+    ["review fix", {}, "implement", { reviewFix: true }],
+    ["review kind", { risk: "high" }, "review"],
+    ["secret serialization", { role: "backend", title: "Add the Stripe secret key to the config" }, "implement"],
+    ["secret serialization review", { role: "backend", touches: ["src/telemetry/**"] }, "review"],
+  ];
+
+  it.each(cases)("every skill picked for a %s task has a SKILL.md", (_name, t, kind, opts) => {
+    const picks = selectSkills({ ...base, ...t } as never, kind, opts ?? {});
+    expect(picks.length).toBeGreaterThan(0);
+    for (const s of picks) expect(existsSync(skillPath(vendor, s.id)), s.id).toBe(true);
+  });
+
+  it("a data task's brief names an existing file for every selected skill", () => {
+    const tasks = `tasks:
+  - id: T01
+    title: Add the bookings table
+    role: database
+    type: feat
+    specs: [booking/reschedule-appointment]
+    scenarios: [${SCENARIO}]
+    depends_on: []
+    touches: ["db/migrations/**", "tests/**"]
+    verify: ['${OK}']
+    status: pending
+`;
+    const root = executingProject({ tasks });
+    cli(root, "task", "start", "T01");
+    const out = cli(root, "brief", "T01", "--json").json();
+    const ids = out.skills.map((s: { id: string }) => s.id);
+    expect(ids).toEqual(expect.arrayContaining(["aidw/schema-evolution", "supabase/supabase-postgres-best-practices"]));
+    for (const s of out.skills as { path: string }[]) expect(existsSync(s.path), s.path).toBe(true);
+    const brief = readFileSync(out.path, "utf8");
+    for (const s of out.skills as { path: string }[]) expect(brief).toContain(s.path);
+  });
+});
+
 describe("glob", () => {
   it("matches touches globs", () => {
     expect(matchesAny(["app/api/bookings/**"], "app/api/bookings/route.ts")).toBe(true);
@@ -424,14 +615,20 @@ describe("a check the machine refused", () => {
     cli(root, "review", "T01", "pass");
 
     expect(cli(root, "task", "start", "T02", "--json").json().attempt).toBe(1);
-    for (let i = 0; i < 2; i++) {
-      const r = cli(root, "checkpoint", "T02");
-      expect(r.code).toBe(1);
-      expect(r.out).toMatch(/BLOCKED \(environment\) T02 -> running, no attempt used/);
-      expect(r.out).toMatch(/refused by the machine \(ERR_PNPM_STORE_DIR_OPEN_OPERATION_LOCK\)/);
-      expect(r.out).toMatch(/outside the sandbox/);
-      expect(task(root, "T02")).toMatchObject({ status: "running", attempts: 1 }); // T02 allows 2: it would be escalated otherwise
-    }
+    const r = cli(root, "checkpoint", "T02");
+    expect(r.code).toBe(1);
+    expect(r.out).toMatch(/BLOCKED \(environment\) T02 -> running, no attempt used/);
+    expect(r.out).toMatch(/refused by the machine \(ERR_PNPM_STORE_DIR_OPEN_OPERATION_LOCK\)/);
+    expect(r.out).toMatch(/outside the sandbox/);
+    expect(task(root, "T02")).toMatchObject({ status: "running", attempts: 1, blocked_runs: 1 });
+
+    // refused a second time: an environment cause (ADR-0014): not built, the rest carries on, nobody is asked
+    const again = cli(root, "checkpoint", "T02");
+    expect(again.code).toBe(0);
+    expect(again.out).toMatch(/NOT BUILT \(environment\) T02/);
+    expect(again.out).not.toMatch(/escalate/);
+    expect(task(root, "T02")).toMatchObject({ status: "not_built", not_built: { cause: "environment", reason: expect.stringMatching(/refused a check twice[\s\S]*ERR_PNPM_STORE_DIR_OPEN_OPERATION_LOCK/) } });
+    expect(again.out).toMatch(/NEXT: complete: 1 task\(s\) done, not built: T02/);
   });
 
   it("still fails a task whose own check fails", () => {

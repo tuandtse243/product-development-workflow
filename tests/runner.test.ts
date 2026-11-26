@@ -12,7 +12,7 @@ import { tempProject, write } from "./fixtures.js";
 const ID = "2026-11-10-app";
 
 /**
- * Each session takes the next step from steps.json: { state?, paused?, progress?, out?, exit?, archive? }.
+ * Each session takes the next step from steps.json: { state?, paused?, progress?, tasks?, out?, exit?, archive? }.
  * It records its argv in calls.jsonl.
  */
 const FAKE_CLAUDE = `#!/usr/bin/env node
@@ -24,6 +24,7 @@ const n = fs.existsSync(path.join(root, "calls.jsonl")) ? fs.readFileSync(path.j
 fs.appendFileSync(path.join(root, "calls.jsonl"), JSON.stringify(process.argv.slice(2)) + "\\n");
 const s = steps[n] || {};
 if (s.progress) fs.appendFileSync(path.join(dir, "tasks.yaml"), "# progress " + n + "\\n");
+if (s.tasks) fs.writeFileSync(path.join(dir, "tasks.yaml"), s.tasks);
 if (s.state) {
   let y = fs.readFileSync(path.join(dir, "change.yaml"), "utf8").replace(/^state: .*$/m, "state: " + s.state);
   y = y.replace(/^  paused: .*$/m, "  paused: " + (s.paused ? JSON.stringify({ from: "executing", reason: s.paused, at: "2026-11-10T00:00:00Z" }) : "null"));
@@ -92,11 +93,35 @@ describe("aidw run host-side preparation", () => {
 });
 
 describe("aidw run preflight", () => {
-  it("stops before spending a session when the machine check fails, and filters settings noise from the log", () => {
-    const t = setup("deploying", [{ state: "deploying", progress: true }]);
-    const r = t.go({ preflight: () => "vercel deployments: none yet" });
-    expect(r).toMatchObject({ outcome: "needs_user", runs: 0, message: "vercel deployments: none yet" });
+  it("stops before spending a session when the machine check fails", () => {
+    const t = setup("executing", [{ state: "executing", progress: true }]);
+    const r = t.go({ preflight: () => "pnpm store: unreachable" });
+    expect(r).toMatchObject({ outcome: "needs_user", runs: 0, message: "pnpm store: unreachable" });
     expect(t.calls()).toEqual([]);
+  });
+  it("does not stop a deploy that needs the user: it is recorded as failed and the run goes on to its pull request (T11, D12)", () => {
+    const t = setup("deploying", [{ state: "delivered", progress: true, archive: true }]);
+    const blocked: string[] = [];
+    const deployBlocked = (problem: string) => {
+      blocked.push(problem);
+      const f = join(t.root, ".aidw/changes", ID, "change.yaml");
+      writeFileSync(f, readFileSync(f, "utf8").replace(/^state: .*$/m, "state: delivered"));
+      return null;
+    };
+    const r = t.go({ preflight: () => "vercel deployments: none yet", deployBlocked });
+    expect(blocked).toEqual(["vercel deployments: none yet"]);
+    expect(r.outcome).toBe("archived");
+    // no session was spent on the deploy: the first one delivers
+    expect(t.calls()).toHaveLength(1);
+    expect(t.calls()[0]).toContain(`/aidw:deliver ${ID}`);
+    expect(t.lines.join("\n")).toMatch(/recorded as a failed deploy/);
+  });
+
+  it("stops with needs_user when the failed deploy cannot be recorded", () => {
+    const t = setup("deploying", [{ progress: true }]);
+    const r = t.go({ preflight: () => "vercel: not logged in", deployBlocked: () => "the change is not deploying" });
+    expect(r).toMatchObject({ outcome: "needs_user", runs: 0 });
+    expect(r.message).toMatch(/vercel: not logged in/);
   });
   it("checks once at the start, and again only before deploy sessions", () => {
     const t = setup("executing", [{ state: "executing", progress: true }, { state: "deploying", progress: true }, { state: "archived", progress: true, archive: true }]);
@@ -119,6 +144,14 @@ describe("aidw run", () => {
     const log = readFileSync(join(t.root, ".aidw/run/runner.log"), "utf8");
     expect(log).toMatch(/paused \(rate_limit: retry after 30 seconds\): waiting 2 min, the error says retry after 30 seconds/);
     expect(log).toMatch(/stop: escalated/);
+  });
+
+  it("carries on past tasks that were not built and past the Agent-run cap, to delivery (ADR-0014)", () => {
+    const notBuilt = "tasks:\n  - id: T01\n    status: done\n  - id: T02\n    status: not_built\n    not_built: { cause: environment, reason: 'triage: environment' }\n  - id: T03\n    status: not_built\n    not_built: { cause: cap, reason: 'the cap of 6 Agent runs set at the Approval Gate was reached (6 used)' }\n";
+    const t = setup("executing", [{ tasks: notBuilt }, { state: "verifying", progress: true }, { state: "delivered", progress: true }, { archive: true }]);
+    const r = t.go();
+    expect(r).toMatchObject({ outcome: "archived", runs: 4 });
+    expect(t.calls().map((c) => c[1])).toEqual([`/aidw:resume ${ID}`, `/aidw:resume ${ID}`, `/aidw:resume ${ID}`, `/aidw:deliver ${ID}`]);
   });
 
   it("waits when a session ends on a limit nobody recorded, then finishes when the change is archived", () => {

@@ -9,6 +9,7 @@
  *                 that goes through the normal implement -> checkpoint -> review loop
  *   aidw deploy   runs the approved preview deploy, then smoke checks against its URL
  */
+import { approvedText } from "./deviationrecord.js";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { AGENTS, defaultTaskRole } from "./roles.js";
 import { join } from "node:path";
@@ -20,10 +21,13 @@ import { Diags } from "./diag.js";
 import { headCommit } from "./git.js";
 import { OpError, transition } from "./ops.js";
 import { firstMatch, isTier2Resource, TIER2_COMMANDS, TIER2_RESOURCES, ASK_COMMANDS, type Tier2Resource } from "./policy.js";
+import { parseGrants, type Grants } from "./grants.js";
 import { readText, rel, type Paths } from "./project.js";
 import { buildLayerBrief } from "./layers.js";
+import { pickGroup } from "./stages.js";
 import { loadTasks, saveTasksDoc, retryingShellRunner, shellRunner, type CommandRunner, type VerifyRun } from "./run.js";
 import type { Task } from "./tasks.js";
+import { agentRunStatus, capReason } from "./agentruns.js";
 
 export const DEPLOY_TARGETS = ["none", "local", "preview"] as const;
 export type DeployTarget = (typeof DEPLOY_TARGETS)[number];
@@ -58,6 +62,8 @@ export interface QualityConfig {
   maxFixRounds: number;
   /** S8: parallel waves of tasks with disjoint touches, each in its own git worktree */
   parallel: ParallelConfig;
+  /** what the user grants at the Approval Gate (push and pull request, envelope, Agent-run cap): src/grants.ts */
+  grants: Grants;
 }
 
 export interface ParallelConfig {
@@ -162,6 +168,7 @@ export function parseQuality(text: string, file: string): { config: QualityConfi
   const parMax = par.max ?? DEFAULT_PARALLEL.max;
   if (!(Number.isInteger(parMax) && Number(parMax) >= 1 && Number(parMax) <= 10)) d.error(file, '"parallel.max" must be an integer from 1 to 10');
   if (par.setup !== undefined && !isStrList(par.setup)) d.error(file, '"parallel.setup" must be a list of commands');
+  const grants = parseGrants(data.grants, file, d);
 
   if (d.errors.length) return { config: null, diags: d };
   return {
@@ -171,6 +178,7 @@ export function parseQuality(text: string, file: string): { config: QualityConfi
       permissions,
       maxFixRounds: Number(max),
       parallel: { max: Number(parMax), setup: isStrList(par.setup) ? par.setup : [] },
+      grants,
     },
     diags: d,
   };
@@ -193,7 +201,7 @@ export function grantedResources(p: Paths, ids: string[], openStates: ReadonlySe
       const c = loadChange(p, id);
       const state = stateOf(c);
       if (!state || !openStates.has(state) || approvalStatus(p, c).status !== "valid") continue;
-      const text = readText(qualityFile(c));
+      const text = approvedText(c, qualityFile(c)); // the approved permissions while a Deviation has quality.yaml open
       if (text === null) continue;
       for (const r of parseQuality(text, "quality.yaml").config?.permissions ?? []) out.add(r);
     } catch {
@@ -219,8 +227,14 @@ export interface LayerReview {
 }
 
 export interface LayerResult {
-  /** `review`: commands passed, the layer waits for the reviewer's verdict (aidw layer-review) */
-  status: "pass" | "fail" | "review";
+  /**
+   * `review`: commands passed, the layer waits for the reviewer's verdict (aidw layer-review). `not_built`: its fix
+   * rounds ran out (or the Agent-run cap was reached), so the run carries on without it and the pull request is a draft
+   * (ADR-0014); it stays so until the quality summary is reset.
+   */
+  status: "pass" | "fail" | "review" | "not_built";
+  /** not_built: why */
+  not_built_reason?: string;
   at: string;
   head: string | null;
   runs: VerifyRun[];
@@ -257,6 +271,13 @@ export function resetQualitySummary(change: Change): void {
   writeJson(summaryFile(change), { layers: {} });
 }
 
+/** Forgets the results of some layers (a draft reopened by /aidw:resume runs them again); their history files stay. */
+export function forgetLayers(change: Change, names: string[]): void {
+  const summary = readSummary(change);
+  for (const n of names) delete summary.layers[n];
+  writeJson(summaryFile(change), summary);
+}
+
 export function readSummary(change: Change): QualitySummary {
   const f = summaryFile(change);
   if (!existsSync(f)) return { layers: {} };
@@ -273,7 +294,7 @@ function writeJson(file: string, data: unknown): void {
 }
 
 /** Latest moment code was accepted: a layer result older than this says nothing about the current code. */
-function codeChangedAt(tasks: Task[]): string {
+export function codeChangedAt(tasks: Task[]): string {
   return tasks.reduce((m, t) => (typeof t.finished_at === "string" && t.finished_at > m ? t.finished_at : m), "");
 }
 
@@ -291,8 +312,18 @@ export function pendingLayers(p: Paths, id: string): { config: QualityConfig; pe
   const tasks = loadTasks(p, id).tasks;
   const summary = readSummary(change);
   const head = headCommit(p.project);
-  const pending = config.layers.filter((l) => !(summary.layers[l.name]?.status === "pass" && isFresh(summary.layers[l.name], tasks, head))).map((l) => l.name);
+  const pending = config.layers
+    .filter((l) => summary.layers[l.name]?.status !== "not_built")
+    .filter((l) => !(summary.layers[l.name]?.status === "pass" && isFresh(summary.layers[l.name], tasks, head)))
+    .map((l) => l.name);
   return { config, pending, summary };
+}
+
+/** Layers the run gave up on (ADR-0014): what the pull request lists as still failing. */
+export function notBuiltLayers(change: Change): { layer: string; reason: string }[] {
+  return Object.entries(readSummary(change).layers)
+    .filter(([, r]) => r.status === "not_built")
+    .map(([layer, r]) => ({ layer, reason: r.not_built_reason ?? "" }));
 }
 
 // ---------------------------------------------------------------- JUnit
@@ -354,7 +385,7 @@ export function readJunit(project: string, reports: string[]): { tests: TestCase
 export interface VerifyLayerOutcome {
   name: string;
   /** `review`: the layer waits for its reviewer (see VerifyResult.awaitingReview) */
-  status: "pass" | "fail" | "skipped" | "review";
+  status: "pass" | "fail" | "skipped" | "review" | "not_built";
   runs: VerifyRun[];
   /** skipped because it already passed on this commit (rerun with --fresh) */
   reused?: boolean;
@@ -368,6 +399,8 @@ export interface AwaitingReview {
   /** project-relative path of the review brief */
   brief: string;
   artifacts: string[];
+  /** the reviewer drives the project's test browser (ui): one at a time */
+  browser: boolean;
 }
 
 export interface VerifyResult {
@@ -376,10 +409,14 @@ export interface VerifyResult {
   failed?: string;
   /** fix task added for the failing layer (the change is back in executing) */
   fixTask?: string;
-  /** fix rounds for the failing layer are exhausted (the change is escalated) */
-  escalated?: boolean;
-  /** a review layer's commands passed; verify stops until `aidw layer-review` records the verdict */
+  /** layers given up on in this run: fix rounds exhausted or the Agent-run cap reached (ADR-0014; the rest carries on) */
+  notBuilt?: string[];
+  /** a review layer's commands passed; verify stops until `aidw layer-review` records the verdict (the first of awaitingReviews) */
   awaitingReview?: AwaitingReview;
+  /** D13: the review layers whose reviewers run now, at the same time (src/stages.ts pickGroup) */
+  awaitingReviews?: AwaitingReview[];
+  /** review layers also awaiting a reviewer, offered after this group (one browser user, parallel.max) */
+  waitingReviews?: string[];
   summary: string;
 }
 
@@ -404,14 +441,37 @@ export function requireVerifying(p: Paths, id: string, what: string): Change {
   return change;
 }
 
+/**
+ * Verdicts of a parallel review group (D13): when one reviewer's fix verdict already sent the change back to
+ * executing, the others of the group may still be recorded while their layer awaits review on unchanged code.
+ */
+function requireReviewable(p: Paths, id: string, name: string): Change {
+  const change = loadChange(p, id);
+  if (stateOf(change) === "executing" && approvalStatus(p, change).status === "valid") {
+    const prev = readSummary(change).layers[name];
+    if (prev?.status === "review" && isFresh(prev, loadTasks(p, id).tasks, headCommit(p.project))) return change;
+  }
+  return requireVerifying(p, id, "aidw layer-review");
+}
+
 const reviewAgent = (kind: ReviewKind) => AGENTS.layerReview[kind];
 
 function awaiting(layer: Layer, r: LayerResult): AwaitingReview {
-  return { layer: layer.name, kind: layer.review as ReviewKind, agent: reviewAgent(layer.review as ReviewKind), brief: r.brief ?? "", artifacts: r.artifacts ?? [] };
+  return { layer: layer.name, kind: layer.review as ReviewKind, agent: reviewAgent(layer.review as ReviewKind), brief: r.brief ?? "", artifacts: r.artifacts ?? [], browser: layer.review === "ui" };
 }
 
-const awaitingSummary = (a: AwaitingReview) =>
-  `layer "${a.layer}" awaits its ${a.kind} review: spawn ${a.agent} with the brief ${a.brief}, then \`aidw layer-review ${a.layer} pass|fix --notes-file <reply>\``;
+const awaitingSummary = (group: AwaitingReview[], waiting: string[]) => {
+  const later = waiting.length ? `; ${waiting.join(", ")} ${waiting.length === 1 ? "waits" : "wait"} for the next round` : "";
+  if (group.length > 1) return `${group.length} review layers await their reviewers, run them in parallel: ${group.map((a) => `"${a.layer}" (${a.kind})`).join(", ")}${later}`;
+  const a = group[0] as AwaitingReview;
+  return `layer "${a.layer}" awaits its ${a.kind} review: spawn ${a.agent} with the brief ${a.brief}, then \`aidw layer-review ${a.layer} pass|fix --notes-file <reply>\`${later}`;
+};
+
+/** D13: the reviewers to run at the same time (one browser user, parallel.max) and the ones offered after them. */
+function reviewGroup(reviews: AwaitingReview[], max: number): { group: AwaitingReview[]; waiting: string[] } {
+  const picked = pickGroup(reviews.map((a) => ({ id: a.layer, kind: "review" as const, reads: [], writes: [`file:run/layer-review-${a.layer}.md`], browser: a.browser, a })), max).map((x) => x.a);
+  return { group: picked, waiting: reviews.filter((a) => !picked.includes(a)).map((a) => a.layer) };
+}
 
 export function verify(
   p: Paths,
@@ -428,18 +488,23 @@ export function verify(
   const tasks = loadTasks(p, id).tasks;
   const outcomes: VerifyLayerOutcome[] = [];
   let failed: Layer | undefined;
-  let review: AwaitingReview | undefined;
+  // D13: a review layer no longer stops the run; every review layer whose commands pass waits, and the reviewers run in parallel.
+  const reviews: AwaitingReview[] = [];
   for (const layer of config.layers) {
     const wanted = opts.layer ? layer.name === opts.layer : opts.fresh || pending.includes(layer.name);
-    if (!wanted || failed || review) {
-      const reused = !failed && !review && !opts.layer && !pending.includes(layer.name);
+    if (!wanted && !failed && summary.layers[layer.name]?.status === "not_built") {
+      outcomes.push({ name: layer.name, status: "not_built", runs: [] });
+      continue;
+    }
+    if (!wanted || failed) {
+      const reused = !failed && !opts.layer && !pending.includes(layer.name);
       outcomes.push({ name: layer.name, status: "skipped", runs: [], ...(reused ? { reused: true } : {}) });
       continue;
     }
     // A review layer whose commands already passed on this code keeps waiting for its verdict; no rerun.
     const prev = summary.layers[layer.name];
     if (layer.review && prev?.status === "review" && isFresh(prev, tasks, head) && !opts.fresh) {
-      review = awaiting(layer, prev);
+      reviews.push(awaiting(layer, prev));
       outcomes.push({ name: layer.name, status: "review", runs: prev.runs });
       continue;
     }
@@ -464,18 +529,23 @@ export function verify(
       result.status = "review";
       result.brief = rel(p, brief.path);
       result.artifacts = brief.artifacts;
-      review = awaiting(layer, result);
+      reviews.push(awaiting(layer, result));
     }
     recordLayerResult(change, summary, layer.name, result);
     outcomes.push({ name: layer.name, status: result.status, runs: result.runs });
     if (!ok) failed = layer;
   }
 
-  if (review) return { ok: false, layers: outcomes, awaitingReview: review, summary: awaitingSummary(review) };
+  if (reviews.length && !failed) {
+    const { group, waiting } = reviewGroup(reviews, config.parallel.max);
+    return { ok: false, layers: outcomes, awaitingReview: group[0] as AwaitingReview, awaitingReviews: group, waitingReviews: waiting, summary: awaitingSummary(group, waiting) };
+  }
   if (!failed) {
     const left = pendingLayers(p, id).pending;
     const ok = left.length === 0;
-    return { ok, layers: outcomes, summary: ok ? "all quality layers pass" : `layers still to run: ${left.join(", ")}` };
+    const off = notBuiltLayers(change).map((x) => x.layer);
+    const passed = off.length ? `every other quality layer passes (not built: ${off.join(", ")})` : "all quality layers pass";
+    return { ok, layers: outcomes, summary: ok ? passed : `layers still to run: ${left.join(", ")}` };
   }
 
   const bad = failedRun(summary.layers[failed.name]?.runs ?? []);
@@ -490,22 +560,37 @@ export function verify(
     ? `Quality layer "${failed.name}" failed: \`${bad.command}\`${bad.timedOut ? " timed out" : ` exited ${bad.exit}`}.\n\n${cases}${bad.tail}`
     : `Quality layer "${failed.name}" did not complete.`;
   const fix = addFixTask(p, id, config, failed, problem);
-  return { ok: false, layers: outcomes, failed: failed.name, ...fix };
+  if (fix.notBuilt && !opts.layer) {
+    // The run carries on without it (ADR-0014): the layers after it run now.
+    const rest = verify(p, id, opts);
+    return { ...rest, notBuilt: [failed.name, ...(rest.notBuilt ?? [])], summary: `${fix.summary}; ${rest.summary}` };
+  }
+  const { notBuilt, ...outcome } = fix;
+  return { ok: false, layers: outcomes, failed: failed.name, ...outcome, ...(notBuilt ? { notBuilt: [failed.name] } : {}) };
 }
 
 export interface FixOutcome {
   fixTask?: string;
-  escalated?: boolean;
+  /** the layer is not built: its fix rounds are exhausted, or the Agent-run cap was reached */
+  notBuilt?: boolean;
   summary: string;
 }
 
-/** A failing layer becomes a fix task in the normal loop, within the approved fix-round budget. */
+/**
+ * A failing layer becomes a fix task in the normal loop, within the approved fix-round budget. Past the budget, or at
+ * the cap on Agent runs, the layer is not built: nobody is asked (ADR-0014), the run goes on and the pull request is a
+ * draft that lists it.
+ */
 export function addFixTask(p: Paths, id: string, config: QualityConfig, layer: Layer, problem: string): FixOutcome {
   const tf = loadTasks(p, id);
   const rounds = tf.tasks.filter((t) => t.origin === "quality" && t.layer === layer.name).length;
-  if (rounds >= config.maxFixRounds) {
-    transition(p, id, "escalated", { reason: `quality layer "${layer.name}" still failing after ${rounds} fix round(s)` });
-    return { escalated: true, summary: `layer "${layer.name}" failed; fix rounds exhausted (${rounds}/${config.maxFixRounds}): escalated` };
+  const cap = agentRunStatus(p, tf.change);
+  if (rounds >= config.maxFixRounds || cap.reached) {
+    const reason = cap.reached && rounds < config.maxFixRounds ? `${capReason(cap)}; no fix task starts` : `still failing after ${rounds} fix round(s) (max_fix_rounds ${config.maxFixRounds})`;
+    const summary = readSummary(tf.change);
+    const prev = summary.layers[layer.name];
+    recordLayerResult(tf.change, summary, layer.name, { ...(prev ?? { runs: [] }), status: "not_built", at: now(), head: headCommit(p.project), not_built_reason: `${reason}: ${problem.split("\n")[0] ?? ""}`.slice(0, 500) });
+    return { notBuilt: true, summary: `layer "${layer.name}" failed and is not built: ${reason}; the run carries on and the pull request lists it` };
   }
   const n = tf.tasks.filter((t) => t.origin === "quality").length + 1;
   const taskId = `Q${String(n).padStart(2, "0")}`;
@@ -523,7 +608,8 @@ export function addFixTask(p: Paths, id: string, config: QualityConfig, layer: L
   };
   (tf.doc.get("tasks") as YAML.YAMLSeq).add(tf.doc.createNode(task));
   saveTasksDoc(tf);
-  transition(p, id, "executing", {});
+  // another reviewer of the same parallel group may already have sent the change back to executing
+  if (stateOf(loadChange(p, id)) !== "executing") transition(p, id, "executing", {});
   return { fixTask: taskId, summary: `layer "${layer.name}" failed: fix task ${taskId} added (round ${rounds + 1}/${config.maxFixRounds}); change is executing again` };
 }
 
@@ -534,13 +620,14 @@ export interface LayerReviewResult {
   /** layers still to pass after this verdict (pass) */
   pending?: string[];
   fixTask?: string;
-  escalated?: boolean;
+  /** the layer is not built (fix rounds exhausted or the Agent-run cap); the group's other verdicts are still recorded */
+  notBuilt?: boolean;
   summary: string;
 }
 
 /** Records the independent reviewer's verdict on a review layer (the orchestrator's step after the subagent). */
 export function recordLayerReview(p: Paths, id: string, name: string, verdict: "pass" | "fix", notes: string): LayerReviewResult {
-  const change = requireVerifying(p, id, "aidw layer-review");
+  const change = requireReviewable(p, id, name);
   const config = loadQuality(p, change);
   const layer = config.layers.find((l) => l.name === name);
   if (!layer) throw new OpError(`no layer "${name}" in quality.yaml`);
@@ -630,6 +717,19 @@ export function deploy(p: Paths, id: string, opts: { timeoutMs?: number; runner?
       record = { ...base, runs, smoke, url, ok: !smokeFailed, skipped: false, ...(smokeFailed ? { error: `smoke check failed: ${smokeFailed.command}` } : {}) };
     }
   }
+  appendHistory(deployFile(change), record);
+  return record;
+}
+
+/**
+ * The runner's machine check failed right before a deploy (T11, D14): a failed deploy is recorded with its message and
+ * the deploy command is not run, so the Change can be delivered and its pull request lists the deploy as needed.
+ */
+export function recordBlockedDeploy(p: Paths, id: string, problem: string): DeployRecord {
+  const change = loadChange(p, id);
+  if (stateOf(change) !== "deploying") throw new OpError(`change "${id}" is "${String(change.data.state)}"; a deploy is recorded in state deploying`);
+  const config = loadQuality(p, change);
+  const record: DeployRecord = { at: now(), target: config.deploy.target, ok: false, skipped: false, url: null, head: headCommit(p.project), runs: [], smoke: [], error: `the machine check before the deploy failed, so it did not run: ${problem}` };
   appendHistory(deployFile(change), record);
   return record;
 }

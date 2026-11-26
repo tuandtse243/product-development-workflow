@@ -6,7 +6,6 @@ import { auditReady } from "./audit.js";
 import { loadChange } from "./change.js";
 import { installGuard } from "./installcheck.js";
 import { machineOf, workflowIdOf } from "./machine.js";
-import { checkBrief, scopeGuard } from "./scope.js";
 import { convergePassed } from "./converge.js";
 import type { Paths } from "./project.js";
 import { pendingIntegration } from "./parallel.js";
@@ -25,18 +24,11 @@ export function transitionGuard(p: Paths, id: string, target: string): string | 
     const why = q ? installGuard(p, id, q.layers.flatMap((l) => [...l.setup, ...l.run])) : null;
     if (why) return why;
   }
-  if (target === "awaiting_scope_approval") {
-    const d = checkBrief(change);
-    if (d.errors.length) return `"awaiting_scope_approval" needs the product brief: ${d.errors[0]!.message}`;
-  }
-  if (target === "awaiting_approval") {
-    const why = scopeGuard(change);
-    if (why) return `"awaiting_approval" refused: ${why}`;
-  }
   if (!("deploying" in machineOf(p, change).transitions)) return null;
   if (target === "verifying") {
-    const open = loadTasks(p, id).tasks.filter((t) => String(t.status ?? "pending") !== "done");
-    if (open.length) return `"verifying" needs every task done; open: ${open.map((t) => `${t.id} (${String(t.status ?? "pending")})`).join(", ")}`;
+    // A task not built (ADR-0014) is closed: the Change goes on and the pull request lists it.
+    const open = loadTasks(p, id).tasks.filter((t) => !["done", "not_built"].includes(String(t.status ?? "pending")));
+    if (open.length) return `"verifying" needs every task done or not built; open: ${open.map((t) => `${t.id} (${String(t.status ?? "pending")})`).join(", ")}`;
     const merged = pendingIntegration(loadChange(p, id), loadTasks(p, id).tasks);
     if (merged.length) return `"verifying" needs the last wave integrated: run \`aidw integrate\` (merged: ${merged.map((t) => t.id).join(", ")})`;
   }
@@ -49,8 +41,10 @@ export function transitionGuard(p: Paths, id: string, target: string): string | 
     if (!c.ok) return `"deploying" needs a passing converge on the current code: ${c.reason}`;
   }
   if (target === "delivered") {
+    // D12, D14: a deploy that failed or needs the user does not block the pull request; it opens as a draft that
+    // lists the deploy under "Needed from the user to finish". The deploy must have been tried.
     const d = lastDeploy(loadChange(p, id));
-    if (!d?.ok) return `"delivered" needs a successful \`aidw deploy\`${d ? ` (last: ${d.error ?? "failed"})` : ""}`;
+    if (!d) return `"delivered" needs \`aidw deploy\` to have run (a failed deploy is listed in the pull request)`;
   }
   return null;
 }

@@ -79,6 +79,8 @@ Writing a good card:
 - Keep `key` a short slug; it is what comes back in the answer.
 - A question that answers a Decision Point of the Workflow names it (`decision: research-needed`) and uses the
   Decision Point's own answers as its option keys; the checked answer then prints the `aidw decide` command.
+- The scope round of a `product` change sets `kind: scope` and asks the questions `vision`, `scope`, `mvp` and `out`
+  (`/aidw:start` step 2b); the checked answer says where it is recorded.
 - Quote a list entry that contains a comma or a colon (`["Create, edit and delete", Search]`), or write the list
   one entry per line; an unquoted comma splits it in two.
 - Text fields take `code` in backticks and `**bold**`; everything else is shown as written.
@@ -115,7 +117,8 @@ sections:
 
 The user marks every section "agree" or "needs a change" with a note. One section per thing they could send back
 on its own: scope, stack, design, quality, deploy and permissions, risks. Keep each section to what fits on a
-screen; the Artifact holds the rest, so name its path in the body.
+screen; the Artifact holds the rest, so name its path in the body. When the review before the gate ended with findings
+still open, the CLI puts them first as the section `open-findings`; do not write a section with that id.
 
 ### The free slot (`html`)
 

@@ -131,6 +131,9 @@ aidw becomes a software factory with a Roster of Roles, Workflows as data and de
   - [x] Scope gate of `product` (Approval Gate 1): state `awaiting_scope_approval`, `brief.md` (vision, scope, MVP, out of scope),
     `aidw approve` approves the scope, `awaiting_approval` is refused until it is approved and again if the brief changed.
     A change gets it when created with `--workflow product`; one created without `--workflow` keeps the single gate.
+    **Replaced (ADR-0011):** the scope is now a round of the discovery interview (`scope` Decision Page, recorded under
+    `### Scope round` in `analysis.md`, checked by `aidw analyze`); a Change left in `awaiting_scope_approval` is read as
+    `analyzing` and its `brief.md` stands in for the round.
   - [x] `audit` Workflow (read-only; its own machine: analyzing -> delivered, no approval): `aidw decide audit-lenses`, `aidw audit
     brief|report|picks`; reviewers write `.aidw/run/audit-<lens>.md`, the CLI assembles one report by severity. `performance` joins
     when its Role is activated. Not yet run with real Agents.
@@ -164,6 +167,8 @@ aidw becomes a software factory with a Roster of Roles, Workflows as data and de
     framework is adding one file.
   - [x] Two more packs for the other frameworks `aidw detect` reports as a full-stack framework: `stacks/nuxt.md` and
     `stacks/sveltekit.md`. Astro and React Router / Remix are detected but have no pack yet.
+  - [x] Server packs `stacks/express.md`, `fastify.md` and `hono.md` (`detected_as: server`): `aidw detect` reports these
+    libraries as the `server`; their pack loads for `backend` and `fullstack` only when no framework pack matches.
   - [x] Python: `aidw detect` reads `pyproject.toml` (PEP 621, Poetry, dependency groups), `requirements*.txt` and `Pipfile`
     (`src/pydetect.ts`, no TOML library), names the tool (uv, Poetry, Pipenv, pip), reports the stack (Django, FastAPI, Flask,
     SQLAlchemy, pytest, ruff, mypy...) and proposes the `code` and `unit` layers (`uv run ruff check .`, `uv run pytest`). A
@@ -234,7 +239,8 @@ are in `library/vendored-skill-notes.md`; a brief that loads one of these Skills
   covered by the authored `schema-evolution` Skill (wave 4, `database-architect`), which the `database` Role also loads.
 - [x] Vendored, `devops`: docker `docker-project-foundations`, `docker-build-strategies`, `docker-compose-patterns`;
   Sentry `gha-security-review` (the review of a task that changes a workflow).
-- [x] Authored, `integration`: `resilient-integration`, webhooks, idempotency, retries and timeouts.
+- [x] Authored, shared by `integration` and `backend` in `library/skills/`: `resilient-integration` (webhooks,
+  idempotency, retries and timeouts) and `external-api` (an outside service behind an interface, with a fake).
 - [x] Authored, shared: `aidw/api-design-rules` in `library/skills/` (error shape, lists, repeated writes, compatibility).
 - [ ] Not done: Addy `source-driven-development` (its core step needs web access the Agents do not have); obra
   `writing-good-tests` (no such Skill upstream: the material is a file inside its TDD Skill, which overlaps Addy's);
@@ -301,14 +307,139 @@ workflows), not the behavior of the Agents with the new Skills.
   Skills (a rewrite that added behavior, the output order of the Postgres schema, a guessed workaround, a
   self-supplied refusal example) and one case moved to the business analyst with the delta specs. Each then passed
   3 of 3 runs; the full run after the first two fixes was 32/35.
-- [ ] Run a trial on the greenfield fixture and one on the brownfield fixture, and compare with trial-3: cost per
-  task, attempts per task, review `fix` rate, and whether the Guards fire on real work or only in tests.
-- [ ] Watch the token cost of a brief: the core set grew by one Skill, UI tasks by one, data tasks by two.
+- [x] Trial 4 (docs/trial-4.md): a greenfield app (13 tasks) and a brownfield change (11 tasks) ran end to end.
+  Cost fell against trial-3 (an implementer's first turn is 10K to 12K tokens against 37K), attempts per task were
+  1.38 and 1.27, and 1 review in 12 returned `fix` in each. Two Guards fired on real work: the tamper guard caught a
+  skipped test (right) and a renamed test file (wrong, fixed: a moved test is not a deletion); the others never had
+  to fire. Two more fixes came out of it: the ui review rubric (an approved token does not excuse a failing
+  contrast ratio) and a doctor check for deps.dev. `scripts/guard-drill.mjs` runs every Guard on a real repository
+  without a model.
+- [ ] Still open from trial 4: row 74 (`--no-verify` denied by the gate); an existing test's assertion was weakened
+  (`toHaveLength(1)` became `.length > 0`) and no Guard saw it: list removed assertions of existing tests for the
+  reviewer; a replanned task is reset by hand in `tasks.yaml`, which loses its attempt count (`task reopen` only
+  accepts a done task).
+- [x] Watch the token cost of a brief: the core set grew by one Skill, UI tasks by one, data tasks by two.
 
 Not chosen: timescale `postgres-database-migration` as a Vendored Skill (suspected errors, replaced by
 `schema-evolution`), Addy `interview-me` and `planning-and-task-breakdown`, `deprecation-and-migration`, Trail of Bits
 `differential-review` and `property-based-testing`, a lint hook after every edit, design-token lint, mutation testing,
 Semgrep. Revisit mutation testing if a trial shows empty tests passing the coverage threshold.
+
+## Design quality (decided 2026-11-18, grilling session)
+
+The interfaces of the demo products were generic. The decisions are in ADR-0008 (the Design Mock) and ADR-0009 (the
+Slop Check); the terms are in `CONTEXT.md` under Design. The three steps run in order, and a step starts only when
+the owner has judged the one before it on before-and-after screenshots of the same products: `todo-board`
+(`evals/demo/`, the baseline), an admin screen with a data table and charts, a landing page with a sign-up.
+
+### Step 1: the design direction
+
+- [x] Vendor Impeccable's rule catalog and craft floor (`library/vendor/impeccable/`); `scripts/vendor.mjs` copies
+  single files and a notice.
+- [x] Direction Library: three Design Directions, each accepted by the owner on a preview of `todo-board`
+  (`roles/ui-ux-designer/references/directions/`): Night Shift, Playground, Riso. Not kept as examples:
+  Workbench, Tide, Color Field, Transit (not banned from being composed).
+- [x] The library is not dealt from (ADR-0008, amended 2026-11-18): three directions dealt to every product
+  repeat. The accepted directions become examples of format and bar; the directions are composed per product.
+- [x] Composing directions: `research` skill `world-scan` (worlds outside software with traits and cited pictures,
+  and the conventions shared by three live products of the kind) and `ui-ux-designer` skill `compose-directions`
+  (three directions in one context, each borrowing one whole world, no two sharing a world or three of six axes).
+  A world may come back for another product or in another round; no record of worlds used is kept and no world is
+  banned.
+- [x] Authored Skill `build-design-mock` for the `ui-ux-designer`: one direction only, content inventoried as real,
+  sample or absent, the plan as a comment at the top of `tokens.css`, first region first, checks in three tiers
+  (floor, slop, finish) on screenshots, two rounds of fixes at most; extend mode adds up to two screens and the
+  main screen's states. References `mock-files.md` and `render-check.md`; four Role evals. Sources: Hallmark,
+  Impeccable, Anthropic `frontend-design`.
+- [x] `aidw mock font` (OFL only, checked from Fontsource's metadata; latin, latin-ext and vietnamese; cached under
+  `~/.aidw/cache/fonts`) and `aidw mock shots` (every page at 1440 and 390 px, light and dark, in the test browser
+  over CDP; `--full` for landing pages).
+- [ ] Wire the design stage of `/aidw:start` to these: `research` runs `world-scan` on every `full-design`, one
+  `ui-ux-designer` Agent of the deep Tier composes, and the Role gets write access for mocks.
+- [ ] `ui-ux-designer` as a worker Agent of the deep Tier for mocks: three in parallel, one direction each. The
+  Decision Page shows a thumbnail and a link per mock. The chosen mock is extended to at most three screens.
+- [ ] The Design Mock as an Artifact, frozen with the tokens (read from its CSS), its images and their credits.
+  UI briefs point to it; the reviewer compares screenshots with it for structure and treatment.
+- [x] Fonts: open licences only, fetched when the direction is composed and stored beside the mock (`aidw mock font`).
+- [ ] Slop Check (ADR-0009): aidw's own detection for the rules it can measure, at the checkpoint and in the `ui-ux`
+  layer; exceptions from `direction.md`. The failures of use become a Guard on every project. Change the
+  reviewer's "taste is non-blocking" rule accordingly.
+- [ ] Move `anthropic/frontend-design` to the Agents that build mocks; an Authored Skill tells a frontend Agent to
+  build to the mock. `emil/animate` stays.
+- [ ] References. Decision Point `references-needed` (decided by the `ui-ux-designer`): the `research` Role finds
+  live sites of the same kind of product through a CLI script (Land-book, SaaS Landing Page, Lapa Ninja,
+  Landingfolio, SaaSUI, SaaS Interface, component.gallery; only where `robots.txt` allows, a few pages a search),
+  opens them and takes its own screenshots. Traits shared by at least three set the conventions of the kind of
+  product (density, the screens it must have); the worlds, not these sites, set the look. A
+  reference the user names (a link, an image, a Figma file; this is how Dribbble and Pinterest come in) is
+  followed closely, with its name, mark, words, images and licensed fonts replaced.
+- [ ] Images: chosen by the `ui-ux-designer` while building the mock, through a CLI script, from sources that need
+  no key (Wikimedia Commons, Openverse, The Met; Open Peeps; Lucide; DiceBear's CC0 styles) and Pexels when a key
+  exists. CC0, public domain and CC BY only, downloaded into the project with a credits file. What was found is
+  kept in a catalog outside the project, by product domain (finance, health, ...), and reused before searching
+  again. No realistic face stands in for a customer or a testimonial.
+- [x] Vendor the lookup material for usability: Vercel's Web Interface Guidelines (`command.md`) and Impeccable's
+  `clarify.md` and `harden.md`.
+- [ ] Usability Rules: an Authored Skill of about a hundred rules in aidw's own words, each with its source and a
+  fixed severity (blocking, fix, remark). A short core plus one reference per topic (forms, actions, navigation,
+  feedback, states, tables, search, first run, dialogs and toasts, touch, wording, accessibility, landing pages),
+  loaded only for what a screen has. Sources: WCAG 2.2, GOV.UK Design System, NN/g, Baymard, web.dev, Vercel,
+  szilu/ux-designer-skill and Community-Access (as sources, not copied). Rules for flows no source covers (sign-up,
+  sign-in, reset, wizards, settings, a refused permission, undo or confirm, bulk actions, autosave) are marked as
+  aidw's own and never block unless data is lost. Folklore is listed as not a rule (three clicks, 7±2 menu items,
+  the call to action above the fold, three plans with the middle one highlighted).
+- [ ] Where sources disagree, the house choice: validate on leaving a field and on submit, never during a first
+  attempt; mark required and optional fields both; a toast stays at least 5 seconds, can always be dismissed, and
+  stays until dismissed when it carries an action; touch targets are 44 px, never under 24 px. The contested part
+  of a rule is never blocking.
+- [ ] Severity: blocking when the job cannot be done, data is lost, a WCAG A or AA criterion fails, or a Dark
+  Pattern is present; fix for a missing empty, error or loading state and for a rule with evidence behind it;
+  remark for single-source rules and conventions. On every project, on the screens the Change touches.
+- [ ] The rules reach four Roles: `ux-research` (usability requirements), `ui-ux-designer` (the mock, the review),
+  the frontend Roles (the build). Measure what each adds to a brief.
+- [ ] Dark Patterns are not built: the `product-manager` names one when it appears in the requirements and proposes
+  the honest form; the review blocks one that got through. Sample content marked as a sample is allowed.
+- [ ] Review by flow in the `ui-ux` layer: the reviewer walks up to three journeys written by `ux-research` in the
+  running app, by keyboard and at phone width, asking at each step whether the right action is visible, whether
+  it is clear where it leads, and whether the result shows progress.
+- [ ] Run `todo-board` again. Two separate measures: the owner judges the look on before-and-after screenshots; use
+  is measured by the count of blocking and fix findings the same reviewer reports on the old and the new build.
+  The three directions are composed for it, not taken from the library.
+
+### Step 2: components and charts (React only)
+
+- [ ] Decision Point `component-library` (decided by the `software-architect`); the shadcn family is the default in
+  the React stack pack for structure (forms, tables, dialogs), and React Bits is the one effects registry for
+  motion (text animations, animated components, backgrounds), installed through the same `shadcn` CLI
+  (`@react-bits`). React Bits is installed into the project, never shipped in the plugin (Commons Clause). Its
+  components are copied source: recolor them from the project's tokens, and give each a reduced-motion fallback.
+- [ ] Motion is wanted, not rationed: the factory sets no cap on effect components, on landing pages or on app
+  screens (animated backgrounds included). The `ui-ux-designer` writes in `direction.md` which effects go where,
+  and that text is the exception that lifts the Slop Check's motion rules. Three limits stay whatever the
+  direction says: a reduced-motion fallback, text over a moving background passes the contrast Guard, and the
+  `performance` layer's budgets hold.
+- [ ] Charts: Bklit by default (it reads the project's tokens), Recharts through shadcn `chart` when Bklit lacks a
+  chart type or documented accessibility is required, EvilCharts only when the Design Direction asks for a showy
+  look. Series colors are tokens. An Authored Skill for charts (which form, direct labels, empty and loading states).
+- [ ] Run the admin screen product; the owner judges.
+
+### Step 3: Brand
+
+- [ ] Decision Point `brand-needed` (decided by the `product-manager` after asking the user):
+  `name-and-logo`, `logo-only` or `none`.
+- [ ] Name: an Authored Skill for the `product-manager`, right after the scope is approved. Six to eight candidates
+  on a Decision Page, each screened (domain, package name, a web search for products of the same name) and marked
+  "not checked" when the network refuses. Screening, not trademark clearance.
+- [ ] Mark: SVG written by `ui-ux-designer` Agents after the Design Direction is chosen (geometric marks, monograms,
+  wordmarks), shown large, at favicon size, on light and dark.
+- [ ] The Brand as an Artifact (name, mark, favicon), frozen at the Approval Gate; the scaffold task puts it in the app.
+- [ ] Run the landing page product; the owner judges.
+
+Not chosen: Hallmark, Impeccable or Taste Skill vendored whole; Impeccable's detector; Astryx as the default
+component family; Tremor (frozen); Unsplash (its API terms ask for non-automated use); automated access to
+Dribbble, Pinterest or Behance (blocked, and forbidden by their terms). Deferred: Nuxt and SvelteKit component
+families, a keyed vector model for marks (Recraft), paid reference sources (Mobbin, Refero), a curated image
+catalog shipped with the plugin (only if the owner judges the found images poor).
 
 ## Backlog
 

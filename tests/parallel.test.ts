@@ -12,7 +12,7 @@ import { offBranchNote } from "../src/ops.js";
 import { globsOverlap, planWave } from "../src/parallel.js";
 import { findProject } from "../src/project.js";
 import type { Task } from "../src/tasks.js";
-import { ANALYSIS_MD, MAIN_SPEC, REQ, tempProject, write } from "./fixtures.js";
+import { ANALYSIS_MD, MAIN_SPEC, REQ, tempProject, write, planReviewed } from "./fixtures.js";
 
 const ID = "2026-11-10-wave";
 const SCENARIO = "booking/reschedule-appointment/reschedule-appointment-works";
@@ -82,6 +82,7 @@ function project(tasks = TASKS(), quality = QUALITY()): string {
   g(root, "config", "user.name", "t");
   g(root, "add", "-A");
   g(root, "commit", "-qm", "base");
+  planReviewed(root, ID);
   for (const s of ["intake", "analyzing", "awaiting_approval"]) expect(cli(root, "transition", ID, s).err).toBe("");
   expect(cli(root, "approve", ID).code).toBe(0);
   expect(cli(root, "transition", ID, "executing").code).toBe(0);
@@ -136,6 +137,7 @@ describe("change branch", () => {
     write(root, `${c}/tasks.yaml`, TASKS());
     write(root, `${c}/quality.yaml`, QUALITY());
     write(root, `${c}/specs/booking/spec.md`, `## ADDED Requirements\n\n${REQ("Reschedule appointment")}`);
+    planReviewed(root, ID);
     for (const s of ["intake", "analyzing", "awaiting_approval"]) cli(root, "transition", ID, s);
     expect(cli(root, "approve", ID).code).toBe(0);
     expect(cli(root, "transition", ID, "executing").out).toMatch(/current branch feature\/x/);
@@ -242,7 +244,49 @@ describe("a wave in worktrees (git)", () => {
     expect(cli(root, "transition", ID, "verifying").err).toMatch(/needs every task done/);
   });
 
-  it("drops a branch whose merge conflicts and reruns the task sequentially", () => {
+  /** T01 and T02 merged in a wave, then the merged code breaks: the integration verify fails. */
+  function brokenWave(quality: string): string {
+    const root = project(TASKS(), quality);
+    for (const t of ["T01", "T02"]) cli(root, "task", "start", t, "--worktree");
+    const wt = (t: string) => join(root, `.aidw/run/worktrees/${ID}/${t}`);
+    write(wt("T01"), "tests/a/booking.test.js", `test("${SCENARIO}: works", () => {})\n`);
+    write(wt("T02"), "lib/b/report.js", "module.exports = 2;\n");
+    for (const t of ["T01", "T02"]) expect(cli(root, "checkpoint", t).code).toBe(0);
+    for (const t of ["T01", "T02"]) cli(root, "review", t, "pass");
+    execFileSync("git", ["rm", "-q", "lib/b/report.js"], { cwd: root });
+    execFileSync("git", ["commit", "-qm", "break"], { cwd: root });
+    return root;
+  }
+  const state = (root: string) => String((YAML.parse(readFileSync(join(root, ".aidw/changes", ID, "change.yaml"), "utf8")) as { state: string }).state);
+
+  it("an integration still failing past its fix rounds is not built, not escalated, and the run carries on (ADR-0014)", () => {
+    const root = brokenWave(`${QUALITY()}max_fix_rounds: 1\n`);
+    expect(cli(root, "integrate", "--json").json()).toMatchObject({ ok: false, fixTask: "I01" });
+    const r = cli(root, "integrate", "--json");
+    expect(r.code).toBe(0);
+    expect(r.json()).toMatchObject({ ok: false, notBuilt: true });
+    expect(r.json().summary).toMatch(/not built.*fix round/);
+    expect(state(root)).toBe("executing");
+    // the wave counts as closed: nothing waits for another integrate
+    expect(next(root).action).not.toBe("integrate");
+    expect(next(root).action).not.toBe("escalate");
+  });
+
+  it("at the Agent-run cap a failing integration gets no fix task: it is not built (D10)", () => {
+    // T01 and T02: implementer and reviewer each, four runs: the cap
+    const root = brokenWave(`${QUALITY()}grants:\n  agent_runs: 4\n`);
+    const r = cli(root, "integrate", "--json");
+    expect(r.code).toBe(0);
+    expect(r.json()).toMatchObject({ ok: false, notBuilt: true });
+    expect(r.json().summary).toMatch(/cap of 4 Agent runs/);
+    expect(task(root, "I01")).toBeUndefined();
+    expect(state(root)).toBe("executing");
+    // the wave counts as closed: the run moves on instead of integrating it again
+    expect(next(root)).toMatchObject({ action: "complete" });
+    expect(cli(root, "transition", ID, "verifying").code).toBe(0);
+  });
+
+  it("drops a branch whose conflict integration cannot resolve and reruns the task sequentially", () => {
     const root = project();
     for (const t of ["T01", "T02"]) cli(root, "task", "start", t, "--worktree");
     const wt = (t: string) => join(root, `.aidw/run/worktrees/${ID}/${t}`);
@@ -253,8 +297,11 @@ describe("a wave in worktrees (git)", () => {
     for (const t of ["T01", "T02"]) expect(cli(root, "checkpoint", t).code).toBe(0);
     cli(root, "review", "T01", "pass");
     const r = cli(root, "review", "T02", "pass", "--json").json();
-    expect(r).toMatchObject({ status: "pending", commit: null });
+    expect(r).toMatchObject({ status: "conflict", commit: null });
     expect(r.conflict).toMatch(/README\.md|CONFLICT|conflict/i);
+    // T7: the integration Role gets the conflict first; left unresolved, today's fallback applies
+    expect(cli(root, "brief", "T02", "--for", "conflict").code).toBe(0);
+    expect(cli(root, "resolve", "T02").code).toBe(1);
     expect(task(root, "T02")).toMatchObject({ status: "pending", sequential: true, attempts: 0 });
     expect(existsSync(wt("T02"))).toBe(false);
     expect(readFileSync(join(root, "README.md"), "utf8")).toBe("# demo\nfrom T01\n");
@@ -296,7 +343,8 @@ describe("gate in worktrees", () => {
     expect(d(hook(root, join(root, `.aidw/run/worktrees/${ID}`)))).toBe("deny");
     const bash = (command: string): HookInput => ({ hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command }, cwd: root });
     expect(decide(bash("aidw run 2026-11-10-wave"), {})).toMatchObject({ decision: "deny" });
-    expect(decide(bash("aidw run 2026-11-10-wave --detach"), {})).toMatchObject({ decision: "deny" });
+    // D2: only the exact command `aidw approve` prints, for an installed plugin, is allowed; other detached starts ask
+    expect(decide(bash("aidw run 2026-11-10-wave --detach"), {})).toMatchObject({ decision: "ask" });
     // reading or stopping the runner starts nothing (a user asked for `aidw run --status` in a session and was refused)
     expect(decide(bash("aidw run --status"), {})).toBeNull();
     expect(decide(bash("aidw run --stop"), {})).toBeNull();

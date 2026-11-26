@@ -7,7 +7,7 @@ import { isLockedConfig } from "../src/configlock.js";
 import { usePackageLookup, type Lookup } from "../src/depsafety.js";
 import { decide } from "../src/gate.js";
 import { scanLine } from "../src/secrets.js";
-import { ANALYSIS_MD, QUALITY_YAML, tempProject, write } from "./fixtures.js";
+import { ANALYSIS_MD, QUALITY_YAML, tempProject, write, planReviewed } from "./fixtures.js";
 
 const ID = "2026-11-17-guards";
 const OLD: Lookup = () => ({ status: "found", publishedAt: "2020-01-01T00:00:00Z", advisories: [] });
@@ -36,6 +36,7 @@ function running(type = "feat"): string {
   write(root, "vitest.config.ts", "export default { test: { coverage: { thresholds: { lines: 80 } } } };\n");
   write(root, "package.json", `${JSON.stringify({ name: "app", private: true, dependencies: { leftpad: "1.0.0" } }, null, 2)}\n`);
   write(root, ".gitignore", "node_modules/\n");
+  planReviewed(root, ID);
   for (const s of ["intake", "analyzing", "awaiting_approval"]) expect(cli(root, "transition", ID, s).code, s).toBe(0);
   expect(cli(root, "approve", ID, "--auto").code).toBe(0);
   git(root, "init", "-q");

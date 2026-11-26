@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Change } from "./change.js";
@@ -6,37 +5,55 @@ import { Diags } from "./diag.js";
 import { sections } from "./spec/parse.js";
 
 /**
- * The scope gate of the `product` Workflow (Approval Gate 1): before any requirement is written the user approves the
- * product brief: vision, scope, MVP and what is out. The Change records `scope_gate: true` when it is created under a
- * Workflow that has the gate; `aidw transition <id> awaiting_approval` is refused until the brief is approved, and again
- * when the brief changed after that.
+ * The scope round of the `product` Workflow (ADR-0011): during the discovery interview the user settles vision, scope,
+ * MVP and what is out on one Decision Page (`kind: scope`), and the checked answer is recorded word for word under
+ * `### Scope round` in the discovery appendix of analysis.md. Nothing is approved or frozen there: the Workflow's one
+ * Approval Gate stays after the plan. A Workflow asks for the round with `scope_round: true`.
  */
-export const BRIEF_FILE = "brief.md";
-export const BRIEF_SECTIONS = ["Vision", "Scope", "MVP", "Out of scope"] as const;
+export const SCOPE_ROUND_HEADING = "Scope round";
+/** The questions of the scope page, by id; each comes back as a line `<id> <title>: <answer>` (page.ts answersText). */
+export const SCOPE_QUESTIONS = ["vision", "scope", "mvp", "out"] as const;
+const APPENDIX = "appendix: discovery q&a";
 const PLACEHOLDER = "TODO(aidw)";
 
+/** The body of `### Scope round` inside the discovery appendix, or null when there is none. */
+export function scopeRound(analysis: string): string | null {
+  const appendix = sections(analysis).find((s) => s.name.toLowerCase() === APPENDIX);
+  if (!appendix) return null;
+  const lines = appendix.body.split(/\r?\n/);
+  const start = lines.findIndex((l) => /^###\s+(.+?)\s*#*\s*$/.exec(l)?.[1]?.toLowerCase() === SCOPE_ROUND_HEADING.toLowerCase());
+  if (start < 0) return null;
+  const end = lines.findIndex((l, i) => i > start && /^#{1,3}\s/.test(l));
+  return lines.slice(start + 1, end < 0 ? undefined : end).join("\n").trim();
+}
+
+/** The answer lines the scope round still lacks (empty when every question is answered). */
+export function missingScopeAnswers(round: string): string[] {
+  return SCOPE_QUESTIONS.filter((id) => !new RegExp(`^\\s*(?:[-*]\\s+)?${id}\\b[^:\\n]*:\\s*\\S`, "im").test(round));
+}
+
+/** Where a `product` package records its scope, checked by `aidw analyze`. */
+export function checkScopeRound(change: Change, analysis: string, file: string): Diags {
+  const d = new Diags();
+  // A Change started under the old scope gate recorded its scope in brief.md; that record still counts.
+  if (!checkBrief(change).errors.length) return d;
+  const round = scopeRound(analysis);
+  const how = `ask it on the \`scope\` Decision Page (kind: scope) and record the checked answer under "### ${SCOPE_ROUND_HEADING}" in "## Appendix: discovery Q&A"`;
+  if (round === null || !round || round.includes(PLACEHOLDER)) {
+    d.error(file, `the scope round is not recorded: ${how}`);
+    return d;
+  }
+  for (const id of missingScopeAnswers(round)) d.error(file, `the scope round has no answer for "${id}": ${how}`);
+  return d;
+}
+
+// ------------------------------------------------------------------ Changes started under the old scope gate
+
+/** The product brief an older aidw wrote for its scope gate; it stands in for the scope round of such a Change. */
+export const BRIEF_FILE = "brief.md";
+export const BRIEF_SECTIONS = ["Vision", "Scope", "MVP", "Out of scope"] as const;
+
 export const briefPath = (change: Change) => join(change.dir, BRIEF_FILE);
-
-export const BRIEF_TEMPLATE = (title: string) => `# Product brief: ${title}
-
-## Vision
-
-${PLACEHOLDER}: who this is for, the problem, and what success looks like, in a few lines.
-
-## Scope
-
-${PLACEHOLDER}: the capabilities the product has, as a short list the user can approve or strike.
-
-## MVP
-
-${PLACEHOLDER}: the smallest cut that is worth building first, and why it is that cut.
-
-## Out of scope
-
-${PLACEHOLDER}: what is deliberately not built now ("None" only if true).
-`;
-
-export const hasScopeGate = (change: Change): boolean => change.data.scope_gate === true;
 
 /** The four sections exist and say something. */
 export function checkBrief(change: Change): Diags {
@@ -53,17 +70,4 @@ export function checkBrief(change: Change): Diags {
     else if (!s.body || s.body.includes(PLACEHOLDER)) d.error(file, `section "## ${name}" is empty or still a placeholder`, s.line);
   }
   return d;
-}
-
-export function briefHash(change: Change): string {
-  return `sha256:${createHash("sha256").update((readFileSync(briefPath(change), "utf8")).replace(/\r\n?/g, "\n")).digest("hex")}`;
-}
-
-/** Why the Change may not go to the final approval yet, or null: its scope is approved and the brief has not changed since. */
-export function scopeGuard(change: Change): string | null {
-  if (!hasScopeGate(change)) return null;
-  const a = change.data.scope_approval as { hash?: unknown } | null | undefined;
-  if (!a || typeof a.hash !== "string") return 'the scope is not approved yet: present the product brief (`aidw transition <id> awaiting_scope_approval`) and let the user approve it';
-  if (!existsSync(briefPath(change)) || briefHash(change) !== a.hash) return "the product brief changed after the scope was approved: ask the user to approve the scope again";
-  return null;
 }

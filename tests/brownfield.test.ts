@@ -11,7 +11,7 @@ import { run } from "../src/cli.js";
 import { detectProject } from "../src/detect.js";
 import { decide } from "../src/gate.js";
 import { findProject } from "../src/project.js";
-import { ANALYSIS_MD, REQ, tempProject, write } from "./fixtures.js";
+import { ANALYSIS_MD, REQ, tempProject, write, planReviewed } from "./fixtures.js";
 
 const FIXTURE = join(__dirname, "..", "evals", "fixtures", "brownfield-app");
 const ID = "2026-11-10-due-dates";
@@ -129,6 +129,7 @@ describe("brownfield analysis and baseline specs", () => {
     write(root, `.aidw/changes/${ID}/tasks.yaml`, `tasks:\n  - id: T01\n    title: Due dates\n    role: fullstack-engineer\n    type: feat\n    scenarios: [todos/add-a-todo/trimmed-title]\n    touches: ["lib/**", "tests/**"]\n    verify: ["pnpm test"]\n    status: pending\n`);
     write(root, `.aidw/changes/${ID}/quality.yaml`, "layers:\n  - name: code\n    run: [pnpm lint]\n  - name: unit\n    run: [pnpm test]\n  - name: e2e\n    run: [pnpm test:e2e]\ndeploy:\n  target: none\n");
     expect(errors(root)).toEqual([]);
+    planReviewed(root, ID);
     expect(cli(root, "transition", ID, "awaiting_approval").code).toBe(0);
     const a = cli(root, "approve", ID, "--json").json();
     expect(a.files).toContain(".aidw/specs/todos/spec.md");
@@ -189,6 +190,7 @@ describe("repo hygiene (aidw commits with git add -A)", () => {
     g(root, "init", "-q");
     g(root, "add", "-A");
     g(root, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "base");
+    planReviewed(root, ID);
     for (const s of ["intake", "analyzing", "awaiting_approval"]) cli(root, "transition", ID, s);
     expect(cli(root, "approve", ID).code).toBe(0);
     cli(root, "transition", ID, "executing");

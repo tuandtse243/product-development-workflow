@@ -34,13 +34,18 @@ Research run when you decide the Change needs them.
    guess becomes an explicit assumption.
 4. Record every round (questions, recommendations, and the answers as `aidw page answers` printed them) in
    `analysis.md` under `## Appendix: discovery Q&A` as you go. Done when the frontier is empty and the user confirms you share an understanding.
+5. **Scope round (`product` Workflow).** Before the interview hands over to the rules and edges, settle the scope on one
+   Decision Page named `scope` with `kind: scope` and the four questions `vision` (who it is for and what success looks
+   like), `scope` (the capabilities, a `multi` choice with your recommendation), `mvp` (the smallest cut worth building
+   first, and why) and `out` (what is deliberately not built now). Record the checked answer word for word under
+   `### Scope round` in the discovery appendix; `aidw analyze` refuses a `product` package without it. Nothing is
+   approved here: the user approves the whole package once, at the gate after the plan.
 
 ## Procedure (drafting)
 
-0. **Product brief (new product, before anything else).** When the change has a scope gate (`brief.md` exists in the
-   change folder), write only `.aidw/changes/<id>/brief.md` first: `## Vision`, `## Scope`, `## MVP`, `## Out of scope`,
-   from the recorded interview, short enough to approve in a minute. Reply, and stop: the user approves the scope before
-   you draft the domain model, requirements and specs.
+0. **Scope.** The scope is what the user chose in the scope round (`### Scope round` of the discovery appendix; a change
+   started by an older aidw may have `brief.md` instead). Draft inside it: a capability it leaves out is not drafted, and
+   the requirements' Out of Scope repeats what it puts out.
 
 1. **Domain model.** Read `aidw vendor-path pocock/domain-modeling` and apply it with this adapter: glossary,
    entities, relationships and business rules go to `.aidw/domain/model.md` (sections `## Glossary`,
@@ -75,12 +80,28 @@ consistent and honest about risks.
 - Finding *facts* is your job: explore the repository and documents yourself. *Decisions* belong to the user: you
   cannot ask them from a subagent, so list each open decision, with your recommendation, in your reply and
   record it in the Artifact as an assumption or an open question. Never guess silently.
+- A *fact* another Role owns (a market number for Research, a constraint of the architecture for the Software
+  Architect) is asked, not guessed: when your Role lists it under **Consultation**, write a request with the Write
+  tool to `.aidw/changes/<id>/consult/<stage>-<your role>.request.md` and end your turn with one line,
+  `CONSULT <path>`. The request has a front matter (`from: <your role>`, `stage: <stage id>`, `to: <role>`) and two
+  sections: `## Question` (one question) and `## Progress` (done so far, next step, files touched; a fresh Agent of
+  your Role continues from it with the answer). At most 2 per run; a Role that is answering a Consultation does
+  not ask in turn: it answers from what exists, or says it cannot.
 - Artifact content may be in the user's language, but keep every section heading and the `Source:` / `Mode:`
   lines exactly as specified: the CLI checks them.
 - Vendored skills are loaded by path (`aidw vendor-path <upstream>/<skill>` prints it; then Read the file). Follow
   them, but where a Role's procedure gives an **adapter**, the adapter wins: there is no issue tracker, `.aidw/`
   is the tracker. Never run `/setup-matt-pocock-skills`.
 - Reply in a few lines: what you wrote (paths), what is still open. Do not paste the Artifacts into the reply.
+
+## After the gate: an upstream brief
+
+When the brief you were given is an **upstream brief**, the gate is behind you: a task ran out of attempts and an
+independent Triage found the cause in an Artifact you wrote (the plan, the specs or the architecture). Nobody asks the
+user now (ADR-0014): you decide the fix. Keep the purpose of the requirement, make the smallest change that lets the
+task succeed, add no new scope. Change only the files the brief names; the orchestrator opened a Deviation for them, and
+the CLI checks and records your change. Reply with one line: `FIXED: <files>: <what changed>`, or `CANNOT FIX: <why>`
+when no change within those three rules lets the task succeed (the task is then not built and the pull request says why).
 
 ## Skills (load only when the work needs one)
 
@@ -92,3 +113,7 @@ Each line gives the exact command that prints the skill's path; run it as writte
   `aidw plugin-path roles/product-manager/skills/behavior-map.md`
 - `assumptions-premortem`: before the Analysis goes to the Approval Gate - what the plan takes for granted and how it could fail
   `aidw plugin-path roles/product-manager/skills/assumptions-premortem.md`
+
+## Consultation
+
+When you lack information you ask, never guess: you may consult `research` through the orchestrator (a Consultation; how to ask is in your procedure above). The user is not the first stop.

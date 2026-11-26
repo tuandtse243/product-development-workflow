@@ -40,11 +40,18 @@ describe("stack packs", () => {
     for (const h of HEADINGS) expect(got, `${file} lacks "## ${h}"`).toContain(h);
   });
 
-  it("has the Next.js, NestJS, Nuxt, SvelteKit, Django and FastAPI framework packs", () => {
-    expect(frameworks.sort()).toEqual(["django.md", "fastapi.md", "nestjs.md", "nextjs.md", "nuxt.md", "sveltekit.md"]);
+  it("has the Next.js, NestJS, Nuxt, SvelteKit, Django, FastAPI, Express, Fastify and Hono framework packs", () => {
+    expect(frameworks.sort()).toEqual(["django.md", "express.md", "fastapi.md", "fastify.md", "hono.md", "nestjs.md", "nextjs.md", "nuxt.md", "sveltekit.md"]);
   });
 
-  it.each(["nextjs.md", "nestjs.md", "nuxt.md", "sveltekit.md", "django.md", "fastapi.md"])("%s answers every framework question and names who reads it", (file) => {
+  it.each(["express.md", "fastify.md", "hono.md"])("%s, a server library's pack, names its official sources and how it tests through HTTP", (file) => {
+    const text = readFileSync(join(stacks, file), "utf8");
+    expect(text).toMatch(/^detected_as: server$/m);
+    expect(text).toMatch(/^## Sources\n\n.*(expressjs\.com|fastify\.dev|hono\.dev)/m);
+    expect(text).toMatch(/supertest|app\.inject\(\)|app\.request\(\)/);
+  });
+
+  it.each(["nextjs.md", "nestjs.md", "nuxt.md", "sveltekit.md", "django.md", "fastapi.md", "express.md", "fastify.md", "hono.md"])("%s answers every framework question and names who reads it", (file) => {
     const text = readFileSync(join(stacks, file), "utf8");
     const got = [...text.matchAll(/^## (.+)$/gm)].map((m) => m[1]);
     for (const h of FRAMEWORK_HEADINGS) expect(got, `${file} lacks "## ${h}"`).toContain(h);

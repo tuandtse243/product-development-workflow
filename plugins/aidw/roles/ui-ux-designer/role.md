@@ -11,6 +11,10 @@ reads: [requirements, delta-specs, design-direction, design-tokens]
 writes: [design-direction, design-tokens, decision-design-needed, analysis-design, layer-review-ui-ux, audit-ui]
 skills:
   - ui-review-rubric: for every UI review, before you judge - what to look for, in order of how much it hurts the user
+  - compose-directions: when the brief asks for the three Design Directions of a product (ADR-0008)
+  - build-design-mock: when the brief names one Design Direction and asks for its Design Mock, as a candidate or extended after the choice
+# compose-directions and build-design-mock write files: they run once this Role becomes a worker Agent for mocks
+# (roadmap, step 1); until then the review procedure below is the only one an Agent of this Role follows.
 ---
 
 ## Responsibility
