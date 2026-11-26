@@ -6,6 +6,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import YAML from "yaml";
 import { beforeEach, describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
@@ -75,6 +76,8 @@ describe("the tasks.yaml fields (schema)", () => {
     expect(msgs).toContain('task T01: patterns[4] needs a "why": what the implementer should imitate there');
     expect(msgs.some((m) => m.startsWith("task T01: docs:") && /<lib>@<version> <topic>/.test(m))).toBe(true);
     expect(msgs).toContain('task T01: "manual" must be a list of checks a human makes, each a non-empty line');
+    const twoLines = validateTasksText(tasksWith('    patterns: [{ path: "lib/store.ts:1-2", why: "first\\nsecond" }]\n'), "tasks.yaml").errors.map((e) => e.message);
+    expect(twoLines).toContain('task T01: patterns[1]: "why" must be one line (it heads the snippet in the brief)');
   });
 });
 
@@ -179,6 +182,15 @@ describe("aidw analyze: libraries the Program Design names (OP3)", () => {
     expect(r.code, r.out).toBe(0);
   });
 
+  it("a Go module is named in docs by its short name (a Docs Brief file cannot hold a module path)", () => {
+    setProgramDesign(withSignature('import "github.com/go-chi/chi/v5"', "go"));
+    expect(analyze().errors().some((m) => m.includes('add "docs: [chi@<version> <topic>]"'))).toBe(true);
+    setTasks(tasksWith('    docs: ["chi@5.0.12 routing"]\n'));
+    write(root, ".aidw/research/docs/chi@5.0-routing.md", BRIEF("chi", "5.0.12", "routing"));
+    const r = analyze();
+    expect(r.code, r.out).toBe(0);
+  });
+
   it("reads Python and Go manifests", () => {
     write(root, "pyproject.toml", '[project]\nname = "svc"\ndependencies = [\n  "fastapi>=0.110",\n  "PyYAML==6.0.1",\n]\n\n[tool.poetry.dependencies]\npython = "^3.12"\nhttpx = "^0.27"\n');
     write(root, "go.mod", "module example.com/svc\n\ngo 1.22\n\nrequire (\n\tgithub.com/go-chi/chi/v5 v5.0.12\n)\n");
@@ -235,6 +247,9 @@ describe("the gate's plan section (layout plan)", () => {
     expect(s.steps?.[0]?.detail).toMatch(/Docs: `zod@3\.23\.8 parsing` \(fresh\)/);
     expect(s.points).toContain("**T01**: the email reads well on a phone");
     expect(s.html).toMatch(/<a href="\.\.\/\.\.\/research\/docs\/zod@3\.23-parsing\.md">zod@3\.23\.8 parsing<\/a>/);
+    // the page is opened as a file:// URL of .aidw/run/pages/gate.html: the link resolves to the brief
+    const href = /<a href="([^"]+)"/.exec(s.html)?.[1] as string;
+    expect(fileURLToPath(new URL(href, pathToFileURL(join(root, ".aidw/run/pages/gate.html"))))).toBe(join(root, ".aidw/research/docs/zod@3.23-parsing.md"));
 
     write(root, ".aidw/run/pages/gate.yaml", `layout: gate\ntitle: Approve\nchange: ${ID}\nsections:\n  - id: scope\n    title: Scope\n    body: Booking.\n`);
     const r = cli("page", "render", "gate");
@@ -432,6 +447,19 @@ describe("OP3: what is not a missing library", () => {
     expect(analyze().errors().filter((m) => /Program Design uses/.test(m))).toEqual([]);
   });
 
+  it("reads only code blocks: sh, yaml and text quote names too, and are skipped", () => {
+    expect(names('npm install "left-pad"\nimport x from "zod"', "sh")).toEqual([]);
+    expect(names('from: "dayjs"', "yaml")).toEqual([]);
+    expect(names('import { z } from "zod";', "")).toEqual(["zod"]);
+  });
+
+  it("reads the dependencies a package.json block or diff adds", () => {
+    expect(names('{\n  "name": "app",\n  "version": "1.0.0",\n  "dependencies": {\n    "resend": "^4.0.1"\n  },\n  "engines": { "node": ">=20" }\n}', "json")).toEqual(["resend"]);
+    const diff = '--- a/package.json\n+++ b/package.json\n@@\n   "dependencies": {\n-    "left-pad": "1.3.0",\n+    "@react-email/components": "0.0.25",\n     "next": "15.1.3"';
+    expect(names(diff, "diff")).toEqual(["@react-email/components", "next"]);
+    expect(names('{ "status": "1.0", "id": "2" }', "json")).toEqual([]);
+  });
+
   it("an SQL block with a quoted table after a lower-case from is not an import", () => {
     expect(names('select * from "users" where id = $1;', "sql")).toEqual([]);
   });
@@ -456,6 +484,18 @@ describe("aidw deliver: the uncovered-package warning never fails delivery (OP3)
     const d = checkDelivery(pathsFor(root), ID);
     expect(d.warnings.map((x) => x.message).some((m) => /added the package dayjs, which no Docs Brief covers/.test(m))).toBe(true);
     expect(d.errors.map((x) => x.message).some((m) => /dayjs/.test(m))).toBe(false);
+    expect(d.warnings.map((x) => x.message).some((m) => /have Research write its Docs Brief[^\n]*aidw docs-brief dayjs@<installed version> <topic>/.test(m))).toBe(true);
+  });
+
+  it("reads the modules a go.mod and the dependencies a pyproject.toml gained (no uv.lock)", () => {
+    write(root, "go.mod", "module example.com/svc\n\ngo 1.22\n\nrequire (\n\tgithub.com/go-chi/chi/v5 v5.0.12\n)\n");
+    write(root, "pyproject.toml", '[project]\nname = "svc"\ndependencies = [\n  "fastapi>=0.110",\n]\n');
+    const base = commitBase();
+    write(root, "go.mod", "module example.com/svc\n\ngo 1.22\n\nrequire (\n\tgithub.com/go-chi/chi/v5 v5.0.12\n\tgithub.com/redis/go-redis/v9 v9.5.1\n)\n");
+    write(root, "pyproject.toml", '[project]\nname = "svc"\ndependencies = [\n  "fastapi>=0.110",\n  "httpx>=0.27",\n]\n\n[tool.poetry.dependencies]\npython = "^3.12"\nPyYAML = "^6.0"\n');
+    expect(uncoveredPackages(pathsFor(root), [{ id: "T01", base }]).sort()).toEqual(["github.com/redis/go-redis/v9", "httpx", "pyyaml"]);
+    write(root, ".aidw/research/docs/httpx@0.27-timeouts.md", BRIEF("httpx", "0.27.0", "timeouts"));
+    expect(uncoveredPackages(pathsFor(root), [{ id: "T01", base, docs: ["go-redis@9.5.1 pipelines"] }]).sort()).toEqual(["pyyaml"]);
   });
 
   it("returns nothing (and does not throw) for a base git does not know, or outside git", () => {

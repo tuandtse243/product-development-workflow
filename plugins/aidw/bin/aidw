@@ -7329,8 +7329,8 @@ __export(cli_exports, {
   run: () => run
 });
 module.exports = __toCommonJS(cli_exports);
-var import_node_fs50 = require("node:fs");
-var import_node_path55 = require("node:path");
+var import_node_fs51 = require("node:fs");
+var import_node_path56 = require("node:path");
 var import_node_child_process14 = require("node:child_process");
 var import_node_url = require("node:url");
 var import_yaml26 = __toESM(require_dist(), 1);
@@ -8890,6 +8890,7 @@ function validateTasksText(text2, file) {
     if (!isStrList(t.verify) || t.verify.length === 0) d.error(file, `${where} needs a non-empty "verify" list`);
     if (t.depends_on !== void 0 && !isStrList(t.depends_on)) d.error(file, `${where}: "depends_on" must be a list of task ids`);
     if (t.skills !== void 0 && !isStrList(t.skills)) d.error(file, `${where}: "skills" must be a list of vendored skill names`);
+    if (t.manual !== void 0 && !(isStrList(t.manual) && t.manual.every((m) => m.trim() !== ""))) d.error(file, `${where}: "manual" must be a list of checks that need a human, each a non-empty sentence`);
     if (t.removes_tests !== void 0 && typeof t.removes_tests !== "boolean") d.error(file, `${where}: "removes_tests" must be true or false`);
     if (t.max_attempts !== void 0 && !(Number.isInteger(t.max_attempts) && Number(t.max_attempts) >= 1)) {
       d.error(file, `${where}: "max_attempts" must be a positive integer`);
@@ -10406,7 +10407,7 @@ var import_yaml11 = __toESM(require_dist(), 1);
 var import_node_fs12 = require("node:fs");
 var import_node_path14 = require("node:path");
 var import_yaml8 = __toESM(require_dist(), 1);
-var ARTIFACT_VALIDATORS = ["aidw validate", "aidw analyze", "aidw plan", "aidw plan-review", "aidw docs-brief", "none"];
+var ARTIFACT_VALIDATORS = ["aidw validate", "aidw analyze", "aidw plan", "aidw plan-review", "aidw docs-brief", "aidw pr", "none"];
 var NAME = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 var isRecord4 = (v) => !!v && typeof v === "object" && !Array.isArray(v);
 var artifactsFile = (root) => (0, import_node_path14.join)(root, "artifacts.yaml");
@@ -12964,6 +12965,46 @@ ${PLACEHOLDER2}: what could break when this merges: migrations (reversible, trie
 ${PLACEHOLDER2}: recommended follow-ups.
 `;
 var statusOf2 = (t) => String(t.status ?? "pending");
+var CHECKS_FOR_YOU = "Checks for you";
+function manualChecks(tasks) {
+  return tasks.flatMap(
+    (t) => statusOf2(t) === "not_built" || !Array.isArray(t.manual) ? [] : t.manual.filter((m) => typeof m === "string" && m.trim() !== "").map((m) => `- [ ] ${t.id} ${cell(String(t.title ?? ""))}: ${m.trim()}`)
+  );
+}
+function withChecksForYou(handoff, checks) {
+  const lines = handoff.replace(/\r\n?/g, "\n").split("\n");
+  const h2 = (i) => /^##\s+(.+?)\s*#*\s*$/.exec(lines[i] ?? "")?.[1]?.trim().toLowerCase() ?? null;
+  const next = (from) => {
+    let fence = false;
+    for (let i = from; i < lines.length; i++) {
+      if (/^\s*(```|~~~)/.test(lines[i] ?? "")) fence = !fence;
+      else if (!fence && h2(i) !== null) return i;
+    }
+    return lines.length;
+  };
+  const at = lines.findIndex((_, i) => h2(i) === CHECKS_FOR_YOU.toLowerCase());
+  if (at < 0 && !checks.length) return handoff;
+  const ticked = new Set(at < 0 ? [] : lines.slice(at + 1, next(at + 1)).flatMap((l) => /^- \[[xX]\] /.test(l) ? [l.slice(6).trim()] : []));
+  const kept = checks.map((c) => ticked.has(c.replace(/^- \[ \] /, "")) ? c.replace(/^- \[ \] /, "- [x] ") : c);
+  const block = [
+    `## ${CHECKS_FOR_YOU}`,
+    "",
+    ...checks.length ? ["The plan left these checks to a person; the run did not stop for them. Tick each one you did.", "", ...kept] : ["None: every check of the plan ran automatically."],
+    ""
+  ];
+  if (at >= 0) lines.splice(at, next(at + 1) - at, ...block);
+  else {
+    const overview = lines.findIndex((_, i) => h2(i) === "overview");
+    let where = overview >= 0 ? next(overview + 1) : lines.length;
+    if (where === lines.length) {
+      while (lines.length && lines.at(-1) === "") lines.pop();
+      lines.push("");
+      where = lines.length;
+    }
+    lines.splice(where, 0, ...block);
+  }
+  return lines.join("\n");
+}
 function readEvidence(change, taskId) {
   const f = (0, import_node_path27.join)(change.dir, "evidence", `${taskId}.json`);
   if (!(0, import_node_fs22.existsSync)(f)) return null;
@@ -13143,6 +13184,12 @@ function checkDelivery(p, id) {
     handoff.split(/\r?\n/).forEach((l, i) => {
       if (l.includes(PLACEHOLDER2)) d.error(where("handoff.md"), `unresolved ${PLACEHOLDER2} placeholder`, i + 1);
     });
+    const checks = manualChecks(loadTasks(p, id).tasks);
+    if (checks.length) {
+      const body = secs.find((x) => x.name.toLowerCase() === CHECKS_FOR_YOU.toLowerCase())?.body;
+      if (body === void 0) d.error(where("handoff.md"), `missing section "## ${CHECKS_FOR_YOU}" (the tasks' manual checks); run \`aidw deliver\``);
+      else if (checks.some((c) => !body.includes(c.replace(/^- \[ \] /, "")))) d.error(where("handoff.md"), `"## ${CHECKS_FOR_YOU}" does not list every manual check of the tasks; run \`aidw deliver\``);
+    }
     const env = secs.find((x) => x.name.toLowerCase() === "environment");
     if (env && !env.body.includes(PLACEHOLDER2) && !/^\s*none\b/im.test(env.body) && !(0, import_node_fs22.existsSync)((0, import_node_path27.join)(p.project, ".env.example"))) {
       d.error(rel(p, (0, import_node_path27.join)(p.project, ".env.example")), 'missing: the handoff lists environment variables, so ship a .env.example (or write "None" under ## Environment)');
@@ -13181,6 +13228,12 @@ function deliver(p, id, opts = {}) {
       (0, import_node_fs22.writeFileSync)((0, import_node_path27.join)(dir, "handoff.md"), HANDOFF(String(change.data.title ?? id)));
       createdHandoff = true;
     }
+    const handoff = (0, import_node_fs22.readFileSync)((0, import_node_path27.join)(dir, "handoff.md"), "utf8");
+    const withChecks = withChecksForYou(handoff, manualChecks(tasks));
+    if (withChecks !== handoff) {
+      (0, import_node_fs22.writeFileSync)((0, import_node_path27.join)(dir, "handoff.md"), withChecks);
+      if (!createdHandoff) written.push(rel(p, (0, import_node_path27.join)(dir, "handoff.md")));
+    }
     write("README.md", readmeMd(p, change, tasks));
   }
   return { dir: rel(p, dir), written, created_handoff: createdHandoff, screenshots: screenshots(change).length, diags: checkDelivery(p, id) };
@@ -13193,6 +13246,7 @@ function readmeMd(p, change, tasks) {
   const layers = Object.entries(summary.layers).map(([n, r]) => `${n} ${r.status}`).join(", ") || "none";
   const conv = lastConverge(change);
   const env = (0, import_node_fs22.existsSync)((0, import_node_path27.join)(p.project, ".env.example"));
+  const checks = manualChecks(tasks).length;
   return [
     `# Delivery: ${String(change.data.title ?? change.id)}`,
     "",
@@ -13204,7 +13258,7 @@ function readmeMd(p, change, tasks) {
     "",
     "## Contents",
     "",
-    "- [handoff.md](handoff.md): overview, run locally, environment, deploy, usage, known issues, next steps",
+    `- [handoff.md](handoff.md): overview, ${checks ? `checks for you (${checks}), ` : ""}run locally, environment, deploy, usage, known issues, next steps`,
     "- [quality-report.md](quality-report.md): every layer with evidence, what failed and what was not covered",
     "- [tasks.md](tasks.md): plan and task status, attempts, reviews, commits",
     "- [decisions.md](decisions.md): architecture decision records",
@@ -19929,9 +19983,131 @@ ${bad ? `${bad} problem(s) to fix before the run` : warn ? `no blocking problem,
 
 // src/pr.ts
 var import_node_child_process11 = require("node:child_process");
+var import_node_fs48 = require("node:fs");
+var import_node_path53 = require("node:path");
+var import_yaml24 = __toESM(require_dist(), 1);
+
+// src/prsummary.ts
 var import_node_fs47 = require("node:fs");
 var import_node_path52 = require("node:path");
-var import_yaml24 = __toESM(require_dist(), 1);
+var PR_SUMMARY = "pr-summary.md";
+var prSummaryFile = (change) => (0, import_node_path52.join)(change.dir, "delivery", PR_SUMMARY);
+var EXT = /\.(md|mdx|txt|json|jsonc|ya?ml|toml|ini|lock|example|[cm]?[jt]sx?|py|rb|go|rs|java|kts?|swift|c|h|cpp|cs|php|sql|prisma|dbml|graphql|gql|css|scss|sass|less|html?|vue|svelte|astro|sh|bash|zsh|ps1|xml|svg|png|jpe?g|webp|gif|csv|tf|hcl|proto)$/i;
+function asPath(raw, strict = false) {
+  let s = raw.trim().replace(/^["'(]+|["'),.;]+$/g, "");
+  s = s.replace(/(#L\d+(-L?\d+)?|:\d+(-\d+)?)$/, "");
+  if (!s || s.includes("://") || /[*?<>{}|`$]/.test(s)) return null;
+  if (/\s/.test(s) && !(s.includes("/") && EXT.test(s) && !/\s/.test(s.slice(0, s.indexOf("/"))))) return null;
+  if (s.startsWith("/") || s.startsWith("@") || s.startsWith("-") || s.startsWith("~")) return null;
+  s = s.replace(/^\.\//, "");
+  if (s === "" || s === ".") return null;
+  if (EXT.test(s) || s.endsWith("/") && s.length > 1) return s;
+  return !strict && s.includes("/") ? s : null;
+}
+function summaryRefs(text2) {
+  const out = [];
+  const add = (raw, strict = false) => {
+    const p = raw === void 0 ? null : asPath(raw, strict);
+    if (!p) return;
+    const loose = strict && !/[\\/]/.test(p);
+    const seen = out.find((r) => r.path === p);
+    if (!seen) out.push({ path: p, loose });
+    else if (!loose) seen.loose = false;
+  };
+  const lines = text2.replace(/\r\n?/g, "\n").split("\n");
+  let fence = null;
+  for (const line of lines) {
+    const f = /^\s*(`{3,}|~{3,})\s*([\w-]*)/.exec(line);
+    if (fence) {
+      if (f && f[1].startsWith(fence.mark[0]) && f[1].length >= fence.mark.length && !f[2]) {
+        fence = null;
+        continue;
+      }
+      if (fence.info === "tree") {
+        const box = /^[\s│├└┬┼─]+/;
+        const rest = line.replace(box, "");
+        add(/^\S+/.exec(rest.replace(/^[+~-]/, "").replace(box, ""))?.[0]);
+        continue;
+      }
+      const g = /^diff --git a\/(\S+) b\/(\S+)/.exec(line);
+      const h = /^(?:---|\+\+\+) (?:[ab]\/)?(\S+)/.exec(line);
+      if (g) {
+        add(g[1]);
+        add(g[2]);
+      } else if (h) {
+        if (h[1] !== "/dev/null") add(h[1]);
+      } else if (fence.first && line.trim()) {
+        add(/^\s*[+ -]?\s*(?:\/\/|#|--|\/\*)\s*(\S+?)(?:\s*\*\/)?\s*$/.exec(line)?.[1]);
+      }
+      if (line.trim()) fence.first = false;
+      continue;
+    }
+    if (f) {
+      fence = { mark: f[1], info: (f[2] ?? "").toLowerCase(), first: true };
+      continue;
+    }
+    for (const m of line.matchAll(/(`+)([^`]+?)\1(?!`)/g)) add(m[2], true);
+    for (const m of line.replace(/`[^`]*`/g, "").matchAll(/\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g)) if (!m[1].startsWith("#")) add(m[1].replace(/#.*$/, ""), true);
+  }
+  return out;
+}
+function knownPaths(p, change, base2, head) {
+  const files = /* @__PURE__ */ new Set();
+  const diff = git(p.project, ["diff", "--name-only", "--no-renames", `${base2}...${head}`]);
+  if (diff.ok) for (const f of diff.out.split("\n").filter(Boolean)) files.add(f);
+  const dir = rel(p, change.dir);
+  const ids = [.../* @__PURE__ */ new Set([change.id, change.id.replace(/^\d{4}-\d{2}-\d{2}-/, "")])];
+  const homes = ids.flatMap((i) => [rel(p, (0, import_node_path52.join)(p.changes, i)), rel(p, (0, import_node_path52.join)(p.archive, i))]);
+  for (const f of packageDigests(p, change).keys()) {
+    files.add(f);
+    if (f.startsWith(`${dir}/`)) {
+      const inner = f.slice(dir.length + 1);
+      files.add(inner);
+      for (const h of homes) files.add(`${h}/${inner}`);
+    }
+  }
+  return { files, diffFailed: diff.ok ? null : (diff.err || diff.out).split("\n")[0] || `git diff ${base2}...${head} failed` };
+}
+function unknownPaths(paths, known) {
+  const all2 = [...known];
+  return paths.filter((raw) => {
+    const x = raw.replace(/\\/g, "/");
+    if (x.split("/").includes("..")) return true;
+    if (known.has(x)) return false;
+    const dir = x.endsWith("/") ? x : `${x}/`;
+    return !all2.some((k) => k.startsWith(dir));
+  });
+}
+var PR_SUMMARY_SECTIONS = ["Why", "Notes", "Change outline"];
+function missingSections(text2) {
+  let fence = false;
+  const heads = /* @__PURE__ */ new Set();
+  for (const line of text2.replace(/\r\n?/g, "\n").split("\n")) {
+    if (/^\s*(```|~~~)/.test(line)) fence = !fence;
+    else if (!fence) {
+      const m = /^##\s+(.+?)\s*#*\s*$/.exec(line);
+      if (m) heads.add(m[1].toLowerCase());
+    }
+  }
+  return PR_SUMMARY_SECTIONS.filter((s) => !heads.has(s.toLowerCase()));
+}
+function readPrSummary(p, change, base2, head) {
+  const file = prSummaryFile(change);
+  if (!(0, import_node_fs47.existsSync)(file)) return null;
+  const raw = readText(file) ?? "";
+  const { files, diffFailed } = knownPaths(p, change, base2, head);
+  const unknown = unknownPaths(summaryRefs(raw).filter((r) => !r.loose).map((r) => r.path), files);
+  if (unknown.length) {
+    throw new OpError(
+      `${rel(p, file)} names ${unknown.length === 1 ? "a file" : "files"} absent from the git diff (${base2}...${head}) and from the approved Artifacts: ${unknown.map((u) => `\`${u}\``).join(", ")}${diffFailed ? ` (the diff could not be read: ${diffFailed})` : ""}; name only files the Change Branch changed or the approved package holds, then run \`aidw pr ${change.id}\` again`
+    );
+  }
+  const text2 = raw.replace(/\r\n?/g, "\n").replace(/^\s*# [^\n]*\n/, "").trim();
+  const warnings = missingSections(raw).map((m) => `${rel(p, file)} has no "## ${m}" section (Why in one sentence, 1 to 3 Notes, a Change outline of Views)`);
+  return { text: text2, file, warnings };
+}
+
+// src/pr.ts
 var MIGRATION2 = /(^|\/)(migrations?|prisma\/migrations|supabase\/migrations|db\/migrate)\//i;
 var DEP_FILES = /(^|\/)(package\.json|pnpm-lock\.yaml|package-lock\.json|yarn\.lock|requirements\.txt|pyproject\.toml|go\.mod|Cargo\.toml)$/;
 function mergeDanger(p, id, tasks, base2, head) {
@@ -19946,7 +20122,7 @@ function mergeDanger(p, id, tasks, base2, head) {
   const env = git(p.project, ["diff", `${base2}...${head}`, "--", ".env.example"]);
   const newVars = env.ok ? [...env.out.matchAll(/^\+([A-Z][A-Z0-9_]*)=/gm)].map((m) => m[1]) : [];
   if (newVars.length) out.push(`New environment variables to set before deploy: ${newVars.join(", ")}.`);
-  const handoff = readText((0, import_node_path52.join)(loadAny(p, id).dir, "delivery", "handoff.md"));
+  const handoff = readText((0, import_node_path53.join)(loadAny(p, id).dir, "delivery", "handoff.md"));
   const section2 = handoff ? sections(handoff).find((s) => /^merge danger$/i.test(s.name)) : void 0;
   if (section2?.body && !/^\s*none\b/i.test(section2.body)) out.push(...section2.body.split("\n").filter((l) => /^\s*[-*]\s/.test(l)).map((l) => l.replace(/^\s*[-*]\s+/, "")));
   return out;
@@ -19955,10 +20131,10 @@ function loadAny(p, id) {
   try {
     return loadChange(p, id);
   } catch (e) {
-    const dir = (0, import_node_path52.join)(p.archive, id);
-    const file = (0, import_node_path52.join)(dir, "change.yaml");
-    if (!(e instanceof ChangeError) || !(0, import_node_fs47.existsSync)(file)) throw e;
-    const doc = import_yaml24.default.parseDocument((0, import_node_fs47.readFileSync)(file, "utf8"));
+    const dir = (0, import_node_path53.join)(p.archive, id);
+    const file = (0, import_node_path53.join)(dir, "change.yaml");
+    if (!(e instanceof ChangeError) || !(0, import_node_fs48.existsSync)(file)) throw e;
+    const doc = import_yaml24.default.parseDocument((0, import_node_fs48.readFileSync)(file, "utf8"));
     return { id, dir, file, doc, data: doc.toJS() ?? {} };
   }
 }
@@ -19981,27 +20157,25 @@ function planPr(p, id, opts = {}) {
   const remote = bound?.remote ?? grant?.remote ?? "origin";
   const url = git(p.project, ["remote", "get-url", remote]);
   const repo = url.ok ? githubSlug(url.out) : null;
-  const tasks = parseTasks(readText((0, import_node_path52.join)(change.dir, "tasks.yaml")) ?? "").tasks;
+  const tasks = parseTasks(readText((0, import_node_path53.join)(change.dir, "tasks.yaml")) ?? "").tasks;
   const planned2 = tasks.filter((t) => !t.origin);
   const allFix = planned2.length > 0 && planned2.every((t) => t.type === "fix");
   const first = planned2[0];
   const title = header(allFix ? "fix" : "feat", first ? scopeOf(first) : "config", String(change.data.title ?? id));
   const readiness = prReadiness(p, change, tasks);
-  const analysis = readText((0, import_node_path52.join)(change.dir, "analysis.md"));
+  const analysis = readText((0, import_node_path53.join)(change.dir, "analysis.md"));
   const summary = analysis ? sections(analysis).find((s) => s.name.toLowerCase() === "summary")?.body ?? "" : "";
   const layers = Object.entries(readSummary(change).layers).map(([n, r]) => `- ${n}: ${r.status}${r.review ? ` (review: ${r.review.verdict})` : ""}`);
   const deploy2 = lastDeploy(change);
-  const shots = (0, import_node_path52.join)(change.dir, "delivery", "screenshots");
+  const shots = (0, import_node_path53.join)(change.dir, "delivery", "screenshots");
   const taskRows = tasks.map((t) => `- ${t.id} ${String(t.title ?? "")} (${String(t.status ?? "pending")})`);
   const danger = mergeDanger(p, id, tasks, base2, head);
   const where = rel(p, change.dir);
+  const written = readPrSummary(p, change, base2, head);
   const body = [
     // D12: three fixed sections first, in this order, "Nothing." when empty
-    ...prSections(p, change, tasks),
-    "## Summary",
-    "",
-    summary || String(change.data.title ?? id),
-    "",
+    ...withManualChecks(prSections(p, change, tasks), manualChecks(tasks)),
+    ...written ? [written.text, ""] : ["## Summary", "", summary || String(change.data.title ?? id), ""],
     "## Tasks",
     "",
     ...taskRows,
@@ -20010,7 +20184,7 @@ function planPr(p, id, opts = {}) {
     "",
     ...layers.length ? layers : ["- no quality layers recorded"],
     ...deploy2?.url ? [`- preview: ${deploy2.url}${deploy2.ok ? "" : " (deploy failed)"}`] : [],
-    ...(0, import_node_fs47.existsSync)(shots) ? [`- screenshots: ${where}/delivery/screenshots/`] : [],
+    ...(0, import_node_fs48.existsSync)(shots) ? [`- screenshots: ${where}/delivery/screenshots/`] : [],
     `- full evidence: ${where}/evidence/ and delivery/quality-report.md`,
     "",
     "## Merge danger",
@@ -20018,21 +20192,29 @@ function planPr(p, id, opts = {}) {
     ...danger.length ? danger.map((d) => `- ${d}`) : ["None found: no migrations, dependency or environment changes, no breaking tasks."],
     ""
   ].join("\n");
-  const bodyFile = (0, import_node_path52.join)(p.run, `pr-${id}.md`);
+  const bodyFile = (0, import_node_path53.join)(p.run, `pr-${id}.md`);
   const draft = !readiness.ready;
   const commands = [
     `git push -u ${remote} ${head}`,
     `gh pr create --base ${base2} --head ${head} --title "${title}" --body-file ${rel(p, bodyFile)}${repo ? ` --repo ${repo}` : ""}${draft ? " --draft" : ""}`
   ];
   const granted = pushGrantReason(p, `aidw pr ${id} --create`, GRANT_STATES, p.project, opts.env ?? process.env) !== null;
-  return { title, body, head, base: base2, remote, repo, bodyFile, commands, ready: readiness.ready, why: readiness.why, granted, record: prRecord(change) };
+  return { title, body, head, base: base2, remote, repo, bodyFile, commands, ready: readiness.ready, why: readiness.why, warnings: written?.warnings ?? [], granted, record: prRecord(change) };
+}
+function withManualChecks(lines, checks) {
+  const h = lines.indexOf(`## ${PR_SECTIONS[2]}`);
+  if (!checks.length || h < 0) return lines;
+  let end = h + 2;
+  while (end < lines.length && lines[end] !== "") end++;
+  const body = lines.slice(h + 2, end).filter((l) => l !== "Nothing.");
+  return [...lines.slice(0, h + 2), ...body, ...checks, ...lines.slice(end)];
 }
 function writePrBody(p, id, opts = {}) {
   const change = loadAny(p, id);
-  keepDiscardedWork(p, change, parseTasks(readText((0, import_node_path52.join)(change.dir, "tasks.yaml")) ?? "").tasks);
+  keepDiscardedWork(p, change, parseTasks(readText((0, import_node_path53.join)(change.dir, "tasks.yaml")) ?? "").tasks);
   const plan = planPr(p, id, opts);
-  (0, import_node_fs47.mkdirSync)(p.run, { recursive: true });
-  (0, import_node_fs47.writeFileSync)(plan.bodyFile, plan.body);
+  (0, import_node_fs48.mkdirSync)(p.run, { recursive: true });
+  (0, import_node_fs48.writeFileSync)(plan.bodyFile, plan.body);
   if (stateOf(change) === "delivered" && !plan.record?.url) {
     const fresh = loadAny(p, id);
     savePrRecord(fresh, { url: null, draft: !plan.ready, at: (/* @__PURE__ */ new Date()).toISOString() });
@@ -20135,8 +20317,8 @@ function ghCreate(p, plan, draft) {
 // src/runner.ts
 var import_node_child_process12 = require("node:child_process");
 var import_node_crypto9 = require("node:crypto");
-var import_node_fs48 = require("node:fs");
-var import_node_path53 = require("node:path");
+var import_node_fs49 = require("node:fs");
+var import_node_path54 = require("node:path");
 var import_yaml25 = __toESM(require_dist(), 1);
 var MINUTE = 6e4;
 var BACKOFF_MINUTES = [5, 10, 20, 40, 60];
@@ -20177,15 +20359,15 @@ function waitMs(reason, attempt2, now9 = /* @__PURE__ */ new Date()) {
   return { ms: minutes * MINUTE, why: `no reset time given: backoff ${minutes} min` };
 }
 function archived(p, id) {
-  return !listChangeIds(p).includes(id) && (0, import_node_fs48.existsSync)(p.archive) && readdirNames(p.archive).some((n) => n.endsWith(id));
+  return !listChangeIds(p).includes(id) && (0, import_node_fs49.existsSync)(p.archive) && readdirNames(p.archive).some((n) => n.endsWith(id));
 }
 function prOf(p, id) {
-  const dirs = [(0, import_node_path53.join)(p.changes, id), ...readdirNames(p.archive).filter((n) => n.endsWith(id)).map((n) => (0, import_node_path53.join)(p.archive, n))];
+  const dirs = [(0, import_node_path54.join)(p.changes, id), ...readdirNames(p.archive).filter((n) => n.endsWith(id)).map((n) => (0, import_node_path54.join)(p.archive, n))];
   for (const dir of dirs) {
-    const file = (0, import_node_path53.join)(dir, "change.yaml");
-    if (!(0, import_node_fs48.existsSync)(file)) continue;
+    const file = (0, import_node_path54.join)(dir, "change.yaml");
+    if (!(0, import_node_fs49.existsSync)(file)) continue;
     try {
-      const pr = import_yaml25.default.parse((0, import_node_fs48.readFileSync)(file, "utf8"))?.run?.pr;
+      const pr = import_yaml25.default.parse((0, import_node_fs49.readFileSync)(file, "utf8"))?.run?.pr;
       return pr && typeof pr === "object" ? { url: typeof pr.url === "string" && pr.url ? pr.url : null, draft: pr.draft === true } : null;
     } catch {
       return null;
@@ -20210,7 +20392,7 @@ function readyNow(p, id) {
 }
 function readdirNames(dir) {
   try {
-    return (0, import_node_fs48.readdirSync)(dir);
+    return (0, import_node_fs49.readdirSync)(dir);
   } catch {
     return [];
   }
@@ -20222,8 +20404,8 @@ function fingerprint(p, id) {
     const c = loadChange(p, id);
     const parts = [String(c.data.state), String(c.data.approval?.hash ?? "-")];
     for (const f of ["tasks.yaml", "evidence/quality/summary.json", "evidence/converge.json", "evidence/deploy.json", "evidence/integration.json", "consultations.yaml", "deviations.yaml"]) {
-      const file = (0, import_node_path53.join)(c.dir, f);
-      parts.push((0, import_node_fs48.existsSync)(file) ? (0, import_node_crypto9.createHash)("sha1").update((0, import_node_fs48.readFileSync)(file, "utf8").replace(ISO_TIME, "")).digest("hex").slice(0, 12) : "-");
+      const file = (0, import_node_path54.join)(c.dir, f);
+      parts.push((0, import_node_fs49.existsSync)(file) ? (0, import_node_crypto9.createHash)("sha1").update((0, import_node_fs49.readFileSync)(file, "utf8").replace(ISO_TIME, "")).digest("hex").slice(0, 12) : "-");
     }
     return parts.join("|");
   } catch {
@@ -20239,11 +20421,11 @@ function runLoop(p, id, opts = {}) {
   });
   const now9 = opts.now ?? (() => /* @__PURE__ */ new Date());
   const env = opts.env ?? process.env;
-  const logFile = (0, import_node_path53.join)(p.run, "runner.log");
-  (0, import_node_fs48.mkdirSync)(p.run, { recursive: true });
+  const logFile = (0, import_node_path54.join)(p.run, "runner.log");
+  (0, import_node_fs49.mkdirSync)(p.run, { recursive: true });
   const record2 = (line) => {
     log(line);
-    (0, import_node_fs48.appendFileSync)(logFile, `${now9().toISOString()} ${line}
+    (0, import_node_fs49.appendFileSync)(logFile, `${now9().toISOString()} ${line}
 `);
   };
   let runs = 0;
@@ -20253,7 +20435,7 @@ function runLoop(p, id, opts = {}) {
   let last = fingerprint(p, id);
   let checked = false;
   const result = (outcome, state, message) => {
-    if (env.AIDW_RUN_DETACHED === "1") (0, import_node_fs48.rmSync)(pidFile(p), { force: true });
+    if (env.AIDW_RUN_DETACHED === "1") (0, import_node_fs49.rmSync)(pidFile(p), { force: true });
     record2(`stop: ${outcome}: ${message}`);
     try {
       opts.onFinish?.(outcome);
@@ -20346,7 +20528,7 @@ function loadChangeState(p, id) {
     return "?";
   }
 }
-var pidFile = (p) => (0, import_node_path53.join)(p.run, "runner.pid");
+var pidFile = (p) => (0, import_node_path54.join)(p.run, "runner.pid");
 function alive(pid) {
   try {
     process.kill(pid, 0);
@@ -20357,7 +20539,7 @@ function alive(pid) {
 }
 function runnerPid(p) {
   try {
-    const pid = Number((0, import_node_fs48.readFileSync)(pidFile(p), "utf8").trim());
+    const pid = Number((0, import_node_fs49.readFileSync)(pidFile(p), "utf8").trim());
     return Number.isInteger(pid) && pid > 0 && alive(pid) ? pid : null;
   } catch {
     return null;
@@ -20366,14 +20548,14 @@ function runnerPid(p) {
 function detachRun(p, argv, env) {
   const running = runnerPid(p);
   if (running) throw new Error(`a runner is already running here (pid ${running}); stop it with \`aidw run --stop\``);
-  (0, import_node_fs48.mkdirSync)(p.run, { recursive: true });
-  const log = (0, import_node_path53.join)(p.run, "runner.log");
-  const fd = (0, import_node_fs48.openSync)(log, "a");
+  (0, import_node_fs49.mkdirSync)(p.run, { recursive: true });
+  const log = (0, import_node_path54.join)(p.run, "runner.log");
+  const fd = (0, import_node_fs49.openSync)(log, "a");
   const clean = { ...env, AIDW_RUN_DETACHED: "1" };
   delete clean.CLAUDECODE;
   const child = (0, import_node_child_process12.spawn)(process.execPath, [process.argv[1], ...argv], { cwd: p.project, detached: true, stdio: ["ignore", fd, fd], env: clean });
   child.unref();
-  (0, import_node_fs48.writeFileSync)(pidFile(p), String(child.pid));
+  (0, import_node_fs49.writeFileSync)(pidFile(p), String(child.pid));
   return { pid: child.pid, log };
 }
 function stopRunner(p) {
@@ -20384,7 +20566,7 @@ function stopRunner(p) {
   } catch {
     process.kill(pid, "SIGTERM");
   }
-  (0, import_node_fs48.rmSync)(pidFile(p), { force: true });
+  (0, import_node_fs49.rmSync)(pidFile(p), { force: true });
   return pid;
 }
 
@@ -20416,8 +20598,8 @@ Hint: ${hint}` : ""}` };
 }
 
 // src/conflict.ts
-var import_node_fs49 = require("node:fs");
-var import_node_path54 = require("node:path");
+var import_node_fs50 = require("node:fs");
+var import_node_path55 = require("node:path");
 var list8 = (v) => Array.isArray(v) ? v.map(String) : [];
 var now8 = () => (/* @__PURE__ */ new Date()).toISOString();
 var MARKER = /^(?:<{7}|>{7}|\|{7})(?: |$)/m;
@@ -20437,7 +20619,7 @@ function openConflict(p, id, taskId, phase) {
     );
   }
   const dir = taskDir(p, t);
-  if (dir === p.project || !(0, import_node_fs49.existsSync)(dir)) throw new OpError(`task ${taskId} has no worktree to resolve the conflict in (${String(t.worktree)})`);
+  if (dir === p.project || !(0, import_node_fs50.existsSync)(dir)) throw new OpError(`task ${taskId} has no worktree to resolve the conflict in (${String(t.worktree)})`);
   const partners = list8(c.with).map((x) => tf.tasks.find((y) => y.id === x) ?? { id: x });
   return { tf, i, t, c, dir, partners };
 }
@@ -20454,10 +20636,10 @@ function taskLines(t) {
   ];
 }
 function writeBrief2(p, id, name, text2) {
-  const dir = (0, import_node_path54.join)(p.run, "briefs", id);
-  (0, import_node_fs49.mkdirSync)(dir, { recursive: true });
-  const path = (0, import_node_path54.join)(dir, name);
-  (0, import_node_fs49.writeFileSync)(path, text2.replace(/\n{3,}/g, "\n\n"));
+  const dir = (0, import_node_path55.join)(p.run, "briefs", id);
+  (0, import_node_fs50.mkdirSync)(dir, { recursive: true });
+  const path = (0, import_node_path55.join)(dir, name);
+  (0, import_node_fs50.writeFileSync)(path, text2.replace(/\n{3,}/g, "\n\n"));
   return path;
 }
 function buildConflictBrief(p, id, taskId) {
@@ -20544,10 +20726,10 @@ function resolveConflict(p, id, taskId, opts = {}) {
   const files = list8(c.files);
   const withIds = partners.map((x) => x.id);
   const base2 = { ok: false, task: taskId, with: withIds, files, resolution: null, checks: [] };
-  const evidenceFile = (0, import_node_path54.join)(tf.change.dir, "evidence", `merge-${taskId}.json`);
+  const evidenceFile = (0, import_node_path55.join)(tf.change.dir, "evidence", `merge-${taskId}.json`);
   const record2 = (r) => {
-    (0, import_node_fs49.mkdirSync)((0, import_node_path54.join)(tf.change.dir, "evidence"), { recursive: true });
-    (0, import_node_fs49.writeFileSync)(evidenceFile, `${JSON.stringify({ at: now8(), onto, ...r }, null, 2)}
+    (0, import_node_fs50.mkdirSync)((0, import_node_path55.join)(tf.change.dir, "evidence"), { recursive: true });
+    (0, import_node_fs50.writeFileSync)(evidenceFile, `${JSON.stringify({ at: now8(), onto, ...r }, null, 2)}
 `);
     return { ...r, evidence: rel(p, evidenceFile) };
   };
@@ -20580,9 +20762,9 @@ function resolveConflict(p, id, taskId, opts = {}) {
   const changedBy = new Map(sides.map((side) => [side, git(dir, ["diff", "--name-only", side, resolution]).out.split("\n").filter(Boolean)]));
   const touched = [...new Set([...changedBy.values()].flat())];
   const marked = touched.filter((f) => {
-    const file = (0, import_node_path54.join)(dir, f);
-    if (!(0, import_node_fs49.existsSync)(file)) return false;
-    const text2 = (0, import_node_fs49.readFileSync)(file);
+    const file = (0, import_node_path55.join)(dir, f);
+    if (!(0, import_node_fs50.existsSync)(file)) return false;
+    const text2 = (0, import_node_fs50.readFileSync)(file);
     return !text2.includes(0) && MARKER.test(text2.toString("utf8"));
   });
   if (marked.length) return fail(`conflict markers are left in ${marked.join(", ")}`);
@@ -20651,8 +20833,8 @@ function buildMergeReviewBrief(p, id, taskId) {
   const onto = String(c.onto ?? "");
   const resolution = String(c.resolution ?? "HEAD");
   const files = list8(c.files);
-  const verdictFile2 = (0, import_node_path54.join)(p.run, `review-${taskId}.md`);
-  (0, import_node_fs49.rmSync)(verdictFile2, { force: true });
+  const verdictFile2 = (0, import_node_path55.join)(p.run, `review-${taskId}.md`);
+  (0, import_node_fs50.rmSync)(verdictFile2, { force: true });
   const text2 = [
     `# Merge review brief: ${taskId} - ${String(t.title ?? "")}`,
     "",
@@ -20673,7 +20855,7 @@ function buildMergeReviewBrief(p, id, taskId) {
     `- \`git diff ${onto.slice(0, 12)} ${resolution} -- ${files.join(" ")}\`: the conflicting files against the change branch.`,
     `- Conflicting files: ${files.map((f) => `\`${f}\``).join(", ")}.`,
     ...list8(c.config).length ? [`- Configuration of the checks this merge changes against one side: ${list8(c.config).map((f) => `\`${f}\``).join(", ")}. Read the diff of each: a lowered threshold, a removed rule or a narrower include that neither task made is a \`fix\`.`] : [],
-    `- Checks of both tasks on the resolved code: \`${rel(p, (0, import_node_path54.join)(tf.change.dir, "evidence", `merge-${taskId}.json`))}\`; ${taskId}'s own evidence: \`${rel(p, (0, import_node_path54.join)(tf.change.dir, evidenceRel(taskId)))}\`.`,
+    `- Checks of both tasks on the resolved code: \`${rel(p, (0, import_node_path55.join)(tf.change.dir, "evidence", `merge-${taskId}.json`))}\`; ${taskId}'s own evidence: \`${rel(p, (0, import_node_path55.join)(tf.change.dir, evidenceRel(taskId)))}\`.`,
     "",
     "## Checklist",
     "",
@@ -20722,9 +20904,9 @@ function compactNote(cwd, env) {
 function changeTasks(p) {
   const out = [];
   for (const base2 of [p.changes, p.archive]) {
-    if (!(0, import_node_fs50.existsSync)(base2)) continue;
-    for (const d of (0, import_node_fs50.readdirSync)(base2)) {
-      const text2 = readText((0, import_node_path55.join)(base2, d, "tasks.yaml"));
+    if (!(0, import_node_fs51.existsSync)(base2)) continue;
+    for (const d of (0, import_node_fs51.readdirSync)(base2)) {
+      const text2 = readText((0, import_node_path56.join)(base2, d, "tasks.yaml"));
       if (text2 !== null) out.push(parseTasks(text2).tasks);
     }
   }
@@ -20966,12 +21148,12 @@ var UsageError = class extends Error {
 function addBinToPath(env) {
   const file = env.CLAUDE_ENV_FILE;
   if (!file) return false;
-  const bin = (0, import_node_path55.join)(pluginRoot(env), "bin");
+  const bin = (0, import_node_path56.join)(pluginRoot(env), "bin");
   if (bin.includes("'")) return false;
   const line = `export PATH="$PATH":'${bin}'`;
-  const current = (0, import_node_fs50.existsSync)(file) ? (0, import_node_fs50.readFileSync)(file, "utf8") : "";
+  const current = (0, import_node_fs51.existsSync)(file) ? (0, import_node_fs51.readFileSync)(file, "utf8") : "";
   if (current.split("\n").includes(line)) return false;
-  (0, import_node_fs50.appendFileSync)(file, `${current && !current.endsWith("\n") ? "\n" : ""}${line}
+  (0, import_node_fs51.appendFileSync)(file, `${current && !current.endsWith("\n") ? "\n" : ""}${line}
 `);
   return true;
 }
@@ -20984,7 +21166,7 @@ function logHook(env, hook, input, output) {
       parsed = JSON.parse(input);
     } catch {
     }
-    (0, import_node_fs50.appendFileSync)(file, `${JSON.stringify({ at: (/* @__PURE__ */ new Date()).toISOString(), hook, input: parsed, output: output || null })}
+    (0, import_node_fs51.appendFileSync)(file, `${JSON.stringify({ at: (/* @__PURE__ */ new Date()).toISOString(), hook, input: parsed, output: output || null })}
 `);
   } catch {
   }
@@ -21119,7 +21301,7 @@ ${r2.dependents.length ? `WARNING: done task(s) ${r2.dependents.join(", ")} depe
           return 0;
         }
         const r = startTask(p, id, need(rest[1], "task id"), { worktree: args.flags.worktree === true });
-        const brief = buildBrief(p, id, r.task, "implement", (0, import_node_path55.join)(pluginRoot(env), "library", "vendor"));
+        const brief = buildBrief(p, id, r.task, "implement", (0, import_node_path56.join)(pluginRoot(env), "library", "vendor"));
         spawned(p, id, "implementer", `${r.task}:r${taskField(p, id, r.task, "runs")}`, r.task);
         const agent = agentForTask(pluginRoot(env), r.role);
         emit(
@@ -21178,7 +21360,7 @@ Then: aidw verdict ${taskId}
           return 0;
         }
         if (kind !== "implement" && kind !== "review") throw new UsageError('--for must be "implement" or "review" (or "triage", "upstream", "conflict", "merge-review" for brief)');
-        const b = buildBrief(p, id, taskId, kind, (0, import_node_path55.join)(pluginRoot(env), "library", "vendor"));
+        const b = buildBrief(p, id, taskId, kind, (0, import_node_path56.join)(pluginRoot(env), "library", "vendor"));
         if (kind === "review" && cmd2 === "brief") spawned(p, id, "reviewer", `${taskId}:r${taskField(p, id, taskId, "runs")}`, taskId);
         if (cmd2 === "skills") {
           emit({ change: id, task: taskId, for: kind, skills: b.skills }, b.skills.map((s) => `${s.path}  # ${s.reason}
@@ -21212,7 +21394,7 @@ Then: aidw verdict ${taskId}
             after = `review ${auto.task}: auto-passed (converge tests, or a layer fix its own reviewer judges again)${auto.commit ? ` (commit ${auto.commit.slice(0, 8)})` : ""}
 ${settledNextLine(p, id)}${sessionEnd(env, p, id)}`;
           } else {
-            reviewBrief = buildBrief(p, id, r.task, "review", (0, import_node_path55.join)(pluginRoot(env), "library", "vendor")).path;
+            reviewBrief = buildBrief(p, id, r.task, "review", (0, import_node_path56.join)(pluginRoot(env), "library", "vendor")).path;
             spawned(p, id, "reviewer", `${r.task}:r${taskField(p, id, r.task, "runs")}`, r.task);
             after = `review brief ${reviewBrief}
 SPAWN ${AGENTS.taskReview} with: ${REVIEWER_PROMPT(reviewBrief)}
@@ -21241,7 +21423,7 @@ ${failed.tail}
           ...str(args.flags.layer) ? { layer: str(args.flags.layer) } : {},
           fresh: args.flags.fresh === true,
           ...timeout ? { timeoutMs: Number(timeout) * 1e3 } : {},
-          vendorDir: (0, import_node_path55.join)(pluginRoot(env), "library", "vendor")
+          vendorDir: (0, import_node_path56.join)(pluginRoot(env), "library", "vendor")
         });
         const lines = r.layers.map((l) => {
           const bad = l.runs.find((x) => x.exit !== 0);
@@ -21281,14 +21463,14 @@ NEXT: spawn these ${group.length} reviewers in one message, one subagent each wi
         let verdict = rest[1];
         let notesFile = str(args.flags["notes-file"]);
         if (verdict === void 0 || verdict === "auto") {
-          notesFile = notesFile ?? (0, import_node_path55.join)(p.run, `layer-review-${layer}.md`);
-          if (!(0, import_node_fs50.existsSync)(notesFile)) throw new OpError(`no verdict file at ${notesFile}: the reviewer did not write it. Spawn a fresh reviewer, or save its reply there and run this again`);
-          const parsed = parseVerdict((0, import_node_fs50.readFileSync)(notesFile, "utf8"));
+          notesFile = notesFile ?? (0, import_node_path56.join)(p.run, `layer-review-${layer}.md`);
+          if (!(0, import_node_fs51.existsSync)(notesFile)) throw new OpError(`no verdict file at ${notesFile}: the reviewer did not write it. Spawn a fresh reviewer, or save its reply there and run this again`);
+          const parsed = parseVerdict((0, import_node_fs51.readFileSync)(notesFile, "utf8"));
           if (!parsed) throw new OpError(`${notesFile} does not start with "VERDICT: pass" or "VERDICT: fix"; spawn a fresh reviewer once more`);
           verdict = parsed;
         }
         if (verdict !== "pass" && verdict !== "fix") throw new UsageError('verdict must be "pass" or "fix"');
-        const notes = notesFile ? (0, import_node_fs50.readFileSync)(notesFile, "utf8") : str(args.flags.notes) ?? "";
+        const notes = notesFile ? (0, import_node_fs51.readFileSync)(notesFile, "utf8") : str(args.flags.notes) ?? "";
         if (verdict === "fix" && !notes.trim()) throw new UsageError("a fix verdict needs --notes or --notes-file");
         const r = recordLayerReview(p, id, layer, verdict, notes);
         emit(
@@ -21468,7 +21650,7 @@ ${r.ok && r.ran ? "Previews work from now on: run aidw deploy.\n" : ""}`);
         const verdict = need(rest[1], "verdict (pass|fix)");
         if (verdict !== "pass" && verdict !== "fix") throw new UsageError('verdict must be "pass" or "fix"');
         const notesFile = str(args.flags["notes-file"]);
-        const notes = notesFile ? (0, import_node_fs50.readFileSync)(notesFile, "utf8") : str(args.flags.notes) ?? "";
+        const notes = notesFile ? (0, import_node_fs51.readFileSync)(notesFile, "utf8") : str(args.flags.notes) ?? "";
         if (verdict === "fix" && !notes.trim()) throw new UsageError("a fix verdict needs --notes or --notes-file");
         const r = recordReview(p, id, taskId, verdict, notes, { commit: args.flags["no-commit"] !== true });
         emit(
@@ -21512,8 +21694,8 @@ ${lines.length ? `${lines.join("\n")}
         const taskId = need(rest[0], "task id");
         const file = str(args.flags["notes-file"]) ?? triageFile(p, taskId);
         const unclear = args.flags.unclear === true;
-        if (!unclear && !(0, import_node_fs50.existsSync)(file)) throw new OpError(`no triage answer at ${file}: the Agent did not write it. Spawn it once more with \`aidw brief ${taskId} --for triage\``);
-        const r = recordTriage(p, id, taskId, unclear ? "" : (0, import_node_fs50.readFileSync)(file, "utf8"), { pluginHome: pluginRoot(env), unclear });
+        if (!unclear && !(0, import_node_fs51.existsSync)(file)) throw new OpError(`no triage answer at ${file}: the Agent did not write it. Spawn it once more with \`aidw brief ${taskId} --for triage\``);
+        const r = recordTriage(p, id, taskId, unclear ? "" : (0, import_node_fs51.readFileSync)(file, "utf8"), { pluginHome: pluginRoot(env), unclear });
         const first = r.diagnosis.split("\n").find((l) => l.trim()) ?? "";
         const others = (r.not_built ?? []).filter((t) => t !== r.task);
         const along = others.length ? ` Not built with it (they depend on it): ${others.join(", ")}.` : "";
@@ -21546,9 +21728,9 @@ ${lines.length ? `${lines.join("\n")}
         const p = project();
         const id = resolveChangeId(p, str(args.flags.change));
         const taskId = need(rest[0], "task id");
-        const file = str(args.flags["notes-file"]) ?? (0, import_node_path55.join)(p.run, `review-${taskId}.md`);
-        if (!(0, import_node_fs50.existsSync)(file)) throw new OpError(`no verdict file at ${file}: the reviewer did not write it. Spawn a fresh reviewer, or save its reply there and run this again`);
-        const notes = (0, import_node_fs50.readFileSync)(file, "utf8");
+        const file = str(args.flags["notes-file"]) ?? (0, import_node_path56.join)(p.run, `review-${taskId}.md`);
+        if (!(0, import_node_fs51.existsSync)(file)) throw new OpError(`no verdict file at ${file}: the reviewer did not write it. Spawn a fresh reviewer, or save its reply there and run this again`);
+        const notes = (0, import_node_fs51.readFileSync)(file, "utf8");
         const verdict = parseVerdict(notes);
         if (!verdict) throw new OpError(`${file} does not start with "VERDICT: pass" or "VERDICT: fix"; spawn a fresh reviewer once more, and if it is still unclear record it with \`aidw review ${taskId} fix --notes-file\``);
         const r = recordReview(p, id, taskId, verdict, notes, { commit: args.flags["no-commit"] !== true });
@@ -21561,8 +21743,8 @@ ${lines.length ? `${lines.join("\n")}
       case "vendor-path": {
         const ref = need(rest[0], "<upstream>/<skill>");
         if (!/^[a-z0-9-]+\/[a-z0-9-]+$/.test(ref)) throw new UsageError(`invalid vendored skill "${ref}"`);
-        const file = skillPath((0, import_node_path55.join)(pluginRoot(env), "library", "vendor"), ref);
-        if (!(0, import_node_fs50.existsSync)(file)) throw new OpError(`skill "${ref}" not found at ${file}`);
+        const file = skillPath((0, import_node_path56.join)(pluginRoot(env), "library", "vendor"), ref);
+        if (!(0, import_node_fs51.existsSync)(file)) throw new OpError(`skill "${ref}" not found at ${file}`);
         emit({ path: file }, `${file}
 `);
         return 0;
@@ -21572,12 +21754,12 @@ ${lines.length ? `${lines.join("\n")}
         const report = need(rest[0], "LCOV report file (e.g. coverage/lcov.info)");
         const min = args.flags.min === void 0 ? 80 : Number(args.flags.min);
         if (!Number.isFinite(min) || min < 0 || min > 100) throw new UsageError("--min must be a number from 0 to 100");
-        const file = (0, import_node_path55.resolve)(p.project, report);
-        if (!(0, import_node_fs50.existsSync)(file)) throw new OpError(`no coverage report at ${report}: run the tests with an lcov reporter first`);
+        const file = (0, import_node_path56.resolve)(p.project, report);
+        if (!(0, import_node_fs51.existsSync)(file)) throw new OpError(`no coverage report at ${report}: run the tests with an lcov reporter first`);
         const open = listChangeIds(p).flatMap((id) => loadTasks(p, id).tasks.map((t) => typeof t.base === "string" ? t.base : null));
         const base2 = typeof args.flags.base === "string" ? args.flags.base : open.find((b) => b) ?? trunkBase(p.project);
         if (!base2) throw new OpError("no base commit to compare with: pass --base <ref>");
-        const c = diffCoverage(p.project, base2, (0, import_node_fs50.readFileSync)(file, "utf8"));
+        const c = diffCoverage(p.project, base2, (0, import_node_fs51.readFileSync)(file, "utf8"));
         emit(c, `${coverageReport(c, min)}
 `);
         return c.percent >= min ? 0 : 1;
@@ -21671,7 +21853,7 @@ ${tail}`);
               const m = caseName ? mergeResults(root, id, results, meta) : writeResults(root, id, results, meta);
               if ("refused" in m) io.err(`  no result file written for ${id}: ${m.refused}
 `);
-              else written.push((0, import_node_path55.relative)(root, m.file));
+              else written.push((0, import_node_path56.relative)(root, m.file));
             }
           }
         }
@@ -21751,7 +21933,7 @@ ${d.kind === "brownfield" ? `${d.signals.map((s) => `  signal  ${s}
       case "plan": {
         const p = project();
         const id = resolveChangeId(p, rest[0]);
-        const tasks = parseTasks(readText((0, import_node_path55.join)(loadChange(p, id).dir, "tasks.yaml")) ?? "").tasks;
+        const tasks = parseTasks(readText((0, import_node_path56.join)(loadChange(p, id).dir, "tasks.yaml")) ?? "").tasks;
         const shape = planShape(tasks);
         emit({ change: id, ...shape, summary: planSummary(tasks), advice: planAdvice(tasks) }, `${planSummary(tasks)}
 ${planAdvice(tasks).map((a) => `  advice: ${a}
@@ -21784,14 +21966,15 @@ NEXT: the Change stays delivered; /aidw:resume ${id} finishes it after the user 
         const plan = st === "delivered" || st === "archived" ? writePrBody(p, id, { ...base2 ? { base: base2 } : {}, env }) : planPr(p, id, { ...base2 ? { base: base2 } : {}, env });
         const next = prNext(p, id, plan, env.AIDW_RUNNER === "1");
         emit(
-          { ok: true, change: id, title: plan.title, head: plan.head, base: plan.base, ready: plan.ready, why: plan.why, granted: plan.granted, url: plan.record?.url ?? null, body: plan.body, body_file: rel(p, plan.bodyFile), commands: plan.commands, next },
+          { ok: true, change: id, title: plan.title, head: plan.head, base: plan.base, ready: plan.ready, why: plan.why, granted: plan.granted, url: plan.record?.url ?? null, body: plan.body, body_file: rel(p, plan.bodyFile), commands: plan.commands, warnings: plan.warnings, next },
           `title: ${plan.title}
 ${plan.ready ? "ready for review" : `draft: ${plan.why.join("; ")}`}
 push: ${plan.granted ? "granted at the Approval Gate" : "not granted (the gate asks)"}
 body: ${rel(p, plan.bodyFile)}
 
 ${plan.body}
-${next}
+${plan.warnings.map((w) => `WARNING ${w}
+`).join("")}${next}
 `
         );
         return 0;
@@ -21847,7 +22030,7 @@ layers get it as E2E_CDP_URL and E2E_CDP_PORT; for your own shell: export E2E_CD
           const family = need(rest.slice(1).join(" ").trim() || void 0, "font family");
           const weights = str(args.flags.weights)?.split(",").map((w) => Number(w.trim()));
           if (weights?.some((w) => !Number.isInteger(w))) throw new UsageError("--weights takes numbers, for example 400,700");
-          const to = (0, import_node_path55.resolve)(cwd, str(args.flags.to) ?? (0, import_node_path55.join)(project().design, "mock", "fonts"));
+          const to = (0, import_node_path56.resolve)(cwd, str(args.flags.to) ?? (0, import_node_path56.join)(project().design, "mock", "fonts"));
           const f = fetchFont(family, { weights, italic: args.flags.italic === true, to });
           emit({ ok: true, ...f, dir: to }, `${f.family} ${f.version} (${f.license}): ${f.files.length} file(s) in ${to}${f.cached ? `, ${f.cached} from cache` : ""}
 link ${f.css} from the mock's CSS (@import url("fonts/${f.css}")) and use font-family: "${f.family}"
@@ -21855,12 +22038,12 @@ link ${f.css} from the mock's CSS (@import url("fonts/${f.css}")) and use font-f
           return 0;
         }
         if (sub === "shots") {
-          const dir = (0, import_node_path55.resolve)(cwd, need(rest[1], "mock folder"));
+          const dir = (0, import_node_path56.resolve)(cwd, need(rest[1], "mock folder"));
           const s = browserStatus(project());
           if (!s.running || !s.record) throw new OpError("mock shots need the test browser: run `aidw browser start` (outside the sandbox if it is refused)");
-          const self = typeof __filename !== "undefined" ? __filename : (0, import_node_path55.join)(pluginRoot(env), "bin", "aidw");
+          const self = typeof __filename !== "undefined" ? __filename : (0, import_node_path56.join)(pluginRoot(env), "bin", "aidw");
           const r = takeShots({ dir, cdp: s.record.url, full: args.flags.full === true }, self);
-          emit({ ok: r.errors.length === 0, dir, ...r }, `${r.written.length} screenshot(s) in ${(0, import_node_path55.join)(dir, "shots")}
+          emit({ ok: r.errors.length === 0, dir, ...r }, `${r.written.length} screenshot(s) in ${(0, import_node_path56.join)(dir, "shots")}
 ${r.errors.map((e) => `failed: ${e}
 `).join("")}`);
           return r.errors.length ? 1 : 0;
@@ -22022,7 +22205,7 @@ SPAWN aidw:${role} with: Audit brief: ${b.path}. Read it and write your answer a
             const r = all2[x.id];
             return r ? `**${x.id}**: ${[r.answer].flat().join(", ")} (${r.reason || "no reason recorded"})` : `**${x.id}**: open (${x.options.join(" | ")})`;
           });
-          const tasks = parseTasks(readText((0, import_node_path55.join)(c.dir, "tasks.yaml")) ?? "").tasks;
+          const tasks = parseTasks(readText((0, import_node_path56.join)(c.dir, "tasks.yaml")) ?? "").tasks;
           return [
             ...points.length ? [{ id: "decision-points", title: "Decision Points", body: "", points, html: "" }] : [],
             ...tasks.length ? [{ id: "plan", title: "Plan", body: planSummary(tasks), points: [], html: "" }] : [],
@@ -22037,10 +22220,10 @@ SPAWN aidw:${role} with: Audit brief: ${b.path}. Read it and write your answer a
           const gateId = first.page.layout === "gate" && first.page.change ? resolveChangeId(p, first.page.change) : null;
           const lead = (id) => {
             const c = loadChange(p, id);
-            const beforeAfter = first.page.sections.some((s) => s.id === "before-after") ? null : beforeAfterSection(readText((0, import_node_path55.join)(c.dir, "analysis.md")) ?? "");
+            const beforeAfter = first.page.sections.some((s) => s.id === "before-after") ? null : beforeAfterSection(readText((0, import_node_path56.join)(c.dir, "analysis.md")) ?? "");
             return [beforeAfter, openFindingsSection(p, c, workflowOfChange(p, c, pluginRoot(env))), unansweredSection(c)].filter((x) => x !== null);
           };
-          const programDesign = (id) => first.page.sections.some((s) => s.id === "program-design") ? [] : [programDesignSection(readText((0, import_node_path55.join)(loadChange(p, id).dir, PROGRAM_DESIGN_FILE)), id)].filter((x) => x !== null);
+          const programDesign = (id) => first.page.sections.some((s) => s.id === "program-design") ? [] : [programDesignSection(readText((0, import_node_path56.join)(loadChange(p, id).dir, PROGRAM_DESIGN_FILE)), id)].filter((x) => x !== null);
           const r = gateId ? parsePage(name, source, [...programDesign(gateId), ...gateExtras(gateId)], lead(gateId)) : first;
           if (r.problems.length) throw new OpError(`the data of page "${name}" (${rel(p, pageDataFile(p, name))}) has ${r.problems.length} problem(s):
 ${r.problems.map((x) => `  - ${x}`).join("\n")}
@@ -22048,13 +22231,13 @@ Fix the file and render again.`);
           return r.page;
         };
         const save2 = (name, data) => {
-          (0, import_node_fs50.mkdirSync)(pagesDir(p), { recursive: true });
-          (0, import_node_fs50.writeFileSync)(pageDataFile(p, name), typeof data === "string" ? data : (0, import_yaml26.stringify)(data));
+          (0, import_node_fs51.mkdirSync)(pagesDir(p), { recursive: true });
+          (0, import_node_fs51.writeFileSync)(pageDataFile(p, name), typeof data === "string" ? data : (0, import_yaml26.stringify)(data));
         };
         const show = (name) => {
           const page = load2(name);
           const file = pageHtmlFile(p, name);
-          (0, import_node_fs50.writeFileSync)(file, renderPage(page));
+          (0, import_node_fs51.writeFileSync)(file, renderPage(page));
           const url = (0, import_node_url.pathToFileURL)(file).href;
           emit(
             { ok: true, page: name, version: page.version, layout: page.layout, file, url },
@@ -22206,7 +22389,7 @@ ${route}${c3.status === "needs-deviation" ? "Then, once the Deviation is closed"
             { ok: true, change: id2, ...r2 },
             `${cid} resumed: ${c2.from} continues ${c2.task ?? `stage ${c2.stage}`}
 resume brief ${r2.resume}
-If the Agent that asked is still running in this session, continue it with SendMessage: "Consultation ${cid} is answered: ${(0, import_node_path55.join)(p.changes, id2, c2.answer)}. Read it and continue." Otherwise:
+If the Agent that asked is still running in this session, continue it with SendMessage: "Consultation ${cid} is answered: ${(0, import_node_path56.join)(p.changes, id2, c2.answer)}. Read it and continue." Otherwise:
 SPAWN ${r2.agent} with: Resume brief: ${r2.resume}. Read it and continue the work.
 ${after}
 `
@@ -22214,7 +22397,7 @@ ${after}
           return 0;
         }
         const file = need(sub, "request file (.aidw/changes/<id>/consult/<name>.request.md)");
-        const abs = (0, import_node_path55.resolve)(cwd, file);
+        const abs = (0, import_node_path56.resolve)(cwd, file);
         const id = resolveChangeId(p, changeOfRequest(p, abs, str(args.flags.change)));
         const r = requestConsultation(p, id, abs, pluginRoot(env));
         const c = r.consultation;
@@ -22318,7 +22501,7 @@ ${settledNextLine(p, id)}`);
         const { hash, files, by } = approve(p, id, auto ? { auto: { pluginRoot: pluginRoot(env) } } : {});
         const { kept, reopened } = reconcileDoneTasks(p, id);
         const root = pluginRoot(env);
-        const route = buildRoute(id, tasksLeft(p, id), (0, import_node_path55.join)(root, "bin", "aidw"), installedOutside(root, p.project) ? void 0 : root);
+        const route = buildRoute(id, tasksLeft(p, id), (0, import_node_path56.join)(root, "bin", "aidw"), installedOutside(root, p.project) ? void 0 : root);
         emit(
           { ok: true, id, hash, files, kept, reopened, route },
           `approved ${id}${by === "user" ? "" : ` by ${by}`}
@@ -22432,7 +22615,7 @@ if (typeof require !== "undefined" && require.main === module && process.argv[2]
     err: (s) => process.stderr.write(s),
     stdin: () => {
       try {
-        return (0, import_node_fs50.readFileSync)(0, "utf8");
+        return (0, import_node_fs51.readFileSync)(0, "utf8");
       } catch {
         return "";
       }

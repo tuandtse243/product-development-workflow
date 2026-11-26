@@ -73,6 +73,7 @@ export function planRefProblems(t: Task): string[] {
         if (typeof x.path !== "string" || !parsePatternPath(x.path))
           out.push(`${at}: path "${String(x.path ?? "")}" must be a file from the project root with its lines, e.g. src/a.ts:10-40`);
         if (typeof x.why !== "string" || !x.why.trim()) out.push(`${at} needs a "why": what the implementer should imitate there`);
+        else if (/[\r\n]/.test(x.why.trim())) out.push(`${at}: "why" must be one line (it heads the snippet in the brief)`);
         return undefined;
       });
   }
@@ -283,15 +284,26 @@ const JS_LANGS = new Set(["ts", "tsx", "js", "jsx", "mjs", "cjs", "javascript", 
 const PY_LANGS = new Set(["py", "python"]);
 const GO_LANGS = new Set(["go", "golang"]);
 
-/** The language of a fenced block: its tag, else the first file name it mentions (a diff of `app/x.py`). */
-function blockLanguage(lang: string, text: string): "js" | "py" | "go" | "unknown" {
+/**
+ * The language of a fenced block: a code tag, or (no tag, or a diff) the first file name it mentions. Any other tag
+ * (sql, sh, yaml, text, ...) is not code whose imports name libraries: null. A json block, or a diff of package.json,
+ * is read for dependency lines.
+ */
+function blockLanguage(lang: string, text: string): "js" | "py" | "go" | "json" | "unknown" | null {
   if (JS_LANGS.has(lang)) return "js";
   if (PY_LANGS.has(lang)) return "py";
   if (GO_LANGS.has(lang)) return "go";
-  const ext = /[\w./-]+\.(tsx?|jsx?|mjs|cjs|vue|svelte|py|go)\b/.exec(text)?.[1];
-  if (!ext) return "unknown";
+  if (lang === "json" || lang === "jsonc") return "json";
+  if (lang !== "" && lang !== "diff") return null;
+  const ext = /[\w./-]+\.(tsx?|jsx?|mjs|cjs|vue|svelte|py|go|json)\b/.exec(text)?.[1];
+  if (!ext) return lang === "diff" ? null : "unknown";
+  if (ext === "json") return /(?:^|[\s/])package\.json\b/.test(text) ? "json" : null;
   return ext === "py" ? "py" : ext === "go" ? "go" : "js";
 }
+
+const DEP_TABLE = /^\s*"(?:dependencies|devDependencies|peerDependencies|optionalDependencies)"\s*:\s*\{/;
+const DEP_LINE = /^\s*"((?:@[a-z0-9][\w.-]*\/)?[a-z0-9][\w.-]*)"\s*:\s*"((?:[\^~]|>=?)?\s*\d[^"]*|latest|next|\*)"/i;
+const NOT_PACKAGES = new Set(["version", "node", "npm", "pnpm", "yarn", "bun"]);
 
 /** The package a JS import specifier names, or null for a relative path, a builtin or an alias. */
 function jsPackage(spec: string, local: Set<string>, aliases: string[]): string | null {
@@ -343,11 +355,22 @@ export function programDesignLibraries(text: string, project: string): NamedLibr
   for (const part of programDesignParts(text).values()) {
     for (const f of fences(part.body)) {
       const lang = blockLanguage(f.lang, f.text);
+      if (lang === null) continue;
       const diff = f.lang === "diff";
       let goBlock = false;
+      let depTable = false;
       for (const raw of f.text.split("\n")) {
         if (diff && (/^(?:---|\+\+\+|@@)/.test(raw) || raw.startsWith("-"))) continue;
         const line = diff ? raw.replace(/^[+ ]/, "") : raw;
+        if (lang === "json") {
+          // a dependency of a package.json shown in the Program Design: inside a dependency table, or an added line of a diff
+          if (DEP_TABLE.test(line)) depTable = true;
+          else if (depTable && /^\s*\}/.test(line)) depTable = false;
+          const m = DEP_LINE.exec(line);
+          const name = m?.[1]?.toLowerCase();
+          if (name && !NOT_PACKAGES.has(name) && (depTable || (diff && raw.startsWith("+")))) add({ ecosystem: "npm", name, imported: name });
+          continue;
+        }
         if (lang === "go") {
           if (/^\s*import\s*\(\s*$/.test(line)) goBlock = true;
           else if (goBlock && /^\s*\)/.test(line)) goBlock = false;
@@ -392,7 +415,7 @@ function docsCover(lib: NamedLibrary, docsLib: string): boolean {
   const d = docsLib.trim().toLowerCase();
   if (lib.ecosystem === "npm") return d === lib.name;
   if (lib.ecosystem === "pypi") return normPy(d) === lib.name || normPy(d) === normPy(lib.imported);
-  return lib.imported === d || lib.imported.startsWith(`${d}/`);
+  return lib.imported === d || lib.imported.startsWith(`${d}/`) || d === goShortName(lib.name);
 }
 
 // ------------------------------------------------------------------------------------------- aidw analyze
@@ -428,7 +451,7 @@ export function checkPlanRefs(p: Paths, change: Change, tasks: Task[], tf: strin
   for (const lib of programDesignLibraries(opts.programDesign, p.project)) {
     if (listed(lib, manifests) || docsLibs.some((x) => docsCover(lib, x))) continue;
     const where = manifests.files.length ? `no manifest of the project lists it (${[...new Set(manifests.files.map((f) => relative(p.project, f).split(sep).join("/")))].slice(0, 4).join(", ")})` : "the project has no manifest yet";
-    d.error(tf, `the Program Design uses ${lib.name} (${lib.ecosystem === "pypi" && lib.imported !== lib.name ? `import ${lib.imported}` : `"${lib.imported}"`}) and ${where}: add "docs: [${lib.name}@<version> <topic>]" to the task that uses it, so Research writes its Docs Brief before the gate`);
+    d.error(tf, `the Program Design uses ${lib.name} (${lib.ecosystem === "pypi" && lib.imported !== lib.name ? `import ${lib.imported}` : `"${lib.imported}"`}) and ${where}: add "docs: [${lib.ecosystem === "go" ? goShortName(lib.name) : lib.name}@<version> <topic>]" to the task that uses it, so Research writes its Docs Brief before the gate`);
   }
 }
 
@@ -450,7 +473,9 @@ export function patternBriefLines(project: string, t: Task): string[] {
       continue;
     }
     const last = Math.min(x.end, x.start + MAX_SNIPPET_LINES - 1);
-    const fence = lines.slice(x.start - 1, last).some((l) => l.startsWith("```")) ? "````" : "```";
+    // one backtick longer than the longest run that opens a line (after up to 3 spaces), so the snippet stays one block
+    const longest = Math.max(0, ...lines.slice(x.start - 1, last).map((l) => /^ {0,3}(`+)/.exec(l)?.[1]?.length ?? 0));
+    const fence = "`".repeat(Math.max(3, longest + 1));
     out.push(`${fence}${EXT_LANG[x.file.split(".").pop()?.toLowerCase() ?? ""] ?? ""}`, ...lines.slice(x.start - 1, last), fence);
     if (last < x.end) out.push(`(lines ${last + 1}-${x.end} cut: read them in the file)`);
     out.push("");
@@ -577,10 +602,56 @@ export function uncoveredPackages(p: Paths, tasks: Task[]): string[] {
   for (const t of tasks) for (const x of taskDocs(t)) covered.add(x.ref.lib.toLowerCase());
   const coveredPy = new Set([...covered].map(normPy));
   const out = new Set<string>();
-  for (const a of addedPackages(p.project, base, changed)) {
-    const hit = a.ecosystem === "pypi" ? coveredPy.has(normPy(a.name)) : covered.has(a.name.toLowerCase());
+  const added = [
+    ...addedPackages(p.project, base, changed).map((a) => ({ ecosystem: a.ecosystem as Ecosystem, name: a.name })),
+    ...addedManifestEntries(p.project, base, changed),
+  ];
+  for (const a of added) {
+    const hit =
+      a.ecosystem === "pypi"
+        ? coveredPy.has(normPy(a.name))
+        : a.ecosystem === "go"
+          ? [...covered].some((c) => a.name.toLowerCase() === c || a.name.toLowerCase().startsWith(`${c}/`) || c === goShortName(a.name))
+          : covered.has(a.name.toLowerCase());
     if (!hit) out.add(a.name);
   }
   return [...out];
 }
 
+/**
+ * A Go module as a docs entry names it: a Docs Brief's file name cannot hold a module path, so `go-redis@9.5.1 ...`
+ * stands for github.com/redis/go-redis/v9 (the last segment that is not a major version).
+ */
+const goShortName = (module: string): string => module.toLowerCase().split("/").filter((x) => !/^v\d+$/.test(x)).pop() ?? "";
+
+/** The file at `base`, or null when it did not exist there. */
+const atBase = (dir: string, base: string, file: string): string | null => {
+  const r = git(dir, ["show", `${base}:${file}`]);
+  return r.ok ? r.out : null;
+};
+
+/** The modules a go.mod requires (its own module excluded). */
+const goRequires = (text: string | null): string[] =>
+  [...(text ?? "").matchAll(/^\s*(?:require\s+)?([a-z0-9.-]+\.[a-z]{2,}\/\S+)\s+v\d/gim)].map((m) => m[1] as string);
+
+/**
+ * What the Guard of the checkpoint does not read but delivery must: modules a go.mod gained, and dependencies a
+ * pyproject.toml gained (Poetry, pip, or uv before its lock is committed). Duplicates of addedPackages are harmless.
+ */
+function addedManifestEntries(dir: string, base: string, changed: string[]): { ecosystem: Ecosystem; name: string }[] {
+  const out: { ecosystem: Ecosystem; name: string }[] = [];
+  const read = (f: string) => (isFile(join(dir, f)) ? readFileSync(join(dir, f), "utf8") : null);
+  for (const file of changed) {
+    const name = file.split("/").pop() ?? "";
+    if (name === "go.mod") {
+      const old = new Set(goRequires(atBase(dir, base, file)));
+      for (const m of goRequires(read(file))) if (!old.has(m)) out.push({ ecosystem: "go", name: m });
+    } else if (name === "pyproject.toml") {
+      const now = read(file) ?? "";
+      const own = /^\s*name\s*=\s*["']([^"']+)["']/m.exec(now)?.[1];
+      const old = new Set(pyprojectNames(atBase(dir, base, file) ?? "").map(normPy));
+      for (const n of pyprojectNames(now)) if (!old.has(normPy(n)) && normPy(n) !== normPy(own ?? "")) out.push({ ecosystem: "pypi", name: normPy(n) });
+    }
+  }
+  return out;
+}

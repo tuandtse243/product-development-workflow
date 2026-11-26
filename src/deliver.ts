@@ -298,7 +298,7 @@ export function checkDelivery(p: Paths, id: string): Diags {
   if (!lastConverge(change)?.ok) d.error(where("quality-report.md"), "converge has not passed");
   // OP3 (T13): a package the Change added that no Docs Brief covers was used without reading its documentation.
   for (const pkg of uncoveredPackages(p, loadTasks(p, id).tasks)) {
-    d.warn(where("handoff.md"), `the Change added the package ${pkg}, which no Docs Brief covers (.aidw/research/docs/): name it under "## Known issues", or have Research write its brief`);
+    d.warn(where("handoff.md"), `the Change added the package ${pkg}, which no Docs Brief covers: have Research write its Docs Brief with docs-research (\`aidw docs-brief ${pkg}@<installed version> <topic>\` prints the path)`);
   }
   if (!existsSync(join(p.project, "README.md"))) d.warn("README.md", "the project has no README: write one (what it is, run locally, tests, preview URL)");
   for (const c of staleReadmeCommands(p.project)) {
