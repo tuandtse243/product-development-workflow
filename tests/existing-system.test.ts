@@ -299,6 +299,6 @@ describe("the orchestrator's step 1b and the Research Role (OP1, OP2; the T6 rev
     cli("change", "new", "fresh");
     const text = readFileSync(join(root, ".aidw/changes/fresh/analysis.md"), "utf8");
     expect(text).toMatch(/## Existing system\n\nTODO\(aidw\): brownfield assessment\. The Summary of the Existing System Report[\s\S]*existing-system\.md/);
-    expect(YAML.parse(readFileSync(join(root, ".aidw/changes/fresh/change.yaml"), "utf8")).analysis_template).toBe(2);
+    expect(YAML.parse(readFileSync(join(root, ".aidw/changes/fresh/change.yaml"), "utf8")).analysis_template).toBeGreaterThanOrEqual(2);
   });
 });

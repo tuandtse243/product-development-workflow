@@ -18,9 +18,11 @@ import { touchesApi, touchesUi } from "./skills.js";
 import { planAdvice } from "./plan.js";
 import { pluginRoot } from "./plugin.js";
 import { defaultTaskRole, implementerOf } from "./roles.js";
-import { answerOf, checkDecisions } from "./decisions.js";
+import { answerOf, checkDecisions, workflowOfChange } from "./decisions.js";
 import { checkScopeRound } from "./scope.js";
 import { checkBeforeAfter, EXISTING_SYSTEM_FILE, owesBeforeAfter } from "./beforeafter.js";
+import { checkProgramDesign, checkSystemDesign, programDesignDue } from "./programdesign.js";
+import type { Workflow } from "./workflow.js";
 import { checkExistingSystem } from "./existingsystem.js";
 import { workflowIdOf } from "./machine.js";
 
@@ -222,6 +224,17 @@ export function sizeOf(analysis: string | null): Size | "invalid" {
  */
 const scopeRoundOf = (change: Change): boolean => change.data.scope_round === true || change.data.scope_gate === true;
 
+/** The Workflow of the Change, or null when the plugin cannot say (no roster, an unknown Workflow). */
+function workflowOrNull(p: Paths, change: Change): Workflow | null {
+  const root = pluginRoot(process.env);
+  if (!existsSync(join(root, "roster.yaml"))) return null;
+  try {
+    return workflowOfChange(p, change, root);
+  } catch {
+    return null;
+  }
+}
+
 /** Runs every pre-gate consistency check for one change. */
 export function analyzeChange(p: Paths, id: string): Diags {
   const d = new Diags();
@@ -229,6 +242,7 @@ export function analyzeChange(p: Paths, id: string): Diags {
 
   const analysisFile = join(change.dir, "analysis.md");
   const analysis = readText(analysisFile);
+  const due = programDesignDue(change, workflowOrNull(p, change), sizeOf(analysis) === "small");
   if (analysis === null) d.error(rel(p, analysisFile), "analysis.md is missing");
   else {
     checkAnalysisDoc(analysis, rel(p, analysisFile), d);
@@ -236,6 +250,8 @@ export function analyzeChange(p: Paths, id: string): Diags {
     if (scopeRoundOf(change)) d.add(checkScopeRound(change, analysis, rel(p, analysisFile)));
     // D1, I9: Before / After as the user sees it, and the technical questions deferred to the Software Architect.
     if (owesBeforeAfter(change)) checkBeforeAfter(analysis, rel(p, analysisFile), { existingSystem: existsSync(join(change.dir, EXISTING_SYSTEM_FILE)) }, d);
+    // D2, D3, Q5: the Design Questions are settled, and a normal Change records its system design round.
+    if (due.programDesign || due.round) checkSystemDesign(analysis, rel(p, analysisFile), { round: due.round }, d);
     // S10: a brownfield change states what exists and what it must not break.
     if (projectKind(p) === "brownfield") {
       const existing = sections(analysis).find((s) => s.name.toLowerCase() === "existing system");
@@ -248,6 +264,8 @@ export function analyzeChange(p: Paths, id: string): Diags {
       }
     }
   }
+  // I5, Q2, Q5: the Program Design has its required parts (the short one of a small Change too).
+  if (due.programDesign) checkProgramDesign(p, change, { small: sizeOf(analysis) === "small" }, d);
   // Baseline specs (aidw baseline) start as skeletons; an unfinished one must not reach the gate.
   for (const f of walkFiles(p.specs)) {
     if (!f.endsWith(".md")) continue;

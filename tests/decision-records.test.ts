@@ -7,7 +7,8 @@ import { ANALYSIS_MD, MAIN_SPEC, QUALITY_YAML, REQ, TASKS_YAML, TOKENS_YAML, pla
 
 const plugin = join(__dirname, "..", "plugins", "aidw");
 const ID = "booking-d6";
-const OLD_FORMAT = ANALYSIS_MD.replace(/\n {2}(?:Why|Rejected):.*/g, "");
+// only the decisions lose their reasons: the settled Design Questions of "## Architecture" keep theirs
+const OLD_FORMAT = ANALYSIS_MD.replace(/## Decisions to honor[^]*?(?=## Requirements and scope)/, (honor) => honor.replace(/\n {2}(?:Why|Rejected):.*/g, ""));
 
 function cli(root: string, ...argv: string[]) {
   let out = "";

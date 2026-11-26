@@ -169,6 +169,8 @@ export function planDigest(p: Paths, change: Change): string {
     c("openapi.yaml"),
     c("test-plan.md"),
     c("quality.yaml"),
+    // the Program Design (ADR-0015) only when there is one, so a review recorded before it existed still counts
+    ...(existsSync(c("program-design.md")) ? [c("program-design.md")] : []),
   ];
   const parts = files.map((f) => {
     const t = readText(f);
@@ -320,6 +322,7 @@ export function buildPlanReviewBrief(p: Paths, id: string, pluginRoot: string): 
     at(c("data-model.md")),
     at(c("api-contract.md")),
     at(c("openapi.yaml")),
+    at(c("program-design.md")) && `${at(c("program-design.md"))}: the Program Design the tasks are cut from`,
     at(c("tasks.yaml")),
     at(c("test-plan.md")),
     at(c("quality.yaml")),

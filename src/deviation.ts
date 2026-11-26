@@ -15,7 +15,8 @@
  *       checks: nothing else drifted; no contract or scenario is half written; the package still validates; the grants
  *       and the tier 2 permissions (the user's) are untouched; no approved scenario is gone without a recorded reason; no
  *       new requirement without a recorded reason; a new task serves an approved scenario; no task to run again is still
- *       running or in review. A contract difference is classified additive, breaking or unclassified. Then it records
+ *       running or in review. A contract difference is classified additive, breaking or unclassified; a change to the
+ *       approved Program Design (ADR-0015) runs again the tasks that build the files it concerns. Then it records
  *       the closed Deviation and rehashes in one step (`approval.package: 2`; `approval.push` is kept, so the push grant
  *       still holds; `approval.history` grows), and only then resets the affected done tasks.
  *       "Keep the purpose" and "smallest change" are judgments: the author's and the reviewers', not the CLI's.
@@ -43,6 +44,8 @@ import { loadTasks, rerunTasks, saveTasksDoc, setField } from "./run.js";
 import { touchesUi } from "./skills.js";
 import { parseSpec } from "./spec/parse.js";
 import { defaultTaskRole } from "./roles.js";
+import { matchesAny } from "./glob.js";
+import { PROGRAM_DESIGN_FILE, programDesignChangedPaths } from "./programdesign.js";
 import { ADDED_ORIGINS, parseTasks, planSha, RUNTIME_FIELDS, type Task } from "./tasks.js";
 
 /** The states a Deviation may open in: the build is under way and the package is approved. */
@@ -300,6 +303,7 @@ function writeBrief(p: Paths, change: Change, d: DeviationRecord, answer: string
     "- `grants` and `permissions` in quality.yaml are the user's: never change them;",
     "- a new task in tasks.yaml lists at least one approved scenario under `scenarios:`;",
     "- a change to openapi.yaml or data-model.dbml is classified additive or breaking; prefer additive.",
+    "- a change to program-design.md runs again the tasks that touch a file whose line in the file tree, or whose signature, changed (every task when it names no file).",
     "",
     "## Reply",
     "",
@@ -330,10 +334,17 @@ const RERUN_CLASSES = new Set(["breaking", "prose", "unclassified"]);
  * Which tasks read a changed file (src/briefreads.ts): a predicate, or null for none. Contracts reach the Roles that
  * build against them; a contract change that is additive (or makes no difference) reruns nothing.
  */
-function readersOf(p: Paths, change: Change, file: string, contracts: ContractDiff[], honorChanged: boolean): ((t: Task) => boolean) | null {
+function readersOf(p: Paths, change: Change, file: string, contracts: ContractDiff[], honorChanged: boolean, programDesignPaths?: string[] | null): ((t: Task) => boolean) | null {
   const abs = join(p.project, file);
   const low = (x: string) => x.toLowerCase();
   const under = (dir: string) => low(abs).startsWith(low(dir) + sep);
+  // Q4: the approved Program Design binds the code; a task that builds a file whose shape changed runs again (all of
+  // them when the change names no file)
+  if (low(abs) === low(join(change.dir, PROGRAM_DESIGN_FILE))) {
+    if (programDesignPaths === null || programDesignPaths === undefined) return () => true;
+    if (!programDesignPaths.length) return null;
+    return (t) => programDesignPaths.some((x) => matchesAny(list(t.touches), x) || list(t.touches).some((g) => matchesAny([x], g.replace(/\/\*\*$/, ""))));
+  }
   const contract = contracts.find((c) => c.file === file);
   if (contract) {
     if (!RERUN_CLASSES.has(contract.class)) return null;
@@ -464,7 +475,9 @@ export function closeDeviation(p: Paths, id: string, o: CloseOptions): Deviation
   const live = tf.tasks.filter((t) => statusOf(t) !== "not_built");
   const analysisRel = rel(p, join(change.dir, "analysis.md"));
   const honorChanged = changed.includes(analysisRel) && JSON.stringify(decisionsToHonor(beforeText(analysisRel) ?? "")) !== JSON.stringify(decisionsToHonor(afterText(analysisRel) ?? ""));
-  const readers = new Map(changed.map((f) => [f, readersOf(p, change, f, contracts, honorChanged)]));
+  const programDesignRel = rel(p, join(change.dir, PROGRAM_DESIGN_FILE));
+  const pdPaths = changed.includes(programDesignRel) ? programDesignChangedPaths(beforeText(programDesignRel), afterText(programDesignRel)) : undefined;
+  const readers = new Map(changed.map((f) => [f, readersOf(p, change, f, contracts, honorChanged, pdPaths)]));
   for (const c of contracts) {
     const kindRoles = c.kind === "dbml" || basename(c.file) === "data-model.md" ? DATA_ROLES : API_ROLES;
     c.readers = live.filter((t) => hasRole(t, kindRoles)).map((t) => t.id);
