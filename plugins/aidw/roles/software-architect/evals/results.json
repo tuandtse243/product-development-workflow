@@ -1,0 +1,93 @@
+{
+  "format": 2,
+  "role": "software-architect",
+  "date": "2026-11-26T06:00:45.797Z",
+  "model": null,
+  "tier": "deep",
+  "runs": 3,
+  "digest": "sha256:cb72b5610ee9f457045c4e13a5a63ff3f6e4ead9dcd85d1fed3eb373fa7775b7",
+  "cases": [
+    {
+      "name": "answers-each-deferred-question",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": [],
+      "digest": "sha256:c00b057148cd305a87d187189c16aac7dab762aad4092adc4be6da5bd899efa3",
+      "date": "2026-11-26T06:00:45.797Z",
+      "model": null
+    },
+    {
+      "name": "invariants-not-a-tour",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": [],
+      "digest": "sha256:485343ad74d588ac1273a29db6f097a05e57ccf696031ed7fb88046b91b21b77",
+      "date": "2026-11-26T06:00:45.797Z",
+      "model": null
+    },
+    {
+      "name": "keeps-the-clients-stack",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": [],
+      "digest": "sha256:582fac87eaf093c180c4451c42681f0ddd22167eede526221890d21ff132ecc6",
+      "date": "2026-11-26T06:00:45.797Z",
+      "model": null
+    },
+    {
+      "name": "opens-only-what-the-user-must-settle",
+      "pass": false,
+      "runs": {
+        "total": 3,
+        "passed": 0,
+        "errors": 0
+      },
+      "failed": [
+        "must list every technical choice as a `- DQ<n>: <question>` line under `### Design Questions`",
+        "must settle every other choice with indented `Chosen:`, `Why:` and `Rejected:` lines, the reason citing a path or a source",
+        "must give, in the reply, each open question's options with a View of their code shape and at most 4 metrics"
+      ],
+      "digest": "sha256:234c369f99d5b3ff772fe8a69a42e5f54c7842b24c04072692e9a4fa30ae1f1b",
+      "date": "2026-11-26T06:00:45.797Z",
+      "model": null
+    },
+    {
+      "name": "program-design-diffs-what-exists",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": [],
+      "digest": "sha256:ff3ffa6ecfae6ba24efc1937ea917cc453e357f56fa56bec2d58d2a6d89881cd",
+      "date": "2026-11-26T06:00:45.797Z",
+      "model": null
+    },
+    {
+      "name": "triage-names-the-upstream-cause",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": [],
+      "digest": "sha256:69d4ea1d36b65e30926b2e2b26d093620eebae1f48c016c53679d0ab2c36a272",
+      "date": "2026-11-26T06:00:45.797Z",
+      "model": null
+    }
+  ]
+}
