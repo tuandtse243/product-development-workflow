@@ -45,8 +45,12 @@ Research run when you decide the Change needs them.
    answer. Cover users and roles, core flows, data and its lifecycle, edge
    cases and failure paths, non-functional needs (performance, security, accessibility, i18n), integrations,
    constraints (deadline, budget, hosting), and what is out of scope.
-3. For a client's job description the client is not there: the user answers what they know and every remaining
-   guess becomes an explicit assumption.
+3. Every guess that nobody has confirmed becomes an explicit assumption under `## Risks and assumptions`, marked
+   as assumed: a recommended answer still waiting for the user, and, for a client's job description (the client is
+   not there), whatever the user does not know. An answer the user gives later replaces its assumption.
+   Write the job line in the discovery Q&A as soon as you ask about it, as *When* <situation>, *I want to*
+   <motivation>, *so I can* <outcome>, filling each part the request does not answer with your suggested answer
+   marked as assumed; the user's answers then confirm or correct it.
 4. Record every round (questions, recommendations, and the answers as `aidw page answers` printed them) in
    `analysis.md` under `## Appendix: discovery Q&A` as you go. Done when the frontier is empty and the user confirms you share an understanding.
    A technical question that comes up (which queue, can the phone system send events, how fast must search be) is
@@ -66,27 +70,38 @@ Research run when you decide the Change needs them.
    started by an older aidw may have `brief.md` instead). Draft inside it: a capability it leaves out is not drafted, and
    the requirements' Out of Scope repeats what it puts out.
 
-1. **Domain model.** Read `aidw vendor-path pocock/domain-modeling` and apply it with this adapter: glossary,
+1. **Job and unknowns.** Before drafting, check the discovery Q&A has the job line of each user kind as *When*
+   <situation>, *I want to* <motivation>, *so I can* <outcome>; the requirements quote it. Turn every unknown that
+   is not a technical question into an assumption under `## Risks and assumptions` (what is assumed, why, and the
+   impact if wrong), not only into an open question.
+2. **Domain model.** Read `aidw vendor-path pocock/domain-modeling` and apply it with this adapter: glossary,
    entities, relationships and business rules go to `.aidw/domain/model.md` (sections `## Glossary`,
    `## Entities and relationships`, `## Business rules`; the glossary format is in `GLOSSARY-FORMAT.md` next to
    that skill). ADRs go to `.aidw/decisions/NNNN-<slug>.md` in the format of `ADR-FORMAT.md` next to it, never
    `docs/adr/`.
-2. **Requirements.** Read `aidw vendor-path pocock/to-spec` and apply its synthesis (no new interview) with this
+3. **Requirements.** Read `aidw vendor-path pocock/to-spec` and apply its synthesis (no new interview) with this
    adapter: write `.aidw/requirements/<id>.md` with its template sections (Problem Statement, Solution, User
    Stories, Implementation Decisions, Testing Decisions, Out of Scope, Further Notes). Do not publish anywhere.
-3. **Before / After.** Fill `## Before / After` in `analysis.md`: `### Before` and `### After`, 3 to 6 `- ` lines
+4. **Before / After.** Fill `## Before / After` in `analysis.md`: `### Before` and `### After`, 3 to 6 `- ` lines
    each, written as the user sees it (what they do, wait for, or cannot do), never as code. Before comes from the
    Existing System Report when the Change has one (`.aidw/changes/<id>/existing-system.md`: draw from it and name it);
    otherwise from today's workaround in the discovery record. Each After line answers a Before line or a job line.
    Leave `### Deferred to architecture` as "None" when discovery raised no technical question.
-4. **Hand over.** The delta specs are the Business Analyst's: name in the requirements the capability each
+   A technical question in the record (one the user raised too) goes there whole, as a `- DA<n>:` line, and nowhere
+   else: not a user story, a Slice, an Out of Scope item or an open question for the user, and do not split off a
+   "user's part" of it either. Do not answer it yourself. The Software Architect answers it and asks the user if it
+   turns out to need them. Do not derive a product question from a technical one. Only when the record itself raises
+   a product question inside a technical one (the user asked whether the missed-call text should be built at all) and
+   leaves it open is that part written down as an assumption, and only the technical part goes onto the DA line;
+   that assumption is not put to the user as an open decision in your reply either.
+5. **Hand over.** The delta specs are the Business Analyst's: name in the requirements the capability each
    behavior belongs to and the Slice it is in (the `behavior-map` skill), so the specs can be written from them.
 
 ## Done when
 
 The domain model and `.aidw/requirements/<id>.md` are written, `## Before / After` has 3 to 6 lines on each side,
-every user story names its capability and its Slice, and everything you could not settle is listed as an assumption
-or open question.
+every user story names its capability and its Slice, every job line is in the discovery Q&A, and everything you
+could not settle is written down as an assumption.
 
 ## Stop and report when
 
