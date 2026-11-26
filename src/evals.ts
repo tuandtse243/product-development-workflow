@@ -37,6 +37,30 @@ export interface EvalCase {
 
 const CASE_KEYS = ["case", "covers", "expect"];
 
+/**
+ * The body of a case's `## <title>` section, up to the next `## ` heading. A heading inside a fenced block (``` or ~~~)
+ * is part of the quoted material, not of the case: an Input that quotes a Markdown file keeps its `## ` lines.
+ */
+export function caseSection(text: string, title: string): string | null {
+  const lines = text.split("\n");
+  let fence: string | null = null;
+  let start = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] as string;
+    const f = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+    if (f) {
+      const mark = f[1] as string;
+      if (fence === null) fence = mark;
+      else if (mark[0] === fence[0] && mark.length >= fence.length && /^ {0,3}(`{3,}|~{3,})\s*$/.test(line)) fence = null;
+      continue;
+    }
+    if (fence !== null || !line.startsWith("## ")) continue;
+    if (start >= 0) return lines.slice(start, i).join("\n").trim();
+    if (line.trimEnd() === `## ${title}`) start = i + 1;
+  }
+  return start >= 0 ? lines.slice(start).join("\n").trim() : null;
+}
+
 export function loadEvalCases(root: string, id: string): { cases: EvalCase[]; diags: Diags } {
   const d = new Diags();
   const dir = join(roleDir(root, id), "evals");
@@ -66,10 +90,7 @@ export function loadEvalCases(root: string, id: string): { cases: EvalCase[]; di
       else covers = head.covers as string[];
     }
     if (head.expect !== undefined && head.expect !== "ask") d.error(file, 'expect must be "ask" (or left out: the answer is the deliverable)');
-    const section = (title: string) => {
-      const m = new RegExp(`^## ${title}\\n([\\s\\S]*?)(?=^## |$(?![\\s\\S]))`, "m").exec(text);
-      return m ? (m[1] as string).trim() : null;
-    };
+    const section = (title: string) => caseSection(text, title);
     const input = section("Input");
     const criteria = section("Criteria");
     if (!input) d.error(file, 'missing or empty "## Input" (the situation the Agent is given)');
