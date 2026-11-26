@@ -59,6 +59,8 @@ Bạn chỉ gõ các lệnh `/aidw:...` trong Claude Code. CLI `aidw` do Claude 
 | `/aidw:resume` | sau khi bị ngắt, hoặc để hoàn tất một PR draft | tiếp tục từ chỗ dừng. Đã dừng vì escalation thì xử lý xong rồi mới resume. Change kết thúc bằng PR draft: làm theo mục "Needed from the user to finish" của PR rồi resume, aidw build lại phần còn thiếu và cập nhật chính PR đó |
 | `/aidw:status` | bất cứ lúc nào | trạng thái, drift, task nào xong, việc cần bạn, pull request (link, draft hay chưa mở) |
 | `/aidw:deliver` | `run` tự gọi ở cuối | tạo gói bàn giao (README, handoff, báo cáo chất lượng), mở pull request (ready hoặc draft), rồi archive khi PR ready |
+| `/aidw:show-me [điều muốn xem]` | bất cứ lúc nào | cho bạn xem một chủ đề hay một lựa chọn bằng **View** nhỏ nhất: diff, cây file, cây lời gọi, cây component, pseudocode, hoặc một trang HTML khi cần. Chỉ cho xem, không sửa code |
+| `/aidw:html-pages [chủ đề]` | khi muốn một trang HTML | dựng trang (so sánh phương án, đi qua code, kế hoạch, trước và sau, báo cáo) theo ví dụ html-effectiveness hợp nhất; trang tĩnh, không tải gì từ mạng |
 
 Các lệnh CLI hữu ích khi bạn tự gõ `aidw` (xem mục 2 để đưa nó vào PATH):
 
@@ -73,6 +75,7 @@ Các lệnh CLI hữu ích khi bạn tự gõ `aidw` (xem mục 2 để đưa n�
 | `aidw cap <id> --raise <n>` | run dừng vì chạm trần Agent run: nâng trần thêm `n` lượt (luôn hỏi bạn, chỉ bạn quyết; phiên không người trông không chạy được; ghi vào `approval.history` và băm lại: trần nằm trong hash của gói, sửa tay `change.yaml` là drift), rồi `/aidw:resume` |
 | `aidw archive <id> [--force]` | archive change đã bàn giao. Change kết thúc bằng PR draft, hoặc đã cấp quyền push mà PR chưa mở, thì bị từ chối (để `/aidw:resume` hoàn tất hoặc mở PR trước); `--force` archive nguyên trạng: luôn hỏi bạn và phiên không người trông không chạy được |
 | `aidw task retry <T>` | cho một task `escalated`, `failed` hoặc `not_built` một lượt thử mới; task `not_built` quay lại cùng các task bị bỏ vì phụ thuộc nó |
+| `aidw docs-brief <lib>@<version> <chủ đề>` | có Docs Brief còn dùng được không (cùng major.minor, tối đa 90 ngày): `FRESH` thoát mã 0; `MISSING`, `STALE`, `INVALID` thoát mã 1 kèm đường dẫn Research sẽ ghi. `--change <id>` kiểm mọi mục `docs:` của kế hoạch |
 
 **Trang quyết định (Decision Page).** Khi cần bạn chọn, aidw không in một khối chữ dài vào terminal nữa. Nó in một link
 `file://…/.aidw/run/pages/<tên>.html` kèm một hai dòng tóm tắt. Giữ Cmd và bấm link (hoặc gõ `! open <đường dẫn>`) để mở
@@ -87,6 +90,19 @@ Chọn xong, bấm **Sao chép câu trả lời** rồi dán khối chữ vào c
 cũ) rồi mới ghi vào `analysis.md`. Trang chỉ là bản xem: nó nằm trong `.aidw/run/` và không được commit; việc duyệt chính
 thức vẫn là `/aidw:approve`. Nếu trình duyệt chặn nút sao chép với file cục bộ, bôi đen khối chữ ở thanh dưới cùng và sao
 chép tay. Bạn vẫn có thể trả lời thẳng trong chat nếu muốn. Lý do thiết kế: [ADR-0007](adr/0007-decision-pages-are-views.md).
+
+**Mỗi câu hỏi có phương án đều kèm một View ([ADR-0017](adr/0017-every-question-carries-a-view.md)).** Phương án chỉ
+tả bằng lời thì khó so. Vì vậy mỗi câu hỏi có phương án, trên trang hay trong chat, đều kèm hình nhỏ nhất cho thấy
+điểm khác nhau: `diff` (thêm, bớt gì trong thứ đã có; dòng thêm màu xanh, dòng bỏ màu đỏ), `tree` (cây file),
+`calltree` (ai gọi ai), `component` (cấu trúc giao diện) hay `pseudocode`; một mock HTML cũng tính là View.
+`aidw page render` từ chối câu hỏi có phương án mà thiếu View. Hai loại được miễn: câu có hoặc không (`yes`/`no`) và
+câu chọn tên (`naming: true`). Câu hỏi trong chat đặt View thành một khối code ngay dưới câu hỏi, các phương án ở sau.
+
+- Phương án kỹ thuật có thể kèm tối đa 4 **chỉ số** (`metrics`, ví dụ dung lượng bundle, độ trễ, dễ test): một con
+  số kèm đơn vị khi đã biết, nếu không thì `low`, `medium`, `high` kèm lý do. aidw không bịa số cho có vẻ chính xác.
+- Trang có các bố cục theo ví dụ html-effectiveness: `approaches` (các phương án xếp hàng, mỗi cái có View, được/mất
+  và chỉ số), `walkthrough` (đi qua code từng bước), `plan` (con số chính và dòng thời gian), `before-after` (hai cột
+  trước và sau).
 
 **Change nhỏ.** `start` đề xuất `Size: small` cho bugfix hoặc chỉnh một hành vi; bạn xác nhận ở cổng duyệt. Nhỏ nghĩa là tối đa
 3 task, chỉ lớp `code` + `unit` (+ `e2e` nếu có UI), không deploy nếu bạn không yêu cầu, và bugfix phải có test tái hiện lỗi
@@ -107,8 +123,10 @@ framework mà dự án dùng.
 
 Sơ đồ: mở [`diagrams/lifecycle.html`](diagrams/lifecycle.html) trong trình duyệt để xem (có chế độ sáng/tối, zoom).
 
-1. **Analyzing.** `/aidw:start` đọc code (nếu có), hỏi bạn từng vòng câu hỏi, rồi viết: `analysis.md` (tóm tắt,
-   stack, thiết kế, quyền cần dùng), spec theo từng scenario, `tasks.yaml` và `quality.yaml`. Với sản phẩm mới
+1. **Analyzing.** `/aidw:start` cho Research mô tả code hiện có (Existing System Report, mục 8), hỏi bạn từng vòng
+   câu hỏi, rồi viết: `analysis.md` (tóm tắt, trước và sau, stack, thiết kế, quyền cần dùng), spec theo từng scenario,
+   Program Design (`program-design.md`), `tasks.yaml` và `quality.yaml` (chi tiết ở mục "Thiết kế trước cổng duyệt"
+   bên dưới). Với sản phẩm mới
    (workflow `product`), buổi phỏng vấn có một **vòng phạm vi**: trang `scope` hỏi tầm nhìn, các khả năng nằm trong phạm
    vi, bản MVP và những gì để ngoài. Câu trả lời được ghi nguyên văn vào `analysis.md` (mục `### Scope round` trong phụ lục
    phỏng vấn). Đây là vòng câu hỏi, không phải cổng duyệt: không có gì bị đóng băng ở bước này, bạn vẫn chỉ duyệt một lần
@@ -128,8 +146,10 @@ Sơ đồ: mở [`diagrams/lifecycle.html`](diagrams/lifecycle.html) trong trìn
    cổng từ chối và một lượt review mới chạy, với 2 vòng sửa riêng; kế hoạch không đổi thì review cũ vẫn tính. Chỉ
    code-reviewer được ghi file verdict, không agent nào được ghi `plan-review.yaml`. Workflow `bugfix` cũng chạy bước
    này; `aidw approve --auto` không tự duyệt khi còn phát hiện mở mà để bạn quyết ở trang cổng duyệt.
-2. **Awaiting approval.** Bạn đọc `analysis.md` và duyệt. Gói bị đóng băng: spec, thiết kế, task. Muốn đổi
-   phạm vi thì phải quay lại analyzing và duyệt lại.
+2. **Awaiting approval.** Bạn đọc `analysis.md` và duyệt. Gói bị đóng băng: spec, thiết kế, Program Design, task.
+   Muốn đổi phạm vi thì phải quay lại analyzing và duyệt lại. Trang cổng duyệt mở đầu bằng **Before / After**, rồi
+   tới các phát hiện còn mở của review, các mục bạn duyệt, Program Design (dưới dạng View), các Decision Point và kế
+   hoạch (từng task kèm Pattern to Follow, Docs Brief và việc bạn cần tự kiểm).
 3. **Executing.** Từng task chạy theo vòng lặp ở mục 5.
 4. **Verifying.** aidw chạy các lớp chất lượng trong `quality.yaml` (code, unit, e2e, ui-ux, a11y, security,
    performance...). Lớp fail thì aidw thêm một task sửa và quay lại executing. Sau đó, bước *converge* kiểm
@@ -151,6 +171,12 @@ Sơ đồ: mở [`diagrams/lifecycle.html`](diagrams/lifecycle.html) trong trìn
    commit cùng gói bàn giao, để người review PR trên máy khác vẫn thấy (bản gốc ở `.aidw/run/` không được commit);
    file secrets (`.env*`), build output và dòng trông như key bị bỏ ra, và PR ghi rõ. Finding review và câu hỏi chưa ai
    trả lời mà bạn đã duyệt ở cổng nằm ở mục "Approved with open points" sau ba mục trên, không làm PR thành draft.
+   Phần tóm tắt của PR do Role Documentation viết vào `delivery/pr-summary.md`, theo bố cục ví dụ 17 của
+   html-effectiveness: vì sao (một câu), 1 tới 3 ghi chú (Deviation, migration) và dàn ý thay đổi bằng các View.
+   `aidw pr` ghép nó với phần Evidence do máy sinh, và từ chối tóm tắt nhắc tới file không có trong git diff cũng
+   không thuộc gói đã duyệt, nên phần văn không bịa được file. Các việc kế hoạch để lại cho người (`manual:` của task)
+   nằm ở mục **Checks for you** trong handoff và ở mục "Needed from the user to finish" của PR; run không dừng chờ
+   chúng và chúng không làm PR thành draft.
    aidw chỉ sửa PR mà `gh` xác nhận là PR đang mở từ Change Branch của chính repo (không phải nhánh cùng tên của một
    fork) vào đúng base (không tin URL ghi trong `change.yaml`; kiểm URL theo repo chỉ áp dụng cho remote GitHub), chỉ push khi HEAD đang ở Change Branch và remote vẫn là remote đã chốt lúc duyệt, và không push nếu
    gói bàn giao chứa file secrets hay key.
@@ -163,12 +189,53 @@ Sơ đồ: mở [`diagrams/lifecycle.html`](diagrams/lifecycle.html) trong trìn
    `not_built` (`aidw not-built <T> --cause environment`), không escalate. Một lần checkpoint bị máy chặn thì chạy lại
    ngoài sandbox; bị chặn lần thứ hai thì task cũng `not_built` (môi trường).
 
+### Thiết kế trước cổng duyệt
+
+Bạn thấy các lựa chọn kỹ thuật **trước** khi kế hoạch được dựng trên chúng, không phải lần đầu ở cổng duyệt
+([ADR-0015](adr/0015-system-design-round-and-approved-program-design.md)).
+
+- **Before / After.** `analysis.md` có mục `## Before / After`: 3 tới 6 dòng mỗi bên, kể điều bạn thấy hôm nay và sau
+  change. Project có sẵn thì phần Before lấy từ Existing System Report; project mới thì từ cách bạn đang xoay xở.
+  Câu hỏi kỹ thuật nảy ra lúc phỏng vấn không hỏi bạn ngay mà ghi vào `### Deferred to architecture` (`- DA1: ...`);
+  Software Architect trả lời từng dòng trong `## Architecture`.
+- **Vòng System Design.** Software Architect ghi mọi lựa chọn kỹ thuật thành **Design Question** trong `### Design
+  Questions`. Câu nó tự chốt được thì ghi đã chọn gì, vì sao, vì sao bỏ các phương án khác. Câu khó đảo ngược, các
+  phương án ngang nhau, hoặc làm đổi chi phí hay cách vận hành thì để mở cho bạn, tối đa 5 câu một vòng, trên trang
+  `system-design` (mỗi phương án có View hình dạng code và chỉ số). Đây là vòng câu hỏi, không phải cổng duyệt. Không
+  có câu nào mở thì aidw hỏi đúng một câu trong chat: tóm tắt, link tới kiến trúc và một View.
+- **Program Design.** Sau vòng đó, Architect viết `program-design.md`: bắt buộc có cây file thay đổi (`+` mới, `~` sửa,
+  `-` xoá) và các chữ ký, contract chính; thêm cây lời gọi, cây component, sơ đồ phụ thuộc hay pseudocode khi giúp
+  hiểu. Bạn duyệt nó ở cổng cùng gói (gói phiên bản 4). Code khác với nó là một Deviation: implementer báo lại thay vì
+  tự đổi, và reviewer chặn task có chỗ lệch chưa được ghi nhận. Change `Size: small` có bản ngắn (cây file và chữ ký)
+  và không có vòng System Design; bugfix cũng vậy.
+- **Kế hoạch mang theo code mẫu, tài liệu và việc cần người kiểm.** Mỗi task trong `tasks.yaml` có thể có
+  `patterns:` (Pattern to Follow: tối đa 3 chỗ trong code hiện có để làm theo, dạng `path:từ-tới`, kèm lý do),
+  `docs:` (`<lib>@<version> <chủ đề>` cho thư viện mới với project hay hay đổi theo phiên bản) và `manual:` (việc chỉ
+  người mới kiểm được). `aidw analyze` từ chối pattern trỏ vào file hay dòng không còn, mục `docs:` chưa có Docs Brief
+  còn dùng được, và thư viện mà Program Design import nhưng không có trong manifest của project (`package.json`,
+  `pyproject.toml`, `go.mod`...) mà cũng không task nào ghi vào `docs:`.
+- **Docs Brief.** Research đọc tài liệu chính thức của **đúng phiên bản đang cài** và viết
+  `.aidw/research/docs/<lib>@<major.minor>-<chủ đề>.md`: câu hỏi, câu trả lời, bảng bằng chứng (mỗi dòng có trích dẫn
+  tối đa hai câu và link tới đúng mục), các bẫy và những gì không tìm thấy. Change sau dùng lại khi major.minor còn
+  khớp và brief chưa quá 90 ngày. Thứ tự nguồn: tài liệu chính thức của phiên bản đó, rồi changelog, hướng dẫn nâng
+  cấp và issue của người bảo trì, rồi chuyên gia có tên (độ tin cậy tối đa trung bình); diễn đàn và blog chỉ là đầu
+  mối. Tài liệu chính thức được lấy qua docs MCP server nếu có, rồi `/llms.txt`, rồi HTML, và chỉ bằng WebFetch.
+- **Cách aidw viết.** Tiêu đề con nói thẳng điều tìm ra ("Worker khôi phục job đang chờ trước việc mới"), văn ngắn và
+  rõ. Mỗi khuyến nghị kỹ thuật dẫn bằng chứng (đường dẫn và dòng code, hay nguồn tài liệu). Mỗi quyết định trong
+  `## Decisions to honor` có dòng `Why:` và `Rejected:`, để không ai "sửa" ngược về phương án đã bỏ.
+
+Change tạo bằng bản aidw cũ hơn không bị xét lại theo các luật này: `change.yaml` ghi `analysis_template`, bản 2 mới
+đòi Before / After, Deferred to architecture và Existing System Report, bản 3 mới đòi vòng System Design, Program
+Design và các trường mới của kế hoạch.
+
 ## 5. Bên trong một task
 
 Xem [`diagrams/task-loop.html`](diagrams/task-loop.html). Tóm tắt:
 
 1. **Orchestrator** (session chính của Claude) gọi `aidw task start T03`. Lệnh in sẵn đường dẫn brief và prompt.
-2. **Implementer** (subagent mới) đọc brief, viết test cho từng scenario, viết code, tự chạy lệnh verify.
+2. **Implementer** (subagent mới) đọc brief, viết test cho từng scenario, viết code, tự chạy lệnh verify. Brief chép
+   sẵn đoạn code mẫu của các Pattern to Follow (tối đa 3 đoạn, mỗi đoạn tối đa 40 dòng) và phần trả lời cùng các bẫy
+   của từng Docs Brief mà task ghi trong `docs:`.
 3. `aidw checkpoint T03` kiểm bằng chứng: mỗi scenario có test mang đúng id, mọi lệnh verify xanh, file đổi
    nằm trong phạm vi cho phép (`touches`). Task giao diện còn bị kiểm token thiết kế và ảnh chụp màn hình.
 4. **Reviewer** (subagent mới, chỉ đọc) xem diff, chạy thử, mở từng ảnh chụp. Nó ghi verdict vào
@@ -205,7 +272,13 @@ Hai trường hợp đặc biệt:
   quyết định như một Deviation (xem dưới), và pull request sẽ nêu ra. Trước cổng duyệt, câu hỏi không ai trả lời được thành
   câu hỏi mở trong Artifact và được liệt kê (kèm nguyên văn câu hỏi) trên trang duyệt; stage còn Consultation dở thì
   chưa được báo xong và package chưa duyệt được. Hook chỉ cho implementer ghi `<task>.request.md` của task nó đang chạy,
-  và chỉ Role được hỏi mới ghi được `C01.answer.md` của câu hỏi đó.
+  và chỉ Role được hỏi mới ghi được `C01.answer.md` của câu hỏi đó. Implementer còn được hỏi Research **tối đa một
+  lần mỗi task**, khi một thư viện chạy khác với Docs Brief của nó hoặc task gặp thư viện kế hoạch không lường trước.
+- **Tài liệu mâu thuẫn thì tài liệu cao hơn thắng.** Thứ tự: brief và `tasks.yaml`, rồi ADR và kiến trúc, rồi Program
+  Design, spec, requirements, analysis, cuối cùng là intake. Khi không build được theo tài liệu cao hơn, implementer
+  không tự chọn mà báo ba dòng: `Expected` (tài liệu nói gì), `Found` (code thật ra sao, kèm `path:line`), `Why this
+  matters` (hỏng gì). Session chính mở một Deviation cho Role đã viết tài liệu đó, lấy ba dòng làm lý do, thay vì cho
+  task chạy lại.
 
 - **Sau cổng duyệt, thứ đã duyệt chỉ đổi qua một Deviation ([ADR-0014](adr/0014-after-the-approval-gate-the-run-does-not-ask-the-user.md)).**
   Khi một câu trả lời (hay một chẩn đoán) đòi đổi spec, contract, kiến trúc hay plan đã duyệt, session chính không tự
@@ -447,8 +520,19 @@ hành vi, thay vì chia theo tầng.
 
 `/aidw:init` tự nhận ra project đã có code và giữ nguyên stack, package manager, không migrate. Thêm:
 
-- `analysis.md` có mục **Existing system**: đánh giá code, convention, và *health baseline* (lint, typecheck,
-  test đang xanh hay đỏ sẵn).
+- **Existing System Report** (`.aidw/changes/<id>/existing-system.md`,
+  [ADR-0016](adr/0016-research-describes-the-code-and-the-official-docs.md)). Session chính biết yêu cầu của bạn, nên
+  nó không tự mô tả code (mô tả sẽ nghiêng về điều bạn muốn). Nó chỉ nhìn cây thư mục, rồi viết 2 tới 7 câu hỏi
+  trung lập về code hôm nay vào `existing-system/questions.md` *trước khi* đọc lại yêu cầu (không câu nào chứa danh từ
+  của yêu cầu), chia nhóm theo vùng code. Mỗi nhóm một Agent Research chạy song song, chỉ mô tả, không phê bình hay đề
+  xuất, ghi `path:line` cho từng ý và cách mỗi phần được test (test đã đọc tách khỏi lệnh đã chạy), vào
+  `existing-system/part-<n>.md`. Một Agent Research nữa gộp các phần thành báo cáo, chỉ đọc code ở chỗ hai phần mâu
+  thuẫn, và ghi câu không phần nào trả lời vào `## Not answered`.
+- `analysis.md` có mục **Existing system**: phần Summary của báo cáo, đường dẫn tới báo cáo đầy đủ, convention, và
+  *health baseline* (lint, typecheck, test đang xanh hay đỏ sẵn).
+- Project mới (greenfield) bỏ qua báo cáo. Change `bugfix` hoặc `Size: small` hỏi tối đa 3 câu trong một nhóm, và một
+  Agent viết thẳng báo cáo. Workflow `bugfix` có thêm stage `assessment` cho việc này (bugfix trên project mới chỉ báo
+  stage đó xong).
 - Capability mà change sắp sửa phải có **baseline spec** mô tả hành vi *hiện tại* (`aidw baseline <capability>`),
   và delta của change dùng `## MODIFIED Requirements`.
 - Chỉ capability bị đụng tới mới cần baseline.
@@ -465,10 +549,12 @@ hành vi, thay vì chia theo tầng.
   domain/ architecture/ design/ decisions/   mô hình, kiến trúc, token thiết kế, ADR
   changes/<id>/       change đang làm
     intake.md analysis.md      yêu cầu và phân tích (được duyệt)
-    specs/ tasks.yaml quality.yaml
+    existing-system.md existing-system/   Existing System Report, câu hỏi và từng phần (brownfield)
+    program-design.md specs/ tasks.yaml quality.yaml
     plan-review.yaml  các vòng review kiến trúc và kế hoạch trước cổng duyệt (CLI ghi, ngoài gói được duyệt)
     evidence/         bằng chứng từng task, từng lớp chất lượng, converge, deploy
-  archive/<id>/       change đã xong, kèm delivery/ (README, handoff, báo cáo chất lượng)
+  research/docs/      Docs Brief, dùng lại qua nhiều change (<lib>@<major.minor>-<chủ đề>.md)
+  archive/<id>/       change đã xong, kèm delivery/ (README, handoff, báo cáo chất lượng, pr-summary.md)
   run/                brief, ảnh chụp, verdict, worktree, runner.log (trạng thái tạm)
 ```
 
@@ -519,6 +605,10 @@ task sửa lỗi của layer có reviewer riêng được tự duyệt, orchestr
 - Plugin context-mode (nếu bạn dùng) viết lại prompt của mỗi lần spawn subagent, nên mỗi lần spawn tốn thêm một
   lượt gọi. Tắt nó khi chạy aidw sẽ tiết kiệm token.
 - aidw giữ stack của project có sẵn, không đề xuất migrate.
+- Tên file của Docs Brief không chứa được đường dẫn module Go, nên mục `docs:` ghi module Go bằng tên ngắn
+  (`go-redis@9.5.1 ...` cho `github.com/redis/go-redis/v9`).
+- Role eval không kiểm được các câu hỏi trung lập của Existing System Report, vì chúng do session chính viết chứ
+  không do một Role. Nếu thấy câu hỏi lộ yêu cầu, aidw mới thêm một bước kiểm bằng CLI.
 - Mỗi project chỉ chạy **một change tại một thời điểm**. Muốn làm thêm thì `deliver` và archive change hiện tại trước.
 - **Monorepo chưa được hỗ trợ** (pnpm workspaces, turbo, nx). `aidw init` và `aidw detect` cảnh báo; chạy aidw trong
   một package thì được, nhưng `touches`, lệnh verify và quality layer phải tự chỉnh.
