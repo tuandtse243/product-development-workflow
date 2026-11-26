@@ -103,6 +103,32 @@ _Avoid_: Batch, parallel group
 The private working copy one task of a Wave is built in; its branch is merged into the Change Branch and never pushed.
 _Avoid_: Agent branch, sandbox
 
+**System Design**:
+How the parts of a Change work together: components, contracts, schemas and data flow. It is confirmed in a round of
+questions before the Program Design is written (ADR-0015).
+_Avoid_: Architecture (when only this Change's part is meant), TDD
+
+**Program Design**:
+The shape the code of a Change will take: the files it adds or changes and the main signatures and contracts, with
+call trees or component trees where they help. It is approved at the Approval Gate; code that differs from it is a
+Deviation.
+_Avoid_: Code shape, implementation plan, outline
+
+**Design Question**:
+A technical choice put to the user with its options, their trade-offs, a recommendation and its evidence. Once
+settled it records what was chosen, why, and why the other options were set aside.
+_Avoid_: Open decision (when a settled one is meant), ADR (an ADR is kept only for choices that are hard to reverse)
+
+**Pattern to Follow**:
+A place in the existing code that a task imitates (its path and lines, and why it fits), with the way that place is
+tested.
+_Avoid_: Example, template, convention (a convention is a rule; a Pattern to Follow is a place)
+
+**View**:
+The smallest picture that shows the point of a question or an option: a diff, a file tree, a call tree, a component
+tree, pseudocode or a mock. Every question with options that is put to the user carries one (ADR-0017).
+_Avoid_: Diagram (when any of these is meant), illustration
+
 ### Knowledge
 
 **Tier**:
@@ -125,6 +151,16 @@ The knowledge about one technology that any Role loads when the project uses tha
 **Project Overlay**:
 Rules and reference material a project adds to a Role without replacing the Role's own definition.
 _Avoid_: Override, customization
+
+**Existing System Report**:
+A description of how the code a Change touches works today, with a file and line for each claim and how each part is
+tested. It answers neutral questions written before the interview and says nothing about what should change.
+_Avoid_: Research (that Role also answers market questions), assessment, audit
+
+**Docs Brief**:
+What the official documentation says about one library or service at one version on one topic: the answer, the
+pitfalls, and a quote and source for each claim. It is reused by later Changes while the version and its age allow.
+_Avoid_: Research note (when this kind is meant), docs summary
 
 ### Design
 
