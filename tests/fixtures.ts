@@ -63,10 +63,36 @@ export function tempProject(): string {
   return mkdtempSync(join(tmpdir(), "aidw-test-"));
 }
 
+/**
+ * The Program Design of the fixture package (ADR-0015): only new files, so its file tree holds in any test project.
+ * A Change created by `aidw change new` owes it (analysis_template 3), so `write` puts it beside every analysis.md a
+ * test writes into a Change folder that has none; tests of the Program Design itself write or remove their own.
+ */
+export const PROGRAM_DESIGN_MD = `# Program Design: Booking
+
+## File tree
+
+\`\`\`text
++ app/api/bookings/route.ts        reschedules an appointment
++ app/(site)/book/page.tsx          the booking page
+\`\`\`
+
+## Signatures and contracts
+
+\`\`\`ts
+// app/api/bookings/route.ts
+export async function PATCH(req: Request): Promise<Response>; // 200 { appointment } | 409 { error: "slot_taken" }
+\`\`\`
+`;
+
 export function write(root: string, rel: string, content: string): string {
   const file = join(root, rel);
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(file, content);
+  // Re-added every time a test writes a Change's analysis.md (not only the first): a test that removed program-design.md
+  // and then writes analysis.md again gets it back, so remove it after the last analysis.md write.
+  const programDesign = join(dirname(file), "program-design.md");
+  if (/(^|\/)\.aidw\/changes\/[^/]+\/analysis\.md$/.test(rel) && !existsSync(programDesign)) writeFileSync(programDesign, PROGRAM_DESIGN_MD);
   return file;
 }
 
@@ -142,6 +168,17 @@ Calm clinical palette, mobile first.
 ## Architecture
 
 Next.js app router, Supabase Postgres with RLS.
+
+### Design Questions
+
+- DQ1: Where does the booking rule (one patient per slot) live?
+  Chosen: a unique constraint in Postgres.
+  Why: two requests for one slot must never both succeed.
+  Rejected: a check in the API route (two requests can pass it at once).
+
+### System design round
+
+DQ1 Where does the booking rule live?: a unique constraint in Postgres
 
 ## Specs
 

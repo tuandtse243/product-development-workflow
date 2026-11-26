@@ -51,11 +51,18 @@ stages:
     reads: [intake, existing-system, project-config, specs, constitution, domain-model, architecture]
     writes: [analysis-discovery-qa, analysis-scope, analysis-before-after, analysis-deferred-to-architecture, analysis-domain, analysis-specs, analysis-existing-system, analysis-stack, analysis-architecture, analysis-design]
 
+  - id: program-design
+    title: The short Program Design of the fix, the files and the signatures it changes
+    states: [analyzing]
+    roles: [software-architect]
+    reads: [analysis-scope, existing-system, analysis-existing-system, architecture, constitution]
+    writes: [program-design]
+
   - id: plan
     title: Task graph
     states: [analyzing]
     roles: [technical-planner, research] # Research writes the Docs Briefs the tasks name in docs: (ADR-0016)
-    reads: [intake, analysis-discovery-qa, analysis-scope, analysis-existing-system, specs, architecture, constitution, design-tokens]
+    reads: [intake, analysis-discovery-qa, analysis-scope, analysis-existing-system, specs, architecture, constitution, design-tokens, program-design]
     writes: [tasks, analysis-plan, docs-brief]
 
   - id: quality-profile
@@ -69,14 +76,14 @@ stages:
     title: Independent review of architecture and plan against a fixed list, after aidw analyze (at most 2 fix rounds)
     states: [analyzing]
     roles: [code-reviewer]
-    reads: [intake, analysis-scope, specs, architecture, constitution, tasks, quality]
+    reads: [intake, analysis-scope, specs, architecture, constitution, program-design, tasks, quality]
     writes: [plan-review]
 
   - id: approval
     title: Analyze, present and approve
     states: [awaiting_approval, approved]
     roles: [product-manager]
-    reads: [intake, analysis-discovery-qa, architecture, tasks, quality]
+    reads: [intake, analysis-discovery-qa, architecture, program-design, tasks, quality]
     writes: [analysis-summary, analysis-decisions-to-honor, analysis-risks]
     gate: approval-auto
     boundary:
@@ -89,7 +96,7 @@ stages:
     title: Build, one task at a time, each reviewed
     states: [executing]
     roles: [fullstack, frontend, backend, database, devops, integration, code-reviewer, software-architect]
-    reads: [tasks, specs, constitution, architecture, design-tokens]
+    reads: [tasks, specs, constitution, architecture, program-design, design-tokens]
     writes: [task-review, triage-report]
     agents:
       implement: fullstack

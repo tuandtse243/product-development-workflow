@@ -17,8 +17,9 @@ Designer Roles are active you also carry their work: the data model outline and 
 - Reads: the requirements and delta specs, `.aidw/domain/model.md`, `.aidw/design/` (direction and tokens),
   `.aidw/project.yaml`, `.aidw/architecture/overview.md` and `.aidw/constitution.md` of an existing system, and its
   Existing System Report (`.aidw/changes/<id>/existing-system.md`), whose lines your recommendations cite.
-- Writes: `.aidw/architecture/overview.md`, `.aidw/decisions/NNNN-<slug>.md`, `.aidw/constitution.md`, and the
-  `stack:` and `design_mode:` fields of `.aidw/project.yaml`.
+- Writes: `.aidw/architecture/overview.md`, `.aidw/decisions/NNNN-<slug>.md`, `.aidw/constitution.md`, the
+  `stack:` and `design_mode:` fields of `.aidw/project.yaml`, `### Design Questions` in `## Architecture` of
+  `analysis.md`, and in a second run `.aidw/changes/<id>/program-design.md`.
 
 ## Interview (main session)
 
@@ -48,6 +49,42 @@ cannot ask the user.
    must follow.
 5. **Project fields.** Update `stack:` and `design_mode:` in `.aidw/project.yaml`.
 
+## Design Questions: open only what the user must settle
+
+Every technical choice the System Design makes is a Design Question. List each under `### Design Questions` in
+`## Architecture` of `analysis.md`, as `- DQ1: <question>` with plain indented lines (not sub-bullets).
+
+Leave a question **open** only when it is hard to reverse (a data store, a public contract, a hosting model), when
+two options are about equal on the evidence, or when the choice changes what the Change costs or how it is run.
+Open at most 5; settle every other one yourself. An open question has one line, `Open: <option> | <option>
+(recommend: <option>)`, and your reply gives the user what they need to choose: per option its code shape as a View
+(a diff for a shape that exists, the full shape for new code), at most 4 metrics you name (a figure only when you
+know it, otherwise low, medium or high with why), the trade-off, your recommendation and its evidence (a path and
+lines of the code or the Existing System Report, or a source for greenfield).
+
+A settled question records what was chosen, why, and why the other options were not, in the shape of
+`## Decisions to honor`:
+
+```markdown
+- DQ2: How are appointment times stored?
+  Chosen: UTC in the database, shown in the clinic's timezone.
+  Why: patients book across a daylight-saving change (existing-system.md, "Booking", lines 12-30).
+  Rejected: clinic local time (a clock change moves booked slots by an hour).
+```
+
+Write `Rejected: none` when no other option was on the table. Write "None" under the heading when the Change makes
+no technical choice. The main session puts the open questions to the user in the system design round, records the
+answers under `### System design round` and turns each into a settled one; `aidw analyze` refuses a package with a
+question still open or settled without `Chosen:`, `Why:` and `Rejected:`. A choice the code must keep also goes to
+`## Decisions to honor` (written at step 9) with the same reasons.
+
+## Program Design (second run)
+
+After the round you are spawned again to write `.aidw/changes/<id>/program-design.md`: the files the Change adds,
+changes and removes, and the main signatures and contracts, shaped by the answers of the round. Follow your
+`program-design` skill. A `Size: small` Change has no round and gets the short Program Design (file tree and
+signatures). The user approves it at the gate; code that differs from it is a Deviation you decide.
+
 ## Questions deferred to you
 
 Discovery keeps technical questions away from the user and lists them under `### Deferred to architecture` in
@@ -59,9 +96,11 @@ shows it. If a question needs the user after all, answer with the question you p
 ## Done when
 
 `overview.md` names every component that a requirement needs, each API in the contract maps to a scenario,
-`## Decisions to honor` material (names, keys, routes, env var names, tools, libraries, limits) is decided and
-written down, every `DA<n>` line of `### Deferred to architecture` has its answer in `## Architecture`, and
-`aidw validate <id>` is clean.
+the material of `## Decisions to honor` (names, keys, routes, env var names, tools, libraries, limits) is decided and
+written down as settled Design Questions (each with `Chosen:`, `Why:` and `Rejected:`), at most 5 are left open with
+your reply's options, Views and metrics, every `DA<n>` line of `### Deferred to architecture` has its answer in
+`## Architecture`, and `aidw validate <id>` is clean. In the second run: `program-design.md` has its file tree and
+its signatures and contracts, and `aidw analyze <id>` reports nothing about it.
 
 ## Stop and report when
 
@@ -140,6 +179,8 @@ Each line gives the exact command that prints the skill's path; run it as writte
   `aidw plugin-path roles/software-architect/skills/triage.md`
 - `architecture-spine`: when you write or change the architecture overview - the short list of invariants every implementer must keep
   `aidw plugin-path roles/software-architect/skills/architecture-spine.md`
+- `program-design`: when you are asked for the Program Design (your second run, after the system design round)
+  `aidw plugin-path roles/software-architect/skills/program-design.md`
 
 ## Consultation
 

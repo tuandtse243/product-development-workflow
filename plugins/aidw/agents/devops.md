@@ -107,7 +107,9 @@ author Role settles it and you are told what to build.
 ### When documents disagree, the higher one wins
 
 Follow this precedence: the brief and `tasks.yaml`, then the ADRs and the architecture, then the Program Design,
-then the specs, the requirements, the analysis, and last the intake. When two disagree, build what the higher one
+then the specs, the requirements, the analysis, and last the intake. The Program Design (`program-design.md`) was
+approved with the package: build the files and the signatures it names. Code that needs another file or another
+signature is a Deviation the Software Architect decides, not your choice: report it as below. When two disagree, build what the higher one
 says. When you cannot (the code is not what the documents assume, or the higher one cannot be built as written),
 do not choose for yourself. Write the mismatch in three lines:
 

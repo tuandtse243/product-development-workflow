@@ -1,7 +1,7 @@
 /**
  * D1 and I9 of the rpi upgrades: `## Before / After` (what the user sees today and after this Change, 3 to 6 lines
  * each) and `### Deferred to architecture` (technical questions raised in discovery, each answered by the Software
- * Architect in `## Architecture`). `aidw analyze` requires both of a Change created with `analysis_template: 2`;
+ * Architect in `## Architecture`). `aidw analyze` requires both of a Change created with `analysis_template: 2` or later;
  * the gate page shows Before / After first.
  */
 import type { Change } from "./change.js";
@@ -9,8 +9,12 @@ import type { Diags } from "./diag.js";
 import type { PageSection } from "./page.js";
 import { sections, toLines } from "./spec/parse.js";
 
-/** The analysis.md template a Change is created with; 2 adds Before / After and Deferred to architecture. */
-export const ANALYSIS_TEMPLATE = 2;
+/**
+ * The analysis.md template a Change is created with: 2 adds Before / After and Deferred to architecture, 3 the
+ * system design round and the Program Design (src/programdesign.ts). Each check asks for its own template or later.
+ */
+export const ANALYSIS_TEMPLATE = 3;
+export const BEFORE_AFTER_TEMPLATE = 2;
 export const BEFORE_AFTER = "Before / After";
 export const DEFERRED = "Deferred to architecture";
 const SCOPE_SECTION = "Requirements and scope";
@@ -21,13 +25,13 @@ export const EXISTING_SYSTEM_FILE = "existing-system.md";
  * Whether the Change owes both parts. It is recorded on the Change at creation: deciding it at analyze time would
  * refuse older Changes whose approved analysis.md can no longer change (deviation re-runs the checks after the gate).
  */
-export const owesBeforeAfter = (change: Change): boolean => Number(change.data.analysis_template) >= ANALYSIS_TEMPLATE;
+export const owesBeforeAfter = (change: Change): boolean => Number(change.data.analysis_template) >= BEFORE_AFTER_TEMPLATE;
 
 const BULLET = /^\s*[-*]\s+(\S.*)$/;
 const DEFERRED_LINE = /^\s*[-*]\s+\**(DA\d+)\**\s*:\s*(\S.*)$/;
 
 /** Level-3 blocks (`### Name` and the lines up to the next heading of level 1 to 3), with the heading's line number. */
-function h3Blocks(text: string): { name: string; line: number; lines: string[] }[] {
+export function h3Blocks(text: string): { name: string; line: number; lines: string[] }[] {
   const out: { name: string; line: number; lines: string[] }[] = [];
   let cur: { name: string; line: number; lines: string[] } | null = null;
   for (const l of toLines(text)) {

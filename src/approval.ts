@@ -26,18 +26,21 @@ export const PACKAGE_FILES_V2 = [
   "data-model.md",
   "data-model.dbml",
 ] as const;
+/** Version 4 adds the Program Design (ADR-0015): code that differs from it is a Deviation, so it is approved and frozen. */
+export const PACKAGE_FILES_V4 = [...PACKAGE_FILES_V2, "program-design.md"] as const;
 /**
  * The version `aidw approve` writes (a Deviation's close keeps the Change's own). Version 3 has the files of version 2
  * and binds the cap on Agent runs into the hash (T11): `approval.agent_run_cap` and the raises in `approval.history`.
+ * Version 4 binds the cap too and adds program-design.md.
  */
-export const PACKAGE_VERSION = 3;
+export const PACKAGE_VERSION = 4;
 /** The newest list (kept for readers that name every package file). */
-export const CHANGE_PACKAGE_FILES = PACKAGE_FILES_V2;
+export const CHANGE_PACKAGE_FILES = PACKAGE_FILES_V4;
 
 /** The package version a Change was approved with (1 when the record names none). */
 export function packageVersionOf(change: Change): number {
   const v = (change.data.approval as { package?: unknown } | null | undefined)?.package;
-  return v === 3 ? 3 : v === 2 ? 2 : 1;
+  return v === 4 ? 4 : v === 3 ? 3 : v === 2 ? 2 : 1;
 }
 
 /** What the hash binds of the cap on Agent runs (package version 3): the cap and every raise the user made. */
@@ -47,7 +50,7 @@ export function capBindingOf(change: Change): { cap: unknown; raises: unknown[] 
   return { cap: a.agent_run_cap ?? null, raises };
 }
 
-export const packageFilesFor = (version: number): readonly string[] => (version >= 2 ? PACKAGE_FILES_V2 : PACKAGE_FILES_V1);
+export const packageFilesFor = (version: number): readonly string[] => (version >= 4 ? PACKAGE_FILES_V4 : version >= 2 ? PACKAGE_FILES_V2 : PACKAGE_FILES_V1);
 
 /** Project-level directories that belong to the approved package (with constitution.md). */
 export const FROZEN_PROJECT_DIRS = (p: Paths): string[] => [p.design, p.domain, p.architecture, p.requirements];
