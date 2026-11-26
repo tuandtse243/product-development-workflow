@@ -198,4 +198,4 @@ stages:
     states: [delivered, archived]
     roles: [release, documentation]
     reads: [delta-specs, requirements, tasks, quality, architecture]
-    writes: [release-plan]
+    writes: [release-plan, pr-summary]

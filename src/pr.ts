@@ -1,9 +1,11 @@
 /**
  * `aidw pr`: the run always ends in a pull request (D12): ready when everything passed, a draft otherwise. The body
- * opens with three fixed sections (src/draft.ts), then the Analysis summary, tasks, evidence and merge danger, all
- * built from primary sources, never from an LLM summary. Pushing and opening the PR is tier 3 (the gate asks for
- * `aidw pr --create`) unless the Approval Gate granted it (src/grants.ts); the pull request opens before the archive,
- * while the grant still covers the Change. `run.pr` in change.yaml records it, so /aidw:resume updates the same one.
+ * opens with three fixed sections (src/draft.ts), then the summary, tasks, evidence and merge danger. The summary is the
+ * Documentation Role's `delivery/pr-summary.md` when it wrote one (checked: it names no file outside the diff and the
+ * approved package, src/prsummary.ts), else the Analysis summary; everything else is built from primary sources.
+ * Pushing and opening the PR is tier 3 (the gate asks for `aidw pr --create`) unless the Approval Gate granted it
+ * (src/grants.ts); the pull request opens before the archive, while the grant still covers the Change. `run.pr` in
+ * change.yaml records it, so /aidw:resume updates the same one.
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -21,6 +23,7 @@ import { commitAidw, OpError } from "./ops.js";
 import { readText, rel, type Paths } from "./project.js";
 import { sections } from "./spec/parse.js";
 import { parseTasks, type Task } from "./tasks.js";
+import { readPrSummary } from "./prsummary.js";
 
 export interface PrPlan {
   title: string;
@@ -122,13 +125,13 @@ export function planPr(p: Paths, id: string, opts: { base?: string; env?: NodeJS
   const taskRows = tasks.map((t) => `- ${t.id} ${String(t.title ?? "")} (${String(t.status ?? "pending")})`);
   const danger = mergeDanger(p, id, tasks, base, head);
   const where = rel(p, change.dir);
+  // I8: the Documentation Role's summary (after example 17) replaces the Analysis summary; refused when it names a file
+  // that is neither in the diff nor an approved Artifact (src/prsummary.ts)
+  const written = readPrSummary(p, change, base, head);
   const body = [
     // D12: three fixed sections first, in this order, "Nothing." when empty
     ...prSections(p, change, tasks),
-    "## Summary",
-    "",
-    summary || String(change.data.title ?? id),
-    "",
+    ...(written ? [written.text, ""] : ["## Summary", "", summary || String(change.data.title ?? id), ""]),
     "## Tasks",
     "",
     ...taskRows,

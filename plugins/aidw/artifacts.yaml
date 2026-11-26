@@ -4,7 +4,7 @@
 #   path      inside .aidw/ (<id> = change id, <T> = task id, <capability>, NNNN-<slug> are placeholders)
 #   owner     exactly ONE Role writes it; a Role's `writes:` header lists only what it owns, `reads:` any artifact
 #   validate  how it is checked: `aidw validate` | `aidw analyze` | `aidw plan` | `aidw plan-review` | `aidw docs-brief` |
-#             `none` (the user reads it at the gate)
+#             `aidw pr` | `none` (the user reads it at the gate)
 #   part      only when several artifacts share one file or folder: which part this one is (the heading of an
 #             analysis.md section, or what kind of ADR). Two artifacts never share a path without a `part`.
 #
@@ -260,6 +260,10 @@ audit-report:
   path: changes/<id>/audit-report.md
   owner: documentation
   validate: none
+pr-summary:
+  path: changes/<id>/delivery/pr-summary.md
+  owner: documentation
+  validate: aidw pr
 triage-report:
   path: run/triage-<T>.md
   owner: software-architect
