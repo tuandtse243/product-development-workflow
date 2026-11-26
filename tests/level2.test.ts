@@ -361,15 +361,15 @@ describe("level 2: the session", () => {
     expect(bare.slice(-2)).toEqual(["--model", "sonnet"]);
   });
 
-  it("sandboxes Bash with no network and never allows it by a rule", () => {
+  it("sandboxes Bash with no network, no way out of the sandbox, and no start without it", () => {
     const st = sessionSettings({ pluginRoot: "/p/aidw", project: "/w/copy", denyRead: ["/repo/evals/**", "/real/roles/*/evals/**"] }) as { permissions: { allow: string[]; deny: string[] }; sandbox: Record<string, unknown> };
     expect(st.sandbox).toEqual({ enabled: true, failIfUnavailable: true, autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false, network: { allowedDomains: [], allowLocalBinding: true } });
     // no bare Read: reads outside the copy only in the session's plugin copy
-    expect(st.permissions.allow).toEqual(["Read(//p/aidw/**)"]);
-    expect(st.permissions.allow.some((x) => x.startsWith("Bash"))).toBe(false);
+    // Bash by a rule too (sandboxed loops and $(…) asked for approval); it can still run only sandboxed
+    expect(st.permissions.allow).toEqual(["Bash", "Read(//p/aidw/**)"]);
     expect(st.permissions.deny).toEqual(["WebFetch", "WebSearch", "Read(//repo/evals/**)", "Read(//real/roles/*/evals/**)", "Edit(//p/aidw/**)", "Write(//p/aidw/**)", "Edit(//w/copy/.claude/**)", "Write(//w/copy/.claude/**)"]);
     const bare = sessionSettings({ pluginRoot: "/p/aidw", project: "/w/copy", bare: true }) as { permissions: { allow: string[]; deny: string[] } };
-    expect(bare.permissions.allow).toEqual([]);
+    expect(bare.permissions.allow).toEqual(["Bash"]);
     expect(bare.permissions.deny).toContain("Read(//p/aidw/**)");
   });
 

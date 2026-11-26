@@ -19069,7 +19069,9 @@ function sessionSettings(o) {
   const abs = (p) => `/${(0, import_node_path47.resolve)(p)}`;
   return {
     permissions: {
-      allow: o.bare ? [] : [`Read(${abs(o.pluginRoot)}/**)`],
+      // "Bash": the pilot's sessions had loops and `$(…)` commands refused as needing approval although sandboxed.
+      // Every Bash still runs in the sandbox: it cannot start without one (failIfUnavailable) and has no way out of it.
+      allow: o.bare ? ["Bash"] : ["Bash", `Read(${abs(o.pluginRoot)}/**)`],
       deny: [
         "WebFetch",
         "WebSearch",

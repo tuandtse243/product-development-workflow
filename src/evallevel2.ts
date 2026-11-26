@@ -655,9 +655,9 @@ export const AGENT_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "Bash"];
 
 /**
  * The session's settings. No network: Bash runs only in Claude Code's sandbox (`sandbox.enabled`, no allowed hosts,
- * `failIfUnavailable`; binding a local port is allowed so tests can start the app on 127.0.0.1), the sandbox's escape hatch is off (`allowUnsandboxedCommands: false`), and Bash is allowed only
- * because it is sandboxed (`autoAllowBashIfSandboxed`), never by an allow rule: where the sandbox cannot run, Bash asks,
- * and with `--permission-prompts none` that is a denial. WebFetch and WebSearch are not among `--tools` and are denied
+ * `failIfUnavailable`; binding a local port is allowed so tests can start the app on 127.0.0.1), the sandbox's escape hatch is off (`allowUnsandboxedCommands: false`), and Bash is
+ * allowed by a rule as well as by `autoAllowBashIfSandboxed` (sandboxed loops and `$(…)` commands still asked for
+ * approval, which no one gives here); where the sandbox cannot run, the session does not start. WebFetch and WebSearch are not among `--tools` and are denied
  * besides. Reads outside the copy are allowed only in the session's plugin copy (and not at all for a bare run); reads
  * of `denyRead` (the source repo's evals/, the real plugin's Role cases) are denied, which Claude Code also applies to
  * the sandbox's reads. Writes to the copy's `.claude/` are denied, so the session cannot give itself settings.
@@ -668,7 +668,9 @@ export function sessionSettings(o: { pluginRoot: string; project: string; denyRe
   const abs = (p: string) => `/${resolve(p)}`;
   return {
     permissions: {
-      allow: o.bare ? [] : [`Read(${abs(o.pluginRoot)}/**)`],
+      // "Bash": the pilot's sessions had loops and `$(…)` commands refused as needing approval although sandboxed.
+      // Every Bash still runs in the sandbox: it cannot start without one (failIfUnavailable) and has no way out of it.
+      allow: o.bare ? ["Bash"] : ["Bash", `Read(${abs(o.pluginRoot)}/**)`],
       deny: [
         "WebFetch",
         "WebSearch",

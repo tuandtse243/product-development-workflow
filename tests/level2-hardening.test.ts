@@ -95,7 +95,7 @@ describe("H1: the session cannot reach the cases", () => {
     expect(brief).toContain(join(i.pluginRoot, "library"));
     expect(brief).not.toContain(`${s.root}/`);
     const st = JSON.parse(readFileSync(i.settingsFile, "utf8"));
-    expect(st.permissions.allow).toEqual([`Read(/${i.pluginRoot}/**)`]);
+    expect(st.permissions.allow).toEqual(["Bash", `Read(/${i.pluginRoot}/**)`]);
     expect(st.permissions.deny).toEqual(expect.arrayContaining([`Read(/${join(s.fixtures, "..")}/**)`, `Read(/${s.root}/roles/*/evals/**)`]));
     expect(st.sandbox.failIfUnavailable).toBe(true);
   });
