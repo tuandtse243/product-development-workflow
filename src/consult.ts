@@ -528,9 +528,12 @@ function writeResumeBrief(p: Paths, change: Change, c: Consultation, pluginRoot:
     "## Consultations left in this run",
     "",
     left > 0 ? `${left}: ask again only about something new, never the same question.` : "None: go on from what you have and say in your reply what is still open.",
-    ...(c.task && researchAsked(loadConsultations(change), c.task).length >= RESEARCH_CONSULTATIONS_PER_TASK
-      ? [`Research was consulted for this task (${researchAsked(loadConsultations(change), c.task).map((x) => x.id).join(", ")}): it is not asked again in this task.`]
-      : []),
+    ...((): string[] => {
+      const used = c.task ? researchAsked(loadConsultations(change), c.task) : [];
+      return used.length >= RESEARCH_CONSULTATIONS_PER_TASK
+        ? [`Research was consulted for this task (${used.map((x) => x.id).join(", ")}): it is not asked again in this task.`]
+        : [];
+    })(),
     "",
     "## Original brief",
     "",

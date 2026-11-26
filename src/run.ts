@@ -1453,7 +1453,7 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
   const consultRule = consultable
     ? consultable.roles.length
       ? `- **Lacking information** (a hole in a contract, a decision nobody made, a library that behaves otherwise than its Docs Brief says): ask, never guess; the user is not the first stop. You may ask: ${consultWhom(consultable.roles)}, at most ${MAX_CONSULTATIONS_PER_RUN} questions in this attempt. Write the request to \`${requestPath}\` with the Write tool (format: \"Ask before you guess\" in your procedure), then end your turn with one line: \`CONSULT ${requestPath}\`. The orchestrator gets the answer, and you or a fresh Agent of your Role continue.`
-      : "- **Lacking information**: no author of a contract of this task, and no longer Research, can be asked. Never guess: build what this brief states and write the gap to your report file."
+      : "- **Lacking information**: no Role can be asked in this task. Never guess: build what this brief states and write the gap to your report file."
     : null;
   const answered = kind === "implement" ? taskAnswers(tf.change, taskId) : [];
   const answers = answered.map((c) => `- ${c.id} (${c.to}, ${c.status}): \`${join(tf.change.dir, c.answer)}\`; question in \`${join(tf.change.dir, c.request)}\``);
