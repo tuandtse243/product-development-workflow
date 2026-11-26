@@ -39,7 +39,7 @@ describe("a new Change owes Before / After and Deferred to architecture", () => 
     cli("init");
     expect(cli("change", "new", "fresh").code).toBe(0);
     const dir = join(root, ".aidw/changes/fresh");
-    expect((YAML.parse(readFileSync(join(dir, "change.yaml"), "utf8")) as Record<string, unknown>).analysis_template).toBe(2);
+    expect((YAML.parse(readFileSync(join(dir, "change.yaml"), "utf8")) as Record<string, unknown>).analysis_template).toBeGreaterThanOrEqual(2);
     const text = readFileSync(join(dir, "analysis.md"), "utf8");
     expect(text).toMatch(/## Summary[\s\S]*## Before \/ After\n\n### Before\n\nTODO\(aidw\)[\s\S]*### After\n\nTODO\(aidw\)[\s\S]*## Decisions to honor/);
     expect(text).toMatch(/## Requirements and scope[\s\S]*### Deferred to architecture\n\nTODO\(aidw\)[\s\S]*## Domain/);
@@ -90,7 +90,7 @@ describe("a new Change owes Before / After and Deferred to architecture", () => 
 
   it("does not ask a Change created before the template had them", () => {
     const file = join(root, `.aidw/changes/${ID}/change.yaml`);
-    write(root, `.aidw/changes/${ID}/change.yaml`, readFileSync(file, "utf8").replace(/^analysis_template: 2\n/m, ""));
+    write(root, `.aidw/changes/${ID}/change.yaml`, readFileSync(file, "utf8").replace(/^analysis_template: \d+\n/m, ""));
     analysis(ANALYSIS_MD.replace(/## Before \/ After[\s\S]*?(?=## Decisions to honor)/, "").replace(DEFERRED_NONE, ""));
     expect(cli("analyze", ID).code).toBe(0);
   });

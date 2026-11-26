@@ -66,6 +66,11 @@ analysis-architecture:
   part: "## Architecture"
   owner: software-architect
   validate: aidw analyze
+analysis-system-design-round:
+  path: changes/<id>/analysis.md
+  part: "### System design round"
+  owner: software-architect
+  validate: aidw analyze
 analysis-specs:
   path: changes/<id>/analysis.md
   part: "## Specs"
@@ -166,6 +171,10 @@ decisions-architecture:
   part: architecture decisions (ADRs)
   owner: software-architect
   validate: none
+program-design:
+  path: changes/<id>/program-design.md
+  owner: software-architect
+  validate: aidw analyze
 constitution:
   path: constitution.md
   owner: software-architect

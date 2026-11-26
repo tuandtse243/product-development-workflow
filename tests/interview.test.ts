@@ -9,7 +9,8 @@ const start = readFileSync(join(plugin, "skills", "start", "SKILL.md"), "utf8");
 describe("interview in the main session, drafting in worker Agents", () => {
   it("the start skill spawns the drafting Agent of every authoring Role, and each exists", () => {
     const agents = Object.keys(generateAgents(plugin)).map((f) => f.replace(/\.md$/, ""));
-    const spawned = [...start.matchAll(/\*\*`aidw:([a-z-]+)`\*\*/g)].map((m) => m[1]);
+    // the Software Architect is spawned twice: the System Design, then the Program Design (ADR-0015)
+    const spawned = [...new Set([...start.matchAll(/\*\*`aidw:([a-z-]+)`\*\*/g)].map((m) => m[1]))];
     expect(spawned.sort()).toEqual(["api-designer", "business-analyst", "database-architect", "product-manager", "qa", "research", "software-architect", "technical-planner", "ux-research"]);
     for (const id of spawned) expect(agents).toContain(id as string);
   });
@@ -35,6 +36,6 @@ describe("interview in the main session, drafting in worker Agents", () => {
 
   it("each drafting prompt points at what the Agent reads on disk, not at this conversation", () => {
     for (const prompt of start.match(/`Change <id>\.[^`]+`/g) ?? []) expect(prompt).toMatch(/\.aidw\/(?:changes|research)\/<id>|\bdrafted\b/);
-    expect((start.match(/`Change <id>\.[^`]+`/g) ?? []).length).toBe(10); // one per drafting Agent, plus the planner prompt of a bugfix
+    expect((start.match(/`Change <id>\.[^`]+`/g) ?? []).length).toBe(11); // one per drafting Agent, the Program Design run, and the planner prompt of a bugfix
   });
 });

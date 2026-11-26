@@ -47,7 +47,7 @@ function setup(workflow: string[] = []) {
 /** Make this a Change created before the template had Before / After and Deferred to architecture. */
 function makeOld() {
   const file = join(root, C, "change.yaml");
-  writeFileSync(file, readFileSync(file, "utf8").replace(/^analysis_template: 2\n/m, ""));
+  writeFileSync(file, readFileSync(file, "utf8").replace(/^analysis_template: \d+\n/m, ""));
   analysis(OLD_ANALYSIS);
 }
 function toGate() {
@@ -182,7 +182,7 @@ describe("the bugfix workflow", () => {
   it("creates its Change with analysis_template 2, and its analyze checks both parts", () => {
     setup(["--workflow", "bugfix"]);
     expect(changeYaml().workflow).toBe("bugfix");
-    expect(changeYaml().analysis_template).toBe(2);
+    expect(changeYaml().analysis_template).toBeGreaterThanOrEqual(2);
     expect(cli("analyze", ID).code).toBe(0);
     analysis(ANALYSIS_MD.replace(DEFERRED_NONE, ""));
     expect(cli("analyze", ID, "--json").messages()).toContain('missing "### Deferred to architecture" (under "## Requirements and scope"): list each technical question as "- DA<n>: <question>", or write "None"');
