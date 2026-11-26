@@ -66,6 +66,62 @@ ${PLACEHOLDER}: recommended follow-ups.
 
 const statusOf = (t: Task) => String(t.status ?? "pending");
 
+/** I11, M4: the heading under which the handoff lists the checks that need a human (`manual:` on the tasks). */
+export const CHECKS_FOR_YOU = "Checks for you";
+
+/**
+ * The checks the plan left to a human, one line each with its task: the run did not stop for them. A task not built
+ * has nothing to check (the pull request lists it under "Not built and why").
+ */
+export function manualChecks(tasks: Task[]): string[] {
+  return tasks.flatMap((t) =>
+    statusOf(t) === "not_built" || !Array.isArray(t.manual)
+      ? []
+      : t.manual.filter((m): m is string => typeof m === "string" && m.trim() !== "").map((m) => `- [ ] ${t.id} ${cell(String(t.title ?? ""))}: ${m.trim()}`),
+  );
+}
+
+/**
+ * The handoff with `## Checks for you` holding exactly these lines: the section is replaced where it stands, or put
+ * right after `## Overview` (at the end when there is none). With no check, an existing section says so.
+ */
+export function withChecksForYou(handoff: string, checks: string[]): string {
+  const lines = handoff.replace(/\r\n?/g, "\n").split("\n");
+  const h2 = (i: number) => /^##\s+(.+?)\s*#*\s*$/.exec(lines[i] ?? "")?.[1]?.trim().toLowerCase() ?? null;
+  const next = (from: number) => {
+    let fence = false;
+    for (let i = from; i < lines.length; i++) {
+      if (/^\s*(```|~~~)/.test(lines[i] ?? "")) fence = !fence;
+      else if (!fence && h2(i) !== null) return i;
+    }
+    return lines.length;
+  };
+  const at = lines.findIndex((_, i) => h2(i) === CHECKS_FOR_YOU.toLowerCase());
+  if (at < 0 && !checks.length) return handoff;
+  // a check the user ticked stays ticked while its text is unchanged
+  const ticked = new Set(at < 0 ? [] : lines.slice(at + 1, next(at + 1)).flatMap((l) => (/^- \[[xX]\] /.test(l) ? [l.slice(6).trim()] : [])));
+  const kept = checks.map((c) => (ticked.has(c.replace(/^- \[ \] /, "")) ? c.replace(/^- \[ \] /, "- [x] ") : c));
+  const block = [
+    `## ${CHECKS_FOR_YOU}`,
+    "",
+    ...(checks.length ? ["The plan left these checks to a person; the run did not stop for them. Tick each one you did.", "", ...kept] : ["None: every check of the plan ran automatically."]),
+    "",
+  ];
+  if (at >= 0) lines.splice(at, next(at + 1) - at, ...block);
+  else {
+    const overview = lines.findIndex((_, i) => h2(i) === "overview");
+    let where = overview >= 0 ? next(overview + 1) : lines.length;
+    // at the end of the file: drop trailing blank lines, then exactly one blank line before the heading
+    if (where === lines.length) {
+      while (lines.length && lines.at(-1) === "") lines.pop();
+      lines.push("");
+      where = lines.length;
+    }
+    lines.splice(where, 0, ...block);
+  }
+  return lines.join("\n");
+}
+
 function readEvidence(change: Change, taskId: string): Evidence | null {
   const f = join(change.dir, "evidence", `${taskId}.json`);
   if (!existsSync(f)) return null;
@@ -286,6 +342,12 @@ export function checkDelivery(p: Paths, id: string): Diags {
     handoff.split(/\r?\n/).forEach((l, i) => {
       if (l.includes(PLACEHOLDER)) d.error(where("handoff.md"), `unresolved ${PLACEHOLDER} placeholder`, i + 1);
     });
+    const checks = manualChecks(loadTasks(p, id).tasks);
+    if (checks.length) {
+      const body = secs.find((x) => x.name.toLowerCase() === CHECKS_FOR_YOU.toLowerCase())?.body;
+      if (body === undefined) d.error(where("handoff.md"), `missing section "## ${CHECKS_FOR_YOU}" (the tasks' manual checks); run \`aidw deliver\``);
+      else if (checks.some((c) => !body.includes(c.replace(/^- \[ \] /, "")))) d.error(where("handoff.md"), `"## ${CHECKS_FOR_YOU}" does not list every manual check of the tasks; run \`aidw deliver\``);
+    }
     const env = secs.find((x) => x.name.toLowerCase() === "environment");
     if (env && !env.body.includes(PLACEHOLDER) && !/^\s*none\b/im.test(env.body) && !existsSync(join(p.project, ".env.example"))) {
       d.error(rel(p, join(p.project, ".env.example")), 'missing: the handoff lists environment variables, so ship a .env.example (or write "None" under ## Environment)');
@@ -335,6 +397,13 @@ export function deliver(p: Paths, id: string, opts: { check?: boolean } = {}): D
       writeFileSync(join(dir, "handoff.md"), HANDOFF(String(change.data.title ?? id)));
       createdHandoff = true;
     }
+    // I11, M4: the checks that need a human, regenerated in the handoff on every run; the rest of it is the agent's
+    const handoff = readFileSync(join(dir, "handoff.md"), "utf8");
+    const withChecks = withChecksForYou(handoff, manualChecks(tasks));
+    if (withChecks !== handoff) {
+      writeFileSync(join(dir, "handoff.md"), withChecks);
+      if (!createdHandoff) written.push(rel(p, join(dir, "handoff.md")));
+    }
     write("README.md", readmeMd(p, change, tasks));
   }
   return { dir: rel(p, dir), written, created_handoff: createdHandoff, screenshots: screenshots(change).length, diags: checkDelivery(p, id) };
@@ -348,6 +417,7 @@ function readmeMd(p: Paths, change: Change, tasks: Task[]): string {
   const layers = Object.entries(summary.layers).map(([n, r]) => `${n} ${r.status}`).join(", ") || "none";
   const conv = lastConverge(change);
   const env = existsSync(join(p.project, ".env.example"));
+  const checks = manualChecks(tasks).length;
   return [
     `# Delivery: ${String(change.data.title ?? change.id)}`,
     "",
@@ -359,7 +429,7 @@ function readmeMd(p: Paths, change: Change, tasks: Task[]): string {
     "",
     "## Contents",
     "",
-    "- [handoff.md](handoff.md): overview, run locally, environment, deploy, usage, known issues, next steps",
+    `- [handoff.md](handoff.md): overview, ${checks ? `checks for you (${checks}), ` : ""}run locally, environment, deploy, usage, known issues, next steps`,
     "- [quality-report.md](quality-report.md): every layer with evidence, what failed and what was not covered",
     "- [tasks.md](tasks.md): plan and task status, attempts, reviews, commits",
     "- [decisions.md](decisions.md): architecture decision records",

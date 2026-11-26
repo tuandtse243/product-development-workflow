@@ -9,7 +9,7 @@ import { loadRoster, parseRoleText, roleDir } from "./roles.js";
  * its path inside `.aidw/`, its single owner and how it is checked.
  */
 
-export const ARTIFACT_VALIDATORS = ["aidw validate", "aidw analyze", "aidw plan", "aidw plan-review", "aidw docs-brief", "none"] as const;
+export const ARTIFACT_VALIDATORS = ["aidw validate", "aidw analyze", "aidw plan", "aidw plan-review", "aidw docs-brief", "aidw pr", "none"] as const;
 
 export interface ArtifactEntry {
   path: string;
