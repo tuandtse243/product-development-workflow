@@ -186,3 +186,22 @@ describe("the guide states the rule (Q8a, M9)", () => {
     expect(guide).toMatch(/One question after a design, in the chat\.\*\*[\s\S]{0,300}summary[\s\S]{0,100}link[\s\S]{0,100}View/);
   });
 });
+
+describe("a diff View's lines", () => {
+  const html = (text: string, kind = "diff") =>
+    renderPage(parsePage("v", JSON.stringify({ layout: "questions", title: "T", questions: [{ id: "Q1", title: "Q", recommend: "a", why: "w", view: { kind, text }, options: [{ key: "a", name: "A", summary: "s" }, { key: "b", name: "B", summary: "s" }] }] })).page);
+
+  it("treats +++ and --- file headers as headers, not added or removed lines", () => {
+    const x = html("--- a/app.ts\n+++ b/app.ts\n@@ -1 +1 @@\n-old\n+new\n---\n+++x");
+    expect(x).toContain('<span class="hunk">--- a/app.ts</span>\n<span class="hunk">+++ b/app.ts</span>\n<span class="hunk">@@ -1 +1 @@</span>');
+    expect(x).toContain('<span class="del">-old</span>\n<span class="add">+new</span>\n<span class="del">---</span>\n<span class="add">+++x</span>');
+  });
+
+  it("splits Windows line ends, leaving no carriage return in the page", () => {
+    const d = html(" app/\r\n+vercel.json\r\n-Dockerfile");
+    expect(d).toContain('<span class="ctx"> app/</span>\n<span class="add">+vercel.json</span>\n<span class="del">-Dockerfile</span>');
+    const t = html("src/\r\n  app.ts", "tree");
+    expect(t).toContain("<pre>src/\n  app.ts</pre>");
+    expect(d + t).not.toContain("\r");
+  });
+});

@@ -205,7 +205,7 @@ nothing is open.
 ## 5. Design decision (Q3)
 
 Detect design assets: Figma links, screenshots, an existing design system, brand guides. Then choose the
-mode with the user, as a question on a Decision Page (`design`) whose options are the modes that fit this change. Read `$(aidw plugin-path roles/ui-ux-designer/references/design-tokens.md)` for how each mode produces tokens.
+mode with the user, as a question on a Decision Page (`design`) whose options are the modes that fit this change, with a `view` (a `tree` of what each mode puts under `.aidw/design/`). Read `$(aidw plugin-path roles/ui-ux-designer/references/design-tokens.md)` for how each mode produces tokens.
 
 - `existing`: assets exist. Collect them into `.aidw/design/` (Figma via the Figma MCP tools, screenshots, notes)
   and extract the tokens from them (Figma variables, the brand guide, the live site's CSS).
@@ -247,7 +247,7 @@ Its Procedure (`$(aidw plugin-path roles/software-architect/role.md)`) holds the
 ## 6b. Data model and API contract (each only when needed)
 
 Two Decision Points, decided with the Software Architect's hat on, after the architecture is drafted. Recommend an
-answer and say why (one Decision Page with both questions, each with its `decision:`); `none` is right for a Change that adds no table and no operation another part calls.
+answer and say why (one Decision Page with both questions, each with its `decision:` and a `view`: a `tree` of the files each answer adds, such as a migration or `openapi.yaml`); `none` is right for a Change that adds no table and no operation another part calls.
 
 - `aidw decide data-model-needed <design|none> --reason "<why>"`. `design` when the Change adds or alters tables or
   collections beyond a column or two, has a rule the database must enforce (uniqueness, no double booking), or changes

@@ -383,13 +383,10 @@ const VIEW_CSS = `
 function renderViews(views: PageView[] | undefined): string {
   return (views ?? [])
     .map((v) => {
-      const body =
-        v.kind === "diff"
-          ? v.text
-              .split("\n")
-              .map((line) => `<span class="${line.startsWith("@@") ? "hunk" : line.startsWith("+") ? "add" : line.startsWith("-") ? "del" : "ctx"}">${esc(line)}</span>`)
-              .join("\n")
-          : esc(v.text);
+      const lines = v.text.split(/\r?\n/);
+      // `+++ ` and `--- ` are a unified diff's file headers, not added or removed lines.
+      const cls = (line: string): string => (line.startsWith("@@") || line.startsWith("+++ ") || line.startsWith("--- ") ? "hunk" : line.startsWith("+") ? "add" : line.startsWith("-") ? "del" : "ctx");
+      const body = v.kind === "diff" ? lines.map((line) => `<span class="${cls(line)}">${esc(line)}</span>`).join("\n") : esc(lines.join("\n"));
       return `<figure class="view" data-kind="${v.kind}"><figcaption>${VIEW_NAMES[v.kind]}</figcaption><pre>${body}</pre></figure>`;
     })
     .join("");
