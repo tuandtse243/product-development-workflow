@@ -1423,7 +1423,7 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
     ...h("Requirements (spec text after this change)", reqBlocks.length ? ["```markdown", reqBlocks.join("\n\n"), "```"] : []),
     ...h("Decisions to honor (approved; binding)", decisions.map((x) => `- ${x}`)),
     // I3, Q4: real code of this project to imitate; R8, M13: what the official docs say at the installed version
-    ...h("Patterns to follow (code in this project)", patternBriefLines(p.project, t)),
+    ...h("Patterns to Follow (code in this project)", patternBriefLines(p.project, t)),
     ...h("Docs Briefs (the libraries this task uses)", docsBriefLines(p, t)),
     ...h(
       "Design tokens (approved; binding for UI)",

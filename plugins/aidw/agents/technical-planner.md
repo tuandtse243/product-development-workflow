@@ -61,7 +61,7 @@ tasks:
 The implementer starts with a fresh context and reads only its brief, so put in the task what it would otherwise
 guess.
 
-- **`patterns`: the code to imitate.** In an existing project, point each task at up to three places that already
+- **`patterns`: the Patterns to Follow.** In an existing project, point each task at up to three places that already
   do what it must do (a store function, a route with its validation, a screen with its loading state, and the test
   of each), as `path:from-to` with the lines that matter (40 at most) and a `why` that says what to copy. The brief
   shows those lines; `aidw analyze` refuses a pattern whose file or lines are gone. Take them from the Existing
