@@ -83,7 +83,7 @@ describe("every path the skills tell an Agent to resolve exists (Q8)", () => {
 
 describe("show-me and html-pages register as plugin commands like the others (Q8)", () => {
   it("every plugin skill directory holds a SKILL.md whose name is its directory", () => {
-    const dirs = readdirSync(join(plugin, "skills"), { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
+    const dirs = readdirSync(join(plugin, "skills"), { withFileTypes: true }).filter((d) => d.isDirectory() && !d.name.startsWith(".")).map((d) => d.name);
     expect(dirs).toEqual(expect.arrayContaining(["show-me", "html-pages"]));
     for (const d of dirs) expect(frontMatter(join(plugin, "skills", d, "SKILL.md")).name, d).toBe(d);
   });
