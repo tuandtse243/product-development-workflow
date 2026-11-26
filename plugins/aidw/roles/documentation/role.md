@@ -5,7 +5,7 @@ mode: worker
 tier: fast
 access: write
 tools: [Read, Write, Edit, Glob, Grep, Bash]
-reads: [delta-specs, requirements, architecture, api-contract-notes, release-plan]
+reads: [delta-specs, requirements, architecture, api-contract-notes, release-plan, analysis-before-after, program-design]
 writes: [audit-report, pr-summary]
 max_turns: 60
 skills:

@@ -11,14 +11,15 @@ built, tasks, quality layers, merge danger), so do not repeat it.
 
 ## The file: `.aidw/changes/<id>/delivery/pr-summary.md`
 
-Lay it out after example 17 (`aidw vendor-path anthropics/html-effectiveness`, `17-pr-writeup.html`; the html-pages
-skill says what to take from it). Keep its order, not its colours or panels:
+Lay it out after example 17 (`aidw plugin-path library/vendor/anthropics/html-effectiveness/17-pr-writeup.html`; the
+html-pages skill says what to take from it). Keep its order, not its colours or panels:
 
 1. `# <title>`, then one line saying what the pull request does. `aidw pr` drops the title (the pull request has its
    own) and keeps the line.
 2. `## Why`: one sentence, as the user sees it. Take it from `## Before / After` in `analysis.md` when the Change has
    one.
-3. `## Notes`: 1 to 3 bullets a reviewer must not miss: a Deviation and what it changed, a migration and whether it
+3. `## Notes`: 1 to 3 bullets a reviewer must not miss: a Deviation and what it changed (the Change's
+   `deviations.yaml` records them), a migration and whether it
    is reversible, a step to run before merging. Nothing to say: one bullet, "Nothing beyond the plan."
 4. `## Change outline`: Views, each a fenced block with its kind as the info string. First a ` ```tree ` block of the
    files that matter, one path from the project root per line, marked `+` new, `~` changed or `-` removed, with a few
@@ -33,9 +34,10 @@ Leave out what `aidw pr` writes itself: the test plan is the Evidence, the rollo
 
 `aidw pr` refuses the summary when it names a file that is neither in the git diff of the Change Branch nor an
 approved Artifact (`analysis.md`, `program-design.md`, the specs, ...), and lists each one. It reads as a path:
-anything in backticks with a `/` or a file extension (`app/api/route.ts:12-30`, `README.md`), every line of a
-` ```tree ` block, the file comment on the first line of another fenced block and the headers of a git diff. A route
-(`/api/bookings`), a package (`@scope/name`) or a glob is not read as a path. Take the paths from
+anything in backticks or a link target that ends in a file extension (`app/api/route.ts:12-30`, `README.md`) or in
+`/` (a folder), every line of a ` ```tree ` block, the headers of a git diff and the file comment on the first line
+of another fenced block. A branch (`aidw/reschedule`), a route (`/api/bookings`), a package (`@scope/name`) or a glob
+is not read as a path. It also warns, without refusing, when `## Why`, `## Notes` or `## Change outline` is missing. Take the paths from
 `git diff --name-only <base>...HEAD`, not from the plan: a file the plan named and the code did not need is not in the
 diff.
 

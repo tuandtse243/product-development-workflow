@@ -31,7 +31,9 @@ what was **not** covered), `tasks.md` (tasks, attempts, reviews, commits), `deci
 
 When a task of the plan has `manual:` (checks that need a person, such as an email reaching a real inbox), the run did
 not stop for them: `aidw deliver` lists them in `handoff.md` under `## Checks for you`, right after `## Overview`, and
-rewrites that section on every run. Leave it as it is; `aidw deliver --check` refuses a handoff that lost one.
+rewrites that section on every run, keeping a box ticked while its check is unchanged. Leave it as it is;
+`aidw deliver --check` refuses a handoff that lost one. `aidw pr` lists them too, under "Needed from the user to
+finish"; they do not make the pull request a draft.
 
 ## 1b. Release plan (drafting Agent)
 
