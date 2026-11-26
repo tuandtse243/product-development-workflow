@@ -206,6 +206,15 @@ Ask the owner on an HTML page (the owner's standing preference) before building 
 - How `aidw analyze` tells a "library new to the project" for `docs:` (lockfile diff before and after the plan is
   the obvious answer; confirm when T13 starts).
 
+Settled by the owner on 2026-11-26:
+
+| Id | Decision |
+|---|---|
+| OP1 | The neutral questions: fix the wording in the skill first (write the questions before rereading the request, no noun of the request in a question); add a CLI check that refuses questions sharing the request's distinctive terms only if the Role eval still shows leaking. |
+| OP2 | The merging Research Agent reads code only where parts contradict each other (M10 as written); a question no part answered is listed under "Not answered". |
+| OP3 | `aidw analyze` compares the libraries the Program Design names with the project's manifests (package.json, pyproject, go.mod, ...); one absent from them must appear in a task's `docs:`. `aidw deliver` warns when the lockfile gained a package that no Docs Brief covers. |
+| OP4 | Research may use a tier-4 page as a "users report" row (what users say, how many, when), always low confidence and never as proof of how a product works. Raised by T4. |
+
 ## 6. Prompt for the new session
 
 > Read `docs/plans/rpi-upgrades.md` and the files it lists under "Read first". You are the lead. Build the whole
