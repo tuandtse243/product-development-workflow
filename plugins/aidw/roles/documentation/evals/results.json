@@ -1,0 +1,59 @@
+{
+  "format": 2,
+  "role": "documentation",
+  "date": "2026-11-26T06:06:19.500Z",
+  "model": "haiku",
+  "tier": "fast",
+  "runs": 3,
+  "digest": "sha256:8ccbcd8af4c1386987b1c67bf614c5f0b2f1b69084c33aae0c799d0e9a45d47e",
+  "cases": [
+    {
+      "name": "pr-summary-names-only-real-files",
+      "pass": false,
+      "runs": {
+        "total": 3,
+        "passed": 0,
+        "errors": 0
+      },
+      "failed": [
+        "must not name `lib/booking/lock.ts` anywhere, nor any other file outside the diff and the approved package",
+        "must not include a test plan or a rollout section (the CLI adds the Evidence and the merge danger), and must say which example it followed (17)"
+      ],
+      "digest": "sha256:0ad39bd233407eb1243708d0e22264acbf39c25bccd3eb414534c6cc46b83392",
+      "date": "2026-11-26T06:06:19.500Z",
+      "model": "haiku"
+    },
+    {
+      "name": "quick-start-has-a-wrong-command",
+      "pass": false,
+      "runs": {
+        "total": 3,
+        "passed": 1,
+        "errors": 0
+      },
+      "failed": [
+        "must correct the quick start to the package manager the lockfile shows, after running the commands"
+      ],
+      "digest": "sha256:c682b4595c6add9f7843962ae97121693253e47b07db72952ddbd758da5f97a7",
+      "date": "2026-11-26T06:06:19.500Z",
+      "model": "haiku"
+    },
+    {
+      "name": "walkthrough-page-without-script",
+      "pass": false,
+      "runs": {
+        "total": 3,
+        "passed": 0,
+        "errors": 0
+      },
+      "failed": [
+        "must model the page on example 04 (a walkthrough of a code path) or 14 (a feature explainer) and say which one it took",
+        "must give each of the four steps its file and line range and show its source in an escaped block (`<` written as `&lt;`), using `<details>` where the example hides source",
+        "must not change code, configuration or tests, and must not commit"
+      ],
+      "digest": "sha256:f22087ee2a5b2228a4d572a1dce8e126232081117febe40dc6adae8111681615",
+      "date": "2026-11-26T06:06:19.500Z",
+      "model": "haiku"
+    }
+  ]
+}
