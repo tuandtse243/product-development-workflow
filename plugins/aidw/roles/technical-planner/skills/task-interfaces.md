@@ -40,8 +40,13 @@ Review focus:
 - **Produces**: every name another task will import or call: the file, the exported name, the signature, the
   route with its request and response, the table and columns, the event and its payload. Exact spelling.
 - **Consumes**: what this task uses from another, with that task's id. Each entry must match a `Produces` line
-  of the named task word for word, and that task must be in `depends_on` unless both only agree on a type.
+  of the named task word for word, and that task must be in `depends_on` unless both only agree on a type. Copy the
+  whole line, then put the task id in front: keep every part of it, the file in brackets and any note after the
+  shape (`(sorted by startsAt; [] when ...)`) included. Do not shorten, reorder or reword it; a Consumes line that
+  drops a note is a different contract.
 - **Review focus**: the one to three places where this task is most likely to be wrong. It goes to the reviewer.
+  One concern per point: a point that joins two concerns with "and", a semicolon or a comma is two points, and
+  more than three points means you keep the three that matter most.
 
 ## Rules
 
@@ -58,7 +63,8 @@ Review focus:
 ## Check before you finish
 
 - every line of the Program Design's file tree is in some task's `touches`, and every signature in one task's `Produces`;
-- every `Consumes` has a matching `Produces`, and nothing is produced twice;
+- every `Consumes` line is its `Produces` line copied whole (compare them character by character), and nothing is produced twice;
+- every `Review focus` has at most three points, each one concern;
 - every scenario is covered by a task whose `Produces` could make it pass;
 - a task with a `Review focus` on money, access or data loss is `risk: high`.
 

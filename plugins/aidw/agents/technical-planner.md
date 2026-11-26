@@ -93,7 +93,7 @@ A project with a database gets its first tables in a task of their own. Divide t
 |---|---|---|---|
 | Scaffold | `fullstack` | `package.json`, tool config, test harness, the database **client and config** (`src/db/client.ts`, `drizzle.config.ts`, `prisma/` datasource) | the schema, a migration, a table |
 | Schema | `database`, `risk: high`, `depends_on` the scaffold | the schema file (`src/db/schema.ts`, `prisma/schema.prisma`), the migration folder (`drizzle/`, `prisma/migrations/`, `migrations/`), seeds, indexes, and their tests (`tests/db/**`) | UI or API files |
-| Data access | `backend` or `fullstack`, `depends_on` the schema | the store functions and validation that read and write the tables | the schema or a migration |
+| Data access | `backend` or `fullstack`, `depends_on` the schema | the store functions and validation that read and write the tables, cut per slice: each slice owns the store functions of its behavior, not one data-layer task for all slices, unless the Program Design fixes a shared module (it stays as approved) | the schema or a migration |
 | Screens | `frontend` or `fullstack`, `depends_on` what they call | components, pages, styles, their tests | the schema |
 
 A later change that adds or alters a column is a schema task again, even if it is one line. A bugfix that needs one is not small:
@@ -107,6 +107,15 @@ it leaves the automatic approval and waits for the user.
   tests for one behavior; give a task `depends_on` only for something it truly needs (a shared type or file it
   imports), not for "it comes next". `aidw analyze` warns when the plan is one chain or when `depends_on` links
   tasks whose `touches` do not overlap: act on that warning, or keep the chain when the dependency is real.
+  After the scaffold and the schema there is no layer task: no task for "all the types", "the data layer", "the API
+  routes", "the screens" or "the tests". This rule does not forbid a split Slice's backend and frontend tasks, a seed
+  task, or a shared module the Program Design fixes or a real import needs: give that module to one task the others
+  depend on, and never re-cut files the approved Program Design fixed. A slice touches its own folders
+  (`app/notes/new/**`, `lib/notes/create*`, `tests/notes-create*`), not the root configuration the scaffold owns,
+  unless it really changes a root or shared file (the a11y setup, a registry, the shared file of a chain): then it
+  lists that file, as the rules below say. Before you write the file, draw the stages. A new project with two or more
+  behaviors is `scaffold -> schema -> slice+slice+...` (a slice that only needs the table depends on the schema, not
+  on another slice); if no stage after the scaffold holds two tasks, re-cut, unless each dependency is real.
 - **A UI plan carries the a11y layer.** `aidw analyze` refuses a plan that changes UI with no `a11y` layer in `quality.yaml`. When the
   project does not have axe yet (`aidw detect` shows no `a11y tests`), the first UI task adds `@axe-core/playwright` as a dev dependency,
   the `a11y` Playwright project and `e2e/a11y.spec.ts`: put `package.json`, the lockfile, `playwright.config.ts` and `e2e/a11y*` in its
@@ -127,7 +136,8 @@ it leaves the automatic approval and waits for the user.
 - **Check the shape before the gate.** Run `aidw plan <id>`: it prints the stages (tasks that can run side by side
   are joined with `+`) and advice. Aim for a widest stage of 3 where the work allows. Split a task that carries a
   third of the scenarios (list, create, edit and delete are separate slices touching different files), and quote
-  the one-line shape in the Summary so the user sees how long the build will take.
+  the one-line shape in the Summary so the user sees how long the build will take, written as `aidw plan` prints
+  it: stages joined with ` -> `, tasks of one stage joined with `+` (`T01 -> T02 -> T03+T04+T05+T06`).
 - **Every UI scenario has a UI owner.** A scenario whose WHEN is a user action on a screen ("the user clicks Export
   CSV") must be listed by a task that touches the UI files (and the API task may list it too). `aidw analyze` warns
   when its only owners touch no UI files; fix the plan, do not leave the button to chance.
