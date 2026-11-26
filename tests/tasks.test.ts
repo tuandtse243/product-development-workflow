@@ -74,7 +74,7 @@ ${manual}`;
   it("refuses manual that is not a list of non-empty strings", () => {
     for (const bad of ["    manual: check the email\n", "    manual: [1]\n", '    manual: [""]\n']) {
       const msgs = validateTasksText(task(bad), "tasks.yaml").errors.map((e) => e.message);
-      expect(msgs).toContain('task A: "manual" must be a list of checks that need a human, each a non-empty sentence');
+      expect(msgs).toContain('task A: "manual" must be a list of checks a human makes, each a non-empty line');
     }
   });
 });

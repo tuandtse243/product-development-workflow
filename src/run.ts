@@ -42,6 +42,7 @@ import { secretsInChanges, secretsMessage, secretsProblem, stagedSecrets, type S
 import { tamperEvidence, tamperProblems, type TamperEvidence } from "./tamper.js";
 import { DEFAULT_MAX_ATTEMPTS, parseTasks, planSha, validateTasksText, type Task } from "./tasks.js";
 import { agentRunStatus, capReason } from "./agentruns.js";
+import { docsBriefLines, patternBriefLines } from "./planrefs.js";
 
 const now = () => new Date().toISOString();
 const list = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : []);
@@ -1421,6 +1422,9 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
     ...h("Scenarios", scenarioIds.length ? scenarioIds.map((s) => `- \`${s}\``) : ["- (none: this task is verified by its verify commands only)"]),
     ...h("Requirements (spec text after this change)", reqBlocks.length ? ["```markdown", reqBlocks.join("\n\n"), "```"] : []),
     ...h("Decisions to honor (approved; binding)", decisions.map((x) => `- ${x}`)),
+    // I3, Q4: real code of this project to imitate; R8, M13: what the official docs say at the installed version
+    ...h("Patterns to follow (code in this project)", patternBriefLines(p.project, t)),
+    ...h("Docs Briefs (the libraries this task uses)", docsBriefLines(p, t)),
     ...h(
       "Design tokens (approved; binding for UI)",
       tokens.length ? [...tokensTable(tokens), "", `Source: \`${rel(p, tokensFile(p))}\`. Each token's **Use** says where it must appear.`] : [],

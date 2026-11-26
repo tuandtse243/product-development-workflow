@@ -21,10 +21,11 @@ import { defaultTaskRole, implementerOf } from "./roles.js";
 import { answerOf, checkDecisions, workflowOfChange } from "./decisions.js";
 import { checkScopeRound } from "./scope.js";
 import { checkBeforeAfter, EXISTING_SYSTEM_FILE, owesBeforeAfter } from "./beforeafter.js";
-import { checkProgramDesign, checkSystemDesign, programDesignDue } from "./programdesign.js";
+import { checkProgramDesign, checkSystemDesign, PROGRAM_DESIGN_FILE, programDesignDue } from "./programdesign.js";
 import type { Workflow } from "./workflow.js";
 import { checkExistingSystem } from "./existingsystem.js";
 import { workflowIdOf } from "./machine.js";
+import { checkPlanRefs } from "./planrefs.js";
 
 const TITLE_ADVISED = 60;
 const isPlanned = (t: { origin?: unknown }): boolean => t.origin === undefined || t.origin === "plan";
@@ -391,6 +392,8 @@ export function analyzeChange(p: Paths, id: string): Diags {
     if (quality && quality.deploy.target !== "none") d.warn(rel(p, analysisFile), "Size: small does not deploy unless the user asked for it; set the deploy target to none");
   }
   for (const advice of planAdvice(tasks)) d.warn(tf, advice);
+  // I3, R8, OP3: patterns point at code that exists, each docs entry has a fresh Docs Brief, new libraries are researched.
+  checkPlanRefs(p, change, tasks, tf, d, { programDesign: due.programDesign ? readText(join(change.dir, PROGRAM_DESIGN_FILE)) : null });
   return d;
 }
 

@@ -206,13 +206,13 @@ export interface FileTreeLine {
   path: string;
 }
 
-interface Fence {
+export interface Fence {
   lang: string;
   text: string;
 }
 
 /** The fenced blocks of a Markdown body, with their language. */
-function fences(body: string): Fence[] {
+export function fences(body: string): Fence[] {
   const out: Fence[] = [];
   let cur: { lang: string; lines: string[]; fence: string } | null = null;
   for (const l of body.split(/\r?\n/)) {

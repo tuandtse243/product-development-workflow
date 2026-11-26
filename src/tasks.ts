@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import YAML from "yaml";
 import { Diags } from "./diag.js";
 import { typeProblem } from "./commit.js";
+import { planRefProblems } from "./planrefs.js";
 
 /**
  * pending -> running -> review -> done        (implement, checkpoint, independent review)
@@ -109,8 +110,6 @@ export function validateTasksText(text: string, file: string): Diags {
     if (!isStrList(t.verify) || t.verify.length === 0) d.error(file, `${where} needs a non-empty "verify" list`);
     if (t.depends_on !== undefined && !isStrList(t.depends_on)) d.error(file, `${where}: "depends_on" must be a list of task ids`);
     if (t.skills !== undefined && !isStrList(t.skills)) d.error(file, `${where}: "skills" must be a list of vendored skill names`);
-    // I11, M4: checks that need a human; the run does not stop for them, `aidw deliver` lists them under "Checks for you"
-    if (t.manual !== undefined && !(isStrList(t.manual) && t.manual.every((m) => m.trim() !== ""))) d.error(file, `${where}: "manual" must be a list of checks that need a human, each a non-empty sentence`);
     if (t.removes_tests !== undefined && typeof t.removes_tests !== "boolean") d.error(file, `${where}: "removes_tests" must be true or false`);
     if (t.max_attempts !== undefined && !(Number.isInteger(t.max_attempts) && Number(t.max_attempts) >= 1)) {
       d.error(file, `${where}: "max_attempts" must be a positive integer`);
@@ -119,6 +118,8 @@ export function validateTasksText(text: string, file: string): Diags {
     const tp = typeProblem(t);
     if (tp) d.error(file, `${where} ${tp}`);
     if (t.risk !== undefined && t.risk !== "normal" && t.risk !== "high") d.error(file, `${where}: "risk" must be normal or high`);
+    // T13 (I3, R8, I11): code to imitate, the Docs Briefs the task builds on, the checks a human makes
+    for (const m of planRefProblems(t)) d.error(file, `${where}${m}`);
     if (t.status !== undefined && !(TASK_STATUSES as readonly string[]).includes(String(t.status))) {
       d.error(file, `${where}: unknown status "${String(t.status)}" (expected ${TASK_STATUSES.join(", ")})`);
     }

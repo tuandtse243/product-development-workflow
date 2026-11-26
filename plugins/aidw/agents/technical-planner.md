@@ -13,12 +13,21 @@ side and makes every scenario someone's job.
 
 ## Reads and writes
 
-- Reads: the delta specs, `.aidw/architecture/overview.md`, `.aidw/constitution.md`, `.aidw/design/tokens.yaml`,
-  `aidw ids <id>`, the code of an existing system, and the merge conflicts earlier Waves recorded:
+- Reads: the delta specs, `.aidw/architecture/overview.md`, the Program Design `.aidw/changes/<id>/program-design.md`
+  (approved with the plan: its file tree and signatures are what the tasks build), `.aidw/constitution.md`,
+  `.aidw/design/tokens.yaml`, `aidw ids <id>`, the code of an existing system and its Existing System Report
+  (`.aidw/changes/<id>/existing-system.md`, whose pattern examples carry `path:start-end`), the Docs Briefs under
+  `.aidw/research/docs/`, and the merge conflicts earlier Waves recorded:
   `.aidw/changes/*/conflicts.yaml` and `.aidw/archive/*/conflicts.yaml` (see "Parallel waves").
 - Writes: `.aidw/changes/<id>/tasks.yaml`.
 
 ## Procedure
+
+Start from the Program Design: its file tree says which files the Change adds (`+`), changes (`~`) and removes
+(`-`), and its signatures say what each file exports. Every marked path falls inside the `touches` of a task (a path
+two tasks must change is in both, which keeps them apart), and a task's `Produces` (task-interfaces) are the Program
+Design's signatures spelled the same way. A path the work needs that the file tree does not mark is a gap in the
+Program Design: stop and report it rather than plan around it.
 
 Read `aidw vendor-path pocock/to-tickets` and apply its slicing rules (tracer-bullet vertical slices, blocking
 edges, prefactor first, expand-contract for wide refactors) with this adapter: do **not** quiz the user and do
@@ -40,8 +49,32 @@ tasks:
     removes_tests: true        # only when a REMOVED requirement makes its tests go; otherwise a deleted test fails the checkpoint
     verify:
       - <command that proves it works, e.g. pnpm vitest run lib/booking>
+    patterns:                  # up to 3: real code of this project to imitate, with its lines (see below)
+      - { path: "lib/schedule/store.ts:12-48", why: "a store function: input parsed with zod, typed error, its test" }
+    docs: ["zod@3.23.8 parsing"]   # <lib>@<version> <topic>: a library new to the project or sensitive to its version
+    manual: ["the reminder email reads well in Gmail on a phone"]   # checks only a human can make
     status: pending
 ```
+
+### A task carries the code to imitate, its Docs Briefs and the human checks
+
+The implementer starts with a fresh context and reads only its brief, so put in the task what it would otherwise
+guess.
+
+- **`patterns`: the code to imitate.** In an existing project, point each task at up to three places that already
+  do what it must do (a store function, a route with its validation, a screen with its loading state, and the test
+  of each), as `path:from-to` with the lines that matter (40 at most) and a `why` that says what to copy. The brief
+  shows those lines; `aidw analyze` refuses a pattern whose file or lines are gone. Take them from the Existing
+  System Report's pattern examples, or find them yourself; a greenfield project has none.
+- **`docs`: the libraries to read up on.** Add `<lib>@<version> <topic>` for a library or service the project does
+  not use yet, or one whose behaviour changes between versions (a framework's caching, an SDK's auth). The version is
+  the installed one, or the one the task will install. Research writes the Docs Brief before the plan review, and the
+  brief gives the implementer its Answer and Pitfalls. `aidw analyze` refuses a `docs` entry without a fresh Docs
+  Brief, and a library that the Program Design imports but no manifest of the project lists (package.json,
+  pyproject.toml, requirements, go.mod) unless a task's `docs` names it.
+- **`manual`: the checks only a human can make.** A look at a real phone, an email in a real inbox, a payment in the
+  provider's dashboard. The build does not stop for them; the gate lists them and delivery hands them over under
+  "Checks for you". Do not put there what a test can prove.
 
 ### Who owns a task
 
@@ -118,8 +151,9 @@ it leaves the automatic approval and waits for the user.
 
 ## Done when
 
-`aidw plan <id>` shows a sensible shape, `aidw analyze <id>` reports no error, and every changed scenario has an
-owner. Quote the plan's shape in your reply.
+`aidw plan <id>` shows a sensible shape, `aidw analyze <id>` reports no error other than a Docs Brief still to write,
+and every changed scenario has an owner. Quote the plan's shape in your reply, and list every `docs` entry
+(`aidw docs-brief --change <id>` prints which still need Research).
 
 ## Stop and report when
 
@@ -199,7 +233,7 @@ Each line gives the exact command that prints the skill's path; run it as writte
   `aidw plugin-path roles/technical-planner/skills/scaffold-tasks.md`
 - `migration-tasks`: when a task adds or changes a database migration
   `aidw plugin-path roles/technical-planner/skills/migration-tasks.md`
-- `task-interfaces`: when two or more tasks share a function, a route, a type or a table - what each produces and consumes, and the reviewer's focus
+- `task-interfaces`: when you cut the tasks from the Program Design (every plan) - its file tree and signatures handed out to tasks, what each task produces and consumes, and the reviewer's focus
   `aidw plugin-path roles/technical-planner/skills/task-interfaces.md`
 
 ## Consultation

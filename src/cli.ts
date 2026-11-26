@@ -19,6 +19,7 @@ import { installRunner } from "./installcheck.js";
 import { BrowserError, browserEnv, browserStatus, startBrowser, stopBrowser, usesOwnBrowser } from "./browser.js";
 import { checkArtifacts } from "./artifacts.js";
 import { checkDocsBrief, parseDocsRef } from "./docsbrief.js";
+import { planGateSection, taskDocs } from "./planrefs.js";
 import { fetchFont, runShotsWorker, SHOTS_WORKER, takeShots } from "./mock.js";
 import { boundaryOf } from "./boundary.js";
 import { buildAuditBrief, chosenLenses, compileReport, lensRoles, pickFindings } from "./audit.js";
@@ -306,6 +307,7 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
   docs-brief <lib>@<version> <topic>     whether a fresh Docs Brief exists (.aidw/research/docs/<lib>@<major.minor>-<topic>.md,
                                          same major.minor, at most 90 days old): FRESH exits 0; MISSING, STALE or INVALID
                                          exit 1 with the path Research writes it to (docs-research)
+  docs-brief --change <id>               the same for every docs: entry of the plan (tasks.yaml)
   eval [<role>] [--case <name>] [--model <m>] [--runs <n>] [--without <id,...> | --bare] [--answers]
                                          run a Role's cases with claude -p (no tools) and grade each answer against its
                                          criteria; without a Role, every active Role. Costs tokens; exits 1 when a case fails.
@@ -1040,6 +1042,21 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
       case "docs-brief": {
         // ADR-0016, R9: a Docs Brief is reused while the installed major.minor matches and it is at most 90 days old.
         const p = project();
+        if (rest[0] === undefined && args.flags.change !== undefined) {
+          // R8, M13: every docs entry of the plan; Research writes each brief that is not fresh before the plan review.
+          const id = resolveChangeId(p, str(args.flags.change));
+          const tasks = parseTasks(readText(join(loadChange(p, id).dir, "tasks.yaml")) ?? "").tasks;
+          const rows = tasks.flatMap((t) => taskDocs(t).map((x) => ({ task: t.id, entry: x.entry, ...checkDocsBrief(p.aidw, x.ref) })));
+          const due = rows.filter((r) => r.status !== "fresh");
+          const lines = rows.map((r) => `${r.status.toUpperCase()} ${r.rel} (${r.task}: ${r.entry})${r.status === "fresh" ? "" : `: ${r.reasons.join("; ")}`}\n`);
+          const spawn = due.length
+            ? `Spawn aidw:research once per brief, all in one message: "Write the Docs Brief for <entry> with your docs-research skill, to <path>."\n`
+            : rows.length
+              ? "Every Docs Brief of the plan is fresh.\n"
+              : "The plan names no docs.\n";
+          emit({ ok: due.length === 0, change: id, briefs: rows }, `${lines.join("")}${spawn}`);
+          return due.length ? 1 : 0;
+        }
         let c;
         try {
           c = checkDocsBrief(p.aidw, parseDocsRef(`${need(rest[0], "<lib>@<version>")} ${rest.slice(1).join(" ")}`));
@@ -1449,7 +1466,8 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           const tasks = parseTasks(readText(join(c.dir, "tasks.yaml")) ?? "").tasks;
           return [
             ...(points.length ? [{ id: "decision-points", title: "Decision Points", body: "", points, html: "" }] : []),
-            ...(tasks.length ? [{ id: "plan", title: "Plan", body: planSummary(tasks), points: [], html: "" }] : []),
+            // T13: the plan as stages, with each task's patterns, Docs Briefs (linked) and checks for the user
+            ...(tasks.length ? [planGateSection(p, tasks, pagesDir(p))] : []),
             ...[grantsSection(p, c)].filter((x): x is PageSection => x !== null),
           ];
         };

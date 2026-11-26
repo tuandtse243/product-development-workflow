@@ -252,7 +252,7 @@ layout: gate
 title: Approve the notes app
 intro: What will be built, and what it needs from you.
 lang: vi
-change: 2026-11-17-notes      # adds the Program Design, the Decision Points and the plan size as sections
+change: 2026-11-17-notes      # adds the Program Design, the Decision Points and the plan as sections
 sections:
   - id: scope
     title: Scope
@@ -273,6 +273,9 @@ goes first.
 After your sections the CLI adds `program-design` from `program-design.md`: the file tree and the signatures as
 Views, because the user approves the Program Design with the rest and code that differs from it is a Deviation.
 Write a section with that id only to show it better; yours then replaces it.
+The CLI also adds `plan` from `tasks.yaml` (`layout: plan`): the shape as figures, one step per task in the stage it
+runs in, each with its patterns, its Docs Briefs and the checks it leaves for the user, and the Docs Briefs as links.
+Do not write a section with that id.
 
 ### The free slot (`html`)
 
