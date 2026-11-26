@@ -7,7 +7,7 @@ source counts, how a claim is recorded, and when to stop searching.
 
 1. **Official documentation of the version in question**: the vendor's docs, reference, limits and pricing pages for
    the version or plan the question is about. For a product, its own pages. For a world in a world scan, the record
-   of the museum, archive or collection that holds the object.
+   of the museum, archive or collection that holds the object, or the trade's own documents.
 2. **Changelogs, release notes, migration guides, maintainers' issues and discussions, official examples**: what the
    people who ship the thing wrote about it. They settle what changed between versions.
 3. **Named experts and organisations**: an author or body you can name and check (a known maintainer's blog, a
@@ -34,8 +34,9 @@ search its pitfalls, anti-patterns and known issues, and record what you found o
   `inference` row quotes nothing and names the rows it rests on.
 - **Source**: the link goes to the section anchor (`.../limits#sending-quota`), not the top of the page; when the page
   has no anchors, name the heading. Only pages you opened: never a search snippet.
-- **Tier**: 1 to 3 from the ladder; `4` only on a "users report" row.
-- **Kind**: `fact` (the source states it) or `inference` (you conclude it).
+- **Tier**: 1 to 3 from the ladder; `4` only on a "users report" row; none on an `inference` row.
+- **Kind**: `fact` (the source states it) or `inference` (you conclude it). An `inference` row's confidence is
+  never higher than the lowest of the rows it rests on.
 - **Confidence**: `high` (tier 1, or two independent tier 2 sources), `medium` (one tier 2 or tier 3 source), `low`
   (old, undated, self-interested about quality, or a "users report" row). A version or a number carries its date and
   what it measures.

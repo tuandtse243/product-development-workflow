@@ -38,8 +38,8 @@ nothing into the project, and use no real credential.
 ## Done when
 
 The note answers the question in a few lines, every claim has a source you opened, with its tier and a quote of at
-most two sentences linked to the section, or is marked as your inference with its confidence, what points the other way is stated, and what you could not find is listed with where you
-looked. Reply with the path and the answer in three lines.
+most two sentences linked to the section, or is marked as your inference with its confidence, what points the other
+way is stated, and what you could not find is listed with where you looked. Reply with the path and the answer in three lines.
 
 ## Stop and report when
 

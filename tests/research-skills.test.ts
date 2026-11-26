@@ -39,6 +39,14 @@ describe("research source discipline", () => {
     expect(text).toMatch(/`site:/);
   });
 
+  it("an inference row has no tier and its confidence follows the rows it rests on; a world's tier 1 includes the trade's own documents", () => {
+    const text = read(SOURCES);
+    expect(text).toMatch(/none on an `inference` row/);
+    expect(text).toMatch(/`inference` row's confidence is\s+never higher than the lowest of the rows it rests on/);
+    expect(text).toMatch(/holds the object, or the trade's own documents/);
+    expect(read("roles/research/skills/evidence-scan.md")).toMatch(/users' reports in issue trackers/);
+  });
+
   it.each(WEB_SKILLS)("%s points to the shared reference instead of repeating it", (s) => {
     const text = read(`roles/research/skills/${s}.md`);
     expect(text).toContain(`\`aidw plugin-path ${SOURCES}\``);

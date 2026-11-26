@@ -21,8 +21,8 @@ First run `aidw plugin-path roles/research/references/sources.md` and read the f
 sets the first search budget and gives the query for each kind of question.
 
 - the products themselves: their sites, pricing pages, documentation, changelogs (tier 1 and 2);
-- what their users say: reviews, forums, issue trackers, app-store ratings (complaints tell you more than praise),
-  cited as "users report";
+- what their users say: reviews, forums, users' reports in issue trackers, app-store ratings (complaints tell you
+  more than praise), cited as "users report";
 - independent accounts: reports, benchmarks, regulators, reputable press (tier 3);
 - the absence of something is a finding only if you say where you looked.
 
