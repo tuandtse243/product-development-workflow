@@ -29,6 +29,10 @@ evidence: `README.md` (contents, deploy status), `quality-report.md` (every laye
 what was **not** covered), `tasks.md` (tasks, attempts, reviews, commits), `decisions.md`, and a
 `handoff.md` skeleton (only if missing). Do not edit the generated files: they are regenerated each run.
 
+When a task of the plan has `manual:` (checks that need a person, such as an email reaching a real inbox), the run did
+not stop for them: `aidw deliver` lists them in `handoff.md` under `## Checks for you`, right after `## Overview`, and
+rewrites that section on every run. Leave it as it is; `aidw deliver --check` refuses a handoff that lost one.
+
 ## 1b. Release plan (drafting Agent)
 
 Spawn **`aidw:release`** with this prompt and nothing else:
@@ -38,7 +42,7 @@ production deployment stays the user's decision and action.
 
 ## 2. Write handoff.md
 
-Replace every `TODO(aidw)`; keep the headings. Sources: `analysis.md`, `.aidw/requirements/`,
+Replace every `TODO(aidw)`; keep the headings, `## Checks for you` included. Sources: `analysis.md`, `.aidw/requirements/`,
 `.aidw/architecture/overview.md`, `constitution.md`, `quality.yaml`, `package.json` scripts, the generated
 quality report.
 
@@ -77,8 +81,9 @@ width; add mobile for the most important one):
 ## 4. Check, pull request, archive
 
 1. **Project documentation (drafting Agent).** Spawn **`aidw:documentation`** with this prompt and nothing else:
-   `Change <id> is delivered. Bring the project's README.md and .env.example up to date as your Procedure says (and the API documentation when the project has an API others call), and reply with the files, the commands you could not run and the differences you found.`
-   It may write only `README.md` and `.env.example` at this point. Put the differences it reports under `## Known issues`.
+   `Change <id> is delivered on <run.branch>, base <run.base_branch>. Bring the project's README.md and .env.example up to date as your Procedure says (and the API documentation when the project has an API others call), write .aidw/changes/<id>/delivery/pr-summary.md as your pr-summary skill says, and reply with the files, the commands you could not run and the differences you found.`
+   It may write only `README.md`, `.env.example` and `pr-summary.md` at this point. Put the differences it reports
+   under `## Known issues`.
    Then `aidw deliver --change <id>` again (regenerates the package README with the screenshots), and
    `aidw deliver --check --change <id>`. Fix every item it reports. It also checks the **project's** README:
    every `npm run` / `pnpm <script>` it names must exist in package.json. Update the project README so its
@@ -91,7 +96,11 @@ width; add mobile for the most important one):
    1. `aidw pr <id>`: writes the body to `.aidw/run/pr-<id>.md` and prints whether it is **ready** (everything passed,
       nothing not built) or a **draft** (with why), whether the push is **granted**, and a `NEXT:` line. The body opens
       with three fixed sections, filled by the CLI: what differs from the approved package (the Deviations), what was
-      not built and why, and what is needed from the user to finish. Do not edit it.
+      not built and why, and what is needed from the user to finish. Then comes the Documentation Role's
+      `delivery/pr-summary.md` (Why, Notes, Change outline; the Analysis summary when there is none), then the tasks,
+      the Evidence and the merge danger, generated. Do not edit the body. `aidw pr` refuses a summary that names a file
+      absent from the git diff and from the approved Artifacts, and names each one: correct those names in
+      `pr-summary.md` from `git diff --name-only <base>...HEAD` (or drop them) and run `aidw pr <id>` again.
    2. Run `aidw pr <id> --create` when the `NEXT:` line says so: granted, it does not ask; not granted, it asks the user.
       It commits the delivery package, pushes the Change Branch and opens the pull request (a draft when it is one), or
       updates the one open for the branch. It refuses when HEAD is not the Change Branch, when the remote moved since
@@ -108,7 +117,7 @@ width; add mobile for the most important one):
    `AIDW_RUNNER=1`): do not archive either; the user opens the pull request, then archives.
 5. Report to the user: the pull request (its link, ready or draft, or where its body is and the `NEXT:` line), the
    preview URL, where the package is (`.aidw/archive/<id>/delivery/`, or `.aidw/changes/<id>/delivery/` for a draft),
-   the quality summary, and the known issues. Name the branch that holds the work (`run.branch` in change.yaml,
+   the quality summary, the known issues, and every line of `## Checks for you` (the checks only a person can do). Name the branch that holds the work (`run.branch` in change.yaml,
    usually `aidw/<id>`) and its base. aidw never merges.
 6. Tell the user to `/clear` (or open a new session) before the next change: this session's context is large
    and a new change does not need it.
