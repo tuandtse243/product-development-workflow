@@ -1238,8 +1238,8 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const plan = st === "delivered" || st === "archived" ? writePrBody(p, id, { ...(base ? { base } : {}), env }) : planPr(p, id, { ...(base ? { base } : {}), env });
         const next = prNext(p, id, plan, env.AIDW_RUNNER === "1");
         emit(
-          { ok: true, change: id, title: plan.title, head: plan.head, base: plan.base, ready: plan.ready, why: plan.why, granted: plan.granted, url: plan.record?.url ?? null, body: plan.body, body_file: rel(p, plan.bodyFile), commands: plan.commands, next },
-          `title: ${plan.title}\n${plan.ready ? "ready for review" : `draft: ${plan.why.join("; ")}`}\npush: ${plan.granted ? "granted at the Approval Gate" : "not granted (the gate asks)"}\nbody: ${rel(p, plan.bodyFile)}\n\n${plan.body}\n${next}\n`,
+          { ok: true, change: id, title: plan.title, head: plan.head, base: plan.base, ready: plan.ready, why: plan.why, granted: plan.granted, url: plan.record?.url ?? null, body: plan.body, body_file: rel(p, plan.bodyFile), commands: plan.commands, warnings: plan.warnings, next },
+          `title: ${plan.title}\n${plan.ready ? "ready for review" : `draft: ${plan.why.join("; ")}`}\npush: ${plan.granted ? "granted at the Approval Gate" : "not granted (the gate asks)"}\nbody: ${rel(p, plan.bodyFile)}\n\n${plan.body}\n${plan.warnings.map((w) => `WARNING ${w}\n`).join("")}${next}\n`,
         );
         return 0;
       }

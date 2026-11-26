@@ -56,3 +56,25 @@ describe("canonicalTasks", () => {
     expect(canonicalTasks(TASKS_YAML.replace("Booking page", "Booking pages"))).not.toBe(canonicalTasks(TASKS_YAML));
   });
 });
+
+describe("manual checks on a task (I11, M4)", () => {
+  const task = (manual: string) => `tasks:
+  - id: A
+    title: a
+    role: backend-engineer
+    type: feat
+    touches: ["a/**"]
+    verify: ["x"]
+${manual}`;
+
+  it("accepts a list of checks that need a human", () => {
+    expect(validateTasksText(task('    manual: ["the reset email arrives in a real inbox"]\n'), "tasks.yaml").items).toEqual([]);
+  });
+
+  it("refuses manual that is not a list of non-empty strings", () => {
+    for (const bad of ["    manual: check the email\n", "    manual: [1]\n", '    manual: [""]\n']) {
+      const msgs = validateTasksText(task(bad), "tasks.yaml").errors.map((e) => e.message);
+      expect(msgs).toContain('task A: "manual" must be a list of checks a human makes, each a non-empty line');
+    }
+  });
+});
