@@ -85,3 +85,86 @@ describe("codebase-research skill", () => {
     expect(c!.criteria.some((x) => /checks? run/.test(x))).toBe(true);
   });
 });
+
+// Test-agent additions (plan T6): the parts of I2, I4 and Q2 the first tests leave unchecked.
+describe("codebase-research skill, decision details", () => {
+  const modeRows = (body: string) =>
+    new Map(
+      [...body.matchAll(/^\| \*\*(\w+)\*\* \| (.+?) \| (.+?) \|$/gm)].map((m) => [m[1]!, { answers: m[2]!, gives: m[3]! }]),
+    );
+
+  it("gives each of the four modes a row with what it answers and what it hands back (I2)", () => {
+    const rows = modeRows(parse().body);
+    expect([...rows.keys()].sort()).toEqual(["analyze", "locate", "patterns", "synthesize"]);
+    expect(rows.get("locate")!.answers).toMatch(/where/);
+    expect(rows.get("analyze")!.answers).toMatch(/how it runs/);
+    expect(rows.get("analyze")!.gives).toMatch(/file:line/);
+    expect(rows.get("patterns")!.answers).toMatch(/imitate/);
+    expect(rows.get("patterns")!.gives).toMatch(/test/);
+    expect(rows.get("synthesize")!.answers).toMatch(/several parts/);
+  });
+
+  it("names the judgment and proposal words to leave out, and drops a proposal when merging (I2)", () => {
+    const { body } = parse();
+    const rules = section(body, "Describe what exists: no critique, no proposals");
+    for (const w of ["fragile", "a bug", "a risk", "should", "consider"]) expect(rules, w).toContain(`"${w}"`);
+    expect(rules).toMatch(/a fix, a refactoring/);
+    expect(rules).toMatch(/Open questions/); // an untraced claim is not stated as a finding
+    expect(section(body, "6. Synthesize: merge the parts into one report")).toMatch(/proposal .*dropped/);
+  });
+
+  it("per capability records test files, fixtures, mocks, the command and what is not tested (I4)", () => {
+    const tested = section(parse().body, "4. How each part is tested");
+    expect(tested).toMatch(/test files/);
+    expect(tested).toMatch(/fixtures/);
+    expect(tested).toMatch(/mocks/);
+    expect(tested).toMatch(/command that runs them/);
+    expect(tested).toMatch(/what is not tested/);
+  });
+
+  it("a check run carries its command, exit status and output; reading a test proves nothing (I4)", () => {
+    const tested = section(parse().body, "4. How each part is tested");
+    const checks = tested.slice(tested.indexOf("**Checks run**"));
+    expect(checks).toMatch(/exact\s+command/);
+    expect(checks).toMatch(/exit status/);
+    expect(checks).toMatch(/output lines/);
+    expect(tested).toMatch(/Reading a test does not tell you it passes/);
+    expect(tested).toMatch(/Never write "the tests pass" without a check run/);
+  });
+
+  it("each part has a Tested by block, and the merge keeps tests read and checks run in separate columns (I4)", () => {
+    const { body } = parse();
+    const part = body.slice(body.indexOf("## 5. Write your part"), body.indexOf("## 6. Synthesize")); // the part's shape holds "## " headings
+    expect(part).toMatch(/^#### Tested by$/m);
+    expect(section(body, "6. Synthesize: merge the parts into one report")).toMatch(/capability, tests read, checks run, not tested/);
+  });
+
+  it("the Research Role sends code questions to the Skill and reads the project's code (Q2)", () => {
+    const role = readFileSync(join(plugin, "roles", "research", "role.md"), "utf8");
+    const procedure = role.slice(role.indexOf("## Procedure"));
+    expect(procedure).toMatch(/follow `codebase-research`/);
+    expect(procedure).toMatch(/read the project's code and its tests/);
+    expect(procedure).toMatch(/without proposing/);
+    expect(role).toMatch(/^description: .*existing code/m);
+    const agent = readFileSync(join(plugin, "agents", "research.md"), "utf8");
+    expect(agent).toMatch(/`codebase-research`/);
+    expect(agent).toMatch(/^model: /m);
+  });
+
+  it("the eval asks a neutral question and gives the fixture with gapless line numbers", () => {
+    const c = loadEvalCases(plugin, "research").cases.find((x) => x.covers.includes("codebase-research"))!;
+    expect(c.input).toMatch(/not told what the Change is/);
+    const question = /^> ([\s\S]*?)\n\n/m.exec(c.input)![1]!.replace(/\n> /g, " ");
+    expect(question).not.toMatch(/\b(should|fix|improve|refactor|add|change|bug|better)\b/i);
+    const blocks = [...c.input.matchAll(/```ts\n([\s\S]*?)```/g)].map((m) => m[1]!.trimEnd().split("\n"));
+    expect(blocks.length).toBeGreaterThanOrEqual(4);
+    for (const lines of blocks) lines.forEach((l, i) => expect(l).toMatch(new RegExp(`^\\s*${i + 1}( |$)`)));
+  });
+
+  it("the eval fails an answer that claims a passing test or misses the untested paths", () => {
+    const c = loadEvalCases(plugin, "research").cases.find((x) => x.covers.includes("codebase-research"))!;
+    expect(c.criteria.some((x) => /not claim that any test passes/.test(x))).toBe(true);
+    expect(c.criteria.some((x) => /no test calls the route/.test(x) && /email send fail/.test(x))).toBe(true);
+    expect(c.criteria.some((x) => /headings that state what is true/.test(x))).toBe(true);
+  });
+});
