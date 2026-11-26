@@ -176,7 +176,9 @@ Sơ đồ: mở [`diagrams/lifecycle.html`](diagrams/lifecycle.html) trong trìn
    `aidw pr` ghép nó với phần Evidence do máy sinh, và từ chối tóm tắt nhắc tới file không có trong git diff cũng
    không thuộc gói đã duyệt, nên phần văn không bịa được file. Các việc kế hoạch để lại cho người (`manual:` của task)
    nằm ở mục **Checks for you** trong handoff và ở mục "Needed from the user to finish" của PR; run không dừng chờ
-   chúng và chúng không làm PR thành draft.
+   chúng và chúng không làm PR thành draft. `aidw deliver` cảnh báo khi change thêm một dependency trực tiếp vào
+   manifest (`package.json`, `pyproject.toml`, `go.mod`...) mà không Docs Brief nào phủ; nó so manifest chứ không so
+   lockfile.
    aidw chỉ sửa PR mà `gh` xác nhận là PR đang mở từ Change Branch của chính repo (không phải nhánh cùng tên của một
    fork) vào đúng base (không tin URL ghi trong `change.yaml`; kiểm URL theo repo chỉ áp dụng cho remote GitHub), chỉ push khi HEAD đang ở Change Branch và remote vẫn là remote đã chốt lúc duyệt, và không push nếu
    gói bàn giao chứa file secrets hay key.
@@ -210,10 +212,11 @@ Bạn thấy các lựa chọn kỹ thuật **trước** khi kế hoạch đư�
   và không có vòng System Design; bugfix cũng vậy.
 - **Kế hoạch mang theo code mẫu, tài liệu và việc cần người kiểm.** Mỗi task trong `tasks.yaml` có thể có
   `patterns:` (Pattern to Follow: tối đa 3 chỗ trong code hiện có để làm theo, dạng `path:từ-tới`, kèm lý do),
-  `docs:` (`<lib>@<version> <chủ đề>` cho thư viện mới với project hay hay đổi theo phiên bản) và `manual:` (việc chỉ
+  `docs:` (`<lib>@<version> <chủ đề>` cho thư viện mới với project hoặc dễ đổi theo phiên bản) và `manual:` (việc chỉ
   người mới kiểm được). `aidw analyze` từ chối pattern trỏ vào file hay dòng không còn, mục `docs:` chưa có Docs Brief
   còn dùng được, và thư viện mà Program Design import nhưng không có trong manifest của project (`package.json`,
-  `pyproject.toml`, `go.mod`...) mà cũng không task nào ghi vào `docs:`.
+  `pyproject.toml`, `go.mod`...) mà cũng không task nào ghi vào `docs:`. Với project mới, mọi thư viện Program Design
+  import đều cần một mục `docs:` và một Docs Brief còn dùng được trước cổng duyệt; Stack Pack không miễn cho thư viện nào.
 - **Docs Brief.** Research đọc tài liệu chính thức của **đúng phiên bản đang cài** và viết
   `.aidw/research/docs/<lib>@<major.minor>-<chủ đề>.md`: câu hỏi, câu trả lời, bảng bằng chứng (mỗi dòng có trích dẫn
   tối đa hai câu và link tới đúng mục), các bẫy và những gì không tìm thấy. Change sau dùng lại khi major.minor còn
@@ -608,7 +611,8 @@ task sửa lỗi của layer có reviewer riêng được tự duyệt, orchestr
 - Tên file của Docs Brief không chứa được đường dẫn module Go, nên mục `docs:` ghi module Go bằng tên ngắn
   (`go-redis@9.5.1 ...` cho `github.com/redis/go-redis/v9`).
 - Role eval không kiểm được các câu hỏi trung lập của Existing System Report, vì chúng do session chính viết chứ
-  không do một Role. Nếu thấy câu hỏi lộ yêu cầu, aidw mới thêm một bước kiểm bằng CLI.
+  không do một Role. Thứ giữ chúng trung lập là luật viết ở bước 1b của skill `start` (viết câu hỏi trước khi đọc lại
+  yêu cầu, không câu nào chứa danh từ của yêu cầu) cùng test giữ luật đó; CLI không kiểm câu hỏi có lộ yêu cầu hay không.
 - Mỗi project chỉ chạy **một change tại một thời điểm**. Muốn làm thêm thì `deliver` và archive change hiện tại trước.
 - **Monorepo chưa được hỗ trợ** (pnpm workspaces, turbo, nx). `aidw init` và `aidw detect` cảnh báo; chạy aidw trong
   một package thì được, nhưng `touches`, lệnh verify và quality layer phải tự chỉnh.

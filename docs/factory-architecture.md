@@ -370,10 +370,12 @@ sensitive to its version) and `manual: [...]` (checks only a human can make). Re
 `plan` stage, before the plan review. `aidw brief` inlines up to 3 snippets of at most 40 lines and the Answer and
 Pitfalls of each Docs Brief. `aidw analyze` refuses a pattern whose file or lines are gone, a `docs:` entry with no
 fresh Docs Brief, and a library that the Program Design imports, that no manifest of the project lists
-(`package.json`, `pyproject.toml`, `go.mod`, ...) and that no task's `docs:` names. The gate's plan section lists
-all three per task. The run does not stop for `manual:` checks: `aidw deliver` lists them under `## Checks for you`
+(`package.json`, `pyproject.toml`, `go.mod`, ...) and that no task's `docs:` names. On a greenfield project that
+means every library the Program Design imports needs a `docs:` entry and a fresh Docs Brief before the gate; a Stack
+Pack does not exempt one (R3). The gate's plan section lists all three per task. The run does not stop for `manual:` checks: `aidw deliver` lists them under `## Checks for you`
 in the handoff, and the pull request under *Needed from the user to finish*, without making it a draft. `aidw deliver`
-also warns when the Change added a direct dependency to a manifest that no Docs Brief covers.
+also warns when the Change added a direct dependency to a manifest that no Docs Brief covers; it compares the
+manifests, not the lockfile, whose indirect packages no Docs Brief would cover (R2).
 
 **Older Changes are not judged again.** `aidw change new` records `analysis_template` on the Change. Template 2 brings
 Before / After, Deferred to architecture and the Existing System Report checks; template 3 the System Design round,
@@ -872,8 +874,9 @@ In the user's project, `.aidw/` keeps its current shape and gains `roles/<id>/` 
   entry or one made from another version of its case file (run that case), when a case had fewer than 3 runs, or
   when a case did not pass. A file of the old format is still checked against the digest of the whole Role.
 - **What a Role eval cannot test.** The neutral questions of the Existing System Report are written by the
-  Orchestrator, which is not a Role, so no Role eval checks that they keep the request out (OP1). A CLI check that
-  refuses questions sharing the request's distinctive terms is added only if a run shows them leaking.
+  Orchestrator, which is not a Role, so no Role eval checks that they keep the request out (OP1, R1). The guard is
+  the wording rule in step 1b of the `start` Skill (questions written before rereading the request, no noun of the
+  request in a question) and the test that pins it; there is no CLI leak check.
 - **End to end:** the existing fixtures (`evals/fixtures/brownfield-app`, `greenfield-jd`) and `aidw cost`,
   which already reports cost per agent type, catch coordination problems and cost regressions.
 
