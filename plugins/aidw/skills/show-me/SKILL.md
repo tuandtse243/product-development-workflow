@@ -17,6 +17,8 @@ The `aidw` CLI ships with this plugin as `${CLAUDE_PLUGIN_ROOT}/bin/aidw`. If a 
    two lines it supports. When the View is for a choice, give the options under it with your recommendation, as
    `library/decision-pages.md` shows for a question asked in the chat.
 3. Only when the point is a look, a layout or something too dense for a block, write one HTML page, modelled on an
-   example as `$(aidw vendor-path aidw/html-pages)` says, under `.aidw/run/pages/` when the project has `.aidw/`
-   (otherwise beside the topic's files). Never open it: give its link and one or two lines on what it shows.
+   example as `$(aidw vendor-path aidw/html-pages)` says.
+   Write it under `.aidw/run/pages/` when the project has `.aidw/`, otherwise under the system's temporary
+   directory (`$TMPDIR`), unless the user names a place. Never open it: give its link and one or two lines on
+   what it shows.
 4. Do not change code or record a decision: this command only shows.

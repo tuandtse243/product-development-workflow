@@ -9,7 +9,12 @@ Every HTML page the user sees speaks one visual language, whoever builds it: the
 data) or an Agent (the `html` slot of a Decision Page, the page of an Existing System Report, the pull request
 write-up). Both are modelled on the same 20 example pages, vendored word for word from anthropics/html-effectiveness
 (ADR-0017). Read the example you pick before you write:
-`aidw plugin-path library/vendor/anthropics/html-effectiveness/<file>.html`.
+`aidw plugin-path library/vendor/anthropics/html-effectiveness/<file>.html`. `<file>` is one of:
+`01-exploration-code-approaches`, `02-exploration-visual-designs`, `03-code-review-pr`, `04-code-understanding`,
+`05-design-system`, `06-component-variants`, `07-prototype-animation`, `08-prototype-interaction`, `09-slide-deck`,
+`10-svg-illustrations`, `11-status-report`, `12-incident-report`, `13-flowchart-diagram`,
+`14-research-feature-explainer`, `15-research-concept-explainer`, `16-implementation-plan`, `17-pr-writeup`,
+`18-editor-triage-board`, `19-editor-feature-flags`, `20-editor-prompt-tuner`.
 
 The examples are shapes, not templates. Take their layout and components; never their content, their labels, the
 "Acme" brand, their prompts or their colours.
@@ -19,7 +24,7 @@ The examples are shapes, not templates. Take their layout and components; never 
 | Example | Kind of page | Take | Leave |
 |---|---|---|---|
 | 01 | Two to four technical approaches to one Design Question; the CLI layout `approaches` | One column per option: a one-line summary, its code shape, a pro and con table, up to four metric chips; the recommendation in its own panel after the columns | Hand-coloured syntax spans where a plain monospace block reads as well; a fifth chip |
-| 02 | Looks side by side: Design Directions, an empty state in three treatments | Artboards of the same size in a row, a tag and two lines of rationale under each | The light and dark toggle (a script); its colours, since each artboard uses its direction's own tokens |
+| 02 | Looks side by side: Design Directions, an empty state in three or four treatments | Artboards of the same size in a row, a tag and two lines of rationale under each | The light and dark toggle (a script); its colours, since each artboard uses its direction's own tokens |
 | 03 | Review findings over a diff | A risk map that tags each file safe, worth a look or needs attention; the changed lines with line numbers; next steps | Avatars and branch chrome; the collapsing script |
 | 04 | How code works today: the page of an Existing System Report, one call path; the CLI layout `walkthrough` | A lede that names the one boundary that matters, a small SVG of the path, numbered steps each with `path:start-end` and its source in `<details>`, Key files, Gotchas | The script that keeps one snippet open; any step without a file and line |
 | 05 | The tokens of an approved Design Direction | Swatches with name and hex, type specimens with size and weight, spacing bars, radius and shadow samples | Its palette: tokens come from `.aidw/design/` |
@@ -32,7 +37,7 @@ The examples are shapes, not templates. Take their layout and components; never 
 | 12 | Something that went wrong: a task not built, a failed deploy, a triage | The short answer first, a timeline with times, the root cause with the lines that caused it, impact, action items | A severity or status the evidence does not state |
 | 13 | A Workflow or pipeline: stages, decision points, where it stops | An SVG flowchart with a legend (step, decision, end, failure path) and numbered notes under it | Click a step to read about it: put the notes in a list keyed by the step's number |
 | 14 | How one feature works, for someone who will use or change it | The short answer, the path step by step with `path:line`, how to configure it, gotchas, a FAQ, the files read | Tabs (a script): stack the panels or put each in `<details>` |
-| 15 | A concept a client must grasp before choosing | The question first, one figure, the same figure before and after, where the reader will meet it | The interactive ring: draw two static states instead |
+| 15 | A concept a client must grasp before choosing | The question first, one figure, where the reader will meet it | The interactive ring and the same figure before and after it animates: draw two static states instead |
 | 16 | A plan: the gate's plan section, the tasks of a Change; the CLI layout `plan` | Headline cells (tasks, Waves, new tables), numbered sections, milestones with what each touches, the data flow, risks with their mitigation, open questions | Calendar dates when the plan has Waves; the outside link |
 | 17 | The pull request write-up and any before and after; the CLI layout `before-after` | The short answer, Why with Before and After panels, file by file with a new or changed badge and the reason in `<details>`, where to focus the review, the test plan, the rollout | The author line; files that do not matter to the reviewer |
 | 18, 19, 20 | A page where the user edits: sorts, toggles, tunes | Only the idea: show a best guess first and let the choice come back as text | Building an editor: a choice goes on a Decision Page (`questions` or `picks`), whose answers the CLI checks |
@@ -62,7 +67,8 @@ The page rules live in `decision-pages.md` ("The free slot"). Where an example d
 - **One palette, light and dark.** Use the aidw pages' colours so the CLI's pages and yours look alike: background
   `#f3f5f9`, surface white, text `#17202e`, muted `#5b6678`, lines `#d6dce6`, accent `#2f55d4`, added `#17794a` on
   `#dff3e8`, removed or at risk `#a8442a`. Under `@media (prefers-color-scheme: dark)`: background `#11151c`, surface
-  `#1a202a`, text `#e7ebf2`, muted `#9aa5b8`, lines `#2e3746`, accent `#8aa4ff`. A mock of the product is the
+  `#1a202a`, text `#e7ebf2`, muted `#9aa5b8`, lines `#2e3746`, accent `#8aa4ff`, added `#6fd3a0` on
+  `#173527`, removed or at risk `#f0a084`. A mock of the product is the
   exception: it uses the product's approved tokens, since it shows the product, not aidw.
 - **An `html` slot is a fragment.** It is isolated from the page, so style it completely, its own background and
   text colour included, and keep it well under 60,000 characters. A whole page starts with `<!doctype html>`, a
@@ -76,10 +82,10 @@ The page rules live in `decision-pages.md` ("The free slot"). Where an example d
 A question or an option on any page carries a View: the smallest diff, file tree, call tree, component tree,
 pseudocode or mock that shows the point, picked as `aidw vendor-path humanlayer/show-me` says (read its notes in
 `library/vendored-skill-notes.md`). On a Decision Page the View goes into the `view:` field and the CLI draws it. In
-HTML you write, a View is an escaped `<pre>` block; in a diff colour the added lines with the added colours and the
+HTML you write, a View is an escaped `<pre>` block; in a diff, colour the added lines with the added colours and the
 removed lines with the removed ones. Mermaid needs a script to draw: write the same flow as a call tree or as SVG.
 
-## Markdown laid out after an example
+## A Markdown write-up keeps the example's order, not its colours
 
 A Markdown write-up that follows an example, such as the pull request summary after 17, takes the order of its
 sections and the components Markdown can hold: Before and After as two short blocks, file by file as a list with the

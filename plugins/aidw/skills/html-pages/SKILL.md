@@ -18,5 +18,7 @@ The `aidw` CLI ships with this plugin as `${CLAUDE_PLUGIN_ROOT}/bin/aidw`. If a 
 3. When the page asks the user to choose, it is a Decision Page: write its data and render it as
    `$(aidw plugin-path library/decision-pages.md)` says. Otherwise, when a CLI layout fits, render that; write HTML
    yourself only when none does.
-4. Write the page under `.aidw/run/pages/` when the project has `.aidw/` (otherwise where the user says). Never open
-   it: give its link and one or two lines on what it shows.
+4. A rendered page stays where `aidw page render` puts it. For a page you write yourself:
+   Write it under `.aidw/run/pages/` when the project has `.aidw/`, otherwise under the system's temporary
+   directory (`$TMPDIR`), unless the user names a place. Never open it: give its link and one or two lines on
+   what it shows.
