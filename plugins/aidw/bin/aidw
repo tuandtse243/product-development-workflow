@@ -9169,6 +9169,26 @@ function planAdvice(all2) {
 var import_node_fs7 = require("node:fs");
 var import_node_path9 = require("node:path");
 
+// src/fences.ts
+function fenceTracker() {
+  let fence = null;
+  return {
+    step(raw) {
+      const line = raw.replace(/\r$/, "");
+      if (fence === null) {
+        const f = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+        if (!f || f[1][0] === "`" && f[2].includes("`")) return false;
+        fence = f[1];
+        return true;
+      }
+      const c = /^ {0,3}(`{3,}|~{3,})\s*$/.exec(line);
+      if (c && c[1][0] === fence[0] && c[1].length >= fence.length) fence = null;
+      return true;
+    },
+    open: () => fence !== null
+  };
+}
+
 // src/beforeafter.ts
 var ANALYSIS_TEMPLATE = 3;
 var BEFORE_AFTER_TEMPLATE = 2;
@@ -9309,10 +9329,12 @@ function designQuestionsOf(analysis) {
   const bad = [];
   let none = /^\s*none\b/im.test(b.lines.join("\n"));
   let cur = null;
+  let last = "question";
   for (const l of b.lines) {
     const m = DQ_LINE.exec(l);
     if (m) {
       cur = { id: m[1], question: m[2].trim(), open: null, chosen: null, why: null, rejected: null };
+      last = "question";
       items.push(cur);
       continue;
     }
@@ -9326,8 +9348,9 @@ function designQuestionsOf(analysis) {
     if (cur && f) {
       const key = f[1].toLowerCase();
       cur[key] = f[2].trim();
-    } else if (cur && /^\s+\S/.test(l) && cur.why !== null && cur.rejected === null) {
-      cur.why += ` ${l.trim()}`;
+      last = key;
+    } else if (cur && /^\s+\S/.test(l)) {
+      cur[last] = `${cur[last] ?? ""} ${l.trim()}`.trim();
     } else if (!/^\s*$/.test(l)) cur = null;
   }
   return { line: b.line, none, items, bad, text: b.lines.join("\n") };
@@ -9395,14 +9418,15 @@ function roundAdvice(analysis) {
 }
 function fences(body) {
   const out = [];
+  const t = fenceTracker();
   let cur = null;
   for (const l of body.split(/\r?\n/)) {
-    const m = /^\s*(`{3,}|~{3,})\s*([\w+-]*)/.exec(l);
-    if (!cur && m) cur = { lang: (m[2] ?? "").toLowerCase(), lines: [], fence: m[1][0] };
-    else if (cur && m && m[1][0] === cur.fence && !(m[2] ?? "")) {
+    if (!t.step(l)) continue;
+    if (!cur) cur = { lang: (/^\s*(?:`{3,}|~{3,})\s*([\w+-]*)/.exec(l)?.[1] ?? "").toLowerCase(), lines: [] };
+    else if (!t.open()) {
       out.push({ lang: cur.lang, text: cur.lines.join("\n") });
       cur = null;
-    } else if (cur) cur.lines.push(l);
+    } else cur.lines.push(l);
   }
   return out;
 }
@@ -9570,7 +9594,10 @@ function planRefProblems(t) {
   }
   if (t.manual !== void 0 && !(Array.isArray(t.manual) && t.manual.every((x) => typeof x === "string" && x.trim() !== ""))) {
     out.push(': "manual" must be a list of checks a human makes, each a non-empty line');
-  }
+  } else if (Array.isArray(t.manual))
+    t.manual.forEach((x, i) => {
+      if (/[\r\n]/.test(String(x).trim())) out.push(`: manual[${i + 1}]: a check must be one line (it is one checklist line in the handoff and the pull request)`);
+    });
   return out;
 }
 function taskPatterns(t) {
@@ -14063,13 +14090,11 @@ function manualChecks(tasks) {
 }
 function withChecksForYou(handoff, checks) {
   const lines = handoff.replace(/\r\n?/g, "\n").split("\n");
-  const h2 = (i) => /^##\s+(.+?)\s*#*\s*$/.exec(lines[i] ?? "")?.[1]?.trim().toLowerCase() ?? null;
+  const t = fenceTracker();
+  const fenced = lines.map((l) => t.step(l));
+  const h2 = (i) => fenced[i] ? null : /^##\s+(.+?)\s*#*\s*$/.exec(lines[i] ?? "")?.[1]?.trim().toLowerCase() ?? null;
   const next = (from) => {
-    let fence = false;
-    for (let i = from; i < lines.length; i++) {
-      if (/^\s*(```|~~~)/.test(lines[i] ?? "")) fence = !fence;
-      else if (!fence && h2(i) !== null) return i;
-    }
+    for (let i = from; i < lines.length; i++) if (h2(i) !== null) return i;
     return lines.length;
   };
   const at = lines.findIndex((_, i) => h2(i) === CHECKS_FOR_YOU.toLowerCase());
@@ -16852,7 +16877,7 @@ function decisionRecords(body) {
     const m = DECISION.exec(l);
     if (m) out.push(cur = { id: m[1], parts: [m[2].trim()] });
     else if (cur && /^\s+\S/.test(l) && !/^\s*[-*]\s/.test(l)) cur.parts.push(l.trim());
-    else cur = null;
+    else if (!/^\s*$/.test(l)) cur = null;
   }
   return out.map((d) => ({ id: d.id, text: d.parts.join(" ") }));
 }
@@ -19673,24 +19698,6 @@ function hasUnclosedFence(text2) {
   for (const line of text2.split("\n")) fences2.step(line);
   return fences2.open();
 }
-function fenceTracker() {
-  let fence = null;
-  return {
-    step(raw) {
-      const line = raw.replace(/\r$/, "");
-      if (fence === null) {
-        const f = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
-        if (!f || f[1][0] === "`" && f[2].includes("`")) return false;
-        fence = f[1];
-        return true;
-      }
-      const c = /^ {0,3}(`{3,}|~{3,})\s*$/.exec(line);
-      if (c && c[1][0] === fence[0] && c[1].length >= fence.length) fence = null;
-      return true;
-    },
-    open: () => fence !== null
-  };
-}
 function loadEvalCases(root, id) {
   const d = new Diags();
   const dir = (0, import_node_path49.join)(roleDir(root, id), "evals");
@@ -20629,13 +20636,16 @@ function readPrSummary(p, change, base2, head) {
   const raw = readText(file) ?? "";
   const { files, diffFailed } = knownPaths(p, change, base2, head);
   const unknown = unknownPaths(summaryRefs(raw).filter((r) => !r.loose).map((r) => r.path), files);
-  if (unknown.length) {
+  const unchecked = [];
+  if (unknown.length && diffFailed) {
+    unchecked.push(`${rel(p, file)}: the git diff (${base2}...${head}) could not be read (${diffFailed}), so the files it names were not checked: ${unknown.map((u) => `\`${u}\``).join(", ")}`);
+  } else if (unknown.length) {
     throw new OpError(
-      `${rel(p, file)} names ${unknown.length === 1 ? "a file" : "files"} absent from the git diff (${base2}...${head}) and from the approved Artifacts: ${unknown.map((u) => `\`${u}\``).join(", ")}${diffFailed ? ` (the diff could not be read: ${diffFailed})` : ""}; name only files the Change Branch changed or the approved package holds, then run \`aidw pr ${change.id}\` again`
+      `${rel(p, file)} names ${unknown.length === 1 ? "a file" : "files"} absent from the git diff (${base2}...${head}) and from the approved Artifacts: ${unknown.map((u) => `\`${u}\``).join(", ")}; name only files the Change Branch changed or the approved package holds, then run \`aidw pr ${change.id}\` again`
     );
   }
   const text2 = raw.replace(/\r\n?/g, "\n").replace(/^\s*# [^\n]*\n/, "").trim();
-  const warnings = missingSections(raw).map((m) => `${rel(p, file)} has no "## ${m}" section (Why in one sentence, 1 to 3 Notes, a Change outline of Views)`);
+  const warnings = unchecked.concat(missingSections(raw).map((m) => `${rel(p, file)} has no "## ${m}" section (Why in one sentence, 1 to 3 Notes, a Change outline of Views)`));
   return { text: text2, file, warnings };
 }
 
