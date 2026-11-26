@@ -236,6 +236,9 @@ describe("checkpoint and briefs for UI tasks", () => {
     expect(pass.json().design.hardcoded_colors).toEqual(["app/(site)/book/page.tsx: #00ff00"]);
 
     const review = readFileSync(cli(root, "brief", "T01", "--for", "review").out.trim(), "utf8");
+    // D6: the reviewer gets the reasons and the rejected options too, not only the decision
+    expect(review).toMatch(/- D1: Times are stored in UTC.* Why: patients book .* Rejected: clinic local time/);
+    expect(review).toMatch(/- D2: .* Rejected: none\./);
     expect(review).toContain(`Screenshots (open each with Read): \`${join(root, ".aidw/run/shots", ID, "T01/page.png")}\``);
     expect(review).toMatch(/Color literals that are not tokens.*#00ff00/);
     expect(review).toMatch(/4\. Every \*\*Decision to honor\*\*/);
