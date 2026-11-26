@@ -13,7 +13,7 @@ import { run } from "../src/cli.js";
 import { checkEvals, loadEvalCases } from "../src/evals.js";
 import { loadRole } from "../src/roles.js";
 import { CHECKS_FOR_YOU, HANDOFF_SECTIONS, manualChecks, withChecksForYou } from "../src/deliver.js";
-import { summaryPaths, unknownPaths } from "../src/prsummary.js";
+import { summaryPaths, summaryRefs, unknownPaths } from "../src/prsummary.js";
 import { ANALYSIS_MD, MAIN_SPEC, QUALITY_YAML, REQ, TASKS_YAML, TOKENS_YAML, planReviewed, tempProject, write } from "./fixtures.js";
 
 const ID = "app";
@@ -154,6 +154,20 @@ describe("which paths a pull request summary names", () => {
     expect(summaryPaths(text)).toEqual(["src/a.ts", "README.md", "lib/b.ts", "docs/x.md", "src/", "app/api/route.ts", "app/new.ts", "app/old.ts", "app/gone.ts", "lib/repo.ts", "c/d.ts"]);
   });
 
+  it("does not read a command in backticks as a path, nor an anchor of a link target", () => {
+    const text = "Run `node scripts/build.mjs`, `vitest run tests/pr-summary.test.ts`, `psql -f db/migrate.sql` and `npx tsx src/a.ts`; see [setup](README.md#setup) and `app/book now/page.tsx`.";
+    expect(summaryPaths(text)).toEqual(["app/book now/page.tsx", "README.md"]);
+  });
+
+  it("marks a bare file name in prose as loose (never refused): it cannot be told from a product name", () => {
+    expect(summaryRefs("Built on `Next.js` and `node.js`; see `README.md` and `lib/x.ts`.")).toEqual([
+      { path: "Next.js", loose: true },
+      { path: "node.js", loose: true },
+      { path: "README.md", loose: true },
+      { path: "lib/x.ts", loose: false },
+    ]);
+  });
+
   it("reads a diff whose first line is a git header as the header, not as a comment", () => {
     expect(summaryPaths(["```diff", "--- a/lib/old.ts", "+++ b/lib/old.ts", "@@ -1 +1 @@", "```"].join("\n"))).toEqual(["lib/old.ts"]);
   });
@@ -204,6 +218,18 @@ describe("aidw pr with the Documentation Role's summary (I8)", () => {
     expect(r.err).toContain("`app/api/phantom.ts`");
     expect(r.err).toMatch(/absent from the git diff \(main\.\.\.aidw\/app\) and from the approved Artifacts/);
     expect(r.err).not.toContain("`app/api/bookings/route.ts`");
+  });
+
+  it("accepts commands, product names and link anchors in the summary, and refuses a path that climbs with ..", () => {
+    delivered();
+    const ok = `${SUMMARY}\nBuilt on \`Next.js\`; run \`node scripts/build.mjs\` and \`psql -f db/migrate.sql\`; see [the route](app/api/bookings/route.ts#L1).\n`;
+    write(root, `.aidw/changes/${ID}/delivery/pr-summary.md`, ok);
+    const r = cli(["pr", ID]);
+    expect(r.code, r.err).toBe(0);
+    write(root, `.aidw/changes/${ID}/delivery/pr-summary.md`, `${ok}\nCopied from \`../shared/lock.ts\`.\n`);
+    const bad = cli(["pr", ID]);
+    expect(bad.code).not.toBe(0);
+    expect(bad.err).toContain("`../shared/lock.ts`");
   });
 
   it("keeps the Analysis summary when there is no pr-summary.md", () => {

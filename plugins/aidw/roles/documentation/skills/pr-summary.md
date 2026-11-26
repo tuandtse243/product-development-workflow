@@ -37,7 +37,8 @@ approved Artifact (`analysis.md`, `program-design.md`, the specs, ...), and list
 anything in backticks or a link target that ends in a file extension (`app/api/route.ts:12-30`, `README.md`) or in
 `/` (a folder), every line of a ` ```tree ` block, the headers of a git diff and the file comment on the first line
 of another fenced block. A branch (`aidw/reschedule`), a route (`/api/bookings`), a package (`@scope/name`) or a glob
-is not read as a path. It also warns, without refusing, when `## Why`, `## Notes` or `## Change outline` is missing. Take the paths from
+is not read as a path, nor a command in backticks (`node scripts/build.mjs`). A bare file name in prose
+(`README.md`, but also `Next.js`) is never refused, so write a file you mean with its folder. It also warns, without refusing, when `## Why`, `## Notes` or `## Change outline` is missing. Take the paths from
 `git diff --name-only <base>...HEAD`, not from the plan: a file the plan named and the code did not need is not in the
 diff.
 

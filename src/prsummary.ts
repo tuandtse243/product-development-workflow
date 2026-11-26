@@ -14,7 +14,9 @@
  *   - in any other fenced block: the headers of a git diff (`diff --git a/x b/x`, `--- a/x`, `+++ b/x`), and the file
  *     named in a comment on its first line (`// lib/repo.ts`, `# app/x.py`)
  * A path ending in `/` is a folder: known when a known file lies under it. A name with a space counts only with a `/`
- * and a known extension. `\` is read as `/`. A path with a `..` segment is always unknown: refused, not skipped.
+ * and a known extension and no space before the first `/`, so a command in backticks is not a path. `\` is read as `/`.
+ * A path with a `..` segment is always unknown: refused, not skipped. A bare file name in prose (no `/`: `README.md`,
+ * but also `Next.js`) is never refused: it cannot be told from a product name.
  */
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -40,8 +42,9 @@ function asPath(raw: string, strict = false): string | null {
   let s = raw.trim().replace(/^["'(]+|["'),.;]+$/g, "");
   s = s.replace(/(#L\d+(-L?\d+)?|:\d+(-\d+)?)$/, "");
   if (!s || s.includes("://") || /[*?<>{}|`$]/.test(s)) return null;
-  // a name with a space is a path only when it clearly is one: a `/` and a known extension (`app/book now/page.tsx`)
-  if (/\s/.test(s) && !(s.includes("/") && EXT.test(s))) return null;
+  // a name with a space is a path only when it clearly is one: a `/` and a known extension, and no space before the
+  // first `/` (`app/book now/page.tsx`); a command (`node scripts/build.mjs`, `psql -f db/x.sql`) is not
+  if (/\s/.test(s) && !(s.includes("/") && EXT.test(s) && !/\s/.test(s.slice(0, s.indexOf("/"))))) return null;
   if (s.startsWith("/") || s.startsWith("@") || s.startsWith("-") || s.startsWith("~")) return null;
   s = s.replace(/^\.\//, "");
   if (s === "" || s === ".") return null;
@@ -52,10 +55,22 @@ function asPath(raw: string, strict = false): string | null {
 
 /** The paths a summary names, in order of first appearance, without repeats. */
 export function summaryPaths(text: string): string[] {
-  const out: string[] = [];
+  return summaryRefs(text).map((r) => r.path);
+}
+
+/**
+ * The paths a summary names; `loose` marks a bare file name in prose (no `/` or `\`, such as `README.md` or `Next.js`):
+ * it is checked only for being known, never refused, since a product name looks the same.
+ */
+export function summaryRefs(text: string): { path: string; loose: boolean }[] {
+  const out: { path: string; loose: boolean }[] = [];
   const add = (raw: string | undefined, strict = false) => {
     const p = raw === undefined ? null : asPath(raw, strict);
-    if (p && !out.includes(p)) out.push(p);
+    if (!p) return;
+    const loose = strict && !/[\\/]/.test(p);
+    const seen = out.find((r) => r.path === p);
+    if (!seen) out.push({ path: p, loose });
+    else if (!loose) seen.loose = false;
   };
   const lines = text.replace(/\r\n?/g, "\n").split("\n");
   let fence: { mark: string; info: string; first: boolean } | null = null;
@@ -92,7 +107,7 @@ export function summaryPaths(text: string): string[] {
     }
     for (const m of line.matchAll(/(`+)([^`]+?)\1(?!`)/g)) add(m[2], true);
     // Markdown link targets: [text](lib/a.ts); an anchor or a URL is not a file
-    for (const m of line.replace(/`[^`]*`/g, "").matchAll(/\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g)) if (!m[1]!.startsWith("#")) add(m[1], true);
+    for (const m of line.replace(/`[^`]*`/g, "").matchAll(/\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g)) if (!m[1]!.startsWith("#")) add(m[1]!.replace(/#.*$/, ""), true);
   }
   return out;
 }
@@ -166,7 +181,7 @@ export function readPrSummary(p: Paths, change: Change, base: string, head: stri
   if (!existsSync(file)) return null;
   const raw = readText(file) ?? "";
   const { files, diffFailed } = knownPaths(p, change, base, head);
-  const unknown = unknownPaths(summaryPaths(raw), files);
+  const unknown = unknownPaths(summaryRefs(raw).filter((r) => !r.loose).map((r) => r.path), files);
   if (unknown.length) {
     throw new OpError(
       `${rel(p, file)} names ${unknown.length === 1 ? "a file" : "files"} absent from the git diff (${base}...${head}) and from the approved Artifacts: ${unknown.map((u) => `\`${u}\``).join(", ")}${diffFailed ? ` (the diff could not be read: ${diffFailed})` : ""}; name only files the Change Branch changed or the approved package holds, then run \`aidw pr ${change.id}\` again`,
