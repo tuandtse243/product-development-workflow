@@ -791,7 +791,10 @@ In the user's project, `.aidw/` keeps its current shape and gains `roles/<id>/` 
   other `CLAUDE_CODE_*` settings, `ANTHROPIC_MODEL` and `MAX_THINKING_TOKENS` are dropped). No network: Bash runs only
   in Claude Code's sandbox (`failIfUnavailable`) with no allowed hosts and no unsandboxed escape, but with
   `allowLocalBinding` (the session's own tests start the app on 127.0.0.1; the pilot's sessions without it could not
-  run them, `listen EPERM`). Bash is allowed by a rule as well as for being sandboxed (the pilot's sandboxed loops and
+  run them, `listen EPERM`). On macOS `allowLocalBinding` also lets the session connect to any port on localhost, so
+  "no network" holds only on a machine where nothing local forwards traffic out (a Claude Code proxy, a dev proxy, a
+  Docker TCP API): an accepted risk while evals run on the owner's machine, to be closed before level 2 opens for
+  other Roles by fixture tests that need no socket. Bash is allowed by a rule as well as for being sandboxed (the pilot's sandboxed loops and
   `$(…)` commands still asked for approval, which no one gives); it can run only sandboxed, and where the sandbox
   cannot start neither does the session; WebFetch and WebSearch are
   absent and denied. A watcher starts the session in its own process group, keeps the raw log, and stops the whole group
