@@ -4,7 +4,7 @@
  * what no longer holds, the gate's plan section lists all three, and delivery warns about a package no Docs Brief covers.
  */
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import YAML from "yaml";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -12,6 +12,7 @@ import { run } from "../src/cli.js";
 import { pathsFor } from "../src/project.js";
 import { manifestLibraries, parsePatternPath, patternBriefLines, planGateSection, programDesignLibraries, uncoveredPackages } from "../src/planrefs.js";
 import { validateTasksText } from "../src/tasks.js";
+import { checkDelivery } from "../src/deliver.js";
 import { ANALYSIS_MD, MAIN_SPEC, PROGRAM_DESIGN_MD, QUALITY_YAML, REQ, TASKS_YAML, TOKENS_YAML, planReviewed, tempProject, write } from "./fixtures.js";
 
 const ID = "booking-refs";
@@ -282,5 +283,196 @@ describe("the Technical Planner and the orchestrator say so", () => {
     expect(step7).toMatch(/aidw docs-brief --change <id>/);
     expect(step7).toMatch(/MISSING, STALE or INVALID, spawn one `aidw:research` Agent/);
     expect(step7).toMatch(/before the plan review/);
+  });
+});
+
+// ------------------------------------------------------------------------------------- gaps found by the test agent
+
+describe("pattern paths stay inside the project and inside the file (I3)", () => {
+  it("refuses absolute paths, drive letters and any `..` segment, and lines 0 or reversed", () => {
+    for (const bad of ["/etc/passwd:1-2", "C:/x.ts:1", "./../a.ts:1", "src/../../a.ts:1-2", "src/..:1", "a.ts:0", "a.ts:0-3", "a.ts:5-4", "a.ts:", "a.ts:1-", "a b.ts:1"]) {
+      expect(parsePatternPath(bad), bad).toBeNull();
+    }
+    expect(parsePatternPath("./src/a.ts:3")).toEqual({ file: "src/a.ts", start: 3, end: 3 });
+    const msgs = validateTasksText(tasksWith('    patterns: [{ path: "/etc/passwd:1-2", why: x }, { path: "src/../../a.ts:1-2", why: y }]\n'), "tasks.yaml").errors.map((e) => e.message);
+    expect(msgs.filter((m) => /patterns\[\d\]: path/.test(m))).toHaveLength(2);
+  });
+
+  it("accepts the last line of the file and refuses the line after it, with or without a final newline or with CRLF", () => {
+    setTasks(tasksWith('    patterns: [{ path: "lib/store.ts:50", why: a }, { path: "lib/store.ts:1-50", why: b }]\n'));
+    expect(analyze().errors().filter((m) => /pattern/.test(m))).toEqual([]);
+    setTasks(tasksWith('    patterns: [{ path: "lib/store.ts:51", why: a }]\n'));
+    expect(analyze().errors()).toContain('task T01: pattern "lib/store.ts:51" ends at line 51, but lib/store.ts has 50 lines: point at lines that exist');
+    write(root, "lib/nonl.ts", "a\nb\nc");
+    write(root, "lib/crlf.ts", "a\r\nb\r\nc\r\n");
+    setTasks(tasksWith('    patterns: [{ path: "lib/nonl.ts:1-3", why: a }, { path: "lib/crlf.ts:3", why: b }]\n'));
+    expect(analyze().errors().filter((m) => /pattern/.test(m))).toEqual([]);
+    setTasks(tasksWith('    patterns: [{ path: "lib/crlf.ts:4", why: b }]\n'));
+    expect(analyze().errors().some((m) => /lib\/crlf\.ts has 3 lines/.test(m))).toBe(true);
+  });
+
+  it("refuses a pattern that names a folder", () => {
+    setTasks(tasksWith('    patterns: [{ path: "lib:1", why: a }]\n'));
+    expect(analyze().errors().some((m) => /pattern "lib:1" names lib, which does not exist/.test(m))).toBe(true);
+  });
+});
+
+/** The fenced blocks of a Markdown text as CommonMark reads them: each opening fence and where it closes. */
+function fenceSpans(md: string): { open: string; body: string[] }[] {
+  const out: { open: string; body: string[] }[] = [];
+  let cur: { open: string; len: number; ch: string; body: string[] } | null = null;
+  for (const line of md.split("\n")) {
+    const m = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+    if (!cur) {
+      if (m && !(m[1]!.startsWith("`") && m[2]!.includes("`"))) cur = { open: line, len: m[1]!.length, ch: m[1]![0]!, body: [] };
+    } else if (m && m[1]![0] === cur.ch && m[1]!.length >= cur.len && !m[2]!.trim()) {
+      out.push({ open: cur.open, body: cur.body });
+      cur = null;
+    } else cur.body.push(line);
+  }
+  if (cur) out.push({ open: cur.open, body: cur.body });
+  return out;
+}
+
+describe("aidw brief keeps a snippet with fences in one code block (Q4)", () => {
+  const snippet = (file: string, text: string) => {
+    write(root, file, text);
+    const md = patternBriefLines(root, { id: "T01", patterns: [{ path: `${file}:1-${text.split("\n").length}`, why: "x" }] }).join("\n");
+    return fenceSpans(md);
+  };
+
+  it("a snippet with a ``` line at the start is one block with every line inside", () => {
+    const text = "const doc = `\n```ts\nlet a = 1;\n```\n`;";
+    const spans = snippet("lib/doc.ts", text);
+    expect(spans).toHaveLength(1);
+    expect(spans[0]!.body).toEqual(text.split("\n"));
+  });
+
+  it("a snippet with an indented ``` line (which closes a fence in CommonMark) is one block", () => {
+    const text = "const doc = `\n  ```sh\n  npm test\n  ```\n`;";
+    const spans = snippet("lib/indented.ts", text);
+    expect(spans).toHaveLength(1);
+    expect(spans[0]!.body).toEqual(text.split("\n"));
+  });
+
+  it("a Markdown snippet that itself uses a ```` fence is one block", () => {
+    const text = "# Doc\n\n````md\n```ts\nx\n```\n````\n";
+    const spans = snippet("docs/guide.md", text.trimEnd());
+    expect(spans).toHaveLength(1);
+    expect(spans[0]!.body).toEqual(text.trimEnd().split("\n"));
+  });
+});
+
+describe("the gate page escapes what the plan says (hostile text)", () => {
+  it("renders pattern whys, docs entries and checks for the user as text, never as markup", () => {
+    setTasks(
+      tasksWith(
+        '    patterns: [{ path: "lib/store.ts:1-2", why: "<img src=x onerror=alert(1)>" }]\n    docs: ["zod@3.23.8 <b>parsing</b>"]\n    manual: ["<script>alert(2)</script> & \\"quoted\\""]\n',
+      ),
+    );
+    write(root, ".aidw/run/pages/gate.yaml", `layout: gate\ntitle: Approve\nchange: ${ID}\nsections:\n  - id: scope\n    title: Scope\n    body: Booking.\n`);
+    const r = cli("page", "render", "gate");
+    expect(r.code, r.err).toBe(0);
+    const html = readFileSync(join(root, ".aidw/run/pages/gate.html"), "utf8");
+    expect(html).toMatch(/data-sec="plan"/);
+    expect(html).not.toMatch(/<img src=x/);
+    expect(html).not.toMatch(/<script>alert\(2\)/);
+    expect(html).not.toMatch(/<b>parsing<\/b>/);
+    expect(html).toMatch(/&lt;script&gt;alert\(2\)&lt;\/script&gt;/);
+    expect(html).toMatch(/&lt;img src=x onerror=alert\(1\)&gt;/);
+  });
+});
+
+describe("aidw analyze judges patterns, docs and libraries only before the gate, on template 3", () => {
+  it("does not judge the Program Design's libraries for a Change of template 2", () => {
+    const file = join(root, C, "change.yaml");
+    writeFileSync(file, readFileSync(file, "utf8").replace(/^analysis_template: \d+\n/m, "analysis_template: 2\n"));
+    setProgramDesign(withSignature('import { z } from "zod";'));
+    expect(analyze().errors().filter((m) => /Program Design uses/.test(m))).toEqual([]);
+  });
+
+  it("after the gate a pattern whose file the build changed or removed is not refused", () => {
+    setTasks(tasksWith('    patterns: [{ path: "lib/store.ts:10-30", why: the store shape }]\n'));
+    planReviewed(root, ID);
+    for (const s of ["intake", "analyzing", "awaiting_approval"]) expect(cli("transition", ID, s).code).toBe(0);
+    expect(cli("approve", ID).code).toBe(0);
+    expect(cli("transition", ID, "executing").code).toBe(0);
+    write(root, "lib/store.ts", "export const shorter = 1;\n");
+    expect(analyze().errors().filter((m) => /pattern/.test(m))).toEqual([]);
+    rmSync(join(root, "lib/store.ts"));
+    expect(analyze().errors().filter((m) => /pattern/.test(m))).toEqual([]);
+  });
+});
+
+describe("OP3: what is not a missing library", () => {
+  const names = (code: string, lang = "ts") => programDesignLibraries(withSignature(code, lang), root).map((l) => l.name).sort();
+
+  it("a scoped subpath is its package, a bare subpath is its package", () => {
+    expect(names('import { a } from "@acme/kit/sub/deep";\nimport fp from "lodash/fp";\nimport { z } from "zod/v4";')).toEqual(["@acme/kit", "lodash", "zod"]);
+  });
+
+  it("type-only and relative imports: the package of a type import counts once, a relative one never", () => {
+    expect(names('import type { Request } from "express";\nimport type { Slot } from "./types";\nimport { type X } from "../x";\nexport type { Y } from "./y";')).toEqual(["express"]);
+    write(root, "package.json", JSON.stringify({ name: "app", dependencies: { express: "4.19.2", lodash: "4.17.21" } }));
+    setProgramDesign(withSignature('import type { Request } from "express";\nimport fp from "lodash/fp";\nimport type { Slot } from "./types";'));
+    expect(analyze().errors().filter((m) => /Program Design uses/.test(m))).toEqual([]);
+  });
+
+  it("a monorepo workspace package (listed by its own package.json) is not flagged, with or without a subpath", () => {
+    write(root, "package.json", JSON.stringify({ name: "mono", private: true, workspaces: ["packages/*"] }));
+    write(root, "packages/ui/package.json", JSON.stringify({ name: "@acme/ui", dependencies: { "class-variance-authority": "0.7.0" } }));
+    write(root, "apps/web/app/package.json", JSON.stringify({ name: "web", dependencies: { next: "15.1.3" } }));
+    setProgramDesign(withSignature('import { Button } from "@acme/ui/button";\nimport { cva } from "class-variance-authority";\nimport Link from "next/link";'));
+    expect(analyze().errors().filter((m) => /Program Design uses/.test(m))).toEqual([]);
+  });
+
+  it("a Python src-layout package named in pyproject is not flagged under its import name", () => {
+    write(root, "pyproject.toml", '[project]\nname = "my-app"\ndependencies = ["fastapi"]\n');
+    setProgramDesign(withSignature("from my_app.slots import Slot\nfrom fastapi import APIRouter", "python"));
+    expect(analyze().errors().filter((m) => /Program Design uses/.test(m))).toEqual([]);
+  });
+
+  it("an SQL block with a quoted table after a lower-case from is not an import", () => {
+    expect(names('select * from "users" where id = $1;', "sql")).toEqual([]);
+  });
+});
+
+describe("aidw deliver: the uncovered-package warning never fails delivery (OP3)", () => {
+  const g = (...a: string[]) => execFileSync("git", a, { cwd: root, encoding: "utf8" }).trim();
+  const commitBase = () => {
+    g("init", "-q");
+    g("config", "user.email", "aidw@test");
+    g("config", "user.name", "aidw test");
+    g("add", "-A");
+    g("commit", "-q", "-m", "base");
+    return g("rev-parse", "HEAD");
+  };
+
+  it("is a warning of checkDelivery, not an error", () => {
+    write(root, "package.json", JSON.stringify({ name: "app", dependencies: {} }));
+    const base = commitBase();
+    setTasks(TASKS_YAML.replace("    status: pending\n  - id: T02", `    base: ${base}\n    status: pending\n  - id: T02`));
+    write(root, "package.json", JSON.stringify({ name: "app", dependencies: { dayjs: "1.11.13" } }));
+    const d = checkDelivery(pathsFor(root), ID);
+    expect(d.warnings.map((x) => x.message).some((m) => /added the package dayjs, which no Docs Brief covers/.test(m))).toBe(true);
+    expect(d.errors.map((x) => x.message).some((m) => /dayjs/.test(m))).toBe(false);
+  });
+
+  it("returns nothing (and does not throw) for a base git does not know, or outside git", () => {
+    expect(uncoveredPackages(pathsFor(root), [{ id: "T01", base: "0123456789abcdef0123456789abcdef01234567" }])).toEqual([]);
+    commitBase();
+    expect(uncoveredPackages(pathsFor(root), [{ id: "T01", base: "0123456789abcdef0123456789abcdef01234567" }])).toEqual([]);
+  });
+
+  it("covers a Python package by its Docs Brief whatever its spelling, and merges several task bases", () => {
+    write(root, "requirements.txt", "fastapi==0.110.0\n");
+    const base1 = commitBase();
+    write(root, "x.txt", "x");
+    g("add", "-A");
+    g("commit", "-q", "-m", "two");
+    const base2 = g("rev-parse", "HEAD");
+    write(root, "requirements.txt", "fastapi==0.110.0\nPyYAML==6.0.1\nhttpx==0.27.0\n");
+    write(root, ".aidw/research/docs/pyyaml@6.0-loading.md", BRIEF("pyyaml", "6.0.1", "loading"));
+    expect(uncoveredPackages(pathsFor(root), [{ id: "T01", base: base1 }, { id: "T02", base: base2 }])).toEqual(["httpx"]);
   });
 });
