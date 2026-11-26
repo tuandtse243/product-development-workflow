@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { caseSection, loadEvalCases } from "../src/evals.js";
+import { caseSection, hasUnclosedFence, loadEvalCases } from "../src/evals.js";
 
 const quoted = [
   "---",
@@ -44,6 +44,18 @@ describe("a case section and fenced headings", () => {
   it("ignores a heading of the same title quoted inside a fence", () => {
     const text = ["## Input", "", "```", "## Criteria", "- must not be read", "```", "", "## Criteria", "", "- must be read", ""].join("\n");
     expect(caseSection(text, "Criteria")).toBe("- must be read");
+  });
+
+  it("does not open a fence on a line of inline backticks", () => {
+    const text = ["## Input", "", "```foo``` bar", "", "## Criteria", "", "- must be read", ""].join("\n");
+    expect(caseSection(text, "Criteria")).toBe("- must be read");
+    expect(hasUnclosedFence(text)).toBe(false);
+  });
+
+  it("reports a fence left open", () => {
+    const text = ["## Input", "", "```", "## x", "", "## Criteria", "- must a", ""].join("\n");
+    expect(hasUnclosedFence(text)).toBe(true);
+    expect(hasUnclosedFence(quoted)).toBe(false);
   });
 
   it("returns null for a missing section", () => {

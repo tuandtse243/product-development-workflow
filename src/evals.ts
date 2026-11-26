@@ -43,22 +43,46 @@ const CASE_KEYS = ["case", "covers", "expect"];
  */
 export function caseSection(text: string, title: string): string | null {
   const lines = text.split("\n");
-  let fence: string | null = null;
   let start = -1;
+  const fences = fenceTracker();
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i] as string;
-    const f = /^ {0,3}(`{3,}|~{3,})/.exec(line);
-    if (f) {
-      const mark = f[1] as string;
-      if (fence === null) fence = mark;
-      else if (mark[0] === fence[0] && mark.length >= fence.length && /^ {0,3}(`{3,}|~{3,})\s*$/.test(line)) fence = null;
-      continue;
-    }
-    if (fence !== null || !line.startsWith("## ")) continue;
+    if (fences.step(line) || !line.startsWith("## ")) continue;
     if (start >= 0) return lines.slice(start, i).join("\n").trim();
     if (line.trimEnd() === `## ${title}`) start = i + 1;
   }
   return start >= 0 ? lines.slice(start).join("\n").trim() : null;
+}
+
+/** Whether a case leaves a code fence open, which would swallow every section after it. */
+export function hasUnclosedFence(text: string): boolean {
+  const fences = fenceTracker();
+  for (const line of text.split("\n")) fences.step(line);
+  return fences.open();
+}
+
+/**
+ * Feed lines in order: `step` is true for a fence line or a line inside a fence. An opening fence is three or more
+ * backticks or tildes, indented at most three spaces (a backtick fence's info string has no backtick); it closes on a
+ * line of the same character, at least as long, with nothing else on it.
+ */
+function fenceTracker(): { step: (line: string) => boolean; open: () => boolean } {
+  let fence: string | null = null;
+  return {
+    step(raw) {
+      const line = raw.replace(/\r$/, "");
+      if (fence === null) {
+        const f = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+        if (!f || (f[1]![0] === "`" && f[2]!.includes("`"))) return false;
+        fence = f[1]!;
+        return true;
+      }
+      const c = /^ {0,3}(`{3,}|~{3,})\s*$/.exec(line);
+      if (c && c[1]![0] === fence[0] && c[1]!.length >= fence.length) fence = null;
+      return true;
+    },
+    open: () => fence !== null,
+  };
 }
 
 export function loadEvalCases(root: string, id: string): { cases: EvalCase[]; diags: Diags } {
@@ -93,6 +117,7 @@ export function loadEvalCases(root: string, id: string): { cases: EvalCase[]; di
     const section = (title: string) => caseSection(text, title);
     const input = section("Input");
     const criteria = section("Criteria");
+    if (hasUnclosedFence(text)) d.error(file, "a code fence (``` or ~~~) is never closed, so the sections after it are read as quoted text");
     if (!input) d.error(file, 'missing or empty "## Input" (the situation the Agent is given)');
     if (criteria === null) d.error(file, 'missing "## Criteria"');
     const bullets = (criteria ?? "").split("\n").map((l) => l.trim()).filter(Boolean);
