@@ -71,7 +71,7 @@ function decisionRecords(body: string): Decision[] {
     const m = DECISION.exec(l);
     if (m) out.push((cur = { id: m[1] as string, parts: [(m[2] as string).trim()] }));
     else if (cur && /^\s+\S/.test(l) && !/^\s*[-*]\s/.test(l)) cur.parts.push(l.trim());
-    else cur = null;
+    else if (!/^\s*$/.test(l)) cur = null; // a blank line keeps the decision open for its indented reasons
   }
   return out.map((d) => ({ id: d.id, text: d.parts.join(" ") }));
 }
