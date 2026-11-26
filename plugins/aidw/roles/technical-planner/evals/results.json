@@ -1,11 +1,11 @@
 {
   "format": 2,
   "role": "technical-planner",
-  "date": "2026-11-26T16:54:55.246Z",
+  "date": "2026-11-26T17:22:17.831Z",
   "model": null,
   "tier": "deep",
   "runs": 3,
-  "digest": "sha256:dcd93083c7d8801acf19981b9761d79abf9e63bdbb6c6c91e70e00468198d85f",
+  "digest": "sha256:5355865bd6b0dc05e2d48380e7f2558a658bdb65bfe042c4a2ef428f2d4e78c1",
   "cases": [
     {
       "name": "cut-from-the-program-design",
@@ -17,41 +17,33 @@
       },
       "failed": [],
       "digest": "sha256:89a500e40702b60247bacd07d60359de753906ce09a80432edcd490e924443ff",
-      "date": "2026-11-26T16:54:55.246Z",
+      "date": "2026-11-26T17:22:17.831Z",
       "model": null
     },
     {
       "name": "parallel-tasks-share-names",
-      "pass": false,
+      "pass": true,
       "runs": {
         "total": 3,
-        "passed": 1,
+        "passed": 3,
         "errors": 0
       },
-      "failed": [
-        "must write a Consumes line for the frontend task that matches the backend's Produces word for word",
-        "must give each task a Review focus of at most three points"
-      ],
+      "failed": [],
       "digest": "sha256:90db8ddacb9042fc7f944ce5207166e5be2e8dd54999ef769235c5e7d6af6c89",
-      "date": "2026-11-26T16:54:55.246Z",
+      "date": "2026-11-26T17:22:17.831Z",
       "model": null
     },
     {
       "name": "vertical-slices-not-a-chain",
-      "pass": false,
+      "pass": true,
       "runs": {
         "total": 3,
-        "passed": 2,
+        "passed": 3,
         "errors": 0
       },
-      "failed": [
-        "must start with one scaffold task and then cut vertical slices, each with its own API, UI and tests for one behavior (list, create, edit, delete), not tasks by layer",
-        "must give `depends_on` only for a real dependency, so `aidw plan` shows a wave of at least 2 tasks after the scaffold",
-        "must give every slice task `touches` that are tight folders (the scaffold may touch the root configuration files), and every task a `type` for the commit",
-        "must state the shape of the plan in one line (the scaffold, then the wave of slices that can run together, then what waits for them), the way `aidw plan` would print it"
-      ],
+      "failed": [],
       "digest": "sha256:e334550c9ae7269ee41266a884cd7f580759f0a72d9e1b59d51dfc72e24bc94a",
-      "date": "2026-11-26T16:54:55.246Z",
+      "date": "2026-11-26T17:22:17.831Z",
       "model": null
     }
   ]
