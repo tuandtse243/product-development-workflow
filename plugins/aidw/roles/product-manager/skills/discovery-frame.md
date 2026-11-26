@@ -48,8 +48,8 @@ phone system has an API. When such a question comes up, write it as `- DA1: <que
 `### Deferred to architecture` (in `## Requirements and scope`) and go on. Ask the user only the part that is theirs:
 "Is a five-minute delay in the reminder acceptable?" is theirs; "Should reminders go through a job queue?" is not.
 That split happens in the interview, with the user there; when you draft from the record, the DA line is the
-question's only place. The Software Architect answers each line before the gate. An interview that raised no technical question ends with
-"None" under that heading.
+question's only place. The Software Architect answers each line before the gate. An interview that raised no
+technical question ends with "None" under that heading.
 
 ## Signs the interview is not done
 
