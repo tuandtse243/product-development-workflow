@@ -213,20 +213,48 @@ function routeHits(route, content) {
     const tail = segsOfFile.slice(segsOfFile.indexOf("app") + 1).join("/").replace(/\.[cm]?[jt]sx?$/, "");
     if (content.includes(tail)) hits.push(-1); // the test imports the handler: the whole file is its test
   }
+  // A hit inside a one-line helper (`const post = (id) => http.post(`/x/${id}`)`, `function post(id) { … }`): each
+  // call of that helper is a call of the route too.
+  const helpers = new Set();
+  for (const h of hits) {
+    if (h < 0) continue;
+    const start = content.lastIndexOf("\n", h) + 1;
+    const m = /^\s*(?:export\s+)?(?:(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>|(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\()/.exec(content.slice(start, h));
+    if (m) helpers.add(m[1] ?? m[2]);
+  }
+  for (const name of helpers) {
+    const esc2 = name.replace(/[$]/g, "\\$");
+    for (const m of content.matchAll(new RegExp(`(?<![\\w$.])${esc2}\\(`, "g"))) hits.push(m.index);
+  }
   return hits;
 }
 
 const STATUS_ASSERTION = /(?:\bexpect\(\s*|\b(?:toBe|toEqual|toStrictEqual|toHaveStatus|toHaveHTTPStatus|toHaveStatusCode)\(\s*|\bstatus(?:_code|Code)?\s*(?:===?|:)\s*|\bHTTP_)(\d{3})(?!\d)/g;
 const NEAR = 15;
+// A test helper named expect…/assert… that takes the response and then a status: `expectProblem(res, 401, …)`,
+// a call that builds one: `expectProblem(res, problem(401, …))`, or a constant that holds one: `expectProblem(res, UNAUTH)`.
+const HELPER_ASSERTION = /\b(?:expect|assert)[A-Z_]\w*\(\s*[\w.$[\]]+\s*,\s*(?:[\w$.]+\(\s*(?:\{\s*status\s*:\s*)?)?(?:(\d{3})(?!\d)|([A-Za-z_$][\w$]*)\b(?!\s*\())/g;
+// A constant whose value starts with a status: `const UNAUTH = problem(401, …)`, `= { status: 404, … }`, `= 403`.
+const STATUS_CONST = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:[\w$.]+\(\s*|\{\s*status\s*:\s*)?(\d{3})(?!\d)/g;
+
+const isStatus = (n) => n >= 100 && n <= 599;
 
 /** The status codes asserted within NEAR lines of any hit (the whole file for a hit of -1). */
 function assertedNear(content, hits) {
   const line = lineIndex(content);
   const at = hits.map((h) => (h < 0 ? -1 : line(h)));
+  const near = (index) => {
+    const n = line(index);
+    return at.some((h) => h < 0 || Math.abs(h - n) <= NEAR);
+  };
   const codes = new Set();
-  for (const m of content.matchAll(STATUS_ASSERTION)) {
-    const n = line(m.index);
-    if (at.some((h) => h < 0 || Math.abs(h - n) <= NEAR)) codes.add(Number(m[1]));
+  for (const m of content.matchAll(STATUS_ASSERTION)) if (near(m.index)) codes.add(Number(m[1]));
+  const consts = new Map();
+  for (const m of content.matchAll(STATUS_CONST)) if (isStatus(Number(m[2]))) consts.set(m[1], Number(m[2]));
+  for (const m of content.matchAll(HELPER_ASSERTION)) {
+    if (!near(m.index)) continue;
+    const code = m[1] ? Number(m[1]) : consts.get(m[2]);
+    if (code !== undefined && isStatus(code)) codes.add(code);
   }
   return codes;
 }

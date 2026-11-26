@@ -256,6 +256,23 @@ Fastify, Hono.
     4. A model grades only the criteria no machine can check.
   - Budget: the pilot spends at most 6 Agent sessions (1 case × 3 runs, 1 bare, 2 spare). More needs the
     owner's word.
+- T18 pilot: done 2026-11-27, `team-comes-from-the-session` passes 3/3 at level 2. The owner approved each batch of
+  sessions beyond the first 6: 18 sessions in all, plus 36 level 1 calls. No bare run was made.
+  - The runs found harness defects, now fixed: `route-inventory` missed access tests written through helpers;
+    sessions could not bind 127.0.0.1; sandboxed loops and `$(…)` commands were refused; reads through a `for` loop
+    were missed.
+  - The runs found one Role gap: the Agent kept quiet about the existing routes' `x-team-id` hole in 2 of 6 runs.
+    The report's `Found:` line closed it.
+  - Level 1 no longer digests the Role's scripts (it never shows them to the model). Level 2 still does.
+  - Owed: `log-with-a-token` is 2/3 at level 1, twice. A run logs the provider error's message and code but no
+    stack. Sharpen `server-logs-and-errors` with the next change to the backend Role, so that the 30-call rerun
+    of level 1 is paid once.
+  - Owed, before level 2 opens for other Roles (T20+): `allowLocalBinding` also lets a session connect to any
+    localhost port on macOS, so a local proxy could carry traffic out. Decided 2026-11-27: accept for now (evals run on
+    the owner's machine); then make the fixture's test helper call the app in-process with no socket, and drop the
+    setting.
+  - Not yet proven: that the session sandbox blocks outbound network, and that `Read` deny rules stop a sandboxed
+    `cat`. No run tried either.
 - The cases of every other active Role have no `covers:` yet; T12 must not fail `aidw roster` for Roles that
   have not been upgraded (require coverage only once a Role's `rules.md` uses the table format).
 - The owner prefers question rounds as an HTML Decision Page with options, examples and a copy-back summary,

@@ -1,11 +1,11 @@
 {
   "format": 2,
   "role": "backend",
-  "date": "2026-11-24T18:20:01.000Z",
+  "date": "2026-11-26T16:41:00.377Z",
   "model": null,
   "tier": "deep",
   "runs": 3,
-  "digest": "sha256:7d30f517ebf167beb2cc2c06e87e960d689d16ca279b3ab41b5a7ae4fa9a4dbb",
+  "digest": "sha256:fe5f7e872b388bb799df9ec02f2eae2c2486af692b1e8a7911ba45891727a409",
   "cases": [
     {
       "name": "charge-once",
@@ -16,8 +16,8 @@
         "errors": 0
       },
       "failed": [],
-      "date": "2026-11-24T18:08:14.640Z",
       "digest": "sha256:ab5e1f39f5f2bbdab18bd7dcaae4e0114636e430224446671cfcadf1ca9a29bf",
+      "date": "2026-11-26T06:48:51.712Z",
       "model": null
     },
     {
@@ -29,8 +29,8 @@
         "errors": 0
       },
       "failed": [],
-      "date": "2026-11-24T18:20:01.000Z",
       "digest": "sha256:fdd4b887b1fb3d85104922f84d4b8c77abea79c593282b7041ad7bb0d13fbae3",
+      "date": "2026-11-26T06:48:51.712Z",
       "model": null
     },
     {
@@ -42,8 +42,8 @@
         "errors": 0
       },
       "failed": [],
-      "date": "2026-11-24T18:08:14.640Z",
       "digest": "sha256:6b339923efa13a3d0e13c0f417bd26dab82ac9bf69b5ffee9f5a951b3a02ca9d",
+      "date": "2026-11-26T06:48:51.712Z",
       "model": null
     },
     {
@@ -55,8 +55,8 @@
         "errors": 0
       },
       "failed": [],
-      "date": "2026-11-24T18:08:14.640Z",
       "digest": "sha256:31b4cdc6a4643f55408f3f39df403e42cda1e084d489677f73e63b98c47bb495",
+      "date": "2026-11-26T06:48:51.712Z",
       "model": null
     },
     {
@@ -68,21 +68,23 @@
         "errors": 0
       },
       "failed": [],
-      "date": "2026-11-24T18:08:14.640Z",
       "digest": "sha256:4f290ab4854da673472c2e519a53aa89575883a1345a80fc253d8521634f8b28",
+      "date": "2026-11-26T06:48:51.712Z",
       "model": null
     },
     {
       "name": "log-with-a-token",
-      "pass": true,
+      "pass": false,
       "runs": {
         "total": 3,
-        "passed": 3,
+        "passed": 2,
         "errors": 0
       },
-      "failed": [],
-      "date": "2026-11-24T18:08:14.640Z",
+      "failed": [
+        "must log the error's message, code and stack as separate fields, not the axios error object itself (whose config carries the `Authorization` header with the key)"
+      ],
       "digest": "sha256:25e80bf8911f689b3360ba3b29e08e9aa29e1cac1c2644f988baf3cbe6f80836",
+      "date": "2026-11-26T16:31:09.489Z",
       "model": null
     },
     {
@@ -94,8 +96,8 @@
         "errors": 0
       },
       "failed": [],
-      "date": "2026-11-24T18:08:14.640Z",
       "digest": "sha256:a40f2d4f6e3379e1ae8eaf95f7d66fec1bf3ad4c048c0a6890c38f68c64f335b",
+      "date": "2026-11-26T16:41:00.377Z",
       "model": null
     },
     {
@@ -107,8 +109,8 @@
         "errors": 0
       },
       "failed": [],
-      "date": "2026-11-24T18:08:14.640Z",
       "digest": "sha256:f1347499f5485b6b0ea773f8db5b5319850ad6fa0c9251d1b42cac8efbbabb9d",
+      "date": "2026-11-26T06:48:51.712Z",
       "model": null
     },
     {
@@ -120,8 +122,8 @@
         "errors": 0
       },
       "failed": [],
-      "date": "2026-11-24T18:08:14.640Z",
       "digest": "sha256:d395bf4660ed79743c29dae07e2ce624bf78d6f08937998df837073e55583a52",
+      "date": "2026-11-26T06:48:51.712Z",
       "model": null
     },
     {
@@ -133,8 +135,8 @@
         "errors": 0
       },
       "failed": [],
-      "date": "2026-11-24T18:08:14.640Z",
       "digest": "sha256:a52ae6a399c698797dd939e91ea5263fcdbc7cd53968d27ebb9b1f39a260db43",
+      "date": "2026-11-26T06:48:51.712Z",
       "model": null
     }
   ]
