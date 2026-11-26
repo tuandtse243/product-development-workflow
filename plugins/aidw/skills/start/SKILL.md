@@ -345,8 +345,14 @@ Spawn **`aidw:technical-planner`** with this prompt and nothing else:
 
 Its Procedure (`$(aidw plugin-path roles/technical-planner/role.md)`) holds the `tasks.yaml` format, who owns a task,
 and the rules of a good plan (vertical slices, parallel waves, `aidw plan` shape, UI owners, commit types); its
-`scaffold-tasks` and `migration-tasks` skills cover a new project and a migration. Handle its open decisions as in
-step 3.
+`task-interfaces` skill cuts the tasks from the Program Design, and `scaffold-tasks` and `migration-tasks` cover a new
+project and a migration. Handle its open decisions as in step 3.
+
+Each task may carry `patterns` (code to imitate, shown in its brief), `docs` (libraries to read up on) and `manual`
+(checks for the user, listed at the gate and at delivery). **The Docs Briefs come next, before the plan review**:
+run `aidw docs-brief --change <id>`. For each line it prints MISSING, STALE or INVALID, spawn one `aidw:research` Agent,
+all in one message, with: `Write the Docs Brief for <entry> with your docs-research skill, to <path>.` A FRESH brief is reused as it is. Run the command again until every line is FRESH; `aidw analyze` refuses
+the package while one is not.
 
 ## 8. Test plan, quality, deploy and permissions
 
@@ -447,7 +453,8 @@ user can check:
    and deploy, requested permissions, and risks and assumptions. The CLI puts `## Before / After` of `analysis.md`
    first of all (a section you write with the id `before-after` replaces it), then the review's open findings, and
    adds the Program Design (`program-design.md` as Views; a section you write with the id `program-design` replaces
-   it), the Decision Points and the plan size. Name
+   it), the Decision Points and the plan (its stages, and each task's patterns, Docs Briefs and checks for the user).
+   Name
    `.aidw/changes/<id>/analysis.md` in the intro. Tell the user the link, and that once they agree to every section
    (or type `/aidw:approve`) the build starts by itself.
 6. **Stop and wait for the answer.** Do not start building before it. When the user pastes the page's answer, check it:
