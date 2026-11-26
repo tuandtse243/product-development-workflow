@@ -27,6 +27,7 @@ describe("writing rules for authoring Roles (I6, D5, D6)", () => {
     expect(a).toMatch(/^ {2}Why: /m);
     expect(a).toMatch(/^ {2}Rejected: /m);
     expect(a).toContain("Rejected: none");
+    expect(a).toMatch(/plain indented lines, not sub-bullets/);
   });
 
   it("every authoring agent carries the rules", () => {
@@ -37,6 +38,7 @@ describe("writing rules for authoring Roles (I6, D5, D6)", () => {
     const step9 = read("skills/start/SKILL.md").split("## 9. Analyze and present")[1] ?? "";
     expect(step9).toMatch(/^ {5}Why: /m);
     expect(step9).toMatch(/^ {5}Rejected: /m);
+    expect(step9).toMatch(/plain indented lines, not sub-bullets/);
   });
 });
 
@@ -58,11 +60,15 @@ describe("implementers follow a precedence and report a mismatch in three lines 
     expect(t).toMatch(/BLOCKED/);
   });
 
-  it("the orchestrator sends a BLOCKED mismatch to the checkpoint and Triage, not to not-built (environment)", () => {
-    const line = read("skills/run/SKILL.md").split("\n").find((l) => l.includes("`BLOCKED: documents disagree`")) ?? "";
-    expect(line).toMatch(/not an environment cause/);
-    expect(line).toMatch(/checkpoint/);
-    expect(line).toMatch(/Triage/);
+  it("the orchestrator sends a BLOCKED mismatch to the author as a Deviation, not to a retry or not-built", () => {
+    const run = read("skills/run/SKILL.md");
+    const at = run.indexOf("`BLOCKED: documents disagree`");
+    const para = run.slice(at, run.indexOf("\n4. ", at));
+    expect(at).toBeGreaterThan(0);
+    expect(para).toMatch(/not an environment cause/);
+    expect(para).toMatch(/not retried/);
+    expect(para).toMatch(/aidw deviation open [^`]*--task <T>[^`]*--reason "<the three lines>"/);
+    expect(para.split("\n").every((l) => l.length <= 125)).toBe(true);
   });
 
   it("every implementing agent carries it", () => {

@@ -341,7 +341,8 @@ user can check:
      Rejected: clinic local time (a clock change moves booked slots by an hour).
    ```
 
-   Write `Rejected: none` when no other option was on the table (a key name, say). `aidw analyze` warns about a
+   `Why:` and `Rejected:` are plain indented lines, not sub-bullets. Write `Rejected: none` when no other option was
+   on the table (a key name, say). `aidw analyze` warns about a
    decision without `Why:` or `Rejected:`. Implementers may not deviate from these without escalating, so be
    precise and include only real decisions. The `## Summary`
    must fit one page: goal, scope, the key decisions, and the risks and assumptions that need attention.

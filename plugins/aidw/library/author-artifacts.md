@@ -50,7 +50,8 @@ consistent and honest about risks.
   Rejected: unlimited retries (one job that always fails blocks the queue).
 ```
 
-Write `Rejected: none` when no other option was on the table (a key name, say). `aidw analyze` warns about a
+`Why:` and `Rejected:` are plain indented lines, not sub-bullets. Write `Rejected: none` when no other option was on
+the table (a key name, say). `aidw analyze` warns about a
 decision without `Why:` or `Rejected:`.
 
 ## After the gate: an upstream brief
