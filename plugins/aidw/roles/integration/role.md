@@ -4,6 +4,7 @@ description: "Implements the integration task of a split Slice: connects the fin
 mode: worker
 tier: deep
 access: write
+consults: [research]
 tools: [Read, Write, Edit, Glob, Grep, Bash]
 reads: [tasks, delta-specs, constitution, architecture, quality]
 writes: []
