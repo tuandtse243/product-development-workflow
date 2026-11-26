@@ -14,6 +14,7 @@ import { loadChange, stateOf, type Change } from "./change.js";
 import { lastConverge } from "./converge.js";
 import { shotsDir } from "./design.js";
 import { Diags } from "./diag.js";
+import { fenceTracker } from "./fences.js";
 import { keepDiscardedWork } from "./draft.js";
 import { git, isGitRepo } from "./git.js";
 import { OpError } from "./ops.js";
@@ -84,13 +85,12 @@ export function manualChecks(tasks: Task[]): string[] {
  */
 export function withChecksForYou(handoff: string, checks: string[]): string {
   const lines = handoff.replace(/\r\n?/g, "\n").split("\n");
-  const h2 = (i: number) => /^##\s+(.+?)\s*#*\s*$/.exec(lines[i] ?? "")?.[1]?.trim().toLowerCase() ?? null;
+  // a heading inside a fenced block (an example) is no heading
+  const t = fenceTracker();
+  const fenced = lines.map((l) => t.step(l));
+  const h2 = (i: number) => (fenced[i] ? null : (/^##\s+(.+?)\s*#*\s*$/.exec(lines[i] ?? "")?.[1]?.trim().toLowerCase() ?? null));
   const next = (from: number) => {
-    let fence = false;
-    for (let i = from; i < lines.length; i++) {
-      if (/^\s*(```|~~~)/.test(lines[i] ?? "")) fence = !fence;
-      else if (!fence && h2(i) !== null) return i;
-    }
+    for (let i = from; i < lines.length; i++) if (h2(i) !== null) return i;
     return lines.length;
   };
   const at = lines.findIndex((_, i) => h2(i) === CHECKS_FOR_YOU.toLowerCase());

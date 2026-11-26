@@ -84,6 +84,19 @@ describe("Design Questions (D2, D6)", () => {
     expect(designQuestionsOf("# A\n\n## Architecture\n\nx\n")).toBeNull();
   });
 
+  it("keeps the Why and Rejected after a wrapped Chosen or Open line, and the reasons after a blank line", () => {
+    const wrapped = "- DQ1: Where do jobs run?\n  Chosen: a queue worker on the existing Redis,\n    with retries\n  Why: jobs survive a restart.\n  Rejected: cron (a missed run is lost).\n";
+    expect(designQuestionsOf(`# A\n\n## Architecture\n\n### Design Questions\n\n${wrapped}`)?.items).toEqual([
+      { id: "DQ1", question: "Where do jobs run?", open: null, chosen: "a queue worker on the existing Redis, with retries", why: "jobs survive a restart.", rejected: "cron (a missed run is lost)." },
+    ]);
+    const open = "- DQ1: Where?\n  Open: a queue | cron\n    (recommend: a queue)\n- DQ2: How?\n\n  Chosen: a.\n  Why: b.\n  Rejected: none.\n";
+    const items = designQuestionsOf(`# A\n\n## Architecture\n\n### Design Questions\n\n${open}`)?.items;
+    expect(items?.[0]?.open).toBe("a queue | cron (recommend: a queue)");
+    expect(items?.[1]).toMatchObject({ chosen: "a.", why: "b.", rejected: "none." });
+    analysis(withQuestions(`### Design Questions\n\n${wrapped}\n`));
+    expect(cli("analyze", ID, "--json").messages().filter((m) => m.includes("DQ1"))).toEqual([]);
+  });
+
   it("refuses a package without them, and accepts None", () => {
     analysis(ANALYSIS_MD.replace(QUESTIONS, ""));
     expect(cli("analyze", ID, "--json").messages()).toContain('missing "### Design Questions" (under "## Architecture"): list each as "- DQ<n>: <question>" with indented "Chosen:", "Why:" and "Rejected:" lines once settled, or write "None"');
@@ -303,5 +316,13 @@ describe("code that differs from the approved Program Design is a Deviation (Q4)
 
   it("is in every implementing task's brief", () => {
     expect(BRIEF_READS.find((r) => r.name === "program-design")?.what).toMatch(/code that differs from it is a Deviation/);
+  });
+});
+
+describe("fenced blocks of program-design.md", () => {
+  it("keeps a longer fence open across shorter or indented fence lines inside it", () => {
+    const tree = "# P\n\n## File tree\n\n````\n+ a.ts\n```\n+ b.ts\n```\n+ c.ts\n    ````\n+ d.ts\n````\n+ e.ts\n";
+    expect(fileTreeOf(tree).map((l) => l.path)).toEqual(["a.ts", "b.ts", "c.ts", "d.ts"]);
+    expect(fileTreeOf("# P\n\n## File tree\n\n~~~\n+ a.ts\n```\n+ b.ts\n~~~ x\n+ c.ts\n~~~~\n").map((l) => l.path)).toEqual(["a.ts", "b.ts", "c.ts"]);
   });
 });

@@ -174,7 +174,7 @@ export function missingSections(text: string): string[] {
 
 /**
  * The Change's pull request summary, checked; null when the Documentation Role wrote none (the body then keeps the
- * Analysis summary). Throws with every unknown path named.
+ * Analysis summary). Throws with every unknown path named; when the git diff cannot be read, warns instead (D12).
  */
 export function readPrSummary(p: Paths, change: Change, base: string, head: string): PrSummary | null {
   const file = prSummaryFile(change);
@@ -182,15 +182,19 @@ export function readPrSummary(p: Paths, change: Change, base: string, head: stri
   const raw = readText(file) ?? "";
   const { files, diffFailed } = knownPaths(p, change, base, head);
   const unknown = unknownPaths(summaryRefs(raw).filter((r) => !r.loose).map((r) => r.path), files);
-  if (unknown.length) {
+  const unchecked: string[] = [];
+  // D12: the run always ends in a pull request; without the diff the paths cannot be checked, so they are warned, not refused
+  if (unknown.length && diffFailed) {
+    unchecked.push(`${rel(p, file)}: the git diff (${base}...${head}) could not be read (${diffFailed}), so the files it names were not checked: ${unknown.map((u) => `\`${u}\``).join(", ")}`);
+  } else if (unknown.length) {
     throw new OpError(
-      `${rel(p, file)} names ${unknown.length === 1 ? "a file" : "files"} absent from the git diff (${base}...${head}) and from the approved Artifacts: ${unknown.map((u) => `\`${u}\``).join(", ")}${diffFailed ? ` (the diff could not be read: ${diffFailed})` : ""}; name only files the Change Branch changed or the approved package holds, then run \`aidw pr ${change.id}\` again`,
+      `${rel(p, file)} names ${unknown.length === 1 ? "a file" : "files"} absent from the git diff (${base}...${head}) and from the approved Artifacts: ${unknown.map((u) => `\`${u}\``).join(", ")}; name only files the Change Branch changed or the approved package holds, then run \`aidw pr ${change.id}\` again`,
     );
   }
   const text = raw
     .replace(/\r\n?/g, "\n")
     .replace(/^\s*# [^\n]*\n/, "")
     .trim();
-  const warnings = missingSections(raw).map((m) => `${rel(p, file)} has no "## ${m}" section (Why in one sentence, 1 to 3 Notes, a Change outline of Views)`);
+  const warnings = unchecked.concat(missingSections(raw).map((m) => `${rel(p, file)} has no "## ${m}" section (Why in one sentence, 1 to 3 Notes, a Change outline of Views)`));
   return { text, file, warnings };
 }

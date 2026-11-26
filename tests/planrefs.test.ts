@@ -78,6 +78,9 @@ describe("the tasks.yaml fields (schema)", () => {
     expect(msgs).toContain('task T01: "manual" must be a list of checks a human makes, each a non-empty line');
     const twoLines = validateTasksText(tasksWith('    patterns: [{ path: "lib/store.ts:1-2", why: "first\\nsecond" }]\n'), "tasks.yaml").errors.map((e) => e.message);
     expect(twoLines).toContain('task T01: patterns[1]: "why" must be one line (it heads the snippet in the brief)');
+    const manualLines = validateTasksText(tasksWith('    manual: ["first\\nsecond", "a\\rb"]\n'), "tasks.yaml").errors.map((e) => e.message);
+    expect(manualLines).toContain('task T01: manual[1]: a check must be one line (it is one checklist line in the handoff and the pull request)');
+    expect(manualLines).toContain('task T01: manual[2]: a check must be one line (it is one checklist line in the handoff and the pull request)');
   });
 });
 

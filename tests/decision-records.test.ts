@@ -67,6 +67,10 @@ describe("decisionsToHonor reads a decision with its reasons (D6)", () => {
     expect(decisionsToHonor(honor("- D1: A.\n  - a note\n  Why: b.\n"))).toEqual(["D1: A."]);
   });
 
+  it("keeps the reasons after a blank line under the bullet", () => {
+    expect(decisionsToHonor(honor("- D1: A.\n\n  Why: b.\n  Rejected: none\n\n- D2: C.\n\nNot a reason.\n  Why: not D2's either.\n"))).toEqual(["D1: A. Why: b. Rejected: none", "D2: C."]);
+  });
+
   it("gives nothing for a None section", () => {
     expect(decisionsToHonor(honor("None\n", "\n## Next\n\n- D9: x\n  Why: y\n"))).toEqual([]);
   });

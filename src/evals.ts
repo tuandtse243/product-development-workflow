@@ -3,6 +3,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import YAML from "yaml";
 import { Diags } from "./diag.js";
+import { fenceTracker } from "./fences.js";
 import { LIBRARY_SKILL, loadRole, loadRoster, loadRuleTable, parseRoleText, roleDir, skillFile, tierModel } from "./roles.js";
 
 /**
@@ -59,30 +60,6 @@ export function hasUnclosedFence(text: string): boolean {
   const fences = fenceTracker();
   for (const line of text.split("\n")) fences.step(line);
   return fences.open();
-}
-
-/**
- * Feed lines in order: `step` is true for a fence line or a line inside a fence. An opening fence is three or more
- * backticks or tildes, indented at most three spaces (a backtick fence's info string has no backtick); it closes on a
- * line of the same character, at least as long, with nothing else on it.
- */
-function fenceTracker(): { step: (line: string) => boolean; open: () => boolean } {
-  let fence: string | null = null;
-  return {
-    step(raw) {
-      const line = raw.replace(/\r$/, "");
-      if (fence === null) {
-        const f = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
-        if (!f || (f[1]![0] === "`" && f[2]!.includes("`"))) return false;
-        fence = f[1]!;
-        return true;
-      }
-      const c = /^ {0,3}(`{3,}|~{3,})\s*$/.exec(line);
-      if (c && c[1]![0] === fence[0] && c[1]!.length >= fence.length) fence = null;
-      return true;
-    },
-    open: () => fence !== null,
-  };
 }
 
 export function loadEvalCases(root: string, id: string): { cases: EvalCase[]; diags: Diags } {
