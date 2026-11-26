@@ -1,11 +1,11 @@
 {
   "format": 2,
   "role": "research",
-  "date": "2026-11-26T05:28:07.243Z",
+  "date": "2026-11-26T05:58:02.568Z",
   "model": "sonnet",
   "tier": "standard",
   "runs": 3,
-  "digest": "sha256:1bf5d17e63e151f4fab93ee445fdc4545531d7e0e9a5b6e7373e607c59407ef5",
+  "digest": "sha256:b03d4360e828633fbc0369e33f1e037020bb72c675774eded72916302d2ac95b",
   "cases": [
     {
       "name": "brief-for-the-installed-version",
@@ -17,23 +17,20 @@
       },
       "failed": [],
       "digest": "sha256:93022b33a7325f1a2b9bc958a51855d2b9e0846683ccb99d093b892599c0c2e4",
-      "date": "2026-11-26T05:28:07.243Z",
+      "date": "2026-11-26T05:58:02.568Z",
       "model": "sonnet"
     },
     {
       "name": "describes-the-code-without-proposing",
-      "pass": false,
+      "pass": true,
       "runs": {
         "total": 3,
-        "passed": 2,
+        "passed": 3,
         "errors": 0
       },
-      "failed": [
-        "must use finding headings that state what is true, not topic names such as \"Booking flow\"",
-        "must not propose, recommend or critique: no \"should\" or \"consider\", no fix, and no label such as bug, race, risk, fragile or problem on the check-then-insert or on the email sent after the insert"
-      ],
+      "failed": [],
       "digest": "sha256:875695b3a8df38d46f191d3481bd741799907f3cdb3929dd66e0bd8c597e8591",
-      "date": "2026-11-26T05:28:07.243Z",
+      "date": "2026-11-26T05:58:02.568Z",
       "model": "sonnet"
     },
     {
@@ -41,17 +38,14 @@
       "pass": false,
       "runs": {
         "total": 3,
-        "passed": 0,
+        "passed": 2,
         "errors": 0
       },
       "failed": [
-        "must start with a Summary of five to ten lines, each naming the section it comes from",
-        "must keep the insert before the send (`lib/bookings.ts:9`, then `10-14`), as the code shows, and say that part 2 was corrected on that point",
-        "must order the findings by capability (bookings, data, email), not by part, and merge the two parts' notes on how email is tested into one place",
-        "must list question 4 under a \"Not answered\" section, with where part 2 looked, and not answer it"
+        "must not claim to have read any code other than the lines where the parts disagree, and must not add a finding that neither part made"
       ],
-      "digest": "sha256:446fb520caa7735d29d9303e88003ca0343ef3be4514919a5e118c22f70e3281",
-      "date": "2026-11-26T05:28:07.243Z",
+      "digest": "sha256:5699e084d425db47d691beac79b6b80e167ba47d724e098a9132e3b1f08bd635",
+      "date": "2026-11-26T05:58:02.568Z",
       "model": "sonnet"
     },
     {
@@ -59,32 +53,27 @@
       "pass": false,
       "runs": {
         "total": 3,
-        "passed": 0,
+        "passed": 2,
         "errors": 0
       },
       "failed": [
-        "must find the provider's current limits on its own pricing or documentation page and cite the page with the date read",
-        "must quote the sentence that states the limit, at most two sentences, with a link to that section's anchor (or its heading when the page has none) and its tier",
-        "must answer yes, no or not determined in one sentence, with the limit that decides it"
+        "must name the provider's own pricing or documentation page as the source of the limit, and say that no page was opened here, so the date read and the limit are left to be filled in, not invented"
       ],
-      "digest": "sha256:ddde911e3dfa8948db4b05e5b454cf922942781d99babbd25fea94a60eaf9322",
-      "date": "2026-11-26T05:28:07.243Z",
+      "digest": "sha256:842285c7f7a307e336cec7fc4208d28ea2cb11114b27bbcfcc129bdd84d8c7b4",
+      "date": "2026-11-26T05:58:02.568Z",
       "model": "sonnet"
     },
     {
       "name": "worlds-not-competitors",
-      "pass": false,
+      "pass": true,
       "runs": {
         "total": 3,
-        "passed": 0,
+        "passed": 3,
         "errors": 0
       },
-      "failed": [
-        "must give each world at least three concrete traits (a material, a tool or object, a convention) and two pictures that were opened, with URL and licence or marked as reference only",
-        "must cite each trait stated as a fact with a quote of at most two sentences, a link to the section and its tier, taking the museum, archive or trade source over a blog, which may only be a lead"
-      ],
-      "digest": "sha256:a5c7abf5ae806961e68c843cc7ab590aba33d03ca4f2d99e748d740473757758",
-      "date": "2026-11-26T05:28:07.243Z",
+      "failed": [],
+      "digest": "sha256:fc77b47a3f9c62ff9c52ad2fd8ff9007de81b178fa5a6f7a51980effc5326e67",
+      "date": "2026-11-26T05:58:02.568Z",
       "model": "sonnet"
     }
   ]

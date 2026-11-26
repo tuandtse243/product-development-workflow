@@ -40,9 +40,9 @@ For each, under its own heading:
 - **Why it fits**: one sentence tying it to the subject, the people or the scene.
 - **Traits**: at least three concrete ones: a material, a tool or object, a convention (how it numbers, labels,
   folds, stamps), with colors named the way that world names them, and the kind of lettering it uses.
-- **Sources for the traits**: for each trait that is not plain from a picture, the source's words (at most two
+- **Sources for the traits**: for each trait that is not plain from a picture (with no web tool, the kind of page that would source it: a museum, archive or trade document), the source's words (at most two
   sentences) and its link to the section, with the tier.
-- **Pictures**: two to four you opened, each with title, URL, author when known, and licence. Prefer Wikimedia
+- **Pictures**: two to four you opened (with no web tool, instead what to search for and in which collection; no URL, licence or quote is invented), each with title, URL, author when known, and licence. Prefer Wikimedia
   Commons, Openverse and museum open-access collections (The Met, Rijksmuseum, Smithsonian), where the licence is
   stated. A picture with no stated licence is listed as reference only.
 - **Cliché to avoid**: the first thing everyone does with this world.
@@ -55,7 +55,7 @@ These set the structure, not the look: say nothing about their colors or fonts.
 
 ## 5. The note: `.aidw/research/worlds.md`
 
-`## Subject` (the three lines of step 1), `## Worlds` (step 3, best fit first), `## Conventions` (step 4, each trait
+`## Subject` (the three lines of step 1), `## Worlds` (step 3, in the order of the four directions of step 2; no ranking and no "best fit": choosing is the designer's), `## Conventions` (step 4, each trait
 with the products that share it), `## Not found` (what you looked for and where). Every URL is one you opened; never
 cite a search snippet.
 
