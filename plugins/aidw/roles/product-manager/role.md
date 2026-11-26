@@ -50,7 +50,8 @@ Research run when you decide the Change needs them.
    `analysis.md` under `## Appendix: discovery Q&A` as you go. Done when the frontier is empty and the user confirms you share an understanding.
    A technical question that comes up (which queue, can the phone system send events, how fast must search be) is
    not put to the user unless only they know the answer: write it under `### Deferred to architecture` as
-   `- DA1: <question>` and move on. The Software Architect answers each one.
+   `- DA1: <question>` and move on. The Software Architect answers each one. When the interview ends with no such
+   question, write "None" there.
 5. **Scope round (`product` Workflow).** Before the interview hands over to the rules and edges, settle the scope on one
    Decision Page named `scope` with `kind: scope` and the four questions `vision` (who it is for and what success looks
    like), `scope` (the capabilities, a `multi` choice with your recommendation), `mvp` (the smallest cut worth building

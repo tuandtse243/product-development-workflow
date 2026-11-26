@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
 import { beforeAfterOf, beforeAfterSection, deferredOf } from "../src/beforeafter.js";
 import { parsePage } from "../src/page.js";
+import { sectionBody } from "../src/stages.js";
 import { ANALYSIS_MD, MAIN_SPEC, QUALITY_YAML, REQ, TASKS_YAML, TOKENS_YAML, tempProject, write } from "./fixtures.js";
 
 const ID = "booking-v2";
@@ -142,5 +143,32 @@ describe("the gate page puts Before / After first", () => {
     const html = readFileSync(join(root, ".aidw/run/pages/gate.html"), "utf8");
     expect(html).toMatch(/Written by hand/);
     expect(html).not.toMatch(/A patient phones the clinic/);
+  });
+});
+
+describe("review notes on Deferred to architecture", () => {
+  it("takes a bullet \"- None\" as None, not as a malformed line", () => {
+    const text = ANALYSIS_MD.replace(DEFERRED_NONE, "### Deferred to architecture\n\n- None\n");
+    expect(deferredOf(text)).toMatchObject({ none: true, items: [], bad: [] });
+    analysis(text);
+    expect(cli("analyze", ID).code).toBe(0);
+  });
+
+  it("reads the block only inside ## Requirements and scope", () => {
+    const moved = ANALYSIS_MD.replace(DEFERRED_NONE, "").replace("## Risks and assumptions\n", `## Risks and assumptions\n\n${DEFERRED_TWO}\n`);
+    expect(deferredOf(moved)).toBeNull();
+    analysis(moved);
+    expect(cli("analyze", ID, "--json").messages()).toContain('missing "### Deferred to architecture" (under "## Requirements and scope"): list each technical question as "- DA<n>: <question>", or write "None"');
+  });
+
+  it("stops the block at the next ### heading of the section", () => {
+    const text = ANALYSIS_MD.replace(DEFERRED_NONE, `${DEFERRED_NONE}\n### Notes\n\n- not a question\n`);
+    expect(deferredOf(text)).toMatchObject({ none: true, bad: [] });
+  });
+
+  it("ends a ### part at the next ### heading when stages are told from files", () => {
+    const text = "## Requirements and scope\n\nx\n\n### Deferred to architecture\n\nNone\n\n### Notes\n\nTODO(aidw)\n\n## Domain\n\ny\n";
+    expect(sectionBody(text, "### Deferred to architecture")?.trim()).toBe("None");
+    expect(sectionBody(text, "## Requirements and scope")).toContain("### Notes");
   });
 });

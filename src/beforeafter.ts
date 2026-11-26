@@ -13,6 +13,7 @@ import { sections, toLines } from "./spec/parse.js";
 export const ANALYSIS_TEMPLATE = 2;
 export const BEFORE_AFTER = "Before / After";
 export const DEFERRED = "Deferred to architecture";
+const SCOPE_SECTION = "Requirements and scope";
 export const BEFORE_AFTER_LINES = { min: 3, max: 6 } as const;
 export const EXISTING_SYSTEM_FILE = "existing-system.md";
 
@@ -61,17 +62,23 @@ export function beforeAfterOf(analysis: string): { line: number; before: string[
 
 /** The deferred technical questions (`- DA1: ...`), "None", and the lines that are neither; null when the block is missing. */
 export function deferredOf(analysis: string): { line: number; none: boolean; items: { id: string; text: string }[]; bad: string[] } | null {
-  const b = h3Blocks(analysis).find((x) => x.name.toLowerCase() === DEFERRED.toLowerCase());
+  // Only the block under "## Requirements and scope" counts, never a heading of the same name elsewhere.
+  const scope = sections(analysis).find((x) => x.name.toLowerCase() === SCOPE_SECTION.toLowerCase());
+  if (!scope) return null;
+  const b = h3Blocks(scope.body).find((x) => x.name.toLowerCase() === DEFERRED.toLowerCase());
   if (!b) return null;
+  const at = toLines(analysis).find((l) => l.no > scope.line && /^###\s+/.test(l.text) && l.text.replace(/^###\s+/, "").trim().toLowerCase() === DEFERRED.toLowerCase());
   const items: { id: string; text: string }[] = [];
   const bad: string[] = [];
+  let none = /^\s*none\b/im.test(b.lines.join("\n"));
   for (const l of b.lines) {
     if (!BULLET.test(l)) continue;
     const m = DEFERRED_LINE.exec(l);
     if (m) items.push({ id: m[1] as string, text: (m[2] as string).trim() });
+    else if (/^\s*[-*]\s+none\b/i.test(l)) none = true; // "- None" says the same as "None"
     else bad.push(l.trim());
   }
-  return { line: b.line, none: /^\s*none\b/im.test(b.lines.join("\n")), items, bad };
+  return { line: at?.no ?? scope.line, none, items, bad };
 }
 
 /** The checks `aidw analyze` runs on a Change that owes both parts. */
