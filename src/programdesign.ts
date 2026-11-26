@@ -25,6 +25,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { stateOf, type Change } from "./change.js";
 import { Diags } from "./diag.js";
+import { fenceTracker } from "./fences.js";
 import type { PageSection, PageView, ViewKind } from "./page.js";
 import { rel, type Paths } from "./project.js";
 import { sections, toLines } from "./spec/parse.js";
@@ -99,10 +100,13 @@ export function designQuestionsOf(analysis: string): { line: number; none: boole
   const bad: string[] = [];
   let none = /^\s*none\b/im.test(b.lines.join("\n"));
   let cur: DesignQuestion | null = null;
+  // the field the last indented line went to: a line that is no field continues it
+  let last: "question" | "open" | "chosen" | "why" | "rejected" = "question";
   for (const l of b.lines) {
     const m = DQ_LINE.exec(l);
     if (m) {
       cur = { id: m[1] as string, question: (m[2] as string).trim(), open: null, chosen: null, why: null, rejected: null };
+      last = "question";
       items.push(cur);
       continue;
     }
@@ -116,8 +120,9 @@ export function designQuestionsOf(analysis: string): { line: number; none: boole
     if (cur && f) {
       const key = (f[1] as string).toLowerCase() as "open" | "chosen" | "why" | "rejected";
       cur[key] = (f[2] as string).trim();
-    } else if (cur && /^\s+\S/.test(l) && cur.why !== null && cur.rejected === null) {
-      cur.why += ` ${l.trim()}`; // a long reason wrapped onto the next indented line
+      last = key;
+    } else if (cur && /^\s+\S/.test(l)) {
+      cur[last] = `${cur[last] ?? ""} ${l.trim()}`.trim(); // a long line wrapped onto the next indented line
     } else if (!/^\s*$/.test(l)) cur = null;
   }
   return { line: b.line, none, items, bad, text: b.lines.join("\n") };
@@ -214,14 +219,15 @@ export interface Fence {
 /** The fenced blocks of a Markdown body, with their language. */
 export function fences(body: string): Fence[] {
   const out: Fence[] = [];
-  let cur: { lang: string; lines: string[]; fence: string } | null = null;
+  const t = fenceTracker();
+  let cur: { lang: string; lines: string[] } | null = null;
   for (const l of body.split(/\r?\n/)) {
-    const m = /^\s*(`{3,}|~{3,})\s*([\w+-]*)/.exec(l);
-    if (!cur && m) cur = { lang: (m[2] ?? "").toLowerCase(), lines: [], fence: (m[1] as string)[0] as string };
-    else if (cur && m && (m[1] as string)[0] === cur.fence && !(m[2] ?? "")) {
+    if (!t.step(l)) continue;
+    if (!cur) cur = { lang: (/^\s*(?:`{3,}|~{3,})\s*([\w+-]*)/.exec(l)?.[1] ?? "").toLowerCase(), lines: [] };
+    else if (!t.open()) {
       out.push({ lang: cur.lang, text: cur.lines.join("\n") });
       cur = null;
-    } else if (cur) cur.lines.push(l);
+    } else cur.lines.push(l);
   }
   return out;
 }
