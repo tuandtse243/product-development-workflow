@@ -95,7 +95,11 @@ Clinic booking app. Patients book, reschedule and cancel; staff manage slots.
 ## Decisions to honor
 
 - D1: Times are stored in UTC and shown in the clinic's timezone.
+  Why: patients book across a daylight-saving change; one stored zone keeps slots comparable.
+  Rejected: clinic local time (a clock change moves booked slots by an hour).
 - D2: Booking state lives in Supabase; no client-side cache of slots.
+  Why: two patients must never see the same free slot.
+  Rejected: none.
 
 ## Requirements and scope
 

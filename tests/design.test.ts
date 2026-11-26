@@ -4,6 +4,7 @@ import { join } from "node:path";
 import YAML from "yaml";
 import { beforeEach, describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
+import { decisionsToHonor } from "../src/analyze.js";
 import { colorLiterals, hardcodedColors, missingTokens, normalizeColor, parseTokens } from "../src/design.js";
 import { Diags } from "../src/diag.js";
 import { staleReadmeCommands } from "../src/deliver.js";
@@ -137,11 +138,31 @@ describe("analyze: decisions and tokens", () => {
     expect(r.out).toMatch(/must be "- D<n>: <decision>"/);
   });
 
+  it("reads a decision with its Why and Rejected lines as one record (D6)", () => {
+    const text = "## Decisions to honor\n\n- D1: Jobs are retried 3 times.\n  Why: the queue drops a job after a crash.\n  Rejected: 5 retries (a stuck job holds the worker for minutes).\n- D2: Logs go to stdout. Why: the host collects stdout. Rejected: none.\n\n## Next\n";
+    expect(decisionsToHonor(text)).toEqual([
+      "D1: Jobs are retried 3 times. Why: the queue drops a job after a crash. Rejected: 5 retries (a stuck job holds the worker for minutes).",
+      "D2: Logs go to stdout. Why: the host collects stdout. Rejected: none.",
+    ]);
+  });
+
+  it("warns, without failing, on a decision that says no Why or no Rejected (the old format stays accepted)", () => {
+    const root = tempProject();
+    packageFor(root, { analysis: ANALYSIS_MD.replace(/(- D2:.*)\n  Why:.*\n  Rejected:.*\n/, "$1\n") });
+    const r = cli(root, "analyze", ID);
+    expect(r.code).toBe(0);
+    expect(r.out).toMatch(/D2 says no "Why:" and no "Rejected:"/);
+    expect(r.out).not.toMatch(/D1 says no/);
+    const ok = tempProject();
+    packageFor(ok);
+    expect(cli(ok, "analyze", ID).out).not.toMatch(/Decisions to honor/);
+  });
+
   it("accepts None, and rejects a missing section", () => {
     const root = tempProject();
-    packageFor(root, { analysis: ANALYSIS_MD.replace(/- D1:.*\n- D2:.*\n/, "None\n") });
+    packageFor(root, { analysis: ANALYSIS_MD.replace(/- D1:[^]*?\n(?=\n## )/, "None\n") });
     expect(cli(root, "analyze", ID).code).toBe(0);
-    write(root, `.aidw/changes/${ID}/analysis.md`, ANALYSIS_MD.replace(/## Decisions to honor\n\n- D1:.*\n- D2:.*\n/, ""));
+    write(root, `.aidw/changes/${ID}/analysis.md`, ANALYSIS_MD.replace(/## Decisions to honor\n\n- D1:[^]*?\n\n(?=## )/, ""));
     expect(cli(root, "analyze", ID).out).toMatch(/missing section "## Decisions to honor"/);
   });
 });
@@ -156,7 +177,7 @@ describe("checkpoint and briefs for UI tasks", () => {
   it("puts decisions, tokens and the screenshot folder in the implement brief", () => {
     cli(root, "task", "start", "T01");
     const brief = readFileSync(cli(root, "brief", "T01").out.trim(), "utf8");
-    expect(brief).toMatch(/## Decisions to honor \(approved; binding\)\n\n- D1: Times are stored in UTC/);
+    expect(brief).toMatch(/## Decisions to honor \(approved; binding\)\n\n- D1: Times are stored in UTC.* Why: patients book .* Rejected: clinic local time/);
     expect(brief).toMatch(/stop and report it as a blocker; never deviate silently/);
     expect(brief).toMatch(/\| `accent` \| color \| `#E5533D` \| `#FF7A66` \| primary buttons and the selected slot \|/);
     expect(brief).toContain(join(root, ".aidw/run/shots", ID, "T01"));
