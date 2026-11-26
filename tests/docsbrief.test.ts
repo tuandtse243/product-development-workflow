@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
 import {
   checkDocsBrief,
@@ -16,7 +16,7 @@ import { tempProject, write } from "./fixtures.js";
 // The Docs Brief store (plan T5; R1, R3, R9, Q-R3; ADR-0016): one brief per library, major.minor and topic under
 // .aidw/research/docs/, reused while the installed version is on the same line and the brief is at most 90 days old.
 
-const TODAY = new Date("2026-11-26T10:00:00Z");
+const TODAY = new Date("2026-11-26T12:00:00Z"); // midday UTC: the same calendar day from UTC-11 to UTC+11
 const daysBefore = (n: number) => new Date(TODAY.getTime() - n * 86_400_000).toISOString().slice(0, 10);
 
 const brief = (meta: Record<string, string | undefined>, body = BODY) =>
@@ -153,6 +153,22 @@ describe("checkDocsBrief: reuse while the line matches and the brief is at most 
     expect(c.reasons.join()).toMatch(/91 days old/);
   });
 
+  describe("the day is the local calendar day", () => {
+    const tz = process.env.TZ;
+    afterEach(() => {
+      if (tz === undefined) delete process.env.TZ;
+      else process.env.TZ = tz;
+    });
+
+    it("in UTC+7 just after local midnight, a brief dated that local day is fresh, not in the future", () => {
+      process.env.TZ = "Asia/Ho_Chi_Minh";
+      const justAfterMidnight = new Date("2026-11-25T17:30:00Z"); // 2026-11-26 00:30 in UTC+7
+      const c = checkDocsBrief(store({ ...fresh, date: "2026-11-26" }), ref, justAfterMidnight);
+      expect(c.status).toBe("fresh");
+      expect(c.brief?.ageDays).toBe(0);
+    });
+  });
+
   it("a brief written today is fresh", () => {
     expect(checkDocsBrief(store({ ...fresh, date: daysBefore(0) }), ref, TODAY).status).toBe("fresh");
   });
@@ -217,7 +233,8 @@ describe("aidw docs-brief", () => {
     const code = run([...argv, "--root", root], {}, root, { out: (s) => (out += s), err: (s) => (err += s) });
     return { code, out, err };
   }
-  const today = new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
   it("prints FRESH and exits 0 for a brief that may be reused", () => {
     const root = tempProject();

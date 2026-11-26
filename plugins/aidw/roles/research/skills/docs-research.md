@@ -90,7 +90,9 @@ date: 2026-11-26
 - `version` is the installed version, exactly (quote it when YAML would read it as a number: `"15.10"`); `date` is
   the day you wrote the brief. Without them `aidw docs-brief` reports the brief as invalid and it is never reused.
 - `lib` is the package or service name as the project names it (`@tanstack/react-query`); `topic` the words of the
-  question's subject.
+  question's subject, with at least one ASCII letter or digit (the file name keeps only those).
+- A prerelease and a 0.0.x patch share the `<lib>@<major.minor>` file with the rest of their line: writing a brief for
+  one overwrites the brief that was there.
 - Answer and Pitfalls stand alone: the brief of a task inlines them, without the Evidence.
 - Then run `aidw docs-brief` again: it must print `FRESH`.
 

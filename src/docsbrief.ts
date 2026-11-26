@@ -172,7 +172,8 @@ export function checkDocsBrief(aidw: string, ref: DocsRef, today: Date = new Dat
     const day = calendarDay(meta.date);
     if (day === null) invalid.push(`date "${meta.date}" is not a calendar day (YYYY-MM-DD)`);
     else {
-      const now = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+      // the local calendar day: Research writes `date:` as the day it is where it runs
+      const now = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
       ageDays = Math.round((now - day) / DAY);
       if (ageDays < 0) invalid.push(`date ${meta.date} lies in the future`);
     }
