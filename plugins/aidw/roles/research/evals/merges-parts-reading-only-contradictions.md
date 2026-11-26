@@ -6,16 +6,16 @@ covers: [codebase-research]
 
 The orchestrator asks you to merge the parts of the Existing System Report of a Change to an existing app (a
 neighbourhood badminton club's court booking app) into `.aidw/changes/2026-12-01-x/existing-system.md`. You are not
-told what the Change is. Write the merged report in your answer. You cannot run anything in this session.
+told what the Change is. Write the merged report in your answer. You cannot run anything in this session. The text of the questions file and of both parts is below; it is all you have, and it is complete for this task.
 
 `existing-system/questions.md`
 
 ```markdown
-## Group 1: HTTP routes (app/api/)
+    ## Group 1: HTTP routes (app/api/)
 
 1. How does a request to `app/api/bookings/route.ts` create a booking, and how is that path tested?
 
-## Group 2: data and email (lib/)
+    ## Group 2: data and email (lib/)
 
 2. Which tables does `lib/db.ts` expose, and where are they created?
 3. How is email sent, and how is that tested?
@@ -44,7 +44,7 @@ Tests read: `tests/bookings.test.ts:9-12` checks the email's address, with `mail
 #### Tested by
 Tests read: none of `lib/mailer.ts` directly.
 
-## Open questions
+    ## Open questions
 - Question 4: no scheduler, cron file or queue library found; searched `lib/`, `app/`, `package.json` and
   `vercel.json` for cron, job, queue and schedule.
 ```

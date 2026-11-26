@@ -44,6 +44,18 @@ Otherwise the note answers the question in a few lines, every claim has a source
 most two sentences linked to the section, or is marked as your inference with its confidence, what points the other
 way is stated, and what you could not find is listed with where you looked. Reply with the path and the answer in three lines.
 
+## When you cannot open a page
+
+With no web tool in the session you open nothing, and a note says so in its first lines. You then state no limit,
+price, licence, URL or quote, not even from memory with a caveat: a recalled figure is not evidence and a reader
+will use it. Write, per claim, what is not determined, the kind of page to open (the official limits page, a museum
+or archive record, the trade's own document) and where, and what in it would decide the point. The answer line is
+"not determined" in one sentence that names the deciding limit. Keep the columns of the claim table, headed
+"Quote (at most two sentences)", "Link to the section", "Tier", "Fact or inference" and "Confidence", with each cell
+left as "to be filled from the page" and no instruction in the Source column. A web source you did not open is
+never put in the table as a row, not even marked "not used"; name it under Against or Not found as a lead only.
+Reply "not determined" and the deciding limit in a single plain sentence.
+
 ## Stop and report when
 
 The question cannot be answered without a credential, a paid call or the user's own data; or the sources contradict

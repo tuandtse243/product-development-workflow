@@ -18,6 +18,10 @@ Your text has facts about the code and nothing else. Leave out:
 - ranking: which of two patterns is preferred, which is right;
 - root causes, security or performance reviews: other Roles do them, after the design.
 
+Implied critique counts too: do not remark that two steps are "separate calls", that "nothing" guards a gap between
+them, that something "could" fail or "only" happens one way. Give the order and the lines; do not point at what the
+order allows. Say what a test or a guard does not cover only as the plain list under Tested by, never as a worry.
+
 Something odd is still a fact; state it with its lines and stop there. "Two date helpers exist, `lib/date.ts:4` and
 `utils/time.ts:12`" is a finding. "The helpers are duplicated and should be merged" is not yours to write.
 
@@ -102,7 +106,7 @@ Change: at most three questions in one group), answer them all and write the rep
 ```
 
 A finding's heading states the fact: "Bookings are saved before the confirmation email is sent", not "Booking flow"
-and not "How are bookings saved?". A reader who skims the headings knows the findings.
+and not "How are bookings saved?". A reader who skims the headings knows the findings. Every heading under Findings is a sentence with a verb ("The route answers every error with `409`"), never a noun phrase such as "Test coverage" or "Booking creation".
 
 ## 6. Synthesize: merge the parts into one report
 
@@ -110,13 +114,20 @@ You are the Agent that merges. Read every part in full.
 
 - Order the findings by capability, not by part. Join duplicates, keeping the most exact lines.
 - Where two parts disagree (other lines, other behavior, one says tested and the other not), open the code at both
-  citations and keep what the code says; note which part was corrected. Where the parts agree, do not re-read the
+  citations and keep what the code says; note which part was corrected. From that code take only the fact the
+  parts disagree on (which line comes first): write nothing else you saw there (argument names, templates, fields). Where the parts agree, do not re-read the
   code: that work is done. Read no code for anything else.
-- A question no part answered goes under **Not answered**, with the open questions of the parts and where each part
+- A question no part answered goes under **Not answered** only: no Findings entry, no table row and no Summary line
+  says "none found" for it. It goes under **Not answered**, with the open questions of the parts and where each part
   looked. You do not answer it yourself: that would be reading code beyond the contradictions.
-- Merge each capability's Tested by into one table: capability, tests read, checks run, not tested.
-- Write the **Summary** first: five to ten lines, what exists and how it is tested, each line naming the section it
-  comes from. It must stand alone: the Change's analysis carries it and points to the report.
+- Say a correction in the Findings, under the capability it changes, and in the Summary: "part 2 said the send
+  came before the insert; the code at `file:line` shows the insert first; part 2 corrected."
+- Merge each capability's Tested by into one table: capability, tests read, checks run, not tested. What the parts say about one test appears once, in that table; the
+  Findings point to the table and do not repeat it.
+- Write the **Summary** first: five to ten lines, what exists and how it is tested, each line ending with the
+  section it comes from in brackets, including the line about the correction and the line about what was not run.
+  A Summary line repeats what a part found, in the part's own words; it adds no detail (an address, a template, a
+  count) that neither part gave. It must stand alone: the Change's analysis carries it and points to the report.
 - Keep the merged report as neutral as the parts: a proposal that slipped into a part is dropped, not merged.
 
 The report has these `## ` sections: Summary, Questions, Findings, How it is tested, Code references, Not answered
