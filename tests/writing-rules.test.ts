@@ -58,6 +58,13 @@ describe("implementers follow a precedence and report a mismatch in three lines 
     expect(t).toMatch(/BLOCKED/);
   });
 
+  it("the orchestrator sends a BLOCKED mismatch to the checkpoint and Triage, not to not-built (environment)", () => {
+    const line = read("skills/run/SKILL.md").split("\n").find((l) => l.includes("`BLOCKED: documents disagree`")) ?? "";
+    expect(line).toMatch(/not an environment cause/);
+    expect(line).toMatch(/checkpoint/);
+    expect(line).toMatch(/Triage/);
+  });
+
   it("every implementing agent carries it", () => {
     expect(read("agents/backend.md")).toMatch(/^Why this matters: /m);
   });
