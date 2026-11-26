@@ -312,6 +312,14 @@ describe("checks for you (I11, M4)", () => {
     expect(withChecksForYou(once, [])).toContain("## Checks for you\n\nNone: every check of the plan ran automatically.\n\n## Run locally");
   });
 
+  it("leaves a fenced example of the headings alone", () => {
+    const h = "# Handoff\n\n```md\n## Overview\n\n## Checks for you\n\n- [ ] example\n```\n\n## Overview\n\nIt books.\n\n## Run locally\n\npnpm dev\n";
+    const out = withChecksForYou(h, ["- [ ] T2 b: y"]);
+    expect(out).toContain("```md\n## Overview\n\n## Checks for you\n\n- [ ] example\n```");
+    expect(out).toMatch(/It books\.\n\n## Checks for you\n\nThe plan left[^\n]*\n\n- \[ \] T2 b: y\n\n## Run locally/);
+    expect(withChecksForYou(out, ["- [ ] T2 b: y"])).toBe(out);
+  });
+
 });
 
 describe("the Documentation Role, its skill and the deliver skill say it (I8, M4, M7)", () => {
