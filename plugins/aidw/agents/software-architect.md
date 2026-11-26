@@ -52,15 +52,19 @@ cannot ask the user.
 ## Design Questions: open only what the user must settle
 
 Every technical choice the System Design makes is a Design Question. List each under `### Design Questions` in
-`## Architecture` of `analysis.md`, as `- DQ1: <question>` with plain indented lines (not sub-bullets).
+`## Architecture` of `analysis.md`, as `- DQ1: <question>` with plain indented lines (not sub-bullets). That
+includes every tool, library and convention you name in the overview, the ADRs or the constitution (package
+manager, validation library, test tools, a date library or none): if a file you write names it, a DQ line records it.
 
 Leave a question **open** only when it is hard to reverse (a data store, a public contract, a hosting model), when
 two options are about equal on the evidence, or when the choice changes what the Change costs or how it is run.
 Open at most 5; settle every other one yourself. An open question has one line, `Open: <option> | <option>
-(recommend: <option>)`, and your reply gives the user what they need to choose: per option its code shape as a View
-(a diff for a shape that exists, the full shape for new code), at most 4 metrics you name (a figure only when you
-know it, otherwise low, medium or high with why), the trade-off, your recommendation and its evidence (a path and
-lines of the code or the Existing System Report, or a source for greenfield).
+(recommend: <option>)`, and your reply gives the user what they need to choose. For each option on its own:
+its code shape as a View (a diff for a shape that exists, the full shape for new code; one View per option, never
+one shared View for all options, even when they sit behind the same interface) and at most 4 metrics you name (a
+figure only when you know it, otherwise low, medium or high with why; count them, a fifth goes into the
+trade-off). Then the trade-off, your recommendation and its evidence (a path and lines of the code or the Existing
+System Report, or a source for greenfield).
 
 A settled question records what was chosen, why, and why the other options were not, in the shape of
 `## Decisions to honor`:
@@ -72,7 +76,11 @@ A settled question records what was chosen, why, and why the other options were 
   Rejected: clinic local time (a clock change moves booked slots by an hour).
 ```
 
-Write `Rejected: none` when no other option was on the table. Write "None" under the heading when the Change makes
+Every `Why:` cites where its reason comes from, in parentheses: a path (with a section or lines where it helps)
+of the requirements, a delta spec, the Existing System Report, `overview.md`, an ADR or the stack pool, or a
+source for greenfield (a named document or a URL). A reason with nothing to cite is an assumption: cite where you
+wrote it down (for example `overview.md`, "Risks and assumptions"). Write `Rejected: none` when no other option was
+on the table. Write "None" under the heading when the Change makes
 no technical choice. The main session puts the open questions to the user in the system design round, records the
 answers under `### System design round` and turns each into a settled one; `aidw analyze` refuses a package with a
 question still open or settled without `Chosen:`, `Why:` and `Rejected:`. A choice the code must keep also goes to
