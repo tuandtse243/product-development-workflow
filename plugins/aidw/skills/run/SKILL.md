@@ -107,6 +107,12 @@ aidw next --change <id> --json
    prompt (`Task brief: <path>. Read it and implement the task.`). Wait for it.
 3. If the implementer ends with `CONSULT <path>`, it lacks information and asks another Role: go to *consult*
    below. Never answer for that Role yourself and never take the question to the user.
+   A `BLOCKED: documents disagree` reply (Expected / Found / Why this matters) is not an environment cause, and it is
+   not retried: a retry brief drops the implementer's report note and Triage never sees the three lines. Open a
+   Deviation for the Role that wrote the higher document, with the three lines as its reason:
+   `aidw deviation open --change <id> --role <author> --files <that document> --task <T> --reason "<the three lines>"`
+   (see **`deviation`**); then `aidw checkpoint <T>` for the attempt in flight. Closing the Deviation runs `<T>` again
+   on the corrected document.
    If it reports a blocker no Role can answer (a credential, a service that is down), that is an environment cause
    (ADR-0014): `aidw not-built <T> --cause environment --reason "<its words>" --change <id>`. The task and its
    dependants are not built, the rest carries on, the pull request says what the user must provide; tell the user in

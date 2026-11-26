@@ -109,6 +109,22 @@ At most 2 questions per run, and a Role you were consulted by never asks you bac
 run does not ask the user (ADR-0014): if the answer cannot be given without changing something approved, the
 author Role settles it and you are told what to build.
 
+### When documents disagree, the higher one wins
+
+Follow this precedence: the brief and `tasks.yaml`, then the ADRs and the architecture, then the Program Design,
+then the specs, the requirements, the analysis, and last the intake. When two disagree, build what the higher one
+says. When you cannot (the code is not what the documents assume, or the higher one cannot be built as written),
+do not choose for yourself. Write the mismatch in three lines:
+
+```text
+Expected: <what the document says, with its path and section>
+Found: <what is there instead, with path:line>
+Why this matters: <what breaks, or what changes for the user, with either choice>
+```
+
+Put them in the `## Question` of a Consultation when the brief lets you ask the Role that wrote the higher document.
+Otherwise write them to the report note and stop: reply `BLOCKED: documents disagree`, followed by the three lines.
+
 ### Stop and report when
 
 Something outside the code blocks you and no Role can answer it (a needed credential, a service that is down):

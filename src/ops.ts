@@ -229,9 +229,10 @@ ${PLACEHOLDER}: one page the user can review in minutes - goal, scope, the 5-10 
 
 ## Decisions to honor
 
-${PLACEHOLDER}: the concrete choices the code must keep, one per line as "- D1: <decision>" (names, keys, formats,
-tools, libraries, conventions, limits). Implementers stop and report instead of deviating; reviewers check them.
-Write "None" only if there are none.
+${PLACEHOLDER}: the concrete choices the code must keep (names, keys, formats, tools, libraries, conventions,
+limits), each as "- D1: <decision>" with two indented lines: "Why: <reason, with its evidence>" and
+"Rejected: <option> (<why not>)", or "Rejected: none". Implementers stop and report instead of deviating; reviewers
+check them. Write "None" only if there are none.
 
 ## Requirements and scope
 

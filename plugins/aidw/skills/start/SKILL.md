@@ -330,11 +330,21 @@ user can check:
 1. Complete every section of `.aidw/changes/<id>/analysis.md`. Replace every `TODO(aidw)`: read the file once, then write the
    whole completed file with **one Write** (keep every heading and the `Source:` / `Mode:` / `Size:` lines). One Edit per section
    is about twenty calls in a row, and the orchestrator's context is re-read on each.
-   `## Decisions to honor` lists, as `- D1: <decision>`, every concrete choice the code must keep and a reviewer
-   can check: names and keys (storage keys, routes, env var names), formats, tools and package manager,
-   libraries, conventions, limits. Take them from the discovery answers, the stack, the architecture and the
-   design. Implementers may not deviate from them without escalating, so be precise and include only real
-   decisions. The `## Summary`
+   `## Decisions to honor` lists every concrete choice the code must keep and a reviewer can check: names and keys
+   (storage keys, routes, env var names), formats, tools and package manager, libraries, conventions, limits. Take
+   them from the discovery answers, the stack, the architecture and the design. Each one records what was chosen,
+   why, and why the other options were not, so an implementer does not "fix" it back to a rejected option:
+
+   ```markdown
+   - D1: Times are stored in UTC and shown in the clinic's timezone.
+     Why: patients book across a daylight-saving change (architecture.md, "Time").
+     Rejected: clinic local time (a clock change moves booked slots by an hour).
+   ```
+
+   `Why:` and `Rejected:` are plain indented lines, not sub-bullets. Write `Rejected: none` when no other option was
+   on the table (a key name, say). `aidw analyze` warns about a
+   decision without `Why:` or `Rejected:`. Implementers may not deviate from these without escalating, so be
+   precise and include only real decisions. The `## Summary`
    must fit one page: goal, scope, the key decisions, and the risks and assumptions that need attention.
 2. Run `aidw analyze <id>` and `aidw validate <id>`. Fix every error and re-run until both are clean.
 3. **Independent review** (stage `plan-review`). Run `aidw plan-review <id> --brief` (it refuses while `aidw analyze` has

@@ -47,15 +47,34 @@ export const PLACEHOLDER = "TODO(aidw)";
 /** `- D1: ...` bullets of "## Decisions to honor": concrete approved choices the code must keep. */
 const DECISION = /^\s*[-*]\s+\**(D\d+)\**\s*:\s*(\S.*)$/;
 
+interface Decision {
+  id: string;
+  /** The bullet and its indented `Why:` / `Rejected:` lines, joined into one line. */
+  text: string;
+}
+
+/**
+ * The decisions of "## Decisions to honor". Since D6 a decision records what was chosen, why, and why the other
+ * options were not: indented lines under the bullet (`  Why: ...`, `  Rejected: ...`) belong to it. The old
+ * one-line form (`- D1: <decision>`) is read the same way and only lacks the reasons.
+ */
+function decisionRecords(body: string): Decision[] {
+  const out: { id: string; parts: string[] }[] = [];
+  let cur: { id: string; parts: string[] } | null = null;
+  for (const l of body.split(/\r?\n/)) {
+    const m = DECISION.exec(l);
+    if (m) out.push((cur = { id: m[1] as string, parts: [(m[2] as string).trim()] }));
+    else if (cur && /^\s+\S/.test(l) && !/^\s*[-*]\s/.test(l)) cur.parts.push(l.trim());
+    else cur = null;
+  }
+  return out.map((d) => ({ id: d.id, text: d.parts.join(" ") }));
+}
+
 /** The approved decisions every implementer and reviewer must honor (empty when the section says None). */
 export function decisionsToHonor(analysis: string): string[] {
   const s = sections(analysis).find((x) => x.name.toLowerCase() === "decisions to honor");
   if (!s) return [];
-  return s.body
-    .split(/\r?\n/)
-    .map((l) => DECISION.exec(l))
-    .filter((m): m is RegExpExecArray => m !== null)
-    .map((m) => `${m[1]}: ${(m[2] as string).trim()}`);
+  return decisionRecords(s.body).map((d) => `${d.id}: ${d.text}`);
 }
 export const STACK_SOURCES = ["client", "ai", "fallback"] as const;
 export const DESIGN_MODES = ["existing", "claude_design", "ai_design", "hybrid"] as const;
@@ -166,6 +185,12 @@ function checkAnalysisDoc(text: string, file: string, d: Diags): void {
       else ids.add(m[1] as string);
     }
     if (!bullets.length) d.error(file, '"## Decisions to honor" must list "- D<n>: <decision>" bullets, or say "None"', honor.line);
+    // D6: a warning, not an error, so a Change written before the rule (one line per decision) still passes
+    for (const r of decisionRecords(honor.body)) {
+      const missing = [/\bWhy:/i.test(r.text) ? "" : '"Why:"', /\bRejected:/i.test(r.text) ? "" : '"Rejected:"'].filter(Boolean);
+      if (missing.length)
+        d.warn(file, `"## Decisions to honor": ${r.id} says no ${missing.join(" and no ")}: add indented lines "Why: <reason>" and "Rejected: <option> (<why not>)", or "Rejected: none"`, honor.line);
+    }
   }
   const perms = byName.get("permissions");
   if (perms && !/^\s*[-*]\s+\S/m.test(perms.body) && !/^\s*none\b/im.test(perms.body)) {
