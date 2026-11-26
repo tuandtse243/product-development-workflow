@@ -13,6 +13,7 @@ skills:
   - feasibility-spike: when the question is whether a stack, a library or a service can do something at all
   - world-scan: when the question asks for the worlds a product's Design Directions can borrow from
   - codebase-research: when the question asks how the existing code works today (a part of the Existing System Report, or merging the parts)
+  - library/html-pages: when you write an HTML page, such as the page of the Existing System Report
 ---
 
 ## Responsibility
