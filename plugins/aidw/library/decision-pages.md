@@ -10,6 +10,11 @@ a view. What the user chooses comes back as text and is recorded where it is rec
 - **Use a page** for a round of two or more questions, for any single question whose options have trade-offs
   worth comparing, for a look the user must see (design direction), and for every Approval Gate.
 - **Ask in the chat** for one simple question (yes or no, a name, a confirmation) and for a follow-up to one answer.
+  A question with options asked in the chat still shows a View, as a fenced block under the question (see "Every
+  choice shows a View").
+- **One question after a design, in the chat.** When a round would hold a single question, such as a System Design
+  with no Design Question left open, ask it in the chat: a summary of two or three lines, the link to the Artifact,
+  and a View of what it decides.
 - The user can always answer in the chat instead. Take that answer; do not send them back to the page.
 
 ### The flow
@@ -50,16 +55,36 @@ questions:
         pros: [Preview per branch, No servers to patch]
         cons: [Long jobs must live elsewhere]
         facts: { Monthly cost: 0 to 20 USD, Ops work: almost none, Changing later: easy }
+        view:                   # what this option adds to the repository
+          kind: tree
+          text: |
+            notes/
+            ├── app/
+            └── vercel.json     # build and preview settings
       - key: vps
         name: Own VPS
         pros: [Full control, Fixed price]
         cons: ["You own security, backups and updates"]
         facts: { Monthly cost: 6 USD, Ops work: high, Changing later: hard }
+        view:
+          kind: tree
+          text: |
+            notes/
+            ├── app/
+            ├── Dockerfile
+            ├── deploy/nginx.conf
+            └── deploy/backup.sh  # yours to schedule and check
   - id: Q2
     title: Which sign-in methods?
     multi: true                 # several options may be chosen
     recommend: [email]
     why: The client asked for email only; Google can be added later without a migration.
+    view:                       # one View for the whole question
+      kind: diff
+      text: |2
+         <SignInPage>
+           <EmailForm />
+        +  <GoogleButton />     # only if you choose Google
     options:
       - { key: email, name: Email and password, summary: No third party }
       - { key: google, name: Google, summary: One click for most users }
@@ -70,6 +95,8 @@ questions:
 ```
 
 Writing a good card:
+
+- **Every choice shows a View** (next section), unless it is a yes or no or a name.
 
 - **Every choice carries `recommend` and `why`.** The user should be able to accept the page as it stands.
 - **`criteria` are what makes trade-offs visible.** Pick the two to four things that really differ between the
@@ -84,6 +111,51 @@ Writing a good card:
 - Quote a list entry that contains a comma or a colon (`["Create, edit and delete", Search]`), or write the list
   one entry per line; an unquoted comma splits it in two.
 - Text fields take `code` in backticks and `**bold**`; everything else is shown as written.
+
+### Every choice shows a View
+
+Options described only in words are hard to compare, so a question with options carries at least one **View**: the
+smallest code shape that shows the point, picked as the vendored show-me skill says
+(`aidw vendor-path humanlayer/show-me`). Put it on the question when one shape shows every option (the change, with
+each option marked), or on each option when the options differ in shape.
+
+```text
+view: { kind: <kind>, text: <the block> }     # or a list of them
+```
+
+| kind | shows |
+|---|---|
+| `diff` | what changes in a shape that already exists: files, a call tree, components, steps. Lines start with `+`, `-` or a space; the page colours added and removed lines |
+| `tree` | files and folders, with a short comment on what each holds |
+| `calltree` | who calls whom at run time |
+| `component` | UI structure, with the state and module boundaries that matter |
+| `pseudocode` | logic or an algorithm, in a few plain lines |
+
+- The text is shown exactly as written, in a monospace block, escaped: `<App>` stays text.
+- Keep the indentation. Write the block with `|`; when its first line starts with a space (a diff's context line),
+  write `|2` so YAML keeps that space.
+- A screen, a look or a layout is shown with the `html` slot instead (a mock); it counts as the View.
+- **`aidw page render` refuses** a question with options that has no `view` and no `html` on the question or on any
+  of its options. Two kinds of question need none: a yes or no (exactly two options, keyed `yes` and `no`) and a
+  name (`naming: true`, the options are names of a product or a term). An open question has no options and needs none.
+- A gate section may carry a `view` too (its "agree" or "needs a change" is a yes or no, so the CLI does not ask for
+  one): show the stack or the plan as a tree there when it says more than the points.
+- **In the chat** the same rule holds. Put the View as a fenced block right under the question, with the options
+  after it:
+
+  ````text
+  Where should sessions live? I recommend the database: one store to back up.
+
+  ```diff
+   login
+     checkPassword
+  -  saveSessionInMemory
+  +  saveSessionRow      # db (recommended)
+  +  saveSessionRedis    # redis
+  ```
+
+  db: in the database | redis: in Redis
+  ````
 
 ### The data: picks
 
