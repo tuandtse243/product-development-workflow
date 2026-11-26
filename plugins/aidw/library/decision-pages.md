@@ -118,7 +118,10 @@ sections:
 The user marks every section "agree" or "needs a change" with a note. One section per thing they could send back
 on its own: scope, stack, design, quality, deploy and permissions, risks. Keep each section to what fits on a
 screen; the Artifact holds the rest, so name its path in the body. When the review before the gate ended with findings
-still open, the CLI puts them first as the section `open-findings`; do not write a section with that id.
+still open, the CLI puts them first as the section `open-findings`; do not write a section with that id. Above
+everything, the CLI adds `before-after` from `## Before / After` of `analysis.md`, so the user reads what changes for
+them before anything else; write a section with that id only to show it better (a mock in its `html`), and it still
+goes first.
 
 ### The free slot (`html`)
 

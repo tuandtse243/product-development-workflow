@@ -47,11 +47,20 @@ cannot ask the user.
    must follow.
 5. **Project fields.** Update `stack:` and `design_mode:` in `.aidw/project.yaml`.
 
+## Questions deferred to you
+
+Discovery keeps technical questions away from the user and lists them under `### Deferred to architecture` in
+`analysis.md` (`## Requirements and scope`), one per line as `- DA1: <question>`. Answer every one in
+`## Architecture` with a line of the same id, `- DA1: <answer>`: the answer, and where the architecture or an ADR
+shows it. If a question needs the user after all, answer with the question you put to them and their reply.
+`aidw analyze` refuses a package with an id left unanswered.
+
 ## Done when
 
 `overview.md` names every component that a requirement needs, each API in the contract maps to a scenario,
 `## Decisions to honor` material (names, keys, routes, env var names, tools, libraries, limits) is decided and
-written down, and `aidw validate <id>` is clean.
+written down, every `DA<n>` line of `### Deferred to architecture` has its answer in `## Architecture`, and
+`aidw validate <id>` is clean.
 
 ## Stop and report when
 

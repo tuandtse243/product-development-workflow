@@ -42,7 +42,7 @@ stages:
     states: [analyzing]
     roles: [product-manager, business-analyst, software-architect, ui-ux-designer]
     reads: [intake, project-config, specs, constitution, domain-model, architecture]
-    writes: [analysis-discovery-qa, analysis-scope, analysis-domain, analysis-specs, analysis-existing-system, analysis-stack, analysis-architecture, analysis-design]
+    writes: [analysis-discovery-qa, analysis-scope, analysis-before-after, analysis-deferred-to-architecture, analysis-domain, analysis-specs, analysis-existing-system, analysis-stack, analysis-architecture, analysis-design]
 
   - id: plan
     title: Task graph

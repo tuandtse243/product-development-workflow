@@ -92,6 +92,20 @@ export const ANALYSIS_MD = `# Analysis: Booking
 
 Clinic booking app. Patients book, reschedule and cancel; staff manage slots.
 
+## Before / After
+
+### Before
+
+- A patient phones the clinic and waits on hold to book.
+- Staff write the slot in a paper diary.
+- Moving an appointment takes another call.
+
+### After
+
+- A patient picks a free slot on their phone.
+- The booking shows in the staff's slot list at once.
+- The patient reschedules from the same page.
+
 ## Decisions to honor
 
 - D1: Times are stored in UTC and shown in the clinic's timezone.
@@ -100,6 +114,10 @@ Clinic booking app. Patients book, reschedule and cancel; staff manage slots.
 ## Requirements and scope
 
 In: booking, rescheduling. Out: payments.
+
+### Deferred to architecture
+
+None
 
 ## Domain
 

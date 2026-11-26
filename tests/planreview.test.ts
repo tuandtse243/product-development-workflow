@@ -204,7 +204,8 @@ describe("the Approval Gate waits for the plan review", () => {
     expect(cli(root, "page", "render", "gate").code).toBe(0);
     const html = readFileSync(join(root, ".aidw/run/pages/gate.html"), "utf8");
     const secs = [...html.matchAll(/data-sec="([^"]+)"/g)].map((m) => m[1]);
-    expect(secs[0]).toBe("open-findings");
+    // D1: Before / After is first of all, then the findings head the rest
+    expect(secs.slice(0, 2)).toEqual(["before-after", "open-findings"]);
     expect(secs).toContain("scope");
     expect(html).toMatch(/Open findings of the independent review/);
     expect(html).toContain("round 3: the booking page adds a client-side slot cache");

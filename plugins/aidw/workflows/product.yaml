@@ -87,7 +87,7 @@ stages:
     states: [analyzing]
     roles: [product-manager, business-analyst, ux-research]
     reads: [intake]
-    writes: [analysis-discovery-qa]
+    writes: [analysis-discovery-qa, analysis-deferred-to-architecture]
 
   - id: research
     title: Research, when the Product Manager decides the Change needs it
@@ -108,7 +108,7 @@ stages:
     states: [analyzing]
     roles: [product-manager, business-analyst]
     reads: [intake, analysis-discovery-qa, research-note, user-journeys]
-    writes: [domain-model, decisions-domain, requirements, delta-specs, analysis-scope, analysis-domain, analysis-specs]
+    writes: [domain-model, decisions-domain, requirements, delta-specs, analysis-scope, analysis-before-after, analysis-domain, analysis-specs]
 
   - id: design
     title: Design decision and tokens
@@ -122,7 +122,7 @@ stages:
     title: Stack, architecture and constitution
     states: [analyzing]
     roles: [software-architect]
-    reads: [requirements, delta-specs, domain-model, design-direction, design-tokens, project-config]
+    reads: [analysis-deferred-to-architecture, requirements, delta-specs, domain-model, design-direction, design-tokens, project-config]
     writes: [architecture, decisions-architecture, constitution, project-config, analysis-stack, analysis-architecture]
 
   - id: contracts

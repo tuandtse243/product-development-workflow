@@ -122,7 +122,8 @@ function unique(values: string[], what: string, where: string, problems: string[
 
 /**
  * Reads the data of a page. `extra` are sections the CLI adds to a gate page itself (Decision Points, plan size), after
- * the authored ones; `lead` go before them (the open findings of the plan review).
+ * the authored ones; `lead` go before them (the open findings of the plan review). A `before-after` section, authored
+ * or added by the CLI, goes first of all.
  * Problems name the field, so the Role that wrote the data can fix it without guessing.
  */
 export function parsePage(name: string, source: string, extra: PageSection[] = [], lead: PageSection[] = []): { page: Page; problems: string[] } {
@@ -245,6 +246,8 @@ export function parsePage(name: string, source: string, extra: PageSection[] = [
       }),
       ...extra,
     ];
+    // D1: Before / After is the first thing the user reads, above even the CLI's lead sections.
+    page.sections.sort((a, b) => Number(b.id === "before-after") - Number(a.id === "before-after"));
     if (!page.sections.length) problems.push("sections: missing or empty");
     unique(page.sections.map((s) => s.id), "section id", "sections", problems);
   }

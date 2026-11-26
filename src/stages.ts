@@ -24,6 +24,7 @@ import type { Paths } from "./project.js";
 import { PLAN_REVIEW, planReviewBlocker } from "./planreview.js";
 import { DEFAULT_PARALLEL, parseQuality, qualityFile } from "./quality.js";
 import type { Stage, Workflow } from "./workflow.js";
+import { BEFORE_AFTER, DEFERRED, owesBeforeAfter } from "./beforeafter.js";
 
 /** One piece of work the lead may hand to a subagent. */
 export interface Work {
@@ -133,6 +134,7 @@ function sectionBody(text: string, heading: string): string | null {
   return lines.slice(at + 1, end < 0 ? undefined : end).join("\n");
 }
 
+const TEMPLATE_2_PARTS = new Set([`## ${BEFORE_AFTER}`, `### ${DEFERRED}`]);
 const filled = (text: string | null) => text !== null && text.trim() !== "" && !text.includes("TODO(aidw)");
 
 /**
@@ -146,6 +148,8 @@ function artifactWritten(p: Paths, change: Change, entry: ArtifactEntry | undefi
     const key = String(entry.part ?? "").split(":")[0]?.trim() ?? "";
     return key !== "" && key in readDecisions(change);
   }
+  // A Change created before analysis_template 2 has no Before / After or Deferred to architecture to tell by.
+  if (typeof entry.part === "string" && TEMPLATE_2_PARTS.has(entry.part) && !owesBeforeAfter(change)) return null;
   const file = join(p.aidw, ...entry.path.replace("<id>", change.id).split("/"));
   if (!existsSync(file)) return false;
   const text = readFileSync(file, "utf8");

@@ -21,6 +21,11 @@ analysis-summary:
   part: "## Summary"
   owner: product-manager
   validate: aidw analyze
+analysis-before-after:
+  path: changes/<id>/analysis.md
+  part: "## Before / After"
+  owner: product-manager
+  validate: aidw analyze
 analysis-decisions-to-honor:
   path: changes/<id>/analysis.md
   part: "## Decisions to honor"
@@ -29,6 +34,11 @@ analysis-decisions-to-honor:
 analysis-scope:
   path: changes/<id>/analysis.md
   part: "## Requirements and scope"
+  owner: product-manager
+  validate: aidw analyze
+analysis-deferred-to-architecture:
+  path: changes/<id>/analysis.md
+  part: "### Deferred to architecture"
   owner: product-manager
   validate: aidw analyze
 analysis-existing-system:

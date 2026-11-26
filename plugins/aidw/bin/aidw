@@ -31,9 +31,9 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-// node_modules/yaml/dist/nodes/identity.js
+// ../../node_modules/yaml/dist/nodes/identity.js
 var require_identity = __commonJS({
-  "node_modules/yaml/dist/nodes/identity.js"(exports2) {
+  "../../node_modules/yaml/dist/nodes/identity.js"(exports2) {
     "use strict";
     var ALIAS = Symbol.for("yaml.alias");
     var DOC = Symbol.for("yaml.document");
@@ -88,9 +88,9 @@ var require_identity = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/visit.js
+// ../../node_modules/yaml/dist/visit.js
 var require_visit = __commonJS({
-  "node_modules/yaml/dist/visit.js"(exports2) {
+  "../../node_modules/yaml/dist/visit.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var BREAK = Symbol("break visit");
@@ -246,9 +246,9 @@ var require_visit = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/doc/directives.js
+// ../../node_modules/yaml/dist/doc/directives.js
 var require_directives = __commonJS({
-  "node_modules/yaml/dist/doc/directives.js"(exports2) {
+  "../../node_modules/yaml/dist/doc/directives.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var visit = require_visit();
@@ -417,9 +417,9 @@ var require_directives = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/doc/anchors.js
+// ../../node_modules/yaml/dist/doc/anchors.js
 var require_anchors = __commonJS({
-  "node_modules/yaml/dist/doc/anchors.js"(exports2) {
+  "../../node_modules/yaml/dist/doc/anchors.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var visit = require_visit();
@@ -487,9 +487,9 @@ var require_anchors = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/doc/applyReviver.js
+// ../../node_modules/yaml/dist/doc/applyReviver.js
 var require_applyReviver = __commonJS({
-  "node_modules/yaml/dist/doc/applyReviver.js"(exports2) {
+  "../../node_modules/yaml/dist/doc/applyReviver.js"(exports2) {
     "use strict";
     function applyReviver(reviver, obj2, key, val) {
       if (val && typeof val === "object") {
@@ -537,9 +537,9 @@ var require_applyReviver = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/nodes/toJS.js
+// ../../node_modules/yaml/dist/nodes/toJS.js
 var require_toJS = __commonJS({
-  "node_modules/yaml/dist/nodes/toJS.js"(exports2) {
+  "../../node_modules/yaml/dist/nodes/toJS.js"(exports2) {
     "use strict";
     var identity = require_identity();
     function toJS(value, arg, ctx) {
@@ -567,9 +567,9 @@ var require_toJS = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/nodes/Node.js
+// ../../node_modules/yaml/dist/nodes/Node.js
 var require_Node = __commonJS({
-  "node_modules/yaml/dist/nodes/Node.js"(exports2) {
+  "../../node_modules/yaml/dist/nodes/Node.js"(exports2) {
     "use strict";
     var applyReviver = require_applyReviver();
     var identity = require_identity();
@@ -608,9 +608,9 @@ var require_Node = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/nodes/Alias.js
+// ../../node_modules/yaml/dist/nodes/Alias.js
 var require_Alias = __commonJS({
-  "node_modules/yaml/dist/nodes/Alias.js"(exports2) {
+  "../../node_modules/yaml/dist/nodes/Alias.js"(exports2) {
     "use strict";
     var anchors = require_anchors();
     var visit = require_visit();
@@ -722,9 +722,9 @@ var require_Alias = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/nodes/Scalar.js
+// ../../node_modules/yaml/dist/nodes/Scalar.js
 var require_Scalar = __commonJS({
-  "node_modules/yaml/dist/nodes/Scalar.js"(exports2) {
+  "../../node_modules/yaml/dist/nodes/Scalar.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var Node = require_Node();
@@ -752,9 +752,9 @@ var require_Scalar = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/doc/createNode.js
+// ../../node_modules/yaml/dist/doc/createNode.js
 var require_createNode = __commonJS({
-  "node_modules/yaml/dist/doc/createNode.js"(exports2) {
+  "../../node_modules/yaml/dist/doc/createNode.js"(exports2) {
     "use strict";
     var Alias = require_Alias();
     var identity = require_identity();
@@ -827,9 +827,9 @@ var require_createNode = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/nodes/Collection.js
+// ../../node_modules/yaml/dist/nodes/Collection.js
 var require_Collection = __commonJS({
-  "node_modules/yaml/dist/nodes/Collection.js"(exports2) {
+  "../../node_modules/yaml/dist/nodes/Collection.js"(exports2) {
     "use strict";
     var createNode = require_createNode();
     var identity = require_identity();
@@ -970,9 +970,9 @@ var require_Collection = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/stringify/stringifyComment.js
+// ../../node_modules/yaml/dist/stringify/stringifyComment.js
 var require_stringifyComment = __commonJS({
-  "node_modules/yaml/dist/stringify/stringifyComment.js"(exports2) {
+  "../../node_modules/yaml/dist/stringify/stringifyComment.js"(exports2) {
     "use strict";
     var stringifyComment = (str2) => str2.replace(/^(?!$)(?: $)?/gm, "#");
     function indentComment(comment, indent) {
@@ -987,9 +987,9 @@ var require_stringifyComment = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/stringify/foldFlowLines.js
+// ../../node_modules/yaml/dist/stringify/foldFlowLines.js
 var require_foldFlowLines = __commonJS({
-  "node_modules/yaml/dist/stringify/foldFlowLines.js"(exports2) {
+  "../../node_modules/yaml/dist/stringify/foldFlowLines.js"(exports2) {
     "use strict";
     var FOLD_FLOW = "flow";
     var FOLD_BLOCK = "block";
@@ -1123,9 +1123,9 @@ ${indent}${text2.slice(fold + 1, end2)}`;
   }
 });
 
-// node_modules/yaml/dist/stringify/stringifyString.js
+// ../../node_modules/yaml/dist/stringify/stringifyString.js
 var require_stringifyString = __commonJS({
-  "node_modules/yaml/dist/stringify/stringifyString.js"(exports2) {
+  "../../node_modules/yaml/dist/stringify/stringifyString.js"(exports2) {
     "use strict";
     var Scalar = require_Scalar();
     var foldFlowLines = require_foldFlowLines();
@@ -1406,9 +1406,9 @@ ${indent}`);
   }
 });
 
-// node_modules/yaml/dist/stringify/stringify.js
+// ../../node_modules/yaml/dist/stringify/stringify.js
 var require_stringify = __commonJS({
-  "node_modules/yaml/dist/stringify/stringify.js"(exports2) {
+  "../../node_modules/yaml/dist/stringify/stringify.js"(exports2) {
     "use strict";
     var anchors = require_anchors();
     var identity = require_identity();
@@ -1529,9 +1529,9 @@ ${ctx.indent}${str2}`;
   }
 });
 
-// node_modules/yaml/dist/stringify/stringifyPair.js
+// ../../node_modules/yaml/dist/stringify/stringifyPair.js
 var require_stringifyPair = __commonJS({
-  "node_modules/yaml/dist/stringify/stringifyPair.js"(exports2) {
+  "../../node_modules/yaml/dist/stringify/stringifyPair.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var Scalar = require_Scalar();
@@ -1662,9 +1662,9 @@ ${ctx.indent}`;
   }
 });
 
-// node_modules/yaml/dist/log.js
+// ../../node_modules/yaml/dist/log.js
 var require_log = __commonJS({
-  "node_modules/yaml/dist/log.js"(exports2) {
+  "../../node_modules/yaml/dist/log.js"(exports2) {
     "use strict";
     var node_process = require("process");
     function debug(logLevel, ...messages) {
@@ -1684,9 +1684,9 @@ var require_log = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/yaml-1.1/merge.js
+// ../../node_modules/yaml/dist/schema/yaml-1.1/merge.js
 var require_merge = __commonJS({
-  "node_modules/yaml/dist/schema/yaml-1.1/merge.js"(exports2) {
+  "../../node_modules/yaml/dist/schema/yaml-1.1/merge.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var Scalar = require_Scalar();
@@ -1741,9 +1741,9 @@ var require_merge = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/nodes/addPairToJSMap.js
+// ../../node_modules/yaml/dist/nodes/addPairToJSMap.js
 var require_addPairToJSMap = __commonJS({
-  "node_modules/yaml/dist/nodes/addPairToJSMap.js"(exports2) {
+  "../../node_modules/yaml/dist/nodes/addPairToJSMap.js"(exports2) {
     "use strict";
     var log = require_log();
     var merge = require_merge();
@@ -1805,9 +1805,9 @@ var require_addPairToJSMap = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/nodes/Pair.js
+// ../../node_modules/yaml/dist/nodes/Pair.js
 var require_Pair = __commonJS({
-  "node_modules/yaml/dist/nodes/Pair.js"(exports2) {
+  "../../node_modules/yaml/dist/nodes/Pair.js"(exports2) {
     "use strict";
     var createNode = require_createNode();
     var stringifyPair = require_stringifyPair();
@@ -1845,9 +1845,9 @@ var require_Pair = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/stringify/stringifyCollection.js
+// ../../node_modules/yaml/dist/stringify/stringifyCollection.js
 var require_stringifyCollection = __commonJS({
-  "node_modules/yaml/dist/stringify/stringifyCollection.js"(exports2) {
+  "../../node_modules/yaml/dist/stringify/stringifyCollection.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var stringify = require_stringify();
@@ -1989,9 +1989,9 @@ ${indent}${end}`;
   }
 });
 
-// node_modules/yaml/dist/nodes/YAMLMap.js
+// ../../node_modules/yaml/dist/nodes/YAMLMap.js
 var require_YAMLMap = __commonJS({
-  "node_modules/yaml/dist/nodes/YAMLMap.js"(exports2) {
+  "../../node_modules/yaml/dist/nodes/YAMLMap.js"(exports2) {
     "use strict";
     var stringifyCollection = require_stringifyCollection();
     var addPairToJSMap = require_addPairToJSMap();
@@ -2133,9 +2133,9 @@ var require_YAMLMap = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/common/map.js
+// ../../node_modules/yaml/dist/schema/common/map.js
 var require_map = __commonJS({
-  "node_modules/yaml/dist/schema/common/map.js"(exports2) {
+  "../../node_modules/yaml/dist/schema/common/map.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var YAMLMap = require_YAMLMap();
@@ -2155,9 +2155,9 @@ var require_map = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/nodes/YAMLSeq.js
+// ../../node_modules/yaml/dist/nodes/YAMLSeq.js
 var require_YAMLSeq = __commonJS({
-  "node_modules/yaml/dist/nodes/YAMLSeq.js"(exports2) {
+  "../../node_modules/yaml/dist/nodes/YAMLSeq.js"(exports2) {
     "use strict";
     var createNode = require_createNode();
     var stringifyCollection = require_stringifyCollection();
@@ -2271,9 +2271,9 @@ var require_YAMLSeq = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/common/seq.js
+// ../../node_modules/yaml/dist/schema/common/seq.js
 var require_seq = __commonJS({
-  "node_modules/yaml/dist/schema/common/seq.js"(exports2) {
+  "../../node_modules/yaml/dist/schema/common/seq.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var YAMLSeq = require_YAMLSeq();
@@ -2293,9 +2293,9 @@ var require_seq = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/common/string.js
+// ../../node_modules/yaml/dist/schema/common/string.js
 var require_string = __commonJS({
-  "node_modules/yaml/dist/schema/common/string.js"(exports2) {
+  "../../node_modules/yaml/dist/schema/common/string.js"(exports2) {
     "use strict";
     var stringifyString = require_stringifyString();
     var string = {
@@ -2312,9 +2312,9 @@ var require_string = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/common/null.js
+// ../../node_modules/yaml/dist/schema/common/null.js
 var require_null = __commonJS({
-  "node_modules/yaml/dist/schema/common/null.js"(exports2) {
+  "../../node_modules/yaml/dist/schema/common/null.js"(exports2) {
     "use strict";
     var Scalar = require_Scalar();
     var nullTag = {
@@ -2330,9 +2330,9 @@ var require_null = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/core/bool.js
+// ../../node_modules/yaml/dist/schema/core/bool.js
 var require_bool = __commonJS({
-  "node_modules/yaml/dist/schema/core/bool.js"(exports2) {
+  "../../node_modules/yaml/dist/schema/core/bool.js"(exports2) {
     "use strict";
     var Scalar = require_Scalar();
     var boolTag = {
@@ -2354,9 +2354,9 @@ var require_bool = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/stringify/stringifyNumber.js
+// ../../node_modules/yaml/dist/stringify/stringifyNumber.js
 var require_stringifyNumber = __commonJS({
-  "node_modules/yaml/dist/stringify/stringifyNumber.js"(exports2) {
+  "../../node_modules/yaml/dist/stringify/stringifyNumber.js"(exports2) {
     "use strict";
     function stringifyNumber({ format, minFractionDigits, tag, value }) {
       if (typeof value === "bigint")
@@ -2381,9 +2381,9 @@ var require_stringifyNumber = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/core/float.js
+// ../../node_modules/yaml/dist/schema/core/float.js
 var require_float = __commonJS({
-  "node_modules/yaml/dist/schema/core/float.js"(exports2) {
+  "../../node_modules/yaml/dist/schema/core/float.js"(exports2) {
     "use strict";
     var Scalar = require_Scalar();
     var stringifyNumber = require_stringifyNumber();
@@ -2427,9 +2427,9 @@ var require_float = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/core/int.js
+// ../../node_modules/yaml/dist/schema/core/int.js
 var require_int = __commonJS({
-  "node_modules/yaml/dist/schema/core/int.js"(exports2) {
+  "../../node_modules/yaml/dist/schema/core/int.js"(exports2) {
     "use strict";
     var stringifyNumber = require_stringifyNumber();
     var intIdentify = (value) => typeof value === "bigint" || Number.isInteger(value);
@@ -2472,9 +2472,9 @@ var require_int = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/core/schema.js
+// ../../node_modules/yaml/dist/schema/core/schema.js
 var require_schema = __commonJS({
-  "node_modules/yaml/dist/schema/core/schema.js"(exports2) {
+  "../../node_modules/yaml/dist/schema/core/schema.js"(exports2) {
     "use strict";
     var map = require_map();
     var _null = require_null();
@@ -2500,9 +2500,9 @@ var require_schema = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/json/schema.js
+// ../../node_modules/yaml/dist/schema/json/schema.js
 var require_schema2 = __commonJS({
-  "node_modules/yaml/dist/schema/json/schema.js"(exports2) {
+  "../../node_modules/yaml/dist/schema/json/schema.js"(exports2) {
     "use strict";
     var Scalar = require_Scalar();
     var map = require_map();
@@ -2567,9 +2567,9 @@ var require_schema2 = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/yaml-1.1/binary.js
+// ../../node_modules/yaml/dist/schema/yaml-1.1/binary.js
 var require_binary = __commonJS({
-  "node_modules/yaml/dist/schema/yaml-1.1/binary.js"(exports2) {
+  "../../node_modules/yaml/dist/schema/yaml-1.1/binary.js"(exports2) {
     "use strict";
     var node_buffer = require("buffer");
     var Scalar = require_Scalar();
@@ -2633,9 +2633,9 @@ var require_binary = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/yaml-1.1/pairs.js
+// ../../node_modules/yaml/dist/schema/yaml-1.1/pairs.js
 var require_pairs = __commonJS({
-  "node_modules/yaml/dist/schema/yaml-1.1/pairs.js"(exports2) {
+  "../../node_modules/yaml/dist/schema/yaml-1.1/pairs.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var Pair = require_Pair();
@@ -2711,9 +2711,9 @@ ${cn.comment}` : item.comment;
   }
 });
 
-// node_modules/yaml/dist/schema/yaml-1.1/omap.js
+// ../../node_modules/yaml/dist/schema/yaml-1.1/omap.js
 var require_omap = __commonJS({
-  "node_modules/yaml/dist/schema/yaml-1.1/omap.js"(exports2) {
+  "../../node_modules/yaml/dist/schema/yaml-1.1/omap.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var toJS = require_toJS();
@@ -2789,9 +2789,9 @@ var require_omap = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/yaml-1.1/bool.js
+// ../../node_modules/yaml/dist/schema/yaml-1.1/bool.js
 var require_bool2 = __commonJS({
-  "node_modules/yaml/dist/schema/yaml-1.1/bool.js"(exports2) {
+  "../../node_modules/yaml/dist/schema/yaml-1.1/bool.js"(exports2) {
     "use strict";
     var Scalar = require_Scalar();
     function boolStringify({ value, source }, ctx) {
@@ -2821,9 +2821,9 @@ var require_bool2 = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/yaml-1.1/float.js
+// ../../node_modules/yaml/dist/schema/yaml-1.1/float.js
 var require_float2 = __commonJS({
-  "node_modules/yaml/dist/schema/yaml-1.1/float.js"(exports2) {
+  "../../node_modules/yaml/dist/schema/yaml-1.1/float.js"(exports2) {
     "use strict";
     var Scalar = require_Scalar();
     var stringifyNumber = require_stringifyNumber();
@@ -2870,9 +2870,9 @@ var require_float2 = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/yaml-1.1/int.js
+// ../../node_modules/yaml/dist/schema/yaml-1.1/int.js
 var require_int2 = __commonJS({
-  "node_modules/yaml/dist/schema/yaml-1.1/int.js"(exports2) {
+  "../../node_modules/yaml/dist/schema/yaml-1.1/int.js"(exports2) {
     "use strict";
     var stringifyNumber = require_stringifyNumber();
     var intIdentify = (value) => typeof value === "bigint" || Number.isInteger(value);
@@ -2949,9 +2949,9 @@ var require_int2 = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/yaml-1.1/set.js
+// ../../node_modules/yaml/dist/schema/yaml-1.1/set.js
 var require_set = __commonJS({
-  "node_modules/yaml/dist/schema/yaml-1.1/set.js"(exports2) {
+  "../../node_modules/yaml/dist/schema/yaml-1.1/set.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var Pair = require_Pair();
@@ -3038,9 +3038,9 @@ var require_set = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/yaml-1.1/timestamp.js
+// ../../node_modules/yaml/dist/schema/yaml-1.1/timestamp.js
 var require_timestamp = __commonJS({
-  "node_modules/yaml/dist/schema/yaml-1.1/timestamp.js"(exports2) {
+  "../../node_modules/yaml/dist/schema/yaml-1.1/timestamp.js"(exports2) {
     "use strict";
     var stringifyNumber = require_stringifyNumber();
     function parseSexagesimal(str2, asBigInt) {
@@ -3126,9 +3126,9 @@ var require_timestamp = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/yaml-1.1/schema.js
+// ../../node_modules/yaml/dist/schema/yaml-1.1/schema.js
 var require_schema3 = __commonJS({
-  "node_modules/yaml/dist/schema/yaml-1.1/schema.js"(exports2) {
+  "../../node_modules/yaml/dist/schema/yaml-1.1/schema.js"(exports2) {
     "use strict";
     var map = require_map();
     var _null = require_null();
@@ -3170,9 +3170,9 @@ var require_schema3 = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/tags.js
+// ../../node_modules/yaml/dist/schema/tags.js
 var require_tags = __commonJS({
-  "node_modules/yaml/dist/schema/tags.js"(exports2) {
+  "../../node_modules/yaml/dist/schema/tags.js"(exports2) {
     "use strict";
     var map = require_map();
     var _null = require_null();
@@ -3264,9 +3264,9 @@ var require_tags = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/Schema.js
+// ../../node_modules/yaml/dist/schema/Schema.js
 var require_Schema = __commonJS({
-  "node_modules/yaml/dist/schema/Schema.js"(exports2) {
+  "../../node_modules/yaml/dist/schema/Schema.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var map = require_map();
@@ -3296,9 +3296,9 @@ var require_Schema = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/stringify/stringifyDocument.js
+// ../../node_modules/yaml/dist/stringify/stringifyDocument.js
 var require_stringifyDocument = __commonJS({
-  "node_modules/yaml/dist/stringify/stringifyDocument.js"(exports2) {
+  "../../node_modules/yaml/dist/stringify/stringifyDocument.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var stringify = require_stringify();
@@ -3376,9 +3376,9 @@ var require_stringifyDocument = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/doc/Document.js
+// ../../node_modules/yaml/dist/doc/Document.js
 var require_Document = __commonJS({
-  "node_modules/yaml/dist/doc/Document.js"(exports2) {
+  "../../node_modules/yaml/dist/doc/Document.js"(exports2) {
     "use strict";
     var Alias = require_Alias();
     var Collection = require_Collection();
@@ -3685,9 +3685,9 @@ var require_Document = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/errors.js
+// ../../node_modules/yaml/dist/errors.js
 var require_errors = __commonJS({
-  "node_modules/yaml/dist/errors.js"(exports2) {
+  "../../node_modules/yaml/dist/errors.js"(exports2) {
     "use strict";
     var YAMLError = class extends Error {
       constructor(name, pos, code2, message) {
@@ -3750,9 +3750,9 @@ ${pointer3}
   }
 });
 
-// node_modules/yaml/dist/compose/resolve-props.js
+// ../../node_modules/yaml/dist/compose/resolve-props.js
 var require_resolve_props = __commonJS({
-  "node_modules/yaml/dist/compose/resolve-props.js"(exports2) {
+  "../../node_modules/yaml/dist/compose/resolve-props.js"(exports2) {
     "use strict";
     function resolveProps(tokens, { flow, indicator, next, offset, onError, parentIndent, startOnNewline }) {
       let spaceBefore = false;
@@ -3884,9 +3884,9 @@ var require_resolve_props = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/util-contains-newline.js
+// ../../node_modules/yaml/dist/compose/util-contains-newline.js
 var require_util_contains_newline = __commonJS({
-  "node_modules/yaml/dist/compose/util-contains-newline.js"(exports2) {
+  "../../node_modules/yaml/dist/compose/util-contains-newline.js"(exports2) {
     "use strict";
     function containsNewline(key) {
       if (!key)
@@ -3926,9 +3926,9 @@ var require_util_contains_newline = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/util-flow-indent-check.js
+// ../../node_modules/yaml/dist/compose/util-flow-indent-check.js
 var require_util_flow_indent_check = __commonJS({
-  "node_modules/yaml/dist/compose/util-flow-indent-check.js"(exports2) {
+  "../../node_modules/yaml/dist/compose/util-flow-indent-check.js"(exports2) {
     "use strict";
     var utilContainsNewline = require_util_contains_newline();
     function flowIndentCheck(indent, fc, onError) {
@@ -3944,9 +3944,9 @@ var require_util_flow_indent_check = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/util-map-includes.js
+// ../../node_modules/yaml/dist/compose/util-map-includes.js
 var require_util_map_includes = __commonJS({
-  "node_modules/yaml/dist/compose/util-map-includes.js"(exports2) {
+  "../../node_modules/yaml/dist/compose/util-map-includes.js"(exports2) {
     "use strict";
     var identity = require_identity();
     function mapIncludes(ctx, items, search) {
@@ -3960,9 +3960,9 @@ var require_util_map_includes = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/resolve-block-map.js
+// ../../node_modules/yaml/dist/compose/resolve-block-map.js
 var require_resolve_block_map = __commonJS({
-  "node_modules/yaml/dist/compose/resolve-block-map.js"(exports2) {
+  "../../node_modules/yaml/dist/compose/resolve-block-map.js"(exports2) {
     "use strict";
     var Pair = require_Pair();
     var YAMLMap = require_YAMLMap();
@@ -4068,9 +4068,9 @@ var require_resolve_block_map = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/resolve-block-seq.js
+// ../../node_modules/yaml/dist/compose/resolve-block-seq.js
 var require_resolve_block_seq = __commonJS({
-  "node_modules/yaml/dist/compose/resolve-block-seq.js"(exports2) {
+  "../../node_modules/yaml/dist/compose/resolve-block-seq.js"(exports2) {
     "use strict";
     var YAMLSeq = require_YAMLSeq();
     var resolveProps = require_resolve_props();
@@ -4119,9 +4119,9 @@ var require_resolve_block_seq = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/resolve-end.js
+// ../../node_modules/yaml/dist/compose/resolve-end.js
 var require_resolve_end = __commonJS({
-  "node_modules/yaml/dist/compose/resolve-end.js"(exports2) {
+  "../../node_modules/yaml/dist/compose/resolve-end.js"(exports2) {
     "use strict";
     function resolveEnd(end, offset, reqSpace, onError) {
       let comment = "";
@@ -4162,9 +4162,9 @@ var require_resolve_end = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/resolve-flow-collection.js
+// ../../node_modules/yaml/dist/compose/resolve-flow-collection.js
 var require_resolve_flow_collection = __commonJS({
-  "node_modules/yaml/dist/compose/resolve-flow-collection.js"(exports2) {
+  "../../node_modules/yaml/dist/compose/resolve-flow-collection.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var Pair = require_Pair();
@@ -4356,9 +4356,9 @@ var require_resolve_flow_collection = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/compose-collection.js
+// ../../node_modules/yaml/dist/compose/compose-collection.js
 var require_compose_collection = __commonJS({
-  "node_modules/yaml/dist/compose/compose-collection.js"(exports2) {
+  "../../node_modules/yaml/dist/compose/compose-collection.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var Scalar = require_Scalar();
@@ -4421,9 +4421,9 @@ var require_compose_collection = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/resolve-block-scalar.js
+// ../../node_modules/yaml/dist/compose/resolve-block-scalar.js
 var require_resolve_block_scalar = __commonJS({
-  "node_modules/yaml/dist/compose/resolve-block-scalar.js"(exports2) {
+  "../../node_modules/yaml/dist/compose/resolve-block-scalar.js"(exports2) {
     "use strict";
     var Scalar = require_Scalar();
     function resolveBlockScalar(ctx, scalar, onError) {
@@ -4604,9 +4604,9 @@ var require_resolve_block_scalar = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/resolve-flow-scalar.js
+// ../../node_modules/yaml/dist/compose/resolve-flow-scalar.js
 var require_resolve_flow_scalar = __commonJS({
-  "node_modules/yaml/dist/compose/resolve-flow-scalar.js"(exports2) {
+  "../../node_modules/yaml/dist/compose/resolve-flow-scalar.js"(exports2) {
     "use strict";
     var Scalar = require_Scalar();
     var resolveEnd = require_resolve_end();
@@ -4823,9 +4823,9 @@ var require_resolve_flow_scalar = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/compose-scalar.js
+// ../../node_modules/yaml/dist/compose/compose-scalar.js
 var require_compose_scalar = __commonJS({
-  "node_modules/yaml/dist/compose/compose-scalar.js"(exports2) {
+  "../../node_modules/yaml/dist/compose/compose-scalar.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var Scalar = require_Scalar();
@@ -4904,9 +4904,9 @@ var require_compose_scalar = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/util-empty-scalar-position.js
+// ../../node_modules/yaml/dist/compose/util-empty-scalar-position.js
 var require_util_empty_scalar_position = __commonJS({
-  "node_modules/yaml/dist/compose/util-empty-scalar-position.js"(exports2) {
+  "../../node_modules/yaml/dist/compose/util-empty-scalar-position.js"(exports2) {
     "use strict";
     function emptyScalarPosition(offset, before, pos) {
       if (before) {
@@ -4934,9 +4934,9 @@ var require_util_empty_scalar_position = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/compose-node.js
+// ../../node_modules/yaml/dist/compose/compose-node.js
 var require_compose_node = __commonJS({
-  "node_modules/yaml/dist/compose/compose-node.js"(exports2) {
+  "../../node_modules/yaml/dist/compose/compose-node.js"(exports2) {
     "use strict";
     var Alias = require_Alias();
     var identity = require_identity();
@@ -5035,9 +5035,9 @@ var require_compose_node = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/compose-doc.js
+// ../../node_modules/yaml/dist/compose/compose-doc.js
 var require_compose_doc = __commonJS({
-  "node_modules/yaml/dist/compose/compose-doc.js"(exports2) {
+  "../../node_modules/yaml/dist/compose/compose-doc.js"(exports2) {
     "use strict";
     var Document = require_Document();
     var composeNode = require_compose_node();
@@ -5078,9 +5078,9 @@ var require_compose_doc = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/composer.js
+// ../../node_modules/yaml/dist/compose/composer.js
 var require_composer = __commonJS({
-  "node_modules/yaml/dist/compose/composer.js"(exports2) {
+  "../../node_modules/yaml/dist/compose/composer.js"(exports2) {
     "use strict";
     var node_process = require("process");
     var directives = require_directives();
@@ -5284,9 +5284,9 @@ ${end.comment}` : end.comment;
   }
 });
 
-// node_modules/yaml/dist/parse/cst-scalar.js
+// ../../node_modules/yaml/dist/parse/cst-scalar.js
 var require_cst_scalar = __commonJS({
-  "node_modules/yaml/dist/parse/cst-scalar.js"(exports2) {
+  "../../node_modules/yaml/dist/parse/cst-scalar.js"(exports2) {
     "use strict";
     var resolveBlockScalar = require_resolve_block_scalar();
     var resolveFlowScalar = require_resolve_flow_scalar();
@@ -5469,9 +5469,9 @@ var require_cst_scalar = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/parse/cst-stringify.js
+// ../../node_modules/yaml/dist/parse/cst-stringify.js
 var require_cst_stringify = __commonJS({
-  "node_modules/yaml/dist/parse/cst-stringify.js"(exports2) {
+  "../../node_modules/yaml/dist/parse/cst-stringify.js"(exports2) {
     "use strict";
     var stringify = (cst) => "type" in cst ? stringifyToken(cst) : stringifyItem(cst);
     function stringifyToken(token) {
@@ -5530,9 +5530,9 @@ var require_cst_stringify = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/parse/cst-visit.js
+// ../../node_modules/yaml/dist/parse/cst-visit.js
 var require_cst_visit = __commonJS({
-  "node_modules/yaml/dist/parse/cst-visit.js"(exports2) {
+  "../../node_modules/yaml/dist/parse/cst-visit.js"(exports2) {
     "use strict";
     var BREAK = Symbol("break visit");
     var SKIP3 = Symbol("skip children");
@@ -5592,9 +5592,9 @@ var require_cst_visit = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/parse/cst.js
+// ../../node_modules/yaml/dist/parse/cst.js
 var require_cst = __commonJS({
-  "node_modules/yaml/dist/parse/cst.js"(exports2) {
+  "../../node_modules/yaml/dist/parse/cst.js"(exports2) {
     "use strict";
     var cstScalar = require_cst_scalar();
     var cstStringify = require_cst_stringify();
@@ -5694,9 +5694,9 @@ var require_cst = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/parse/lexer.js
+// ../../node_modules/yaml/dist/parse/lexer.js
 var require_lexer = __commonJS({
-  "node_modules/yaml/dist/parse/lexer.js"(exports2) {
+  "../../node_modules/yaml/dist/parse/lexer.js"(exports2) {
     "use strict";
     var cst = require_cst();
     function isEmpty(ch) {
@@ -6273,9 +6273,9 @@ var require_lexer = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/parse/line-counter.js
+// ../../node_modules/yaml/dist/parse/line-counter.js
 var require_line_counter = __commonJS({
-  "node_modules/yaml/dist/parse/line-counter.js"(exports2) {
+  "../../node_modules/yaml/dist/parse/line-counter.js"(exports2) {
     "use strict";
     var LineCounter = class {
       constructor() {
@@ -6304,9 +6304,9 @@ var require_line_counter = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/parse/parser.js
+// ../../node_modules/yaml/dist/parse/parser.js
 var require_parser = __commonJS({
-  "node_modules/yaml/dist/parse/parser.js"(exports2) {
+  "../../node_modules/yaml/dist/parse/parser.js"(exports2) {
     "use strict";
     var node_process = require("process");
     var cst = require_cst();
@@ -7171,9 +7171,9 @@ var require_parser = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/public-api.js
+// ../../node_modules/yaml/dist/public-api.js
 var require_public_api = __commonJS({
-  "node_modules/yaml/dist/public-api.js"(exports2) {
+  "../../node_modules/yaml/dist/public-api.js"(exports2) {
     "use strict";
     var composer = require_composer();
     var Document = require_Document();
@@ -7268,9 +7268,9 @@ var require_public_api = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/index.js
+// ../../node_modules/yaml/dist/index.js
 var require_dist = __commonJS({
-  "node_modules/yaml/dist/index.js"(exports2) {
+  "../../node_modules/yaml/dist/index.js"(exports2) {
     "use strict";
     var composer = require_composer();
     var Document = require_Document();
@@ -7792,6 +7792,7 @@ function parsePage(name, source, extra = [], lead = []) {
       }),
       ...extra
     ];
+    page.sections.sort((a, b) => Number(b.id === "before-after") - Number(a.id === "before-after"));
     if (!page.sections.length) problems.push("sections: missing or empty");
     unique(page.sections.map((s) => s.id), "section id", "sections", problems);
   }
@@ -11537,6 +11538,102 @@ Do not delete or revert anything yourself: some of these may be the user's own e
 var import_node_fs28 = require("node:fs");
 var import_node_path33 = require("node:path");
 
+// src/beforeafter.ts
+var ANALYSIS_TEMPLATE = 2;
+var BEFORE_AFTER = "Before / After";
+var DEFERRED = "Deferred to architecture";
+var BEFORE_AFTER_LINES = { min: 3, max: 6 };
+var EXISTING_SYSTEM_FILE = "existing-system.md";
+var owesBeforeAfter = (change) => Number(change.data.analysis_template) >= ANALYSIS_TEMPLATE;
+var BULLET = /^\s*[-*]\s+(\S.*)$/;
+var DEFERRED_LINE = /^\s*[-*]\s+\**(DA\d+)\**\s*:\s*(\S.*)$/;
+function h3Blocks(text2) {
+  const out = [];
+  let cur = null;
+  for (const l of toLines(text2)) {
+    const h = l.fenced ? null : /^(#{1,3})\s+(.*?)\s*#*\s*$/.exec(l.text);
+    if (h) {
+      cur = h[1] === "###" ? { name: h[2].trim(), line: l.no, lines: [] } : null;
+      if (cur) out.push(cur);
+    } else if (cur) cur.lines.push(l.text);
+  }
+  return out;
+}
+var bullets = (lines) => lines.map((l) => BULLET.exec(l)?.[1]?.trim()).filter((x) => !!x);
+function beforeAfterOf(analysis) {
+  const s = sections(analysis).find((x) => x.name.toLowerCase() === BEFORE_AFTER.toLowerCase());
+  if (!s) return null;
+  const blocks = h3Blocks(s.body);
+  const find2 = (name) => blocks.find((b) => b.name.toLowerCase() === name);
+  const before = find2("before");
+  const after = find2("after");
+  return {
+    line: s.line,
+    before: bullets(before?.lines ?? []),
+    after: bullets(after?.lines ?? []),
+    beforeText: (before?.lines ?? []).join("\n"),
+    hasBefore: !!before,
+    hasAfter: !!after
+  };
+}
+function deferredOf(analysis) {
+  const b = h3Blocks(analysis).find((x) => x.name.toLowerCase() === DEFERRED.toLowerCase());
+  if (!b) return null;
+  const items = [];
+  const bad = [];
+  for (const l of b.lines) {
+    if (!BULLET.test(l)) continue;
+    const m = DEFERRED_LINE.exec(l);
+    if (m) items.push({ id: m[1], text: m[2].trim() });
+    else bad.push(l.trim());
+  }
+  return { line: b.line, none: /^\s*none\b/im.test(b.lines.join("\n")), items, bad };
+}
+function checkBeforeAfter(analysis, file, opts, d) {
+  const { min, max } = BEFORE_AFTER_LINES;
+  const ba = beforeAfterOf(analysis);
+  if (!ba) d.error(file, `missing section "## ${BEFORE_AFTER}" (### Before and ### After, ${min} to ${max} lines each, as the user sees it)`);
+  else {
+    for (const [name, has, lines] of [["Before", ba.hasBefore, ba.before], ["After", ba.hasAfter, ba.after]]) {
+      if (!has) d.error(file, `"## ${BEFORE_AFTER}": missing "### ${name}"`, ba.line);
+      else if (lines.length < min || lines.length > max) d.error(file, `"## ${BEFORE_AFTER}": "### ${name}" has ${lines.length} line(s); write ${min} to ${max}, as the user sees it`, ba.line);
+    }
+    if (opts.existingSystem && ba.hasBefore && !ba.beforeText.includes(EXISTING_SYSTEM_FILE)) {
+      d.error(file, `"## ${BEFORE_AFTER}": this Change has an Existing System Report; "### Before" must draw from it and name ${EXISTING_SYSTEM_FILE}`, ba.line);
+    }
+  }
+  const def = deferredOf(analysis);
+  if (!def) {
+    d.error(file, `missing "### ${DEFERRED}" (under "## Requirements and scope"): list each technical question as "- DA<n>: <question>", or write "None"`);
+    return;
+  }
+  const seen = /* @__PURE__ */ new Set();
+  for (const it of def.items) {
+    if (seen.has(it.id)) d.error(file, `"### ${DEFERRED}": duplicate ${it.id}`, def.line);
+    seen.add(it.id);
+  }
+  for (const l of def.bad) d.error(file, `"### ${DEFERRED}": "${l.slice(0, 60)}" must be "- DA<n>: <question>"`, def.line);
+  if (!def.none && !def.items.length && !def.bad.length) d.error(file, `"### ${DEFERRED}" must list "- DA<n>: <question>" lines, or say "None"`, def.line);
+  const arch = sections(analysis).find((x) => x.name.toLowerCase() === "architecture");
+  const answered = new Set(
+    (arch?.body ?? "").split(/\r?\n/).map((l) => DEFERRED_LINE.exec(l)?.[1]).filter((x) => !!x)
+  );
+  for (const id of seen) {
+    if (!answered.has(id)) d.error(file, `"### ${DEFERRED}": ${id} has no answer in "## Architecture" (a "- ${id}: <answer>" line)`, def.line);
+  }
+}
+function beforeAfterSection(analysis) {
+  const ba = beforeAfterOf(analysis);
+  if (!ba || !ba.before.length && !ba.after.length) return null;
+  return {
+    id: "before-after",
+    title: BEFORE_AFTER,
+    body: "What the user sees today, and what they will see once this Change is built.",
+    points: [...ba.before.map((l) => `**Before**: ${l}`), ...ba.after.map((l) => `**After**: ${l}`)],
+    html: ""
+  };
+}
+
 // src/boundary.ts
 var import_node_path22 = require("node:path");
 
@@ -13896,6 +13993,8 @@ function newChange(p, id, opts) {
       `created_at: ${now4()}`,
       `skip_specs: ${opts.skipSpecs === true}`,
       ...opts.scopeRound ? ["scope_round: true"] : [],
+      // D1, I9: this Change's analysis.md has Before / After and Deferred to architecture, and aidw analyze requires them.
+      `analysis_template: ${ANALYSIS_TEMPLATE}`,
       "approval: null",
       "run:",
       "  paused: null",
@@ -13916,6 +14015,17 @@ Size: normal (small | normal: small is a bugfix or tweak, at most 3 tasks, see /
 
 ${PLACEHOLDER2}: one page the user can review in minutes - goal, scope, the 5-10 key decisions, and the risks and assumptions that need their attention.
 
+## Before / After
+
+### Before
+
+${PLACEHOLDER2}: 3 to 6 lines, as the user sees it today, one "- " line each. With an Existing System Report
+(existing-system.md) draw them from it and name it; otherwise from today's workaround in the discovery answers.
+
+### After
+
+${PLACEHOLDER2}: 3 to 6 lines, as the user will see it once this Change is built, one "- " line each.
+
 ## Decisions to honor
 
 ${PLACEHOLDER2}: the concrete choices the code must keep, one per line as "- D1: <decision>" (names, keys, formats,
@@ -13925,6 +14035,11 @@ Write "None" only if there are none.
 ## Requirements and scope
 
 ${PLACEHOLDER2}: in scope, out of scope, assumptions. Link .aidw/requirements/<change>.md.
+
+### Deferred to architecture
+
+${PLACEHOLDER2}: technical questions raised in discovery that the user should not have to answer, one per line as
+"- DA1: <question>"; the Software Architect answers each in "## Architecture" as "- DA1: <answer>". Or "None".
 ${brownfield ? `
 ## Existing system
 
@@ -14521,6 +14636,7 @@ function sectionBody(text2, heading) {
   const end = lines.findIndex((l, i) => i > at && /^## /.test(l));
   return lines.slice(at + 1, end < 0 ? void 0 : end).join("\n");
 }
+var TEMPLATE_2_PARTS = /* @__PURE__ */ new Set([`## ${BEFORE_AFTER}`, `### ${DEFERRED}`]);
 var filled = (text2) => text2 !== null && text2.trim() !== "" && !text2.includes("TODO(aidw)");
 function artifactWritten(p, change, entry) {
   if (!entry || typeof entry.path !== "string" || isFamily(entry.path)) return null;
@@ -14528,6 +14644,7 @@ function artifactWritten(p, change, entry) {
     const key = String(entry.part ?? "").split(":")[0]?.trim() ?? "";
     return key !== "" && key in readDecisions(change);
   }
+  if (typeof entry.part === "string" && TEMPLATE_2_PARTS.has(entry.part) && !owesBeforeAfter(change)) return null;
   const file = (0, import_node_path35.join)(p.aidw, ...entry.path.replace("<id>", change.id).split("/"));
   if (!(0, import_node_fs30.existsSync)(file)) return false;
   const text2 = (0, import_node_fs30.readFileSync)(file, "utf8");
@@ -15371,15 +15488,15 @@ function checkAnalysisDoc(text2, file, d) {
   }
   const honor = byName2.get("decisions to honor");
   if (honor && honor.body && !/^\s*none\b/im.test(honor.body)) {
-    const bullets = honor.body.split(/\r?\n/).filter((l) => /^\s*[-*]\s+\S/.test(l));
+    const bullets2 = honor.body.split(/\r?\n/).filter((l) => /^\s*[-*]\s+\S/.test(l));
     const ids = /* @__PURE__ */ new Set();
-    for (const l of bullets) {
+    for (const l of bullets2) {
       const m = DECISION.exec(l);
       if (!m) d.error(file, `"## Decisions to honor": "${l.trim().slice(0, 60)}" must be "- D<n>: <decision>"`, honor.line);
       else if (ids.has(m[1])) d.error(file, `"## Decisions to honor": duplicate ${m[1]}`, honor.line);
       else ids.add(m[1]);
     }
-    if (!bullets.length) d.error(file, '"## Decisions to honor" must list "- D<n>: <decision>" bullets, or say "None"', honor.line);
+    if (!bullets2.length) d.error(file, '"## Decisions to honor" must list "- D<n>: <decision>" bullets, or say "None"', honor.line);
   }
   const perms = byName2.get("permissions");
   if (perms && !/^\s*[-*]\s+\S/m.test(perms.body) && !/^\s*none\b/im.test(perms.body)) {
@@ -15405,6 +15522,7 @@ function analyzeChange(p, id) {
   else {
     checkAnalysisDoc(analysis, rel(p, analysisFile), d);
     if (scopeRoundOf(change)) d.add(checkScopeRound(change, analysis, rel(p, analysisFile)));
+    if (owesBeforeAfter(change)) checkBeforeAfter(analysis, rel(p, analysisFile), { existingSystem: (0, import_node_fs33.existsSync)((0, import_node_path38.join)(change.dir, EXISTING_SYSTEM_FILE)) }, d);
     if (projectKind(p) === "brownfield") {
       const existing = sections(analysis).find((s) => s.name.toLowerCase() === "existing system");
       if (!existing) d.error(rel(p, analysisFile), 'brownfield project: missing section "## Existing system" (assessment of the current code)');
@@ -18222,15 +18340,15 @@ function loadEvalCases(root, id) {
     const criteria = section2("Criteria");
     if (!input) d.error(file, 'missing or empty "## Input" (the situation the Agent is given)');
     if (criteria === null) d.error(file, 'missing "## Criteria"');
-    const bullets = (criteria ?? "").split("\n").map((l) => l.trim()).filter(Boolean);
-    const bad = bullets.filter((l) => !/^- must( not)? \S/.test(l));
+    const bullets2 = (criteria ?? "").split("\n").map((l) => l.trim()).filter(Boolean);
+    const bad = bullets2.filter((l) => !/^- must( not)? \S/.test(l));
     for (const l of bad) d.error(file, `criterion "${l.slice(0, 50)}" must be a bullet starting "- must" or "- must not"`);
-    if (criteria !== null && !bullets.length) d.error(file, '"## Criteria" has no bullets');
+    if (criteria !== null && !bullets2.length) d.error(file, '"## Criteria" has no bullets');
     cases.push({
       name,
       file,
       input: input ?? "",
-      criteria: bullets.filter((l) => /^- must( not)? \S/.test(l)).map((l) => l.slice(2)),
+      criteria: bullets2.filter((l) => /^- must( not)? \S/.test(l)).map((l) => l.slice(2)),
       covers,
       ...head.expect === "ask" ? { expect: "ask" } : {}
     });
@@ -21102,7 +21220,8 @@ SPAWN aidw:${role} with: Audit brief: ${b.path}. Read it and write your answer a
           const gateId = first.page.layout === "gate" && first.page.change ? resolveChangeId(p, first.page.change) : null;
           const lead = (id) => {
             const c = loadChange(p, id);
-            return [openFindingsSection(p, c, workflowOfChange(p, c, pluginRoot(env))), unansweredSection(c)].filter((x) => x !== null);
+            const beforeAfter = first.page.sections.some((s) => s.id === "before-after") ? null : beforeAfterSection(readText((0, import_node_path52.join)(c.dir, "analysis.md")) ?? "");
+            return [beforeAfter, openFindingsSection(p, c, workflowOfChange(p, c, pluginRoot(env))), unansweredSection(c)].filter((x) => x !== null);
           };
           const r = gateId ? parsePage(name, source, gateExtras(gateId), lead(gateId)) : first;
           if (r.problems.length) throw new OpError(`the data of page "${name}" (${rel(p, pageDataFile(p, name))}) has ${r.problems.length} problem(s):
