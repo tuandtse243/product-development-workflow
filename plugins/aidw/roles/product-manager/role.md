@@ -79,6 +79,10 @@ Research run when you decide the Change needs them.
    Existing System Report when the Change has one (`.aidw/changes/<id>/existing-system.md`: draw from it and name it);
    otherwise from today's workaround in the discovery record. Each After line answers a Before line or a job line.
    Leave `### Deferred to architecture` as "None" when discovery raised no technical question.
+   A technical question in the record (one the user raised too) goes there whole, as a `- DA<n>:` line, and nowhere
+   else: not a user story, a Slice, an Out of Scope item or an open question for the user, and do not split off a
+   "user's part" of it either. Do not answer it yourself. The Software Architect answers it and asks the user if it
+   turns out to need them. Product questions nobody answered are still written down as assumptions, as usual.
 4. **Hand over.** The delta specs are the Business Analyst's: name in the requirements the capability each
    behavior belongs to and the Slice it is in (the `behavior-map` skill), so the specs can be written from them.
 

@@ -1,25 +1,23 @@
 {
   "format": 2,
   "role": "product-manager",
-  "date": "2026-11-26T16:32:24.598Z",
+  "date": "2026-11-26T17:27:11.865Z",
   "model": null,
   "tier": "deep",
   "runs": 3,
-  "digest": "sha256:d48c770241a382f43f595176a00d1b2d5a5f525e8ee86229e4800bf5c60140d3",
+  "digest": "sha256:066ed7fbf076da6ff8257a4aef05fab05fe5e905a85a62d5dafae1028d3df680",
   "cases": [
     {
       "name": "before-after-as-the-user-sees-it",
-      "pass": false,
+      "pass": true,
       "runs": {
         "total": 3,
-        "passed": 2,
+        "passed": 3,
         "errors": 0
       },
-      "failed": [
-        "must not turn either technical question into a requirement or a question for the user"
-      ],
+      "failed": [],
       "digest": "sha256:862b5987716c557dce6cfecb7c4d8785db1cb47eecb6c42096999ce0fc35b764",
-      "date": "2026-11-26T16:32:24.598Z",
+      "date": "2026-11-26T17:27:11.865Z",
       "model": null
     },
     {
@@ -32,7 +30,7 @@
       },
       "failed": [],
       "digest": "sha256:f40ca05869a449f541f3f3fa64e79800a566e82d3b031252ddf1b085472aab80",
-      "date": "2026-11-26T16:32:24.598Z",
+      "date": "2026-11-26T17:27:11.865Z",
       "model": null
     },
     {
@@ -45,20 +43,24 @@
       },
       "failed": [],
       "digest": "sha256:2238ae78fde219bad1b312808a74a426c0c0fdfa0ed2c01f73f6d299b7e2dd41",
-      "date": "2026-11-26T16:32:24.598Z",
+      "date": "2026-11-26T17:27:11.865Z",
       "model": null
     },
     {
       "name": "request-is-a-solution",
-      "pass": true,
+      "pass": false,
       "runs": {
         "total": 3,
-        "passed": 3,
+        "passed": 1,
         "errors": 0
       },
-      "failed": [],
+      "failed": [
+        "must record the job as situation, motivation and outcome in the discovery Q&A",
+        "must record anything nobody could answer as an explicit assumption",
+        "must not write a requirement whose only content is \"the user clicks Export\""
+      ],
       "digest": "sha256:a6812b7d223e243fcdc209c3f339971bd7a262c4f9e588851a276c82da9eee80",
-      "date": "2026-11-26T16:32:24.598Z",
+      "date": "2026-11-26T17:27:11.865Z",
       "model": null
     }
   ]
