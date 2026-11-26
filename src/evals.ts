@@ -37,6 +37,54 @@ export interface EvalCase {
 
 const CASE_KEYS = ["case", "covers", "expect"];
 
+/**
+ * The body of a case's `## <title>` section, up to the next `## ` heading. A heading inside a fenced block (``` or ~~~)
+ * is part of the quoted material, not of the case: an Input that quotes a Markdown file keeps its `## ` lines.
+ */
+export function caseSection(text: string, title: string): string | null {
+  const lines = text.split("\n");
+  let start = -1;
+  const fences = fenceTracker();
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] as string;
+    if (fences.step(line) || !line.startsWith("## ")) continue;
+    if (start >= 0) return lines.slice(start, i).join("\n").trim();
+    if (line.trimEnd() === `## ${title}`) start = i + 1;
+  }
+  return start >= 0 ? lines.slice(start).join("\n").trim() : null;
+}
+
+/** Whether a case leaves a code fence open, which would swallow every section after it. */
+export function hasUnclosedFence(text: string): boolean {
+  const fences = fenceTracker();
+  for (const line of text.split("\n")) fences.step(line);
+  return fences.open();
+}
+
+/**
+ * Feed lines in order: `step` is true for a fence line or a line inside a fence. An opening fence is three or more
+ * backticks or tildes, indented at most three spaces (a backtick fence's info string has no backtick); it closes on a
+ * line of the same character, at least as long, with nothing else on it.
+ */
+function fenceTracker(): { step: (line: string) => boolean; open: () => boolean } {
+  let fence: string | null = null;
+  return {
+    step(raw) {
+      const line = raw.replace(/\r$/, "");
+      if (fence === null) {
+        const f = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+        if (!f || (f[1]![0] === "`" && f[2]!.includes("`"))) return false;
+        fence = f[1]!;
+        return true;
+      }
+      const c = /^ {0,3}(`{3,}|~{3,})\s*$/.exec(line);
+      if (c && c[1]![0] === fence[0] && c[1]!.length >= fence.length) fence = null;
+      return true;
+    },
+    open: () => fence !== null,
+  };
+}
+
 export function loadEvalCases(root: string, id: string): { cases: EvalCase[]; diags: Diags } {
   const d = new Diags();
   const dir = join(roleDir(root, id), "evals");
@@ -66,12 +114,10 @@ export function loadEvalCases(root: string, id: string): { cases: EvalCase[]; di
       else covers = head.covers as string[];
     }
     if (head.expect !== undefined && head.expect !== "ask") d.error(file, 'expect must be "ask" (or left out: the answer is the deliverable)');
-    const section = (title: string) => {
-      const m = new RegExp(`^## ${title}\\n([\\s\\S]*?)(?=^## |$(?![\\s\\S]))`, "m").exec(text);
-      return m ? (m[1] as string).trim() : null;
-    };
+    const section = (title: string) => caseSection(text, title);
     const input = section("Input");
     const criteria = section("Criteria");
+    if (hasUnclosedFence(text)) d.error(file, "a code fence (``` or ~~~) is never closed, so the sections after it are read as quoted text");
     if (!input) d.error(file, 'missing or empty "## Input" (the situation the Agent is given)');
     if (criteria === null) d.error(file, 'missing "## Criteria"');
     const bullets = (criteria ?? "").split("\n").map((l) => l.trim()).filter(Boolean);
