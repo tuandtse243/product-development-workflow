@@ -34,7 +34,8 @@ Input: `$ARGUMENTS` (an idea, a path to a PRD/JD, pasted client text, or "this c
   round of questions below, every open decision of a drafting Agent, the design direction and the Approval Gate are
   written as page data, rendered with `aidw page render <name>` and shown to the user as a link plus one or two lines; the
   text they paste back is checked with `aidw page answers <name>` before you record it. One simple question (a yes or
-  no, a name) is still asked in the chat. Set the page's `lang` to the user's language.
+  no, a name) is still asked in the chat. Set the page's `lang` to the user's language. Every question with options,
+  on a page or in the chat, shows a View (ADR-0017; the guide's "Every choice shows a View").
 - Talk with the user in their language. Artifact content may be in their language, but keep every section
   heading and the `Source:` / `Mode:` lines exactly as specified: the CLI checks them.
 - Vendored skills are loaded by path (`aidw vendor-path <upstream>/<skill>` prints it; then Read the file).
@@ -170,7 +171,8 @@ step 9. Skip this step for `feature`, `bugfix` and `audit`.
 
 1. Write one Decision Page named `scope` (`layout: questions`, `kind: scope`, `role: product-manager`) with exactly these
    question ids, each with your recommendation from what the interview found: `vision` (open: who it is for and what
-   success looks like), `scope` (`multi` choice: the capabilities, one option each), `mvp` (open, with your suggested
+   success looks like), `scope` (`multi` choice: the capabilities, one option each, with a `view` of kind `tree` that
+   shows them as the user will meet them), `mvp` (open, with your suggested
    answer: the smallest cut worth building first, and why) and `out` (open: what is deliberately not built now). None of
    them is `optional`. `aidw page render scope` refuses the page
    without one of them.
@@ -203,7 +205,7 @@ nothing is open.
 ## 5. Design decision (Q3)
 
 Detect design assets: Figma links, screenshots, an existing design system, brand guides. Then choose the
-mode with the user, as a question on a Decision Page (`design`) whose options are the modes that fit this change. Read `$(aidw plugin-path roles/ui-ux-designer/references/design-tokens.md)` for how each mode produces tokens.
+mode with the user, as a question on a Decision Page (`design`) whose options are the modes that fit this change, with a `view` (a `tree` of what each mode puts under `.aidw/design/`). Read `$(aidw plugin-path roles/ui-ux-designer/references/design-tokens.md)` for how each mode produces tokens.
 
 - `existing`: assets exist. Collect them into `.aidw/design/` (Figma via the Figma MCP tools, screenshots, notes)
   and extract the tokens from them (Figma variables, the brand guide, the live site's CSS).
@@ -245,7 +247,7 @@ Its Procedure (`$(aidw plugin-path roles/software-architect/role.md)`) holds the
 ## 6b. Data model and API contract (each only when needed)
 
 Two Decision Points, decided with the Software Architect's hat on, after the architecture is drafted. Recommend an
-answer and say why (one Decision Page with both questions, each with its `decision:`); `none` is right for a Change that adds no table and no operation another part calls.
+answer and say why (one Decision Page with both questions, each with its `decision:` and a `view`: a `tree` of the files each answer adds, such as a migration or `openapi.yaml`); `none` is right for a Change that adds no table and no operation another part calls.
 
 - `aidw decide data-model-needed <design|none> --reason "<why>"`. `design` when the Change adds or alters tables or
   collections beyond a column or two, has a rule the database must enforce (uniqueness, no double booking), or changes
@@ -432,7 +434,8 @@ project files for the whole change. Do not follow steps 1b to 9. Instead:
 
 1. Intake as in step 1: write what to audit, and why, in `intake.md`. `aidw transition <id> intake`, then `analyzing`.
 2. Choose the lenses with the user (`security`, `code-quality`, `ui`), recommending the ones the request implies (one
-   `multi` question with `decision: audit-lenses` on a Decision Page), and
+   `multi` question with `decision: audit-lenses` on a Decision Page, whose `view` is a `tree` of the parts of the
+   project each lens reads), and
    record them: `aidw decide audit-lenses security,code-quality --reason "<why>"`.
 3. For each lens: `aidw audit brief <lens>`. It prints the brief and the `SPAWN` line; spawn that Agent (`aidw:security`,
    `aidw:code-reviewer`, `aidw:ui-ux-designer`), all of them in one message, each with exactly the printed prompt. Each writes

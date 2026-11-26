@@ -21,6 +21,7 @@ export interface PageOption {
   cons: string[];
   facts: Record<string, string>;
   html: string;
+  views: PageView[];
 }
 
 export interface PageQuestion {
@@ -38,7 +39,10 @@ export interface PageQuestion {
   why: string;
   /** the Decision Point this question answers, if any */
   decision: string;
+  /** the options are names (of a product, a term): a name needs no View */
+  naming: boolean;
   html: string;
+  views: PageView[];
   options: PageOption[];
 }
 
@@ -58,6 +62,8 @@ export interface PageSection {
   body: string;
   points: string[];
   html: string;
+  /** optional so the sections the CLI adds itself need not say so */
+  views?: PageView[];
 }
 
 export interface Page {
@@ -105,6 +111,54 @@ export function checkFragment(html: string): string | null {
     if (m) return `contains ${what.replace("$1", (m[1] ?? "").toLowerCase())}: the free slot takes static HTML, CSS and SVG only, with no script and nothing loaded from the network`;
   }
   return null;
+}
+
+// ------------------------------------------------------------------------------------------------------- views
+
+/**
+ * A View (ADR-0017): the smallest code shape that shows the point of a question, as the vendored show-me skill
+ * picks it. Data: `view: {kind, text}` or a list of them. The text is shown as written, escaped, in a monospace
+ * block; a diff colours its `+` and `-` lines.
+ */
+export const VIEW_KINDS = ["diff", "tree", "calltree", "component", "pseudocode"] as const;
+export type ViewKind = (typeof VIEW_KINDS)[number];
+export interface PageView {
+  kind: ViewKind;
+  text: string;
+}
+const MAX_VIEW = 20_000;
+
+/** Reads `view` of a question, an option or a section; problems are named after `where`. */
+function parseViews(v: unknown, where: string, problems: string[]): PageView[] {
+  if (v === undefined || v === null) return [];
+  const at = `${where}.view`;
+  return (Array.isArray(v) ? v : [v]).flatMap((x): PageView[] => {
+    if (!x || typeof x !== "object" || Array.isArray(x)) {
+      problems.push(`${at}: give {kind, text} (kind: ${VIEW_KINDS.join(", ")})`);
+      return [];
+    }
+    const r = x as Record<string, unknown>;
+    const kind = typeof r.kind === "string" ? r.kind.trim() : "";
+    // Keep the indentation: a tree or a diff's context lines start with spaces. Drop blank lines around the block.
+    const body = typeof r.text === "string" ? r.text.replace(/^(?:[ \t]*\r?\n)+/, "").replace(/\s+$/, "") : "";
+    const ok = (VIEW_KINDS as readonly string[]).includes(kind);
+    if (!ok) problems.push(`${at}: kind "${kind}" is not one of ${VIEW_KINDS.join(", ")}`);
+    if (!body) problems.push(`${at}: text is missing`);
+    else if (body.length > MAX_VIEW) problems.push(`${at}: text is ${body.length} characters; the limit is ${MAX_VIEW}`);
+    return ok && body && body.length <= MAX_VIEW ? [{ kind: kind as ViewKind, text: body }] : [];
+  });
+}
+
+/** A yes or no needs no View: exactly two options keyed yes and no. */
+const isYesNo = (keys: string[]): boolean => keys.length === 2 && keys.map((k) => k.toLowerCase()).sort().join() === "no,yes";
+
+/** A question with options shows a View or an html mock, on itself or on an option, unless it is a yes or no or a name. */
+function checkShown(q: PageQuestion, where: string, problems: string[]): void {
+  if (!q.options.length || q.naming || isYesNo(q.options.map((o) => o.key))) return;
+  if (q.views.length || q.html || q.options.some((o) => o.views.length || o.html)) return;
+  problems.push(
+    `${where}: a choice shows a View: give \`view: {kind, text}\` (kind: ${VIEW_KINDS.join(", ")}) on the question or an option, or an \`html\` mock; a yes or no (option keys yes and no) and a name (naming: true) need none`,
+  );
 }
 
 const text = (v: unknown): string => (typeof v === "string" ? v.trim() : typeof v === "number" || typeof v === "boolean" ? String(v) : "");
@@ -174,7 +228,7 @@ export function parsePage(name: string, source: string, extra: PageSection[] = [
         for (const [k, v] of Object.entries(obj(o.facts))) facts[k.trim()] = text(v);
         for (const k of Object.keys(facts)) if (!criteria.includes(k)) problems.push(`${at}.facts: "${k}" is not one of the question's criteria (${criteria.join(", ") || "none declared"})`);
         for (const c of criteria) if (!facts[c]) problems.push(`${at}.facts: no value for the criterion "${c}"; every option answers every criterion so the cards line up`);
-        const opt: PageOption = { key, name: text(o.name), summary: text(o.summary), pros: list(o.pros), cons: list(o.cons), facts, html: slot(o.html, at) };
+        const opt: PageOption = { key, name: text(o.name), summary: text(o.summary), pros: list(o.pros), cons: list(o.cons), facts, html: slot(o.html, at), views: parseViews(o.view, at, problems) };
         if (!opt.name) problems.push(`${at}: name is missing`);
         if (!opt.summary && !opt.pros.length && !opt.cons.length && !criteria.length) problems.push(`${at}: say what this option gives and costs (summary, pros, cons or facts)`);
         return opt;
@@ -191,7 +245,9 @@ export function parsePage(name: string, source: string, extra: PageSection[] = [
         suggest: text(q.suggest),
         why: text(q.why),
         decision: text(q.decision),
+        naming: q.naming === true,
         html: slot(q.html, where),
+        views: parseViews(q.view, where, problems),
         options,
       };
       if (!question.title) problems.push(`${where}: title is missing`);
@@ -202,6 +258,7 @@ export function parsePage(name: string, source: string, extra: PageSection[] = [
       if (options.length && !question.recommend.length) problems.push(`${where}: recommend is missing; every choice carries the Role's recommended answer and why`);
       if (question.recommend.length && !question.why) problems.push(`${where}: why is missing; say in one or two sentences why that answer is recommended`);
       if (criteria.length === 1 || criteria.length > 4) problems.push(`${where}.criteria: give 2 to 4 criteria, or none`);
+      checkShown(question, where, problems);
       return question;
     });
     if (!page.questions.length) problems.push("questions: missing or empty");
@@ -239,9 +296,9 @@ export function parsePage(name: string, source: string, extra: PageSection[] = [
         const id = text(s.id);
         const where = `sections[${id || i + 1}]`;
         if (!ID.test(id) || RESERVED.has(id.toLowerCase())) problems.push(`${where}: id is missing or not a short slug starting with a letter`);
-        const section: PageSection = { id, title: text(s.title), body: text(s.body), points: list(s.points), html: slot(s.html, where) };
+        const section: PageSection = { id, title: text(s.title), body: text(s.body), points: list(s.points), html: slot(s.html, where), views: parseViews(s.view, where, problems) };
         if (!section.title) problems.push(`${where}: title is missing`);
-        if (!section.body && !section.points.length && !section.html) problems.push(`${where}: nothing to read; give body, points or html`);
+        if (!section.body && !section.points.length && !section.html && !section.views?.length) problems.push(`${where}: nothing to read; give body, points, html or a view`);
         return section;
       }),
       ...extra,
@@ -313,6 +370,31 @@ const inline = (s: string): string =>
 /** A free fragment lives in its own shadow tree, so its CSS cannot reach the page and the page's cannot reach it. */
 const free = (html: string): string => (html ? `<div class="free"><template shadowrootmode="open">${html}</template></div>` : "");
 
+/** What each kind of View is called above its block. */
+const VIEW_NAMES: Record<ViewKind, string> = { diff: "diff", tree: "file tree", calltree: "call tree", component: "component tree", pseudocode: "pseudocode" };
+const VIEW_CSS = `
+.view{margin:0;display:flex;flex-direction:column;gap:4px;min-width:0}
+.view figcaption{font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.view pre{margin:0;padding:10px 12px;overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:8px;font:12.5px/1.5 ui-monospace,"SF Mono",Menlo,monospace;tab-size:2}
+.view pre span{display:inline-block;min-width:100%}
+.view .add{color:var(--good);background:var(--good-soft)}
+.view .del{color:var(--bad);background:var(--warn-soft)}
+.view .hunk{color:var(--muted)}
+`;
+
+/** Each View as an escaped monospace block; a diff gets its added and removed lines coloured. */
+function renderViews(views: PageView[] | undefined): string {
+  return (views ?? [])
+    .map((v) => {
+      const lines = v.text.split(/\r?\n/);
+      // `+++ ` and `--- ` are a unified diff's file headers, not added or removed lines.
+      const cls = (line: string): string => (line.startsWith("@@") || line.startsWith("+++ ") || line.startsWith("--- ") ? "hunk" : line.startsWith("+") ? "add" : line.startsWith("-") ? "del" : "ctx");
+      const body = v.kind === "diff" ? lines.map((line) => `<span class="${cls(line)}">${esc(line)}</span>`).join("\n") : esc(lines.join("\n"));
+      return `<figure class="view" data-kind="${v.kind}"><figcaption>${VIEW_NAMES[v.kind]}</figcaption><pre>${body}</pre></figure>`;
+    })
+    .join("");
+}
+
 const CSS = `
 :root{--bg:#f3f5f9;--surface:#fff;--fg:#17202e;--muted:#5b6678;--line:#d6dce6;--accent:#2f55d4;--accent-soft:#e4eafc;--good:#17794a;--good-soft:#dff3e8;--bad:#a8442a;--warn-soft:#fbeedd}
 @media (prefers-color-scheme:dark){:root{--bg:#11151c;--surface:#1a202a;--fg:#e7ebf2;--muted:#9aa5b8;--line:#2e3746;--accent:#8aa4ff;--accent-soft:#232f52;--good:#6fd3a0;--good-soft:#173527;--bad:#f0a084;--warn-soft:#3a2d1a;color-scheme:dark}}
@@ -380,17 +462,17 @@ function renderQuestion(q: PageQuestion, page: Page, l: L): string {
   const example = q.example ? `<p class="eg"><b>${l.example}:</b> ${inline(q.example)}</p>` : "";
   const why = q.why ? `<p class="why"><b>${l.why}:</b> ${inline(q.why)}</p>` : "";
   if (!q.options.length) {
-    return `<section class="q" data-q="${esc(q.id)}" data-kind="open">${head}${example}${free(q.html)}${why}<textarea id="a-${esc(q.id)}" placeholder="${l.answer}">${esc(q.suggest)}</textarea></section>`;
+    return `<section class="q" data-q="${esc(q.id)}" data-kind="open">${head}${example}${renderViews(q.views)}${free(q.html)}${why}<textarea id="a-${esc(q.id)}" placeholder="${l.answer}">${esc(q.suggest)}</textarea></section>`;
   }
   const cards = q.options
     .map((o) => {
       const rec = q.recommend.includes(o.key);
       const lines = [...o.pros.map((x) => `<li class="p">${inline(x)}</li>`), ...o.cons.map((x) => `<li class="m">${inline(x)}</li>`)].join("");
       const facts = q.criteria.length ? `<dl class="facts">${q.criteria.map((c) => `<dt>${esc(c)}</dt><dd>${inline(o.facts[c] ?? "")}</dd>`).join("")}</dl>` : "";
-      return `<label class="opt"><span class="top"><input type="${q.multi ? "checkbox" : "radio"}" name="q-${esc(q.id)}" id="q-${esc(q.id)}-${esc(o.key)}" value="${esc(o.key)}"${rec ? " checked" : ""}><span class="name">${inline(o.name)}</span></span>${rec ? `<span class="badge">${l.rec}</span>` : ""}${o.summary ? `<span class="sum">${inline(o.summary)}</span>` : ""}${lines ? `<ul class="pm">${lines}</ul>` : ""}${free(o.html)}${facts}</label>`;
+      return `<label class="opt"><span class="top"><input type="${q.multi ? "checkbox" : "radio"}" name="q-${esc(q.id)}" id="q-${esc(q.id)}-${esc(o.key)}" value="${esc(o.key)}"${rec ? " checked" : ""}><span class="name">${inline(o.name)}</span></span>${rec ? `<span class="badge">${l.rec}</span>` : ""}${o.summary ? `<span class="sum">${inline(o.summary)}</span>` : ""}${lines ? `<ul class="pm">${lines}</ul>` : ""}${renderViews(o.views)}${free(o.html)}${facts}</label>`;
     })
     .join("");
-  return `<section class="q" data-q="${esc(q.id)}" data-kind="choice">${head}${example}${free(q.html)}<div class="opts">${cards}</div>${why}<textarea id="n-${esc(q.id)}" placeholder="${l.note}"></textarea></section>`;
+  return `<section class="q" data-q="${esc(q.id)}" data-kind="choice">${head}${example}${renderViews(q.views)}${free(q.html)}<div class="opts">${cards}</div>${why}<textarea id="n-${esc(q.id)}" placeholder="${l.note}"></textarea></section>`;
 }
 
 function renderPicks(page: Page, l: L): string {
@@ -414,7 +496,7 @@ function renderGate(page: Page, l: L): string {
   const sections = page.sections
     .map(
       (s) =>
-        `<section class="sec" data-sec="${esc(s.id)}"><h2>${inline(s.title)}</h2>${s.body ? `<p>${inline(s.body)}</p>` : ""}${s.points.length ? `<ul>${s.points.map((x) => `<li>${inline(x)}</li>`).join("")}</ul>` : ""}${free(s.html)}<div class="mark"><label><input type="radio" name="s-${esc(s.id)}" id="s-${esc(s.id)}-ok" value="ok">${l.ok}</label><label><input type="radio" name="s-${esc(s.id)}" id="s-${esc(s.id)}-change" value="change">${l.change}</label></div><textarea id="n-${esc(s.id)}" placeholder="${l.changeNote}"></textarea></section>`,
+        `<section class="sec" data-sec="${esc(s.id)}"><h2>${inline(s.title)}</h2>${s.body ? `<p>${inline(s.body)}</p>` : ""}${s.points.length ? `<ul>${s.points.map((x) => `<li>${inline(x)}</li>`).join("")}</ul>` : ""}${renderViews(s.views)}${free(s.html)}<div class="mark"><label><input type="radio" name="s-${esc(s.id)}" id="s-${esc(s.id)}-ok" value="ok">${l.ok}</label><label><input type="radio" name="s-${esc(s.id)}" id="s-${esc(s.id)}-change" value="change">${l.change}</label></div><textarea id="n-${esc(s.id)}" placeholder="${l.changeNote}"></textarea></section>`,
     )
     .join("");
   return `<button type="button" class="quiet" id="allok">${l.allOk}</button>${sections}`;
@@ -481,7 +563,7 @@ export function renderPage(page: Page): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(page.title)}</title>
-<style>${CSS}</style>
+<style>${CSS}${VIEW_CSS}</style>
 </head>
 <body>
 <div class="wrap">
@@ -654,8 +736,20 @@ export function triageData(o: { task: string; cause: string; diagnosis: string; 
     recommend: "fix-and-resume",
     why: "The diagnosis names what is wrong; fixing that keeps the approved scope.",
     options: [
-      { key: "fix-and-resume", name: "Fix what the diagnosis names, then resume", pros: ["The approved package stays as it is"], cons: ["You make or approve the fix first"] },
-      { key: "change-scope", name: "Change the scope", pros: ["Removes the cause when the requirement itself is the problem"], cons: ["The change is analyzed and approved again"] },
+      {
+        key: "fix-and-resume",
+        name: "Fix what the diagnosis names, then resume",
+        pros: ["The approved package stays as it is"],
+        cons: ["You make or approve the fix first"],
+        view: { kind: "pseudocode", text: `fix the ${o.cause} as the diagnosis says\nresume ${o.task} with a fresh attempt\nthe rest of the run goes on as approved` },
+      },
+      {
+        key: "change-scope",
+        name: "Change the scope",
+        pros: ["Removes the cause when the requirement itself is the problem"],
+        cons: ["The change is analyzed and approved again"],
+        view: { kind: "pseudocode", text: `revise the requirement behind ${o.task}\nanalyze the package again\nshow the Approval Gate again\nresume the run from the new plan` },
+      },
     ],
   };
   const q = Array.isArray(decide.options) && decide.options.length >= 2 ? { title: text(decide.question) || fallback.title, ...decide } : fallback;
