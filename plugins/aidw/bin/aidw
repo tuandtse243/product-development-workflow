@@ -13919,9 +13919,10 @@ ${PLACEHOLDER2}: one page the user can review in minutes - goal, scope, the 5-10
 
 ## Decisions to honor
 
-${PLACEHOLDER2}: the concrete choices the code must keep, one per line as "- D1: <decision>" (names, keys, formats,
-tools, libraries, conventions, limits). Implementers stop and report instead of deviating; reviewers check them.
-Write "None" only if there are none.
+${PLACEHOLDER2}: the concrete choices the code must keep (names, keys, formats, tools, libraries, conventions,
+limits), each as "- D1: <decision>" with two indented lines: "Why: <reason, with its evidence>" and
+"Rejected: <option> (<why not>)", or "Rejected: none". Implementers stop and report instead of deviating; reviewers
+check them. Write "None" only if there are none.
 
 ## Requirements and scope
 
@@ -15287,10 +15288,21 @@ var ANALYSIS_SECTIONS = [
 ];
 var PLACEHOLDER2 = "TODO(aidw)";
 var DECISION = /^\s*[-*]\s+\**(D\d+)\**\s*:\s*(\S.*)$/;
+function decisionRecords(body) {
+  const out = [];
+  let cur = null;
+  for (const l of body.split(/\r?\n/)) {
+    const m = DECISION.exec(l);
+    if (m) out.push(cur = { id: m[1], parts: [m[2].trim()] });
+    else if (cur && /^\s+\S/.test(l) && !/^\s*[-*]\s/.test(l)) cur.parts.push(l.trim());
+    else cur = null;
+  }
+  return out.map((d) => ({ id: d.id, text: d.parts.join(" ") }));
+}
 function decisionsToHonor(analysis) {
   const s = sections(analysis).find((x) => x.name.toLowerCase() === "decisions to honor");
   if (!s) return [];
-  return s.body.split(/\r?\n/).map((l) => DECISION.exec(l)).filter((m) => m !== null).map((m) => `${m[1]}: ${m[2].trim()}`);
+  return decisionRecords(s.body).map((d) => `${d.id}: ${d.text}`);
 }
 var STACK_SOURCES = ["client", "ai", "fallback"];
 var DESIGN_MODES = ["existing", "claude_design", "ai_design", "hybrid"];
@@ -15381,6 +15393,11 @@ function checkAnalysisDoc(text2, file, d) {
       else ids.add(m[1]);
     }
     if (!bullets.length) d.error(file, '"## Decisions to honor" must list "- D<n>: <decision>" bullets, or say "None"', honor.line);
+    for (const r of decisionRecords(honor.body)) {
+      const missing = [/\bWhy:/i.test(r.text) ? "" : '"Why:"', /\bRejected:/i.test(r.text) ? "" : '"Rejected:"'].filter(Boolean);
+      if (missing.length)
+        d.warn(file, `"## Decisions to honor": ${r.id} says no ${missing.join(" and no ")}: add indented lines "Why: <reason>" and "Rejected: <option> (<why not>)", or "Rejected: none"`, honor.line);
+    }
   }
   const perms = byName2.get("permissions");
   if (perms && !/^\s*[-*]\s+\S/m.test(perms.body) && !/^\s*none\b/im.test(perms.body)) {
