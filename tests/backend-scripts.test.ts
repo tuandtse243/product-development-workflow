@@ -689,6 +689,27 @@ describe("review fixes", () => {
     expect(routes.find((x: any) => x.path === "/other/:id").accessCases).toEqual({ noIdentity: true, otherUser: true, owner: true });
   });
 
+  it("route-inventory reads a status passed to an expect…/assert… helper, as a number or a constant", () => {
+    const root = project({
+      "src/a.ts": "router.post('/api/projects/:projectId/tasks', create);\nrouter.get('/notes/:id', getNote);\n",
+      "tests/a.test.ts":
+        "const problem = (status, type) => ({ status, type });\n" +
+        "const UNAUTH = problem(401, 'unauthenticated');\n" +
+        "const NOT_FOUND = { status: 404, type: 'project-not-found' };\n" +
+        "const LIMIT = 10;\n" +
+        "\n".repeat(40) +
+        "it('no session', async () => { const res = await http.post(`/api/projects/${p.id}/tasks`); expectProblem(res, UNAUTH); });\n" +
+        "it('other team', async () => { const res = await http.post(`/api/projects/${q.id}/tasks`); expectProblem(res, NOT_FOUND); });\n" +
+        "it('member', async () => { const res = await http.post(`/api/projects/${p.id}/tasks`); assertStatus(res, 201); });\n" +
+        "\n".repeat(40) +
+        "it('note', async () => { const res = await http.get(`/notes/${n.id}`); expectPage(res, LIMIT); expectProblem(res, 401, 'x'); });\n",
+    });
+    const routes = runScript(S("route-inventory.mjs"), [root]).json.routes;
+    expect(routes.find((x: any) => x.path === "/api/projects/:projectId/tasks").accessCases).toEqual({ noIdentity: true, otherUser: true, owner: true });
+    // A constant that is not a status (LIMIT = 10) counts for nothing; the literal 401 does.
+    expect(routes.find((x: any) => x.path === "/notes/:id").accessCases).toEqual({ noIdentity: true, otherUser: false, owner: false });
+  });
+
   it("error-shape-probe: header chains, paths relative to [dir], --base, and fewer false leak markers", () => {
     const root = project({
       "openapi.yaml": "components:\n  schemas:\n    ApiError:\n      required: [code]\n",
