@@ -17,9 +17,13 @@ complain about?").
 
 ## 2. Look, widest first
 
-- the products themselves: their sites, pricing pages, documentation, changelogs;
-- what their users say: reviews, forums, issue trackers, app-store ratings (complaints tell you more than praise);
-- independent accounts: reports, benchmarks, regulators, reputable press;
+First run `aidw plugin-path roles/research/references/sources.md` and read the file it prints: it ranks sources,
+sets the first search budget and gives the query for each kind of question.
+
+- the products themselves: their sites, pricing pages, documentation, changelogs (tier 1 and 2);
+- what their users say: reviews, forums, issue trackers, app-store ratings (complaints tell you more than praise),
+  cited as "users report";
+- independent accounts: reports, benchmarks, regulators, reputable press (tier 3);
 - the absence of something is a finding only if you say where you looked.
 
 Prefer a primary source to a summary of it, and a dated source to an undated one. Open the page: never cite a
@@ -27,19 +31,17 @@ search result's snippet, and never cite a page you did not read.
 
 ## 3. Record each claim
 
-| # | Claim | Source (title, URL, date read) | Kind | Confidence |
-|---|---|---|---|---|
+| # | Claim | Quote | Source (title, URL#anchor, date read) | Tier | Kind | Confidence |
+|---|---|---|---|---|---|---|
 
-- **Kind**: `fact` (the source states it), `inference` (you conclude it from facts, and say from which rows).
-- **Confidence**: `high` (two independent sources, or the primary one), `medium` (one credible source), `low`
-  (a single secondary or self-interested source, or old). A vendor's claim about itself is `low` for quality and
-  fine for price and features.
-- A number carries its date and what it measures. Do not turn "about 30%" into "30%".
+The columns are the ones `sources.md` defines. Two rules matter most for a market question: a vendor's claim about
+itself is `low` for quality and fine for price and features; and a number keeps its date and what it measures, so
+"about 30%" never becomes "30%".
 
 ## 4. Try to be wrong
 
 Before concluding, search for the opposite: the competitor you did not know, the reason the obvious answer fails,
-the case where the popular choice is a bad fit. Put what you found under "Against".
+the case where the popular choice is a bad fit, its known pitfalls. Put what you found under "Against".
 
 ## 5. The note: `.aidw/research/<id>.md`, at most two pages
 
@@ -53,4 +55,5 @@ You inform the decision. You do not recommend scope or stack: the Product Manage
 
 Ideas, not wording: the investigation skills of deanpeters/Product-Manager-Skills, the citation discipline of
 the cited-research and deep-research skill families, the intelligence practice of stating confidence separately
-from the claim (ICD 203), and the CRAAP test for judging a source.
+from the claim (ICD 203), the CRAAP test for judging a source, and the
+`web-search-researcher` of HumanLayer's `rpi` plugin (MIT) for the quote with its link, through `sources.md`.

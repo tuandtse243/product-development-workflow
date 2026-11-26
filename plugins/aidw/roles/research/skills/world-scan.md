@@ -19,7 +19,10 @@ order slips.
 
 ## 2. Look for worlds, widest first
 
-Collect six to eight candidates from four directions:
+Run `aidw plugin-path roles/research/references/sources.md` and read the file it prints. Its search budget holds
+for each world and for the conventions; its ladder holds for every trait you state as fact: the museum or archive
+record and the trade's own documents come first, an enthusiast's blog is a lead. Collect six to eight candidates
+from four directions:
 
 - **The subject's own world**: the trade, its tools, its documents, its signs and packaging.
 - **The users' surroundings**: where they are when they use it; what they read and handle there.
@@ -37,6 +40,8 @@ For each, under its own heading:
 - **Why it fits**: one sentence tying it to the subject, the people or the scene.
 - **Traits**: at least three concrete ones: a material, a tool or object, a convention (how it numbers, labels,
   folds, stamps), with colors named the way that world names them, and the kind of lettering it uses.
+- **Sources for the traits**: for each trait that is not plain from a picture, the source's words (at most two
+  sentences) and its link to the section, with the tier.
 - **Pictures**: two to four you opened, each with title, URL, author when known, and licence. Prefer Wikimedia
   Commons, Openverse and museum open-access collections (The Met, Rijksmuseum, Smithsonian), where the licence is
   stated. A picture with no stated licence is listed as reference only.
@@ -44,9 +49,9 @@ For each, under its own heading:
 
 ## 4. The conventions of the kind of product
 
-Open three to five live products of the same kind. Record only what at least three share: the regions of the main
-screen, the density, the screens every one has, the words users expect for the main actions. These set the
-structure, not the look: say nothing about their colors or fonts.
+Open three to five live products of the same kind, on their own sites. Record only what at least three share: the
+regions of the main screen, the density, the screens every one has, the words users expect for the main actions.
+These set the structure, not the look: say nothing about their colors or fonts.
 
 ## 5. The note: `.aidw/research/worlds.md`
 
@@ -60,4 +65,4 @@ You bring material. You do not choose the three worlds or write a direction: the
 
 Ideas, not wording: Anthropic `frontend-design` (distinctive choices come from the subject's materials, instruments
 and vernacular), Hallmark (nutlope/hallmark, MIT: a theme as a material, a credited library of openly licensed
-photographs), and this Role's own `evidence-scan` for citing what was opened.
+photographs), and this Role's own `evidence-scan` and `sources.md` for citing what was opened.

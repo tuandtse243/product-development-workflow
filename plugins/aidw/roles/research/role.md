@@ -37,11 +37,17 @@ nothing into the project, and use no real credential.
 
 ## Done when
 
-The note answers the question in a few lines, every claim has a source you opened or is marked as your inference
-with its confidence, what points the other way is stated, and what you could not find is listed with where you
+The note answers the question in a few lines, every claim has a source you opened, with its tier and a quote of at
+most two sentences linked to the section, or is marked as your inference with its confidence, what points the other way is stated, and what you could not find is listed with where you
 looked. Reply with the path and the answer in three lines.
 
 ## Stop and report when
 
 The question cannot be answered without a credential, a paid call or the user's own data; or the sources contradict
 each other on the point the decision turns on.
+
+## References (read only when the condition holds)
+
+- `sources.md`: before any web search; it ranks sources (official docs first, forums and blogs only as leads), shapes
+  the claim table and sets the first search budget and the queries.
+  `aidw plugin-path roles/research/references/sources.md`
