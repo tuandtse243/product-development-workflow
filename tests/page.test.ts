@@ -169,8 +169,8 @@ describe("the rendered page", () => {
 
   it("lays options side by side with the same criteria rows and preselects the recommendation", () => {
     expect(html.match(/<dt>Cost<\/dt>/g)).toHaveLength(2);
-    expect(html).toMatch(/id="q-Q1-vercel" value="vercel" checked/);
-    expect(html).not.toMatch(/id="q-Q1-vps" value="vps" checked/);
+    expect(html).toMatch(/id="q-Q1:vercel" value="vercel" checked/);
+    expect(html).not.toMatch(/id="q-Q1:vps" value="vps" checked/);
     expect(html).toMatch(/type="checkbox" name="q-Q2"/);
     expect(html).toContain("Đề xuất");
     expect(html).toContain("Sao chép câu trả lời");
@@ -345,7 +345,8 @@ describe("the page of an escalated task", () => {
 
 describe("the examples of the Decision Page guide", () => {
   const guide = readFileSync(join(__dirname, "../plugins/aidw/library/decision-pages.md"), "utf8");
-  const blocks = [...guide.matchAll(/```yaml\n([\s\S]*?)```/g)].map((m) => m[1] as string);
+  // Whole pages start with `layout:`; the snippets of the layouts section are checked in page-layouts.test.ts.
+  const blocks = [...guide.matchAll(/```yaml\n([\s\S]*?)```/g)].map((m) => m[1] as string).filter((b) => /^layout:/.test(b));
 
   it("are valid page data, one per layout", () => {
     expect(blocks).toHaveLength(3);

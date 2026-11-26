@@ -44,3 +44,5 @@ Each line gives the exact command that prints the skill's path; run it as writte
   `aidw plugin-path roles/documentation/skills/readme-structure.md`
 - `api-docs-from-contract`: when the project has an API that others call
   `aidw plugin-path roles/documentation/skills/api-docs-from-contract.md`
+- `library/html-pages`: when you write an HTML page or a write-up laid out after an example (the pull request write-up)
+  `aidw plugin-path library/skills/html-pages/SKILL.md`

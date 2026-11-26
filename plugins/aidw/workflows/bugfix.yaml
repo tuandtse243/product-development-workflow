@@ -37,26 +37,33 @@ stages:
     roles: [product-manager]
     writes: [intake]
 
+  - id: assessment
+    title: Existing System Report (at most 3 neutral questions, one Research Agent)
+    states: [intake]
+    roles: [software-architect, research]
+    reads: [intake, project-config]
+    writes: [existing-system]
+
   - id: diagnosis
     title: Diagnosis of the defect (at most 3 questions, only what the code cannot answer)
     states: [analyzing]
     roles: [product-manager, business-analyst, software-architect, ui-ux-designer]
-    reads: [intake, project-config, specs, constitution, domain-model, architecture]
+    reads: [intake, existing-system, project-config, specs, constitution, domain-model, architecture]
     writes: [analysis-discovery-qa, analysis-scope, analysis-before-after, analysis-deferred-to-architecture, analysis-domain, analysis-specs, analysis-existing-system, analysis-stack, analysis-architecture, analysis-design]
 
   - id: program-design
     title: The short Program Design of the fix, the files and the signatures it changes
     states: [analyzing]
     roles: [software-architect]
-    reads: [analysis-scope, analysis-existing-system, architecture, constitution]
+    reads: [analysis-scope, existing-system, analysis-existing-system, architecture, constitution]
     writes: [program-design]
 
   - id: plan
     title: Task graph
     states: [analyzing]
-    roles: [technical-planner]
+    roles: [technical-planner, research] # Research writes the Docs Briefs the tasks name in docs: (ADR-0016)
     reads: [intake, analysis-discovery-qa, analysis-scope, analysis-existing-system, specs, architecture, constitution, design-tokens, program-design]
-    writes: [tasks, analysis-plan]
+    writes: [tasks, analysis-plan, docs-brief]
 
   - id: quality-profile
     title: Quality layers, deploy strategy and permissions

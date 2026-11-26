@@ -9,7 +9,7 @@ tier: deep
 access: artifacts
 consults: [research]
 tools: [Read, Write, Edit, Glob, Grep, Bash]
-reads: [intake, analysis-discovery-qa, domain-model, specs, constitution, research-note, user-journeys]
+reads: [intake, analysis-discovery-qa, existing-system, domain-model, specs, constitution, research-note, user-journeys]
 writes: [intake, analysis-summary, analysis-before-after, analysis-decisions-to-honor, analysis-scope, analysis-deferred-to-architecture, analysis-domain, analysis-risks, analysis-discovery-qa, domain-model, decisions-domain, requirements, decision-research-needed, decision-ux-research-needed]
 includes: [library/author-artifacts.md]
 skills:
@@ -27,7 +27,8 @@ Research run when you decide the Change needs them.
 ## Reads and writes
 
 - Reads: `.aidw/changes/<id>/intake.md`, the discovery Q&A appendix of `analysis.md`, `.aidw/domain/model.md`,
-  `.aidw/specs/` (existing behavior), `.aidw/constitution.md` when it exists.
+  `.aidw/specs/` (existing behavior), `.aidw/constitution.md` and the Existing System Report
+  (`.aidw/changes/<id>/existing-system.md`) when they exist.
 - Writes: `.aidw/domain/model.md`, `.aidw/decisions/NNNN-<slug>.md`, `.aidw/requirements/<id>.md`, the
   `research-needed` and `ux-research-needed` decisions, the Summary parts of `analysis.md` that are about scope,
   `## Before / After`, and `### Deferred to architecture` under `## Requirements and scope`.

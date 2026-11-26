@@ -18,6 +18,7 @@ import { pluginRoot, resolvePluginFile } from "./plugin.js";
 import { installRunner } from "./installcheck.js";
 import { BrowserError, browserEnv, browserStatus, startBrowser, stopBrowser, usesOwnBrowser } from "./browser.js";
 import { checkArtifacts } from "./artifacts.js";
+import { checkDocsBrief, parseDocsRef } from "./docsbrief.js";
 import { fetchFont, runShotsWorker, SHOTS_WORKER, takeShots } from "./mock.js";
 import { boundaryOf } from "./boundary.js";
 import { buildAuditBrief, chosenLenses, compileReport, lensRoles, pickFindings } from "./audit.js";
@@ -302,6 +303,9 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
   vendor-path <upstream>/<skill>         absolute path of a vendored SKILL.md (e.g. pocock/grilling)
   diff-coverage <lcov> [--min 80] [--base <ref>]  coverage of the lines added since the change's first task started
   plugin-path <path>                     absolute path of a plugin file (e.g. roles/software-architect/references/stack-pool.md)
+  docs-brief <lib>@<version> <topic>     whether a fresh Docs Brief exists (.aidw/research/docs/<lib>@<major.minor>-<topic>.md,
+                                         same major.minor, at most 90 days old): FRESH exits 0; MISSING, STALE or INVALID
+                                         exit 1 with the path Research writes it to (docs-research)
   eval [<role>] [--case <name>] [--model <m>] [--runs <n>] [--without <id,...> | --bare] [--answers]
                                          run a Role's cases with claude -p (no tools) and grade each answer against its
                                          criteria; without a Role, every active Role. Costs tokens; exits 1 when a case fails.
@@ -1031,6 +1035,20 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const file = found.file;
         emit({ path: file }, `${file}\n`);
         return 0;
+      }
+
+      case "docs-brief": {
+        // ADR-0016, R9: a Docs Brief is reused while the installed major.minor matches and it is at most 90 days old.
+        const p = project();
+        let c;
+        try {
+          c = checkDocsBrief(p.aidw, parseDocsRef(`${need(rest[0], "<lib>@<version>")} ${rest.slice(1).join(" ")}`));
+        } catch (e) {
+          throw new UsageError((e as Error).message);
+        }
+        const tail = c.status === "fresh" ? "" : `Research writes it with docs-research, to ${c.rel}\n`;
+        emit({ ok: c.status === "fresh", ...c }, `${c.status.toUpperCase()} ${c.rel}: ${c.reasons.join("; ")}\n${tail}`);
+        return c.status === "fresh" ? 0 : 1;
       }
 
       case "eval": {

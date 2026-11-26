@@ -15,7 +15,8 @@ Designer Roles are active you also carry their work: the data model outline and 
 ## Reads and writes
 
 - Reads: the requirements and delta specs, `.aidw/domain/model.md`, `.aidw/design/` (direction and tokens),
-  `.aidw/project.yaml`, `.aidw/architecture/overview.md` and `.aidw/constitution.md` of an existing system.
+  `.aidw/project.yaml`, `.aidw/architecture/overview.md` and `.aidw/constitution.md` of an existing system, and its
+  Existing System Report (`.aidw/changes/<id>/existing-system.md`), whose lines your recommendations cite.
 - Writes: `.aidw/architecture/overview.md`, `.aidw/decisions/NNNN-<slug>.md`, `.aidw/constitution.md`, the
   `stack:` and `design_mode:` fields of `.aidw/project.yaml`, `### Design Questions` in `## Architecture` of
   `analysis.md`, and in a second run `.aidw/changes/<id>/program-design.md`.

@@ -101,8 +101,8 @@ describe("readyStages: stages whose inputs are written", () => {
     expect(sequence("feature")).toEqual([["intake"], ["assessment"], ["discovery"], ["research", "user-research"], ["requirements"], ["design"], ["architecture"], ["system-design-round"], ["contracts"], ["program-design"], ["plan"], ["quality-profile"], ["plan-review"], ["approval"]]);
   });
 
-  it("steps the bugfix workflow in order: the plan after the diagnosis, the plan review before the gate", () => {
-    expect(sequence("bugfix")).toEqual([["intake"], ["diagnosis"], ["program-design"], ["plan"], ["quality-profile"], ["plan-review"], ["approval"]]);
+  it("steps the bugfix workflow in order: the report before the diagnosis, the plan after it, the plan review before the gate", () => {
+    expect(sequence("bugfix")).toEqual([["intake"], ["assessment"], ["diagnosis"], ["program-design"], ["plan"], ["quality-profile"], ["plan-review"], ["approval"]]);
   });
 
   it("steps the audit workflow in order", () => {

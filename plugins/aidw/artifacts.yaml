@@ -3,7 +3,8 @@
 #
 #   path      inside .aidw/ (<id> = change id, <T> = task id, <capability>, NNNN-<slug> are placeholders)
 #   owner     exactly ONE Role writes it; a Role's `writes:` header lists only what it owns, `reads:` any artifact
-#   validate  how it is checked: `aidw validate` | `aidw analyze` | `aidw plan` | `aidw plan-review` | `none` (the user reads it at the gate)
+#   validate  how it is checked: `aidw validate` | `aidw analyze` | `aidw plan` | `aidw plan-review` | `aidw docs-brief` |
+#             `none` (the user reads it at the gate)
 #   part      only when several artifacts share one file or folder: which part this one is (the heading of an
 #             analysis.md section, or what kind of ADR). Two artifacts never share a path without a `part`.
 #
@@ -133,6 +134,20 @@ research-note:
   path: research/<id>.md
   owner: research
   validate: none
+existing-system:
+  path: changes/<id>/existing-system.md
+  owner: research
+  validate: aidw analyze
+existing-system-part:
+  path: changes/<id>/existing-system/part-<n>.md
+  owner: research
+  validate: aidw analyze
+# A Docs Brief belongs to the project, not to one Change: later Changes reuse it while the installed major.minor
+# matches and it is at most 90 days old (ADR-0016, R9). <lib>, <major.minor> and <topic> make it a family of files.
+docs-brief:
+  path: research/docs/<lib>@<major.minor>-<topic>.md
+  owner: research
+  validate: aidw docs-brief
 decision-research-needed:
   path: changes/<id>/decisions.yaml
   part: "research-needed: market, feasibility, both or none"

@@ -290,6 +290,9 @@ describe("implementers consult Research once per task (ADR-0016, Q-R1)", () => {
     expect(brief).toMatch(/installed version/);
     expect(brief).toMatch(/official documentation/);
     expect(brief).toMatch(/do not ask any person/i);
+    // T5: the answer follows the Docs Brief discipline (ladder, fetch order, WebFetch only)
+    expect(brief).toMatch(/docs-research/);
+    expect(brief).toContain("roles/research/references/sources.md");
   });
 
   it("refuses a second question to Research in the same run, but not one to a contract author", () => {
