@@ -242,7 +242,35 @@ drafting.
 
 Its Procedure (`$(aidw plugin-path roles/software-architect/role.md)`) holds the stack priority
 (client > AI within the pool > fallback), `.aidw/architecture/overview.md`, ADRs, `.aidw/constitution.md` and the
-`stack:` and `design_mode:` fields of `.aidw/project.yaml`. Handle its open decisions as in step 3.
+`stack:` and `design_mode:` fields of `.aidw/project.yaml`. It lists every technical choice under `### Design
+Questions` in `## Architecture`: settled ones with `Chosen:`, `Why:` and `Rejected:`, and at most 5 left `Open:` for
+the user (hard to reverse, options about equal, or a change in cost or operation), each with its options, Views and
+metrics in the reply.
+
+**System design round (stage `system-design-round`).** A round of questions, not a gate: nothing is approved here
+(ADR-0015). `aidw stages <id>` says what it asks.
+- Open Design Questions: one Decision Page `system-design` (`layout: questions`, `role: software-architect`), one
+  question per open `DQ<n>` with that id, the Agent's recommendation as `recommend`, its options each with a `view`
+  of its code shape (a diff for a shape that exists, the full shape for new code) and the Agent's metrics as
+  `criteria` and `facts` (at most 4; a figure only when known, otherwise low, medium or high with why). Show the link
+  and stop. Record the lines `aidw page answers system-design` prints word for word under `### System design round`
+  in `## Architecture`, and turn each open question into a settled one (`Chosen:`, `Why:`, `Rejected:`). When an
+  answer goes against the Agent's recommendation, spawn `aidw:software-architect` again with the answers to bring
+  the architecture in line.
+- Nothing open: one question in the chat (`library/decision-pages.md`, "One question after a design"): two or three
+  lines of summary, the link to `.aidw/architecture/overview.md` and a View of the main shape as a fenced block.
+  Record the reply as `confirmed: <the reply>` under `### System design round`.
+- `Size: small`: no round. Report the stage done.
+
+`aidw stages --done system-design-round` refuses while a question is open or the round is not recorded.
+
+**Program Design (stage `program-design`, after step 6b).** Spawn **`aidw:software-architect`** again with this prompt
+and nothing else:
+`Change <id>. The system design round is recorded in .aidw/changes/<id>/analysis.md under "## Architecture". Write .aidw/changes/<id>/program-design.md as your program-design skill says (the short version: Size is <small|normal>), and reply with the path, the files per mark and every shape still open.`
+It writes the file-tree diff and the main signatures and contracts, with call trees, component trees, a dependency
+map or pseudocode where they help. The planner cuts the tasks from it, the gate shows it, and code that differs from
+it after approval is a Deviation. `aidw stages --done program-design` refuses it without its required parts. Handle
+its open shapes as in step 3.
 
 ## 6b. Data model and API contract (each only when needed)
 
@@ -372,7 +400,8 @@ user can check:
    and scope, the key decisions, the stack, the design (tokens as swatches in its `html` slot when there is UI), quality
    and deploy, requested permissions, and risks and assumptions. The CLI puts `## Before / After` of `analysis.md`
    first of all (a section you write with the id `before-after` replaces it), then the review's open findings, and
-   adds the Decision Points and the plan size. Name
+   adds the Program Design (`program-design.md` as Views; a section you write with the id `program-design` replaces
+   it), the Decision Points and the plan size. Name
    `.aidw/changes/<id>/analysis.md` in the intro. Tell the user the link, and that once they agree to every section
    (or type `/aidw:approve`) the build starts by itself.
 6. **Stop and wait for the answer.** Do not start building before it. When the user pastes the page's answer, check it:
@@ -409,9 +438,12 @@ planner writes a `type: fix` task whose regression test fails first on the curre
 line), the **scope** (what changes, what does not), the **Decisions to honor** (the exact response or behavior after the fix, what
 must stay as it is), and the regression test the fix needs. `## Before / After` is the bug as the user meets it and the
 behavior after the fix (3 to 6 lines each); `### Deferred to architecture` says "None". The sections for Domain, Stack,
-Design, Architecture and Specs say "n/a for a bugfix". A bugfix has no `design-needed` decision (do not run `aidw decide design-needed`). Then spawn only the planner (step 7) with this
+Design, Architecture and Specs say "n/a for a bugfix". A bugfix has no system design round; write its short Program
+Design yourself (stage `program-design`): `.aidw/changes/<id>/program-design.md` with `## File tree` (the files the
+fix changes, marked `~`, and the regression test, `+`) and `## Signatures and contracts` (the changed shapes as
+diffs). A bugfix has no `design-needed` decision (do not run `aidw decide design-needed`). Then spawn only the planner (step 7) with this
 prompt instead of the one there:
-`Change <id>. The diagnosis (root cause, scope, decisions to honor) is in .aidw/changes/<id>/analysis.md; there are no specs. Write .aidw/changes/<id>/tasks.yaml with one task of type fix (at most 3), with scope: <the capability it touches> and a regression test in its touches, run aidw plan and aidw analyze <id>, and reply with the number of tasks and every decision still open.`
+`Change <id>. The diagnosis (root cause, scope, decisions to honor) is in .aidw/changes/<id>/analysis.md and the Program Design in .aidw/changes/<id>/program-design.md; there are no specs. Write .aidw/changes/<id>/tasks.yaml with one task of type fix (at most 3), with scope: <the capability it touches> and a regression test in its touches, run aidw plan and aidw analyze <id>, and reply with the number of tasks and every decision still open.`
 
 The task's **regression test is proven by the CLI**: at its checkpoint aidw runs the new test files against the base commit, and a
 test that passes on the old code fails the checkpoint.

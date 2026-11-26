@@ -20,7 +20,7 @@ a view. What the user chooses comes back as text and is recorded where it is rec
 ### The flow
 
 1. Write the data to `.aidw/run/pages/<name>.yaml` with the Write tool (`<name>`: lowercase, digits, `-`; e.g.
-   `discovery-1`, `stack`, `gate`). One file per round; a new round gets a new name.
+   `discovery-1`, `stack`, `system-design`, `gate`). One file per round; a new round gets a new name.
 2. `aidw page render <name>`. It checks the data, writes the page and prints its link. A problem names the field:
    fix the file and render again.
 3. Tell the user **only** the link and one or two lines on what the page asks. Do not repeat the questions or the
@@ -176,7 +176,7 @@ layout: gate
 title: Approve the notes app
 intro: What will be built, and what it needs from you.
 lang: vi
-change: 2026-11-17-notes      # adds the Decision Points and the plan size as sections
+change: 2026-11-17-notes      # adds the Program Design, the Decision Points and the plan size as sections
 sections:
   - id: scope
     title: Scope
@@ -194,6 +194,9 @@ still open, the CLI puts them first as the section `open-findings`; do not write
 everything, the CLI adds `before-after` from `## Before / After` of `analysis.md`, so the user reads what changes for
 them before anything else; write a section with that id only to show it better (a mock in its `html`), and it still
 goes first.
+After your sections the CLI adds `program-design` from `program-design.md`: the file tree and the signatures as
+Views, because the user approves the Program Design with the rest and code that differs from it is a Deviation.
+Write a section with that id only to show it better; yours then replaces it.
 
 ### The free slot (`html`)
 
