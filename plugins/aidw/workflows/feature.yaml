@@ -9,7 +9,7 @@
 #   transitions the Change state machine (see below)
 #   agents      the Agents the CLI tells the orchestrator to spawn (the build stage of product.yaml is what the CLI reads)
 # Every Role named here is active. A Role behind a Decision Point (research, ux-research, database-architect, api-designer)
-# runs on a Change only when that decision says so.
+# runs on a Change only when that decision says so; Research also writes the Existing System Report of every Change here.
 id: feature
 description: Change to an existing codebase, from assessment to delivered software, with one approval gate after the plan.
 applies_to: brownfield
@@ -77,17 +77,17 @@ stages:
     writes: [intake]
 
   - id: assessment
-    title: Assessment of the existing system and its health baseline
+    title: Existing System Report (neutral questions, one Research Agent per group, one merging) and the health baseline
     states: [intake]
-    roles: [software-architect, product-manager]
+    roles: [software-architect, product-manager, research]
     reads: [intake, project-config]
-    writes: [architecture, domain-model, constitution, analysis-existing-system]
+    writes: [existing-system, existing-system-part, architecture, domain-model, constitution, analysis-existing-system]
 
   - id: discovery
     title: Discovery interview, one conversation in stages (the job, the rules and edges, the users)
     states: [analyzing]
     roles: [product-manager, business-analyst, ux-research]
-    reads: [intake, analysis-existing-system, architecture]
+    reads: [intake, existing-system, analysis-existing-system, architecture]
     writes: [analysis-discovery-qa, analysis-deferred-to-architecture]
 
   - id: research
@@ -108,7 +108,7 @@ stages:
     title: Domain model and requirements (Product Manager), then delta specs (Business Analyst)
     states: [analyzing]
     roles: [product-manager, business-analyst]
-    reads: [intake, analysis-discovery-qa, research-note, user-journeys]
+    reads: [intake, analysis-discovery-qa, existing-system, research-note, user-journeys]
     writes: [domain-model, decisions-domain, requirements, delta-specs, specs, analysis-scope, analysis-before-after, analysis-domain, analysis-specs]
 
   - id: design

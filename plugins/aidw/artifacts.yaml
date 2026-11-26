@@ -128,6 +128,14 @@ research-note:
   path: research/<id>.md
   owner: research
   validate: none
+existing-system:
+  path: changes/<id>/existing-system.md
+  owner: research
+  validate: aidw analyze
+existing-system-part:
+  path: changes/<id>/existing-system/part-<n>.md
+  owner: research
+  validate: aidw analyze
 decision-research-needed:
   path: changes/<id>/decisions.yaml
   part: "research-needed: market, feasibility, both or none"

@@ -75,7 +75,10 @@ Never write "the tests pass" without a check run behind it.
 
 ## 5. Write your part
 
-The orchestrator names the file. A part has this shape:
+The questions are in `.aidw/changes/<id>/existing-system/questions.md`, one `## ` group each; you answer the group
+you are given in `existing-system/part-<n>.md` next to it. When you are the only Agent (a `bugfix` or a small
+Change: at most three questions in one group), answer them all and write the report of section 6 straight to
+`.aidw/changes/<id>/existing-system.md`. A part has this shape:
 
 ```markdown
 # Part <n>: <the group of questions>
@@ -108,13 +111,16 @@ You are the Agent that merges. Read every part in full.
 - Order the findings by capability, not by part. Join duplicates, keeping the most exact lines.
 - Where two parts disagree (other lines, other behavior, one says tested and the other not), open the code at both
   citations and keep what the code says; note which part was corrected. Where the parts agree, do not re-read the
-  code: that work is done.
+  code: that work is done. Read no code for anything else.
+- A question no part answered goes under **Not answered**, with the open questions of the parts and where each part
+  looked. You do not answer it yourself: that would be reading code beyond the contradictions.
 - Merge each capability's Tested by into one table: capability, tests read, checks run, not tested.
 - Write the **Summary** first: five to ten lines, what exists and how it is tested, each line naming the section it
   comes from. It must stand alone: the Change's analysis carries it and points to the report.
 - Keep the merged report as neutral as the parts: a proposal that slipped into a part is dropped, not merged.
 
-The report has: Summary, Questions, Findings, How it is tested, Code references, Open questions.
+The report has these `## ` sections: Summary, Questions, Findings, How it is tested, Code references, Not answered
+(write "None." when every question has its answer). `aidw analyze` checks Summary and Not answered.
 
 ## Right and wrong
 

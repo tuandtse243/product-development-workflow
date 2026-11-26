@@ -261,9 +261,9 @@ ${
     ? `
 ## Existing system
 
-${PLACEHOLDER}: brownfield assessment. What exists (stack from project.yaml, structure, main flows), conventions
-the change follows, the health baseline (which existing checks pass or fail today), the capabilities this change
-touches and their baseline specs (aidw baseline <capability>), and what must not change.
+${PLACEHOLDER}: brownfield assessment. The Summary of the Existing System Report, word for word, with a line naming
+existing-system.md for the full report; then the health baseline (which existing checks pass or fail today), the
+capabilities this change touches and their baseline specs (aidw baseline <capability>), and what must not change.
 `
     : ""
 }
