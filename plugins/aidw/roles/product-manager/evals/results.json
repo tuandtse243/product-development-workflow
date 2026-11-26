@@ -1,0 +1,65 @@
+{
+  "format": 2,
+  "role": "product-manager",
+  "date": "2026-11-26T16:32:24.598Z",
+  "model": null,
+  "tier": "deep",
+  "runs": 3,
+  "digest": "sha256:d48c770241a382f43f595176a00d1b2d5a5f525e8ee86229e4800bf5c60140d3",
+  "cases": [
+    {
+      "name": "before-after-as-the-user-sees-it",
+      "pass": false,
+      "runs": {
+        "total": 3,
+        "passed": 2,
+        "errors": 0
+      },
+      "failed": [
+        "must not turn either technical question into a requirement or a question for the user"
+      ],
+      "digest": "sha256:862b5987716c557dce6cfecb7c4d8785db1cb47eecb6c42096999ce0fc35b764",
+      "date": "2026-11-26T16:32:24.598Z",
+      "model": null
+    },
+    {
+      "name": "first-slice-is-a-row",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": [],
+      "digest": "sha256:f40ca05869a449f541f3f3fa64e79800a566e82d3b031252ddf1b085472aab80",
+      "date": "2026-11-26T16:32:24.598Z",
+      "model": null
+    },
+    {
+      "name": "guess-surfaces-at-the-gate",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": [],
+      "digest": "sha256:2238ae78fde219bad1b312808a74a426c0c0fdfa0ed2c01f73f6d299b7e2dd41",
+      "date": "2026-11-26T16:32:24.598Z",
+      "model": null
+    },
+    {
+      "name": "request-is-a-solution",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": [],
+      "digest": "sha256:a6812b7d223e243fcdc209c3f339971bd7a262c4f9e588851a276c82da9eee80",
+      "date": "2026-11-26T16:32:24.598Z",
+      "model": null
+    }
+  ]
+}
