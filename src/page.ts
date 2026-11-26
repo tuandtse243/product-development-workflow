@@ -232,10 +232,15 @@ function parseMetrics(v: unknown, at: string, problems: string[]): PageMetric[] 
     if (LEVELS.includes(metric.value.toLowerCase())) {
       metric.value = metric.value.toLowerCase();
       if (!metric.why) problems.push(`${where}: "${metric.value}" is a level: say why in \`why\``);
-    } else if (!isFigure(metric.value)) problems.push(`${where}: "${metric.value}" is neither a figure with its unit (e.g. "120 ms", "+0.2 kb") nor low, medium or high`);
+    } else if (metric.value.toLowerCase() === "none") metric.value = "none";
+    else if (!isFigure(metric.value)) problems.push(`${where}: "${metric.value}" is neither a figure with its unit (e.g. "120 ms", "+0.2 kb") nor low, medium, high or none`);
     return metric;
   });
-  unique(metrics.map((m) => m.name).filter(Boolean), "metric", `${at}.metrics`, problems);
+  const seen = new Set<string>();
+  for (const m of metrics.filter((x) => x.name)) {
+    if (seen.has(m.name.toLowerCase())) problems.push(`${at}.metrics: metric "${m.name}" appears twice`);
+    seen.add(m.name.toLowerCase());
+  }
   return metrics;
 }
 
@@ -276,6 +281,7 @@ function checkSectionLayout(s: PageSection, raw: Record<string, unknown>, where:
   if (layout === "plan" || layout === "walkthrough") {
     if (!steps.length) problems.push(`${where}: layout ${layout} needs \`steps\``);
   } else if (steps.length) problems.push(`${where}: steps are drawn by \`layout: plan\` or \`layout: walkthrough\``);
+  if (layout === "plan") steps.forEach((x, i) => !x.when && problems.push(`${where}.steps[${i + 1}]: when is missing; say when it is built (a wave, a week, a milestone)`));
   if (layout === "walkthrough") steps.forEach((x, i) => !x.at && problems.push(`${where}.steps[${i + 1}]: at is missing; say where in the code (path or path:line)`));
   if (layout !== "plan" && figures.length) problems.push(`${where}: figures are drawn by \`layout: plan\``);
   if (figures.length > 4) problems.push(`${where}.figures: ${figures.length} figures; give at most 4`);
@@ -378,9 +384,10 @@ export function parsePage(name: string, source: string, extra: PageSection[] = [
       if (criteria.length === 1 || criteria.length > 4) problems.push(`${where}.criteria: give 2 to 4 criteria, or none`);
       checkShown(question, where, problems);
       // M5: the metrics line up across the options, as the criteria do.
-      const named = [...new Set(options.flatMap((o) => o.metrics.map((m) => m.name)).filter(Boolean))];
+      // Names compare without case: "Bundle" and "bundle" are one metric.
+      const named = [...new Map(options.flatMap((o) => o.metrics.map((m) => [m.name.toLowerCase(), m.name] as const)).filter(([k]) => k)).values()];
       if (named.length)
-        for (const o of options) for (const n of named) if (!o.metrics.some((m) => m.name === n)) problems.push(`${where}.options[${o.key}].metrics: no "${n}"; every option names the same metrics so they line up`);
+        for (const o of options) for (const n of named) if (!o.metrics.some((m) => m.name.toLowerCase() === n.toLowerCase())) problems.push(`${where}.options[${o.key}].metrics: no "${n}"; every option names the same metrics so they line up`);
       // D4: in approaches every option shows its code shape.
       if (question.layout === "approaches") {
         if (!options.length) problems.push(`${where}.layout: approaches compares options; this question has none`);
@@ -542,7 +549,7 @@ const LAYOUT_CSS = `
 .tradeoffs .row>span{padding:6px 10px;border-top:1px solid var(--line)}
 .tradeoffs .row>span+span{border-left:1px solid var(--line)}
 .tradeoffs .head>span{border-top:0;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);background:var(--bg)}
-.tradeoffs .pro::before{content:"+ ";color:var(--good);font-weight:700}.tradeoffs .con:not(:empty)::before{content:"\\2212  ";color:var(--bad);font-weight:700}
+.tradeoffs .pro:not(:empty)::before{content:"+ ";color:var(--good);font-weight:700}.tradeoffs .con:not(:empty)::before{content:"\\2212  ";color:var(--bad);font-weight:700}
 .ba{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 @media (max-width:720px){.ba{grid-template-columns:1fr}}
 .ba .panel{border:1.5px solid var(--line);border-radius:10px;padding:14px 16px}
@@ -646,8 +653,14 @@ button.quiet{color:var(--accent);background:transparent;border:1.5px solid var(-
 type L = (typeof LABELS)[keyof typeof LABELS];
 
 /** An option's metrics as chips, each with its value and, when given, why (example 01). */
-const chips = (metrics: PageMetric[]): string =>
-  metrics.length ? `<ul class="chips">${metrics.map((m) => `<li class="chip"><span class="mk">${inline(m.name)}</span> <b>${inline(m.value)}</b>${m.why ? ` <span class="mw">${inline(m.why)}</span>` : ""}</li>`).join("")}</ul>` : "";
+const chips = (metrics: PageMetric[], order: string[] = []): string => {
+  const rank = (m: PageMetric): number => {
+    const i = order.indexOf(m.name.toLowerCase());
+    return i < 0 ? order.length : i;
+  };
+  const sorted = [...metrics].sort((a, b) => rank(a) - rank(b));
+  return sorted.length ? `<ul class="chips">${sorted.map((m) => `<li class="chip"><span class="mk">${inline(m.name)}</span> <b>${inline(m.value)}</b>${m.why ? ` <span class="mw">${inline(m.why)}</span>` : ""}</li>`).join("")}</ul>` : "";
+};
 
 /** Pros and cons side by side, one row per pair (example 01). */
 function tradeoffs(o: PageOption, l: L): string {
@@ -701,17 +714,20 @@ function renderQuestion(q: PageQuestion, page: Page, l: L): string {
     return `<section class="q" data-q="${esc(q.id)}" data-kind="open">${head}${example}${renderViews(q.views)}${free(q.html)}${why}<textarea id="a-${esc(q.id)}" placeholder="${l.answer}">${esc(q.suggest)}</textarea></section>`;
   }
   const approaches = q.layout === "approaches";
+  // Every option's chips follow the first option's order, so the same metric sits in the same place on each card.
+  const order = (q.options[0]?.metrics ?? []).map((m) => m.name.toLowerCase());
   const cards = q.options
     .map((o, i) => {
       const rec = q.recommend.includes(o.key);
-      const d = `d-${esc(q.id)}-${esc(o.key)}`;
+      // ":" cannot appear in a question id or an option key, so "Q1" + "a-b" and "Q1-a" + "b" get different ids.
+      const d = `d-${esc(q.id)}:${esc(o.key)}`;
       // The label holds only the input and the name (phrasing content); the rest of the card is tied to it by aria-describedby.
-      const top = `<label class="top"><input type="${q.multi ? "checkbox" : "radio"}" name="q-${esc(q.id)}" id="q-${esc(q.id)}-${esc(o.key)}" value="${esc(o.key)}"${rec ? " checked" : ""} aria-describedby="${d}">${approaches ? `<span class="num">${String(i + 1).padStart(2, "0")}</span>` : ""}<span class="name">${inline(o.name)}</span></label>`;
+      const top = `<label class="top"><input type="${q.multi ? "checkbox" : "radio"}" name="q-${esc(q.id)}" id="q-${esc(q.id)}:${esc(o.key)}" value="${esc(o.key)}"${rec ? " checked" : ""} aria-describedby="${d}">${approaches ? `<span class="num">${String(i + 1).padStart(2, "0")}</span>` : ""}<span class="name">${inline(o.name)}</span></label>`;
       const lines = approaches ? tradeoffs(o, l) : [...o.pros.map((x) => `<li class="p">${inline(x)}</li>`), ...o.cons.map((x) => `<li class="m">${inline(x)}</li>`)].join("");
       const facts = q.criteria.length ? `<dl class="facts">${q.criteria.map((c) => `<dt>${esc(c)}</dt><dd>${inline(o.facts[c] ?? "")}</dd>`).join("")}</dl>` : "";
       const body = approaches
-        ? `${o.summary ? `<p class="sum">${inline(o.summary)}</p>` : ""}${renderViews(o.views)}${free(o.html)}${lines}${chips(o.metrics)}${facts}`
-        : `${o.summary ? `<p class="sum">${inline(o.summary)}</p>` : ""}${lines ? `<ul class="pm">${lines}</ul>` : ""}${renderViews(o.views)}${free(o.html)}${chips(o.metrics)}${facts}`;
+        ? `${o.summary ? `<p class="sum">${inline(o.summary)}</p>` : ""}${renderViews(o.views)}${free(o.html)}${lines}${chips(o.metrics, order)}${facts}`
+        : `${o.summary ? `<p class="sum">${inline(o.summary)}</p>` : ""}${lines ? `<ul class="pm">${lines}</ul>` : ""}${renderViews(o.views)}${free(o.html)}${chips(o.metrics, order)}${facts}`;
       const tag = approaches ? "article" : "div";
       return `<${tag} class="opt${approaches ? " approach" : ""}">${top}${rec ? `<span class="badge">${l.rec}</span>` : ""}<div class="od" id="${d}">${body}</div></${tag}>`;
     })

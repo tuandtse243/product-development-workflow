@@ -171,7 +171,7 @@ panels and badges, not its content or colours. Pages stay static: no script beyo
 | question | `approaches` | 01 | one numbered approach per row: its View, a Pro and Con table, its metrics as chips | options, each with a `view` or `html` |
 | section | `text` (default) | | body, points, View | |
 | section | `before-after` | 17 | two columns, Before and After | `before` and `after` lines |
-| section | `plan` | 16 | up to 4 key `figures`, then `steps` on a timeline (`when`, `title`, `detail`, `tags`) | `steps` |
+| section | `plan` | 16 | up to 4 key `figures`, then `steps` on a timeline (`when`, `title`, `detail`, `tags`) | `steps`, each with `when` |
 | section | `walkthrough` | 04 | numbered `steps` through the code (`at`, `title`, `detail`, a folded `view`; `hot: true` marks the one to read first, open) | `steps`, each with `at` |
 
 ```yaml
@@ -225,9 +225,12 @@ metrics:                        # a list, at most 4 per option
   - { name: Testability, value: medium, why: needs the component mounted }   # else low, medium or high, and why
 ```
 
-- `value` is a figure with its unit (`120 ms`, `+0.2 kb`, `~20 USD`) or one of `low`, `medium`, `high`. A level
-  must say `why`; a bare number (`3`) or another word (`good`) is refused. Never invent a figure to look precise.
-- Every option of the question names the same metrics, so the chips line up; a missing one is refused.
+- `value` is a figure with its unit (`120 ms`, `+0.2 kb`, `~20 USD`), one of `low`, `medium`, `high`, or `none`
+  (nothing of it: `New dependencies: none`). A level must say `why`; a bare number (`3`) or another word (`good`,
+  `n/a`) is refused. A metric that does not apply to an option is not a metric to name. Never invent a figure to
+  look precise.
+- Every option of the question names the same metrics (case does not matter), so the chips line up in the first
+  option's order; a missing one is refused.
 - Metrics show on any question's options; `approaches` is where they belong.
 
 ### The data: picks

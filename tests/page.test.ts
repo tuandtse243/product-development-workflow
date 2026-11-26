@@ -169,8 +169,8 @@ describe("the rendered page", () => {
 
   it("lays options side by side with the same criteria rows and preselects the recommendation", () => {
     expect(html.match(/<dt>Cost<\/dt>/g)).toHaveLength(2);
-    expect(html).toMatch(/id="q-Q1-vercel" value="vercel" checked/);
-    expect(html).not.toMatch(/id="q-Q1-vps" value="vps" checked/);
+    expect(html).toMatch(/id="q-Q1:vercel" value="vercel" checked/);
+    expect(html).not.toMatch(/id="q-Q1:vps" value="vps" checked/);
     expect(html).toMatch(/type="checkbox" name="q-Q2"/);
     expect(html).toContain("Đề xuất");
     expect(html).toContain("Sao chép câu trả lời");

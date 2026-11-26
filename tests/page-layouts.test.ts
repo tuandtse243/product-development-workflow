@@ -70,9 +70,9 @@ describe("metrics on an option (D4, M5)", () => {
       APPROACHES.replace("{ name: Testability, value: medium, why: needs the component mounted }", "{ name: Testability, value: medium }").replace("{ name: Bundle, value: +0.2 kb }", "{ name: Bundle, value: '3' }"),
     );
     expect(p).toContain('questions[Q1].options[inline].metrics[Testability]: "medium" is a level: say why in `why`');
-    expect(p).toContain('questions[Q1].options[hook].metrics[Bundle]: "3" is neither a figure with its unit (e.g. "120 ms", "+0.2 kb") nor low, medium or high');
+    expect(p).toContain('questions[Q1].options[hook].metrics[Bundle]: "3" is neither a figure with its unit (e.g. "120 ms", "+0.2 kb") nor low, medium, high or none');
     expect(problemsOf(APPROACHES.replace("value: high, why", "value: good, why"))).toContain(
-      'questions[Q1].options[hook].metrics[Testability]: "good" is neither a figure with its unit (e.g. "120 ms", "+0.2 kb") nor low, medium or high',
+      'questions[Q1].options[hook].metrics[Testability]: "good" is neither a figure with its unit (e.g. "120 ms", "+0.2 kb") nor low, medium, high or none',
     );
   });
 
@@ -143,14 +143,14 @@ describe("option rendering is valid HTML (T10 review note)", () => {
       const html = renderPage(parse(src).page);
       const labels = [...html.matchAll(/<label\b[^>]*>([\s\S]*?)<\/label>/g)].map((m) => m[1] ?? "");
       for (const inner of labels) expect(inner).not.toMatch(/<(figure|pre|div|ul|dl|article|section|header)\b/);
-      expect(html).toContain('aria-describedby="d-Q1-inline"');
-      expect(html).toMatch(/<div class="od" id="d-Q1-inline">[\s\S]*?<figure class="view" data-kind="pseudocode">/);
+      expect(html).toContain('aria-describedby="d-Q1:inline"');
+      expect(html).toMatch(/<div class="od" id="d-Q1:inline">[\s\S]*?<figure class="view" data-kind="pseudocode">/);
     }
   });
 
   it("still lets the copied answer read the chosen option", () => {
     const html = renderPage(parse(APPROACHES).page);
-    expect(html).toContain('<input type="radio" name="q-Q1" id="q-Q1-hook" value="hook" checked aria-describedby="d-Q1-hook">');
+    expect(html).toContain('<input type="radio" name="q-Q1" id="q-Q1:hook" value="hook" checked aria-describedby="d-Q1:hook">');
   });
 });
 
@@ -281,5 +281,44 @@ describe("the page docs (library/decision-pages.md)", () => {
     );
     expect(parsePage("q", question).problems).toEqual([]);
     expect(parsePage("g", `layout: gate\ntitle: G\n${s ?? ""}`).problems).toEqual([]);
+  });
+});
+
+describe("review notes on the layouts", () => {
+  it("draws every option's chips in the first option's order", () => {
+    const html = renderPage(parse(APPROACHES).page);
+    const hook = html.slice(html.indexOf('id="d-Q1:hook"'));
+    expect(hook.indexOf('<span class="mk">Bundle</span>')).toBeLessThan(hook.indexOf('<span class="mk">Testability</span>'));
+  });
+
+  it("compares metric names without case", () => {
+    expect(problemsOf(APPROACHES.replace("{ name: Bundle, value: +0.2 kb }", "{ name: bundle, value: +0.2 kb }"))).toEqual([]);
+    expect(problemsOf(APPROACHES.replace("{ name: Bundle, value: +0 kb }", "{ name: testability, value: 3 ms }"))).toContain('questions[Q1].options[inline].metrics: metric "Testability" appears twice');
+  });
+
+  it("takes none as a value, without why", () => {
+    const { page, problems } = parse(APPROACHES.replace("{ name: Bundle, value: +0 kb }", "{ name: Bundle, value: None }"));
+    expect(problems).toEqual([]);
+    expect(page.questions[0]?.options[0]?.metrics[0]?.value).toBe("none");
+    expect(problemsOf(APPROACHES.replace("{ name: Bundle, value: +0 kb }", "{ name: Bundle, value: n/a }"))).toContain(
+      'questions[Q1].options[inline].metrics[Bundle]: "n/a" is neither a figure with its unit (e.g. "120 ms", "+0.2 kb") nor low, medium, high or none',
+    );
+  });
+
+  it("gives options ids that cannot collide when keys or ids hold a dash", () => {
+    const src = `layout: questions\ntitle: T\nquestions:\n  - id: Q1\n    title: A\n    naming: true\n    recommend: a-b\n    why: x\n    options:\n      - { key: a-b, name: A, summary: s }\n      - { key: c, name: C, summary: s }\n  - id: Q1-a\n    title: B\n    naming: true\n    recommend: b\n    why: x\n    options:\n      - { key: b, name: B, summary: s }\n      - { key: d, name: D, summary: s }\n`;
+    const { page, problems } = parse(src);
+    expect(problems).toEqual([]);
+    const html = renderPage(page);
+    const ids = [...html.matchAll(/ id="([^"]+)"/g)].map((m) => m[1]);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(html).toContain('id="q-Q1:a-b" value="a-b" checked aria-describedby="d-Q1:a-b"');
+    expect(html).toContain('id="q-Q1-a:b" value="b" checked aria-describedby="d-Q1-a:b"');
+  });
+
+  it("asks each plan step when it is built", () => {
+    expect(problemsOf("layout: gate\ntitle: G\nsections:\n  - { id: s, title: S, layout: plan, steps: [{ when: W1, title: a }, { title: b }] }\n")).toContain(
+      "sections[s].steps[2]: when is missing; say when it is built (a wave, a week, a milestone)",
+    );
   });
 });

@@ -106,7 +106,7 @@ describe("vi labels and option details (Q8b, D4)", () => {
 
   it("an approaches question that allows several picks uses checkboxes", () => {
     const html = renderPage(parsePage("q", approaches(undefined, true)).page);
-    expect(html).toMatch(/<input type="checkbox" name="q-Q1" id="q-Q1-a" value="a"/);
+    expect(html).toMatch(/<input type="checkbox" name="q-Q1" id="q-Q1:a" value="a"/);
   });
 
   it("normalises a level to lower case and shows the metrics on a cards question too", () => {
