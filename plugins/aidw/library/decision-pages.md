@@ -103,6 +103,7 @@ Writing a good card:
   options (cost, effort, risk, how hard it is to change later, what the user sees) and answer each one for every
   option in a few words. Use words and real figures ("about 20 USD a month", "hard"), never invented scores.
 - `pros` and `cons` are what this option alone gives or costs, one short line each. Do not repeat the criteria.
+- A technical option carries up to 4 `metrics` the Architect names (see "Metrics" below).
 - Keep `key` a short slug; it is what comes back in the answer.
 - A question that answers a Decision Point of the Workflow names it (`decision: research-needed`) and uses the
   Decision Point's own answers as its option keys; the checked answer then prints the `aidw decide` command.
@@ -156,6 +157,81 @@ view: { kind: <kind>, text: <the block> }     # or a list of them
 
   db: in the database | redis: in Redis
   ````
+
+### Each block picks a layout modelled on an example
+
+The page's `layout` says what the user does: answer questions, pick items or agree with sections. A question or a
+gate section may also say how it is drawn, with its own `layout`. Each one takes the shape of a vendored
+html-effectiveness example (`aidw plugin-path library/vendor/anthropics/html-effectiveness/<file>`): its grid,
+panels and badges, not its content or colours. Pages stay static: no script beyond the copy button, nothing loaded from the network.
+
+| on | `layout` | example | draws | needs |
+|---|---|---|---|---|
+| question | `cards` (default) | | options side by side | |
+| question | `approaches` | 01 | one numbered approach per row: its View, a Pro and Con table, its metrics as chips | options, each with a `view` or `html` |
+| section | `text` (default) | | body, points, View | |
+| section | `before-after` | 17 | two columns, Before and After | `before` and `after` lines |
+| section | `plan` | 16 | up to 4 key `figures`, then `steps` on a timeline (`when`, `title`, `detail`, `tags`) | `steps`, each with `when` |
+| section | `walkthrough` | 04 | numbered `steps` through the code (`at`, `title`, `detail`, a folded `view`; `hot: true` marks the one to read first, open) | `steps`, each with `at` |
+
+```yaml
+- id: Q1
+  title: How is the search debounced?
+  layout: approaches            # technical options compared by their code shape
+  recommend: hook
+  why: Reused in three places and easy to test.
+  options:
+    - key: hook
+      name: useDebounce hook
+      pros: [One import reused]
+      cons: [One more file]
+      view: { kind: tree, text: "src/\n  hooks/useDebounce.ts" }
+      metrics:
+        - { name: Bundle, value: +0.2 kb }
+        - { name: Testability, value: high, why: a pure hook tested with fake timers }
+```
+
+```yaml
+sections:
+  - id: build-order
+    title: Plan
+    layout: plan
+    figures: { Tasks: "12", Waves: "4" }
+    steps:
+      - { when: Wave 1, title: Schema and API, detail: Two tables., tags: [T01, T02] }
+  - id: booking-path
+    title: How a booking flows
+    layout: walkthrough
+    steps:
+      - { at: app/book/page.tsx, title: The form posts the slot }
+      - { at: "app/api/bookings/route.ts:12", title: The route checks the slot, hot: true, view: { kind: pseudocode, text: "if slot taken: 409" } }
+```
+
+- The section with the id `before-after` is drawn as `before-after` without asking. The one the CLI adds from
+  `analysis.md` writes its lines as `**Before**: ...` and `**After**: ...` points; the page sorts them into the two
+  columns. A hand-written one with only a `body` stays readable.
+- `before`, `after`, `steps` and `figures` on a section whose layout does not draw them are refused, as is a layout
+  that is not in the table; the problem names the field (`sections[path].steps[1]: at is missing`).
+- A page-level `layout: approaches` (or `plan`, ...) is refused with where it belongs.
+
+### Metrics are a figure when known, a level with why otherwise
+
+D4: a technical option shows its code shape (its View) and up to 4 metrics the Architect names: the things the
+options really differ on (bundle size, latency, files touched, testability, how hard to undo).
+
+```yaml
+metrics:                        # a list, at most 4 per option
+  - { name: Latency, value: 120 ms }                              # a figure with its unit, only when measured or known
+  - { name: Testability, value: medium, why: needs the component mounted }   # else low, medium or high, and why
+```
+
+- `value` is a figure with its unit (`120 ms`, `+0.2 kb`, `~20 USD`), one of `low`, `medium`, `high`, or `none`
+  (nothing of it: `New dependencies: none`). A level must say `why`; a bare number (`3`) or another word (`good`,
+  `n/a`) is refused. A metric that does not apply to an option is not a metric to name. Never invent a figure to
+  look precise.
+- Every option of the question names the same metrics (case does not matter), so the chips line up in the first
+  option's order; a missing one is refused.
+- Metrics show on any question's options; `approaches` is where they belong.
 
 ### The data: picks
 

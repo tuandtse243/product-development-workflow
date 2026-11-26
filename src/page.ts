@@ -13,6 +13,36 @@ import { SCOPE_QUESTIONS, SCOPE_ROUND_HEADING } from "./scope.js";
 export const LAYOUTS = ["questions", "picks", "gate"] as const;
 export type Layout = (typeof LAYOUTS)[number];
 
+/**
+ * How one question or one gate section is drawn (Q8b, ADR-0017), modelled on the vendored html-effectiveness
+ * examples: approaches on 01, walkthrough on 04, plan on 16, before-after on 17. The page's own `layout` says what the
+ * user does (answer, pick, agree); a block's `layout` says how it looks.
+ */
+export const QUESTION_LAYOUTS = ["cards", "approaches"] as const;
+export type QuestionLayout = (typeof QUESTION_LAYOUTS)[number];
+export const SECTION_LAYOUTS = ["text", "before-after", "plan", "walkthrough"] as const;
+export type SectionLayout = (typeof SECTION_LAYOUTS)[number];
+
+/** D4, M5: what the Architect measures an option by; a figure with its unit when known, else a level and why. */
+export interface PageMetric {
+  name: string;
+  value: string;
+  why: string;
+}
+export const MAX_METRICS = 4;
+const LEVELS = ["low", "medium", "high"];
+
+/** One step of a plan (when, what, tags) or of a walkthrough (where in the code, what happens, a View). */
+export interface PageStep {
+  title: string;
+  when: string;
+  at: string;
+  detail: string;
+  tags: string[];
+  hot: boolean;
+  views: PageView[];
+}
+
 export interface PageOption {
   key: string;
   name: string;
@@ -20,6 +50,7 @@ export interface PageOption {
   pros: string[];
   cons: string[];
   facts: Record<string, string>;
+  metrics: PageMetric[];
   html: string;
   views: PageView[];
 }
@@ -41,6 +72,7 @@ export interface PageQuestion {
   decision: string;
   /** the options are names (of a product, a term): a name needs no View */
   naming: boolean;
+  layout: QuestionLayout;
   html: string;
   views: PageView[];
   options: PageOption[];
@@ -64,6 +96,14 @@ export interface PageSection {
   html: string;
   /** optional so the sections the CLI adds itself need not say so */
   views?: PageView[];
+  /** text unless said; a section with the id before-after is drawn as before-after */
+  layout?: SectionLayout;
+  /** the two columns of before-after; `**Before**:` and `**After**:` points are read into them too */
+  before?: string[];
+  after?: string[];
+  /** the key figures above a plan, at most 4 */
+  figures?: Record<string, string>;
+  steps?: PageStep[];
 }
 
 export interface Page {
@@ -174,6 +214,81 @@ function unique(values: string[], what: string, where: string, problems: string[
   }
 }
 
+/** A figure has a digit and a unit (a letter or a currency or percent sign): "120 ms", "+0.2 kb", "~20 USD". */
+const isFigure = (v: string): boolean => /\d/.test(v) && /[\p{L}%$€£¥]/u.test(v);
+
+/** Reads `metrics` of an option (D4, M5): at most 4, each a figure with its unit or low, medium or high with why. */
+function parseMetrics(v: unknown, at: string, problems: string[]): PageMetric[] {
+  if (v === undefined || v === null) return [];
+  if (!Array.isArray(v)) {
+    problems.push(`${at}.metrics: give a list of {name, value, why}`);
+    return [];
+  }
+  if (v.length > MAX_METRICS) problems.push(`${at}.metrics: ${v.length} metrics; give at most ${MAX_METRICS}, the ones that really differ`);
+  const metrics = rows(v).map((m, i): PageMetric => {
+    const metric = { name: text(m.name), value: text(m.value), why: text(m.why) };
+    const where = `${at}.metrics[${metric.name || i + 1}]`;
+    if (!metric.name) problems.push(`${where}: name is missing`);
+    if (LEVELS.includes(metric.value.toLowerCase())) {
+      metric.value = metric.value.toLowerCase();
+      if (!metric.why) problems.push(`${where}: "${metric.value}" is a level: say why in \`why\``);
+    } else if (metric.value.toLowerCase() === "none") metric.value = "none";
+    else if (!isFigure(metric.value)) problems.push(`${where}: "${metric.value}" is neither a figure with its unit (e.g. "120 ms", "+0.2 kb") nor low, medium, high or none`);
+    return metric;
+  });
+  const seen = new Set<string>();
+  for (const m of metrics.filter((x) => x.name)) {
+    if (seen.has(m.name.toLowerCase())) problems.push(`${at}.metrics: metric "${m.name}" appears twice`);
+    seen.add(m.name.toLowerCase());
+  }
+  return metrics;
+}
+
+/** Reads `steps` of a plan or a walkthrough section. */
+function parseSteps(v: unknown, where: string, problems: string[]): PageStep[] {
+  return rows(v).map((s, i) => {
+    const at = `${where}.steps[${i + 1}]`;
+    const step: PageStep = { title: text(s.title), when: text(s.when), at: text(s.at), detail: text(s.detail), tags: list(s.tags), hot: s.hot === true, views: parseViews(s.view, at, problems) };
+    if (!step.title) problems.push(`${at}: title is missing`);
+    return step;
+  });
+}
+
+/** The layout a block asked for, or its default; an unknown one is a problem named after `where`. */
+function layoutOf<T extends string>(v: unknown, values: readonly T[], fallback: T, where: string, problems: string[]): T {
+  if (v === undefined || v === null) return fallback;
+  if ((values as readonly string[]).includes(text(v))) return text(v) as T;
+  problems.push(`${where}.layout: "${text(v)}" is not one of ${values.join(", ")}`);
+  return fallback;
+}
+
+const BA_POINT = /^\*\*(Before|After)\*\*:\s*/i;
+/** The columns of a before-after section: its own lines and the `**Before**:` / `**After**:` points; the rest stay points. */
+function columnsOf(s: PageSection): { before: string[]; after: string[]; points: string[] } {
+  const pick = (side: string) => s.points.filter((x) => BA_POINT.exec(x)?.[1]?.toLowerCase() === side).map((x) => x.replace(BA_POINT, ""));
+  return { before: [...(s.before ?? []), ...pick("before")], after: [...(s.after ?? []), ...pick("after")], points: s.points.filter((x) => !BA_POINT.test(x)) };
+}
+/** What each section layout needs, and the fields only another layout draws. */
+function checkSectionLayout(s: PageSection, raw: Record<string, unknown>, where: string, problems: string[]): void {
+  const layout = sectionLayout(s);
+  const steps = s.steps ?? [];
+  const figures = Object.keys(s.figures ?? {});
+  if (layout === "before-after") {
+    const cols = columnsOf(s);
+    // The id alone (a hand-written section with only a body) asks for nothing; an explicit layout asks for both columns.
+    if (raw.layout !== undefined && (!cols.before.length || !cols.after.length)) problems.push(`${where}: before-after needs \`before\` and \`after\` lines`);
+  } else if ((s.before ?? []).length || (s.after ?? []).length) problems.push(`${where}: before and after are drawn by \`layout: before-after\``);
+  if (layout === "plan" || layout === "walkthrough") {
+    if (!steps.length) problems.push(`${where}: layout ${layout} needs \`steps\``);
+  } else if (steps.length) problems.push(`${where}: steps are drawn by \`layout: plan\` or \`layout: walkthrough\``);
+  if (layout === "plan") steps.forEach((x, i) => !x.when && problems.push(`${where}.steps[${i + 1}]: when is missing; say when it is built (a wave, a week, a milestone)`));
+  if (layout === "walkthrough") steps.forEach((x, i) => !x.at && problems.push(`${where}.steps[${i + 1}]: at is missing; say where in the code (path or path:line)`));
+  if (layout !== "plan" && figures.length) problems.push(`${where}: figures are drawn by \`layout: plan\``);
+  if (figures.length > 4) problems.push(`${where}.figures: ${figures.length} figures; give at most 4`);
+}
+
+const sectionLayout = (s: PageSection): SectionLayout => s.layout ?? (s.id === "before-after" ? "before-after" : "text");
+
 /**
  * Reads the data of a page. `extra` are sections the CLI adds to a gate page itself (Decision Points, plan size), after
  * the authored ones; `lead` go before them (the open findings of the plan review). A `before-after` section, authored
@@ -189,7 +304,15 @@ export function parsePage(name: string, source: string, extra: PageSection[] = [
     problems.push(`not valid YAML: ${(e as Error).message.split("\n")[0]}`);
   }
   const layout = (LAYOUTS as readonly string[]).includes(text(raw.layout)) ? (text(raw.layout) as Layout) : "questions";
-  if (raw.layout !== undefined && text(raw.layout) !== layout) problems.push(`layout: "${text(raw.layout)}" is not one of ${LAYOUTS.join(", ")}`);
+  if (raw.layout !== undefined && text(raw.layout) !== layout) {
+    const asked = text(raw.layout);
+    const block = (QUESTION_LAYOUTS as readonly string[]).includes(asked) ? "a question" : (SECTION_LAYOUTS as readonly string[]).includes(asked) ? "a gate section" : "";
+    problems.push(
+      block
+        ? `layout: "${asked}" is how ${block} is drawn, not a page: keep the page's layout (${LAYOUTS.join(", ")}) and set \`layout: ${asked}\` on the ${block === "a question" ? "question" : "section"}`
+        : `layout: "${asked}" is not one of ${LAYOUTS.join(", ")}`,
+    );
+  }
   const lang = text(raw.lang) === "vi" ? "vi" : "en";
   if (raw.lang !== undefined && !["en", "vi"].includes(text(raw.lang))) problems.push(`lang: "${text(raw.lang)}" is not en or vi`);
   const page: Page = {
@@ -228,7 +351,7 @@ export function parsePage(name: string, source: string, extra: PageSection[] = [
         for (const [k, v] of Object.entries(obj(o.facts))) facts[k.trim()] = text(v);
         for (const k of Object.keys(facts)) if (!criteria.includes(k)) problems.push(`${at}.facts: "${k}" is not one of the question's criteria (${criteria.join(", ") || "none declared"})`);
         for (const c of criteria) if (!facts[c]) problems.push(`${at}.facts: no value for the criterion "${c}"; every option answers every criterion so the cards line up`);
-        const opt: PageOption = { key, name: text(o.name), summary: text(o.summary), pros: list(o.pros), cons: list(o.cons), facts, html: slot(o.html, at), views: parseViews(o.view, at, problems) };
+        const opt: PageOption = { key, name: text(o.name), summary: text(o.summary), pros: list(o.pros), cons: list(o.cons), facts, metrics: parseMetrics(o.metrics, at, problems), html: slot(o.html, at), views: parseViews(o.view, at, problems) };
         if (!opt.name) problems.push(`${at}: name is missing`);
         if (!opt.summary && !opt.pros.length && !opt.cons.length && !criteria.length) problems.push(`${at}: say what this option gives and costs (summary, pros, cons or facts)`);
         return opt;
@@ -246,6 +369,7 @@ export function parsePage(name: string, source: string, extra: PageSection[] = [
         why: text(q.why),
         decision: text(q.decision),
         naming: q.naming === true,
+        layout: layoutOf(q.layout, QUESTION_LAYOUTS, "cards", where, problems),
         html: slot(q.html, where),
         views: parseViews(q.view, where, problems),
         options,
@@ -259,6 +383,16 @@ export function parsePage(name: string, source: string, extra: PageSection[] = [
       if (question.recommend.length && !question.why) problems.push(`${where}: why is missing; say in one or two sentences why that answer is recommended`);
       if (criteria.length === 1 || criteria.length > 4) problems.push(`${where}.criteria: give 2 to 4 criteria, or none`);
       checkShown(question, where, problems);
+      // M5: the metrics line up across the options, as the criteria do.
+      // Names compare without case: "Bundle" and "bundle" are one metric.
+      const named = [...new Map(options.flatMap((o) => o.metrics.map((m) => [m.name.toLowerCase(), m.name] as const)).filter(([k]) => k)).values()];
+      if (named.length)
+        for (const o of options) for (const n of named) if (!o.metrics.some((m) => m.name.toLowerCase() === n.toLowerCase())) problems.push(`${where}.options[${o.key}].metrics: no "${n}"; every option names the same metrics so they line up`);
+      // D4: in approaches every option shows its code shape.
+      if (question.layout === "approaches") {
+        if (!options.length) problems.push(`${where}.layout: approaches compares options; this question has none`);
+        for (const o of options) if (!o.views.length && !o.html) problems.push(`${where}.options[${o.key}]: an approach shows its code shape: give \`view\` or \`html\``);
+      }
       return question;
     });
     if (!page.questions.length) problems.push("questions: missing or empty");
@@ -297,8 +431,16 @@ export function parsePage(name: string, source: string, extra: PageSection[] = [
         const where = `sections[${id || i + 1}]`;
         if (!ID.test(id) || RESERVED.has(id.toLowerCase())) problems.push(`${where}: id is missing or not a short slug starting with a letter`);
         const section: PageSection = { id, title: text(s.title), body: text(s.body), points: list(s.points), html: slot(s.html, where), views: parseViews(s.view, where, problems) };
+        section.layout = layoutOf(s.layout, SECTION_LAYOUTS, id === "before-after" ? "before-after" : "text", where, problems);
+        section.before = list(s.before);
+        section.after = list(s.after);
+        section.figures = {};
+        for (const [k, v] of Object.entries(obj(s.figures))) section.figures[k.trim()] = text(v);
+        section.steps = parseSteps(s.steps, where, problems);
+        checkSectionLayout(section, s, where, problems);
         if (!section.title) problems.push(`${where}: title is missing`);
-        if (!section.body && !section.points.length && !section.html && !section.views?.length) problems.push(`${where}: nothing to read; give body, points, html or a view`);
+        if (!section.body && !section.points.length && !section.html && !section.views?.length && !section.before.length && !section.after.length && !section.steps.length)
+          problems.push(`${where}: nothing to read; give body, points, html or a view`);
         return section;
       }),
       ...extra,
@@ -335,6 +477,10 @@ const LABELS = {
     changeNote: "What should change (required when you ask for a change)",
     allOk: "Agree with all",
     optional: "optional",
+    before: "Before",
+    after: "After",
+    pro: "Pro",
+    con: "Con",
   },
   vi: {
     one: "chọn một",
@@ -357,6 +503,10 @@ const LABELS = {
     changeNote: "Cần sửa gì (bắt buộc khi chọn cần sửa)",
     allOk: "Đồng ý tất cả",
     optional: "không bắt buộc",
+    before: "Trước",
+    after: "Sau",
+    pro: "Được",
+    con: "Mất",
   },
 } as const;
 
@@ -380,6 +530,51 @@ const VIEW_CSS = `
 .view .add{color:var(--good);background:var(--good-soft)}
 .view .del{color:var(--bad);background:var(--warn-soft)}
 .view .hunk{color:var(--muted)}
+`;
+
+/**
+ * The layouts of Q8b take their shape from the vendored examples (their grids, panels and badges), not their colours
+ * or content: the page keeps its own tokens, light and dark. No script and nothing loaded; a snippet folds with <details>.
+ */
+const LAYOUT_CSS = `
+.od{display:flex;flex-direction:column;gap:8px;min-width:0;flex:1}
+.chips{margin:0;padding:0;list-style:none;display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-size:12.5px;border:1px solid var(--line);border-radius:99px;padding:2px 10px;background:var(--bg)}
+.chip .mk{color:var(--muted)}.chip .mw{color:var(--muted);font-size:12px}
+.approaches{grid-template-columns:1fr}
+.approach{padding:18px 20px;gap:12px}
+.approach .num{font:600 12px ui-monospace,Menlo,monospace;color:var(--muted);margin-right:8px}
+.tradeoffs{display:grid;border:1px solid var(--line);border-radius:8px;overflow:hidden;font-size:14px}
+.tradeoffs .row{display:grid;grid-template-columns:1fr 1fr}
+.tradeoffs .row>span{padding:6px 10px;border-top:1px solid var(--line)}
+.tradeoffs .row>span+span{border-left:1px solid var(--line)}
+.tradeoffs .head>span{border-top:0;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);background:var(--bg)}
+.tradeoffs .pro:not(:empty)::before{content:"+ ";color:var(--good);font-weight:700}.tradeoffs .con:not(:empty)::before{content:"\\2212  ";color:var(--bad);font-weight:700}
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media (max-width:720px){.ba{grid-template-columns:1fr}}
+.ba .panel{border:1.5px solid var(--line);border-radius:10px;padding:14px 16px}
+.ba .panel.after{border-color:var(--good)}
+.ba .k,.figs .k,.steps .when,.steps .loc{font:600 11px/1.4 ui-monospace,Menlo,monospace;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.ba .after .k{color:var(--good)}
+.ba ul{margin:8px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px;font-size:14px}
+.ba li::before{content:"\\00b7";margin-right:8px;color:var(--muted)}.ba .after li::before{color:var(--good)}
+.figs{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.fig{background:var(--surface);padding:10px 14px}.fig .v{font-size:18px;font-weight:600}
+.steps{margin:0;padding:0;list-style:none;display:flex;flex-direction:column}
+.steps h3{margin:0 0 4px}.steps p{font-size:14px}
+.plan .step{display:grid;grid-template-columns:110px 18px 1fr;gap:12px;padding-bottom:16px}
+.plan .dot{position:relative}.plan .dot::before{content:"";position:absolute;left:5px;top:5px;width:8px;height:8px;border-radius:50%;background:var(--accent)}
+.plan .dot::after{content:"";position:absolute;left:8px;top:16px;bottom:-16px;width:2px;background:var(--line)}
+.plan .step:last-child .dot::after{display:none}
+@media (max-width:600px){.plan .step{grid-template-columns:18px 1fr}.plan .when{grid-column:2}.plan .dot{grid-row:1/3;grid-column:1}}
+.sb{display:flex;flex-direction:column;gap:6px;min-width:0}
+.tags{display:flex;flex-wrap:wrap;gap:6px}
+.walk .step{display:grid;grid-template-columns:34px 1fr;gap:14px;padding:14px 0;border-top:1px solid var(--line)}
+.walk .step:first-child{border-top:0}
+.walk .num{width:30px;height:30px;border-radius:50%;border:1.5px solid var(--line);display:flex;align-items:center;justify-content:center;font:600 13px ui-monospace,Menlo,monospace}
+.walk .hot .num{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+.snip summary{cursor:pointer;font-size:12.5px;color:var(--muted)}
+.snip .view{margin-top:6px}
 `;
 
 /** Each View as an escaped monospace block; a diff gets its added and removed lines coloured. */
@@ -411,7 +606,8 @@ code{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:.88em;backgrou
 .q>header{display:flex;flex-direction:column;gap:6px}
 .eg{background:var(--warn-soft);border-radius:8px;padding:10px 12px;font-size:14px;max-width:none}
 .opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
-.opt{display:flex;flex-direction:column;gap:8px;background:var(--surface);border:1.5px solid var(--line);border-radius:10px;padding:14px;cursor:pointer;min-width:0}
+.opt{display:flex;flex-direction:column;gap:8px;background:var(--surface);border:1.5px solid var(--line);border-radius:10px;padding:14px;min-width:0}
+.opt .top,.item{cursor:pointer}
 .opt:has(input:checked){border-color:var(--accent);background:var(--accent-soft)}
 .opt:has(input:focus-visible),button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .top{display:flex;gap:8px;align-items:flex-start}
@@ -456,6 +652,59 @@ button.quiet{color:var(--accent);background:transparent;border:1.5px solid var(-
 
 type L = (typeof LABELS)[keyof typeof LABELS];
 
+/** An option's metrics as chips, each with its value and, when given, why (example 01). */
+const chips = (metrics: PageMetric[], order: string[] = []): string => {
+  const rank = (m: PageMetric): number => {
+    const i = order.indexOf(m.name.toLowerCase());
+    return i < 0 ? order.length : i;
+  };
+  const sorted = [...metrics].sort((a, b) => rank(a) - rank(b));
+  return sorted.length ? `<ul class="chips">${sorted.map((m) => `<li class="chip"><span class="mk">${inline(m.name)}</span> <b>${inline(m.value)}</b>${m.why ? ` <span class="mw">${inline(m.why)}</span>` : ""}</li>`).join("")}</ul>` : "";
+};
+
+/** Pros and cons side by side, one row per pair (example 01). */
+function tradeoffs(o: PageOption, l: L): string {
+  const n = Math.max(o.pros.length, o.cons.length);
+  if (!n) return "";
+  const rows = Array.from({ length: n }, (_, i) => `<div class="row"><span class="pro">${inline(o.pros[i] ?? "")}</span><span class="con">${inline(o.cons[i] ?? "")}</span></div>`).join("");
+  return `<div class="tradeoffs"><div class="row head"><span>${l.pro}</span><span>${l.con}</span></div>${rows}</div>`;
+}
+
+/** What a gate section shows above its agree or change marks, drawn as its layout says. */
+function renderSectionBody(s: PageSection, l: L): string {
+  const layout = sectionLayout(s);
+  const ul = (xs: string[]): string => (xs.length ? `<ul>${xs.map((x) => `<li>${inline(x)}</li>`).join("")}</ul>` : "");
+  const body = s.body ? `<p>${inline(s.body)}</p>` : "";
+  const tail = `${renderViews(s.views)}${free(s.html)}`;
+  if (layout === "before-after") {
+    const c = columnsOf(s);
+    const ba = c.before.length || c.after.length ? `<div class="ba"><div class="panel before"><div class="k">${l.before}</div>${ul(c.before)}</div><div class="panel after"><div class="k">${l.after}</div>${ul(c.after)}</div></div>` : "";
+    return `${body}${ba}${ul(c.points)}${tail}`;
+  }
+  const steps = s.steps ?? [];
+  if (layout === "plan") {
+    const figs = Object.entries(s.figures ?? {});
+    const cells = figs.length ? `<div class="figs">${figs.map(([k, v]) => `<div class="fig"><div class="k">${esc(k)}</div><div class="v">${inline(v)}</div></div>`).join("")}</div>` : "";
+    const items = steps
+      .map(
+        (x) =>
+          `<li class="step"><div class="when">${inline(x.when)}</div><div class="dot"></div><div class="sb"><h3>${inline(x.title)}</h3>${x.detail ? `<p>${inline(x.detail)}</p>` : ""}${x.tags.length ? `<div class="tags">${x.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join("")}</div>` : ""}${renderViews(x.views)}</div></li>`,
+      )
+      .join("");
+    return `${body}${cells}<ol class="steps plan">${items}</ol>${ul(s.points)}${tail}`;
+  }
+  if (layout === "walkthrough") {
+    const items = steps
+      .map((x, i) => {
+        const snip = x.views.length ? `<details class="snip"${x.hot ? " open" : ""}><summary>${x.views.map((v) => VIEW_NAMES[v.kind]).join(", ")}</summary>${renderViews(x.views)}</details>` : "";
+        return `<li class="step${x.hot ? " hot" : ""}"><span class="num">${i + 1}</span><div class="sb"><div class="loc">${esc(x.at)}</div><h3>${inline(x.title)}</h3>${x.detail ? `<p>${inline(x.detail)}</p>` : ""}${snip}</div></li>`;
+      })
+      .join("");
+    return `${body}<ol class="steps walk">${items}</ol>${ul(s.points)}${tail}`;
+  }
+  return `${body}${ul(s.points)}${tail}`;
+}
+
 function renderQuestion(q: PageQuestion, page: Page, l: L): string {
   const kind = q.options.length ? (q.multi ? l.many : l.one) : l.open;
   const head = `<header><span class="eyebrow">${esc(q.id)} · ${kind}${q.optional ? ` · ${l.optional}` : ""}${page.role ? ` · ${esc(page.role)}` : ""}</span><h2>${inline(q.title)}</h2>${q.body ? `<p>${inline(q.body)}</p>` : ""}</header>`;
@@ -464,15 +713,26 @@ function renderQuestion(q: PageQuestion, page: Page, l: L): string {
   if (!q.options.length) {
     return `<section class="q" data-q="${esc(q.id)}" data-kind="open">${head}${example}${renderViews(q.views)}${free(q.html)}${why}<textarea id="a-${esc(q.id)}" placeholder="${l.answer}">${esc(q.suggest)}</textarea></section>`;
   }
+  const approaches = q.layout === "approaches";
+  // Every option's chips follow the first option's order, so the same metric sits in the same place on each card.
+  const order = (q.options[0]?.metrics ?? []).map((m) => m.name.toLowerCase());
   const cards = q.options
-    .map((o) => {
+    .map((o, i) => {
       const rec = q.recommend.includes(o.key);
-      const lines = [...o.pros.map((x) => `<li class="p">${inline(x)}</li>`), ...o.cons.map((x) => `<li class="m">${inline(x)}</li>`)].join("");
+      // ":" cannot appear in a question id or an option key, so "Q1" + "a-b" and "Q1-a" + "b" get different ids.
+      const d = `d-${esc(q.id)}:${esc(o.key)}`;
+      // The label holds only the input and the name (phrasing content); the rest of the card is tied to it by aria-describedby.
+      const top = `<label class="top"><input type="${q.multi ? "checkbox" : "radio"}" name="q-${esc(q.id)}" id="q-${esc(q.id)}:${esc(o.key)}" value="${esc(o.key)}"${rec ? " checked" : ""} aria-describedby="${d}">${approaches ? `<span class="num">${String(i + 1).padStart(2, "0")}</span>` : ""}<span class="name">${inline(o.name)}</span></label>`;
+      const lines = approaches ? tradeoffs(o, l) : [...o.pros.map((x) => `<li class="p">${inline(x)}</li>`), ...o.cons.map((x) => `<li class="m">${inline(x)}</li>`)].join("");
       const facts = q.criteria.length ? `<dl class="facts">${q.criteria.map((c) => `<dt>${esc(c)}</dt><dd>${inline(o.facts[c] ?? "")}</dd>`).join("")}</dl>` : "";
-      return `<label class="opt"><span class="top"><input type="${q.multi ? "checkbox" : "radio"}" name="q-${esc(q.id)}" id="q-${esc(q.id)}-${esc(o.key)}" value="${esc(o.key)}"${rec ? " checked" : ""}><span class="name">${inline(o.name)}</span></span>${rec ? `<span class="badge">${l.rec}</span>` : ""}${o.summary ? `<span class="sum">${inline(o.summary)}</span>` : ""}${lines ? `<ul class="pm">${lines}</ul>` : ""}${renderViews(o.views)}${free(o.html)}${facts}</label>`;
+      const body = approaches
+        ? `${o.summary ? `<p class="sum">${inline(o.summary)}</p>` : ""}${renderViews(o.views)}${free(o.html)}${lines}${chips(o.metrics, order)}${facts}`
+        : `${o.summary ? `<p class="sum">${inline(o.summary)}</p>` : ""}${lines ? `<ul class="pm">${lines}</ul>` : ""}${renderViews(o.views)}${free(o.html)}${chips(o.metrics, order)}${facts}`;
+      const tag = approaches ? "article" : "div";
+      return `<${tag} class="opt${approaches ? " approach" : ""}">${top}${rec ? `<span class="badge">${l.rec}</span>` : ""}<div class="od" id="${d}">${body}</div></${tag}>`;
     })
     .join("");
-  return `<section class="q" data-q="${esc(q.id)}" data-kind="choice">${head}${example}${renderViews(q.views)}${free(q.html)}<div class="opts">${cards}</div>${why}<textarea id="n-${esc(q.id)}" placeholder="${l.note}"></textarea></section>`;
+  return `<section class="q" data-q="${esc(q.id)}" data-kind="choice">${head}${example}${renderViews(q.views)}${free(q.html)}<div class="opts${approaches ? " approaches" : ""}">${cards}</div>${why}<textarea id="n-${esc(q.id)}" placeholder="${l.note}"></textarea></section>`;
 }
 
 function renderPicks(page: Page, l: L): string {
@@ -496,7 +756,7 @@ function renderGate(page: Page, l: L): string {
   const sections = page.sections
     .map(
       (s) =>
-        `<section class="sec" data-sec="${esc(s.id)}"><h2>${inline(s.title)}</h2>${s.body ? `<p>${inline(s.body)}</p>` : ""}${s.points.length ? `<ul>${s.points.map((x) => `<li>${inline(x)}</li>`).join("")}</ul>` : ""}${renderViews(s.views)}${free(s.html)}<div class="mark"><label><input type="radio" name="s-${esc(s.id)}" id="s-${esc(s.id)}-ok" value="ok">${l.ok}</label><label><input type="radio" name="s-${esc(s.id)}" id="s-${esc(s.id)}-change" value="change">${l.change}</label></div><textarea id="n-${esc(s.id)}" placeholder="${l.changeNote}"></textarea></section>`,
+        `<section class="sec" data-sec="${esc(s.id)}"><h2>${inline(s.title)}</h2>${renderSectionBody(s, l)}<div class="mark"><label><input type="radio" name="s-${esc(s.id)}" id="s-${esc(s.id)}-ok" value="ok">${l.ok}</label><label><input type="radio" name="s-${esc(s.id)}" id="s-${esc(s.id)}-change" value="change">${l.change}</label></div><textarea id="n-${esc(s.id)}" placeholder="${l.changeNote}"></textarea></section>`,
     )
     .join("");
   return `<button type="button" class="quiet" id="allok">${l.allOk}</button>${sections}`;
@@ -563,7 +823,7 @@ export function renderPage(page: Page): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(page.title)}</title>
-<style>${CSS}${VIEW_CSS}</style>
+<style>${CSS}${VIEW_CSS}${LAYOUT_CSS}</style>
 </head>
 <body>
 <div class="wrap">
