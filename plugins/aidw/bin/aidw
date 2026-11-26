@@ -19266,10 +19266,21 @@ function wasRead(calls, ref, ctx) {
       return p !== null && (within(abs, p) || within(p, abs));
     }
     if (c.name === "Bash" && typeof c.input.command === "string") {
-      return c.input.command.split(/;|&&|\|\||\||&|\n/).some((seg) => READ_VERB.test(seg) && names2.some((n) => seg.includes(n)));
+      const cmd2 = c.input.command;
+      if (cmd2.split(/;|&&|\|\||\||&|\n/).some((seg) => READ_VERB.test(seg) && names2.some((n) => seg.includes(n)))) return true;
+      return loopReads(cmd2).some((list9) => names2.some((n) => list9.includes(n)));
     }
     return false;
   });
+}
+function loopReads(cmd2) {
+  const lists = [];
+  for (const m of cmd2.matchAll(/\bfor\s+([A-Za-z_]\w*)\s+in\s+([^;\n]*)[;\n]\s*do\b([\s\S]*?)\bdone\b/g)) {
+    const [, v, list9, body] = m;
+    const usesVar = new RegExp(`\\$(?:${v}\\b|\\{${v}\\})`);
+    if ((body ?? "").split(/;|&&|\|\||\||&|\n/).some((seg) => READ_VERB.test(seg) && usesVar.test(seg))) lists.push(` ${list9} `);
+  }
+  return lists;
 }
 function mentions(calls, path) {
   const forms = [.../* @__PURE__ */ new Set([(0, import_node_path47.resolve)(path), norm2(path), `/private${norm2(path)}`])];

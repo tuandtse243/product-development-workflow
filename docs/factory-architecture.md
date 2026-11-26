@@ -815,7 +815,8 @@ In the user's project, `.aidw/` keeps its current shape and gains `roles/<id>/` 
   scripts through `aidw plugin-path`; `$AIDW_BASE` is the starting commit, `$AIDW_CHANGED` names the list of changed
   files). (3) The tool log: each `must_read` file was read and no `must_not_read` one was (a Read of it, a Grep or Glob
   whose path holds it, or a part of a Bash command, split at `;`, `&`, `|`, that runs `cat`, `head`, `sed`, `grep`...
-  and names it; a command that only prints a path does not count). (4) A model, with level 1's grader, given the brief
+  and names it, or a `for f in <files>; do … cat "$f" …; done` loop whose list names it; a command that only prints
+  a path does not count). (4) A model, with level 1's grader, given the brief
   and, fenced as data it must not take instructions from, the diff, the final reply and the report file; only for
   `## Criteria`, and only when 1 to 3 passed. The held-out files are removed again after step 1, so the checks see only
   the session's own tests (route-inventory's access tests must be the session's). The diff and the changed files are

@@ -909,10 +909,26 @@ export function wasRead(calls: ToolCall[], ref: string, ctx: { project: string; 
       return p !== null && (within(abs, p) || within(p, abs));
     }
     if (c.name === "Bash" && typeof c.input.command === "string") {
-      return c.input.command.split(/;|&&|\|\||\||&|\n/).some((seg) => READ_VERB.test(seg) && names.some((n) => seg.includes(n)));
+      const cmd = c.input.command;
+      if (cmd.split(/;|&&|\|\||\||&|\n/).some((seg) => READ_VERB.test(seg) && names.some((n) => seg.includes(n)))) return true;
+      return loopReads(cmd).some((list) => names.some((n) => list.includes(n)));
     }
     return false;
   });
+}
+
+/**
+ * The word lists of the `for VAR in LIST; do BODY; done` loops of a command whose body reads `$VAR` (`for f in a b; do
+ * cat "$f"; done`): every file in such a list was read, though no part of the command names a file next to a verb.
+ */
+function loopReads(cmd: string): string[] {
+  const lists: string[] = [];
+  for (const m of cmd.matchAll(/\bfor\s+([A-Za-z_]\w*)\s+in\s+([^;\n]*)[;\n]\s*do\b([\s\S]*?)\bdone\b/g)) {
+    const [, v, list, body] = m;
+    const usesVar = new RegExp(`\\$(?:${v}\\b|\\{${v}\\})`);
+    if ((body ?? "").split(/;|&&|\|\||\||&|\n/).some((seg) => READ_VERB.test(seg) && usesVar.test(seg))) lists.push(` ${list} `);
+  }
+  return lists;
 }
 
 /** Whether any tool call names `path` anywhere in its input (a command, a file path, a pattern): for places the session has no business in at all. */

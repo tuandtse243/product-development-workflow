@@ -256,6 +256,14 @@ describe("L3: what counts as a read", () => {
     expect(wasRead(bash("ls && cat /w/copy/a.md | head"), "a.md", ctx)).toBe(true);
     expect(wasRead(bash("grep -n x a.md"), "a.md", ctx)).toBe(true);
   });
+  it("counts the files a for loop reads through its variable, and not those of a loop that only prints them", () => {
+    // the pilot's run: the contract named in the list, `cat` on "$f" in the body
+    expect(wasRead(bash('for f in .aidw/c/api.md src/app.ts; do echo "=== $f"; cat "$f"; done'), ".aidw/c/api.md", ctx)).toBe(true);
+    expect(wasRead(bash("for f in a.md b.md\ndo\n  sed -n 1,80p ${f}\ndone"), "b.md", ctx)).toBe(true);
+    expect(wasRead(bash('for f in a.md b.md; do echo "$f"; done'), "a.md", ctx)).toBe(false);
+    expect(wasRead(bash('for f in a.md; do cat other.txt; echo "$f"; done'), "a.md", ctx)).toBe(false);
+    expect(wasRead(bash('for f in b.md; do cat "$f"; done'), "a.md", ctx)).toBe(false);
+  });
   it("counts Grep and Glob over a folder that holds the file, not over another one", () => {
     expect(wasRead([{ name: "Grep", input: { pattern: "x", path: "/p/roles" } }], "plugin:roles/backend/skills/s.md", ctx)).toBe(true);
     expect(wasRead([{ name: "Glob", input: { pattern: "*.md", path: "/p/roles/backend" } }], "plugin:roles/backend/skills/s.md", ctx)).toBe(true);
