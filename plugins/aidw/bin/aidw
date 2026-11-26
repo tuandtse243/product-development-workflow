@@ -7792,6 +7792,7 @@ function parsePage(name, source, extra = [], lead = []) {
       }),
       ...extra
     ];
+    page.sections.sort((a, b) => Number(b.id === "before-after") - Number(a.id === "before-after"));
     if (!page.sections.length) problems.push("sections: missing or empty");
     unique(page.sections.map((s) => s.id), "section id", "sections", problems);
   }
@@ -11556,6 +11557,108 @@ Do not delete or revert anything yourself: some of these may be the user's own e
 var import_node_fs28 = require("node:fs");
 var import_node_path33 = require("node:path");
 
+// src/beforeafter.ts
+var ANALYSIS_TEMPLATE = 2;
+var BEFORE_AFTER = "Before / After";
+var DEFERRED = "Deferred to architecture";
+var SCOPE_SECTION = "Requirements and scope";
+var BEFORE_AFTER_LINES = { min: 3, max: 6 };
+var EXISTING_SYSTEM_FILE = "existing-system.md";
+var owesBeforeAfter = (change) => Number(change.data.analysis_template) >= ANALYSIS_TEMPLATE;
+var BULLET = /^\s*[-*]\s+(\S.*)$/;
+var DEFERRED_LINE = /^\s*[-*]\s+\**(DA\d+)\**\s*:\s*(\S.*)$/;
+function h3Blocks(text2) {
+  const out = [];
+  let cur = null;
+  for (const l of toLines(text2)) {
+    const h = l.fenced ? null : /^(#{1,3})\s+(.*?)\s*#*\s*$/.exec(l.text);
+    if (h) {
+      cur = h[1] === "###" ? { name: h[2].trim(), line: l.no, lines: [] } : null;
+      if (cur) out.push(cur);
+    } else if (cur) cur.lines.push(l.text);
+  }
+  return out;
+}
+var bullets = (lines) => lines.map((l) => BULLET.exec(l)?.[1]?.trim()).filter((x) => !!x);
+function beforeAfterOf(analysis) {
+  const s = sections(analysis).find((x) => x.name.toLowerCase() === BEFORE_AFTER.toLowerCase());
+  if (!s) return null;
+  const blocks = h3Blocks(s.body);
+  const find2 = (name) => blocks.find((b) => b.name.toLowerCase() === name);
+  const before = find2("before");
+  const after = find2("after");
+  return {
+    line: s.line,
+    before: bullets(before?.lines ?? []),
+    after: bullets(after?.lines ?? []),
+    beforeText: (before?.lines ?? []).join("\n"),
+    hasBefore: !!before,
+    hasAfter: !!after
+  };
+}
+function deferredOf(analysis) {
+  const scope = sections(analysis).find((x) => x.name.toLowerCase() === SCOPE_SECTION.toLowerCase());
+  if (!scope) return null;
+  const b = h3Blocks(scope.body).find((x) => x.name.toLowerCase() === DEFERRED.toLowerCase());
+  if (!b) return null;
+  const at = toLines(analysis).find((l) => l.no > scope.line && /^###\s+/.test(l.text) && l.text.replace(/^###\s+/, "").trim().toLowerCase() === DEFERRED.toLowerCase());
+  const items = [];
+  const bad = [];
+  let none = /^\s*none\b/im.test(b.lines.join("\n"));
+  for (const l of b.lines) {
+    if (!BULLET.test(l)) continue;
+    const m = DEFERRED_LINE.exec(l);
+    if (m) items.push({ id: m[1], text: m[2].trim() });
+    else if (/^\s*[-*]\s+none\b/i.test(l)) none = true;
+    else bad.push(l.trim());
+  }
+  return { line: at?.no ?? scope.line, none, items, bad };
+}
+function checkBeforeAfter(analysis, file, opts, d) {
+  const { min, max } = BEFORE_AFTER_LINES;
+  const ba = beforeAfterOf(analysis);
+  if (!ba) d.error(file, `missing section "## ${BEFORE_AFTER}" (### Before and ### After, ${min} to ${max} lines each, as the user sees it)`);
+  else {
+    for (const [name, has, lines] of [["Before", ba.hasBefore, ba.before], ["After", ba.hasAfter, ba.after]]) {
+      if (!has) d.error(file, `"## ${BEFORE_AFTER}": missing "### ${name}"`, ba.line);
+      else if (lines.length < min || lines.length > max) d.error(file, `"## ${BEFORE_AFTER}": "### ${name}" has ${lines.length} line(s); write ${min} to ${max}, as the user sees it`, ba.line);
+    }
+    if (opts.existingSystem && ba.hasBefore && !ba.beforeText.includes(EXISTING_SYSTEM_FILE)) {
+      d.error(file, `"## ${BEFORE_AFTER}": this Change has an Existing System Report; "### Before" must draw from it and name ${EXISTING_SYSTEM_FILE}`, ba.line);
+    }
+  }
+  const def = deferredOf(analysis);
+  if (!def) {
+    d.error(file, `missing "### ${DEFERRED}" (under "## Requirements and scope"): list each technical question as "- DA<n>: <question>", or write "None"`);
+    return;
+  }
+  const seen = /* @__PURE__ */ new Set();
+  for (const it of def.items) {
+    if (seen.has(it.id)) d.error(file, `"### ${DEFERRED}": duplicate ${it.id}`, def.line);
+    seen.add(it.id);
+  }
+  for (const l of def.bad) d.error(file, `"### ${DEFERRED}": "${l.slice(0, 60)}" must be "- DA<n>: <question>"`, def.line);
+  if (!def.none && !def.items.length && !def.bad.length) d.error(file, `"### ${DEFERRED}" must list "- DA<n>: <question>" lines, or say "None"`, def.line);
+  const arch = sections(analysis).find((x) => x.name.toLowerCase() === "architecture");
+  const answered = new Set(
+    (arch?.body ?? "").split(/\r?\n/).map((l) => DEFERRED_LINE.exec(l)?.[1]).filter((x) => !!x)
+  );
+  for (const id of seen) {
+    if (!answered.has(id)) d.error(file, `"### ${DEFERRED}": ${id} has no answer in "## Architecture" (a "- ${id}: <answer>" line)`, def.line);
+  }
+}
+function beforeAfterSection(analysis) {
+  const ba = beforeAfterOf(analysis);
+  if (!ba || !ba.before.length && !ba.after.length) return null;
+  return {
+    id: "before-after",
+    title: BEFORE_AFTER,
+    body: "What the user sees today, and what they will see once this Change is built.",
+    points: [...ba.before.map((l) => `**Before**: ${l}`), ...ba.after.map((l) => `**After**: ${l}`)],
+    html: ""
+  };
+}
+
 // src/boundary.ts
 var import_node_path22 = require("node:path");
 
@@ -13915,6 +14018,8 @@ function newChange(p, id, opts) {
       `created_at: ${now4()}`,
       `skip_specs: ${opts.skipSpecs === true}`,
       ...opts.scopeRound ? ["scope_round: true"] : [],
+      // D1, I9: this Change's analysis.md has Before / After and Deferred to architecture, and aidw analyze requires them.
+      `analysis_template: ${ANALYSIS_TEMPLATE}`,
       "approval: null",
       "run:",
       "  paused: null",
@@ -13935,6 +14040,17 @@ Size: normal (small | normal: small is a bugfix or tweak, at most 3 tasks, see /
 
 ${PLACEHOLDER2}: one page the user can review in minutes - goal, scope, the 5-10 key decisions, and the risks and assumptions that need their attention.
 
+## Before / After
+
+### Before
+
+${PLACEHOLDER2}: 3 to 6 lines, as the user sees it today, one "- " line each. With an Existing System Report
+(existing-system.md) draw them from it and name it; otherwise from today's workaround in the discovery answers.
+
+### After
+
+${PLACEHOLDER2}: 3 to 6 lines, as the user will see it once this Change is built, one "- " line each.
+
 ## Decisions to honor
 
 ${PLACEHOLDER2}: the concrete choices the code must keep (names, keys, formats, tools, libraries, conventions,
@@ -13945,6 +14061,11 @@ check them. Write "None" only if there are none.
 ## Requirements and scope
 
 ${PLACEHOLDER2}: in scope, out of scope, assumptions. Link .aidw/requirements/<change>.md.
+
+### Deferred to architecture
+
+${PLACEHOLDER2}: technical questions raised in discovery that the user should not have to answer, one per line as
+"- DA1: <question>"; the Software Architect answers each in "## Architecture" as "- DA1: <answer>". Or "None".
 ${brownfield ? `
 ## Existing system
 
@@ -14538,9 +14659,11 @@ function sectionBody(text2, heading) {
   const lines = text2.split("\n");
   const at = lines.findIndex((l) => l.trim() === heading.trim());
   if (at < 0) return null;
-  const end = lines.findIndex((l, i) => i > at && /^## /.test(l));
+  const next = /^###\s/.test(heading.trim()) ? /^#{2,3} / : /^## /;
+  const end = lines.findIndex((l, i) => i > at && next.test(l));
   return lines.slice(at + 1, end < 0 ? void 0 : end).join("\n");
 }
+var TEMPLATE_2_PARTS = /* @__PURE__ */ new Set([`## ${BEFORE_AFTER}`, `### ${DEFERRED}`]);
 var filled = (text2) => text2 !== null && text2.trim() !== "" && !text2.includes("TODO(aidw)");
 function artifactWritten(p, change, entry) {
   if (!entry || typeof entry.path !== "string" || isFamily(entry.path)) return null;
@@ -14548,6 +14671,7 @@ function artifactWritten(p, change, entry) {
     const key = String(entry.part ?? "").split(":")[0]?.trim() ?? "";
     return key !== "" && key in readDecisions(change);
   }
+  if (typeof entry.part === "string" && TEMPLATE_2_PARTS.has(entry.part) && !owesBeforeAfter(change)) return null;
   const file = (0, import_node_path35.join)(p.aidw, ...entry.path.replace("<id>", change.id).split("/"));
   if (!(0, import_node_fs30.existsSync)(file)) return false;
   const text2 = (0, import_node_fs30.readFileSync)(file, "utf8");
@@ -15402,15 +15526,15 @@ function checkAnalysisDoc(text2, file, d) {
   }
   const honor = byName2.get("decisions to honor");
   if (honor && honor.body && !/^\s*none\b/im.test(honor.body)) {
-    const bullets = honor.body.split(/\r?\n/).filter((l) => /^\s*[-*]\s+\S/.test(l));
+    const bullets2 = honor.body.split(/\r?\n/).filter((l) => /^\s*[-*]\s+\S/.test(l));
     const ids = /* @__PURE__ */ new Set();
-    for (const l of bullets) {
+    for (const l of bullets2) {
       const m = DECISION.exec(l);
       if (!m) d.error(file, `"## Decisions to honor": "${l.trim().slice(0, 60)}" must be "- D<n>: <decision>"`, honor.line);
       else if (ids.has(m[1])) d.error(file, `"## Decisions to honor": duplicate ${m[1]}`, honor.line);
       else ids.add(m[1]);
     }
-    if (!bullets.length) d.error(file, '"## Decisions to honor" must list "- D<n>: <decision>" bullets, or say "None"', honor.line);
+    if (!bullets2.length) d.error(file, '"## Decisions to honor" must list "- D<n>: <decision>" bullets, or say "None"', honor.line);
     for (const r of decisionRecords(honor.body)) {
       const missing = [/\bWhy:/i.test(r.text) ? "" : '"Why:"', /\bRejected:/i.test(r.text) ? "" : '"Rejected:"'].filter(Boolean);
       if (missing.length)
@@ -15441,6 +15565,7 @@ function analyzeChange(p, id) {
   else {
     checkAnalysisDoc(analysis, rel(p, analysisFile), d);
     if (scopeRoundOf(change)) d.add(checkScopeRound(change, analysis, rel(p, analysisFile)));
+    if (owesBeforeAfter(change)) checkBeforeAfter(analysis, rel(p, analysisFile), { existingSystem: (0, import_node_fs33.existsSync)((0, import_node_path38.join)(change.dir, EXISTING_SYSTEM_FILE)) }, d);
     if (projectKind(p) === "brownfield") {
       const existing = sections(analysis).find((s) => s.name.toLowerCase() === "existing system");
       if (!existing) d.error(rel(p, analysisFile), 'brownfield project: missing section "## Existing system" (assessment of the current code)');
@@ -18265,15 +18390,15 @@ function loadEvalCases(root, id) {
     const criteria = section2("Criteria");
     if (!input) d.error(file, 'missing or empty "## Input" (the situation the Agent is given)');
     if (criteria === null) d.error(file, 'missing "## Criteria"');
-    const bullets = (criteria ?? "").split("\n").map((l) => l.trim()).filter(Boolean);
-    const bad = bullets.filter((l) => !/^- must( not)? \S/.test(l));
+    const bullets2 = (criteria ?? "").split("\n").map((l) => l.trim()).filter(Boolean);
+    const bad = bullets2.filter((l) => !/^- must( not)? \S/.test(l));
     for (const l of bad) d.error(file, `criterion "${l.slice(0, 50)}" must be a bullet starting "- must" or "- must not"`);
-    if (criteria !== null && !bullets.length) d.error(file, '"## Criteria" has no bullets');
+    if (criteria !== null && !bullets2.length) d.error(file, '"## Criteria" has no bullets');
     cases.push({
       name,
       file,
       input: input ?? "",
-      criteria: bullets.filter((l) => /^- must( not)? \S/.test(l)).map((l) => l.slice(2)),
+      criteria: bullets2.filter((l) => /^- must( not)? \S/.test(l)).map((l) => l.slice(2)),
       covers,
       ...head.expect === "ask" ? { expect: "ask" } : {}
     });
@@ -21145,7 +21270,8 @@ SPAWN aidw:${role} with: Audit brief: ${b.path}. Read it and write your answer a
           const gateId = first.page.layout === "gate" && first.page.change ? resolveChangeId(p, first.page.change) : null;
           const lead = (id) => {
             const c = loadChange(p, id);
-            return [openFindingsSection(p, c, workflowOfChange(p, c, pluginRoot(env))), unansweredSection(c)].filter((x) => x !== null);
+            const beforeAfter = first.page.sections.some((s) => s.id === "before-after") ? null : beforeAfterSection(readText((0, import_node_path52.join)(c.dir, "analysis.md")) ?? "");
+            return [beforeAfter, openFindingsSection(p, c, workflowOfChange(p, c, pluginRoot(env))), unansweredSection(c)].filter((x) => x !== null);
           };
           const r = gateId ? parsePage(name, source, gateExtras(gateId), lead(gateId)) : first;
           if (r.problems.length) throw new OpError(`the data of page "${name}" (${rel(p, pageDataFile(p, name))}) has ${r.problems.length} problem(s):
