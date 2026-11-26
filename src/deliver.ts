@@ -23,6 +23,7 @@ import { loadTasks, type Evidence } from "./run.js";
 import { touchesUi } from "./skills.js";
 import type { Task } from "./tasks.js";
 import { sections } from "./spec/parse.js";
+import { uncoveredPackages } from "./planrefs.js";
 
 export const HANDOFF_SECTIONS = ["Overview", "Run locally", "Environment", "Deploy", "Usage", "Known issues", "Merge danger", "Next steps"] as const;
 const IMAGE = /\.(png|jpe?g|webp)$/i;
@@ -295,6 +296,10 @@ export function checkDelivery(p: Paths, id: string): Diags {
     d.error(where("screenshots/"), "no screenshots (png, jpg, webp) of the main flows; this change has UI tasks");
   }
   if (!lastConverge(change)?.ok) d.error(where("quality-report.md"), "converge has not passed");
+  // OP3 (T13): a package the Change added that no Docs Brief covers was used without reading its documentation.
+  for (const pkg of uncoveredPackages(p, loadTasks(p, id).tasks)) {
+    d.warn(where("handoff.md"), `the Change added the package ${pkg}, which no Docs Brief covers (.aidw/research/docs/): name it under "## Known issues", or have Research write its brief`);
+  }
   if (!existsSync(join(p.project, "README.md"))) d.warn("README.md", "the project has no README: write one (what it is, run locally, tests, preview URL)");
   for (const c of staleReadmeCommands(p.project)) {
     d.error("README.md", `\`${c}\` calls a script that package.json does not define; update the README to the commands that work`);
