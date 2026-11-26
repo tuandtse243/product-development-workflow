@@ -4,6 +4,7 @@ description: "Implements one aidw task that is a database migration, seed or ind
 mode: worker
 tier: deep
 access: write
+consults: [research]
 tools: [Read, Write, Edit, Glob, Grep, Bash]
 reads: [tasks, delta-specs, constitution, architecture]
 writes: []

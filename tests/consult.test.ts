@@ -136,7 +136,9 @@ describe("consults in role.md (aidw roster)", () => {
     const of = (id: string) => loadRole(plugin, id)?.consults.slice().sort();
     for (const id of ["ux-research", "product-manager", "software-architect"]) expect(of(id), id).toEqual(["research"]);
     expect(of("technical-planner")).toEqual(["software-architect"]);
-    for (const id of ["backend", "frontend", "fullstack"]) expect(of(id), id).toEqual(["api-designer", "database-architect", "software-architect"]);
+    for (const id of ["backend", "frontend", "fullstack"]) expect(of(id), id).toEqual(["api-designer", "database-architect", "research", "software-architect"]);
+    // ADR-0016 (Q-R1): every implementing Role may also consult Research
+    for (const id of ["database", "devops", "integration"]) expect(of(id), id).toEqual(["research"]);
     expect(of("research")).toEqual([]);
     expect(readFileSync(join(plugin, "agents", "backend.md"), "utf8")).toMatch(/## Consultation[\s\S]*`api-designer`/);
   });
@@ -263,6 +265,62 @@ describe("aidw consult in the build", () => {
     expect(brief).toContain(join(root, ".aidw/changes", ID, "consult/T01.request.md"));
     expect(brief).toMatch(/database-architect, software-architect/);
     expect(brief).not.toMatch(/may ask[^\n]*api-designer/);
+  });
+});
+
+describe("implementers consult Research once per task (ADR-0016, Q-R1)", () => {
+  let root: string;
+  beforeEach(() => {
+    root = buildingProject();
+  });
+  const setTask = (fields: Record<string, unknown>) => {
+    const file = join(root, ".aidw/changes", ID, "tasks.yaml");
+    const data = YAML.parse(readFileSync(file, "utf8")) as { tasks: Record<string, unknown>[] };
+    Object.assign(data.tasks.find((x) => x.id === "T01") as object, fields);
+    writeFileSync(file, YAML.stringify(data));
+  };
+  const asks = (to: string, question?: string) => cli(root, "consult", request(root, "T01", { from: "backend", task: "T01", to }, question));
+
+  it("lets an implementer ask Research, which wrote no contract, and Research asks no person", () => {
+    const r = asks("research", "Does the installed Prisma 6.2 support relationJoins without the preview flag?");
+    expect(r.code, r.err).toBe(0);
+    expect(r.out).toMatch(/SPAWN aidw:research/);
+    expect(records(root)[0]).toMatchObject({ id: "C01", from: "backend", to: "research", task: "T01", after_gate: true });
+    const brief = readFileSync(join(root, ".aidw/run/briefs", ID, "C01.consult.md"), "utf8");
+    expect(brief).toMatch(/installed version/);
+    expect(brief).toMatch(/official documentation/);
+    expect(brief).toMatch(/do not ask any person/i);
+  });
+
+  it("refuses a second question to Research in the same run, but not one to a contract author", () => {
+    expect(asks("research").code).toBe(0);
+    answerAndResume(root, "C01");
+    expect(readFileSync(join(root, ".aidw/run/briefs", ID, "C01.resume.md"), "utf8")).toMatch(/Research was consulted for this task \(C01\)/);
+    const r = asks("research", "And the second library?");
+    expect(r.code).toBe(1);
+    expect(r.err).toMatch(/already consulted research for T01 \(C01\): at most 1 Consultation of Research per task/);
+    expect(asks("software-architect", "And the error shape?").code).toBe(0);
+  });
+
+  it("counts the Research budget per task, across the task's Agent runs", () => {
+    expect(asks("research").code).toBe(0);
+    answerAndResume(root, "C01");
+    setTask({ runs: 2 });
+    const r = asks("research", "Again, in a new attempt?");
+    expect(r.code).toBe(1);
+    expect(r.err).toMatch(/at most 1 Consultation of Research per task/);
+  });
+
+  it("the task brief offers Research until the task has used it", () => {
+    expect(cli(root, "brief", "T01").code).toBe(0);
+    const file = join(root, ".aidw/run/briefs", ID, "T01.implement.md");
+    expect(readFileSync(file, "utf8")).toMatch(/may ask: software-architect \(the authors[^\n]*\) and research \(once in this task/);
+    expect(asks("research").code).toBe(0);
+    answerAndResume(root, "C01");
+    expect(cli(root, "brief", "T01").code).toBe(0);
+    const brief = readFileSync(file, "utf8");
+    expect(brief).toMatch(/may ask: software-architect/);
+    expect(brief).not.toMatch(/may ask[^\n]*research \(once/);
   });
 });
 

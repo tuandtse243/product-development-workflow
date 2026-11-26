@@ -219,8 +219,8 @@ Do the step **and** the `meanwhile` action in one message (parallel calls), so t
 `meanwhile` means nothing may run beside the asker (its work sits on the main checkout, or no slot is free): do only the step.
 The Agent wrote a request file and ended its turn with `CONSULT <path>`:
 1. `aidw consult <path> --change <id>`. It checks the request (the pair its Role declares, one level deep, at most 2 per
-   Agent run, in the build only the authors of the contracts the task reads, one open question per run) and prints the
-   brief and the `SPAWN` line of the consulted Role. Refused: the asker goes on without the answer. Spawn a fresh
+   Agent run, in the build only the authors of the contracts the task reads and Research once per task (ADR-0016),
+   one open question per run) and prints the brief and the `SPAWN` line of the consulted Role. Refused: the asker goes on without the answer. Spawn a fresh
    implementer with `aidw brief <T> --change <id>` and the refusal line in its prompt. Never answer in its place.
 2. Spawn the Agent named on the `SPAWN` line with the printed prompt and nothing else (`step: answer`). It writes
    `.aidw/changes/<id>/consult/C<NN>.answer.md` and replies with its `STATUS:` line.

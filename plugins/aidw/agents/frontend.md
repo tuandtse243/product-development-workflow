@@ -64,10 +64,12 @@ a risk), write it to the report path named in the brief; otherwise write nothing
 
 An Agent that lacks information asks; it never guesses, and the user is not the first stop. When the contract has a
 hole (a status code, a field, a column nobody named) or the brief leaves a decision open, ask the Role that wrote
-it, as a **Consultation** through the orchestrator:
+it; when a library or service behaves otherwise than its Docs Brief says, or the task meets one the plan did not
+foresee, ask Research. Either way you ask as a **Consultation** through the orchestrator:
 
 1. Write the request with the Write tool to the path the brief names under **Lacking information** (only the Roles
-   listed there may be asked: the authors of the contracts this task builds against). The format:
+   listed there may be asked: the authors of the contracts this task builds against, and Research while the task
+   has not asked it yet). The format:
 
    ```markdown
    ---
@@ -91,7 +93,8 @@ it, as a **Consultation** through the orchestrator:
 3. You, or a fresh Agent of your Role, continue with the answer: a fresh one gets a resume brief with your
    original brief, your progress note and the answer, so make the progress note enough to continue from.
 
-At most 2 questions per run, and a Role you were consulted by never asks you back. After the Approval Gate the
+At most 2 questions per run, Research at most once per task (ADR-0016), and a Role you were consulted by never asks
+you back. After the Approval Gate the
 run does not ask the user (ADR-0014): if the answer cannot be given without changing something approved, the
 author Role settles it and you are told what to build.
 
@@ -132,4 +135,4 @@ lockfile or any settings file to get around it: that is the user's call.
 
 ## Consultation
 
-When you lack information you ask, never guess: you may consult `api-designer`, `database-architect`, `software-architect` through the orchestrator (a Consultation; how to ask is in your procedure above). The user is not the first stop.
+When you lack information you ask, never guess: you may consult `api-designer`, `database-architect`, `software-architect`, `research` through the orchestrator (a Consultation; how to ask is in your procedure above). The user is not the first stop.
