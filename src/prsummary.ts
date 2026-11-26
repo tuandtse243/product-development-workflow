@@ -5,14 +5,16 @@
  * the git diff of the Change Branch nor an approved Artifact, so the prose cannot invent a file.
  *
  * A path is recognised where the summary names a file on purpose:
- *   - an inline code span outside fenced blocks that holds no space and has a `/` or ends in a known file extension
- *     (`src/a.ts`, `src/a.ts:12-30`, `README.md`); a route (`/api/x`), a package (`@scope/x`), a URL, a glob or a
- *     property (`process.env`) is not
- *   - each line of a ` ```tree ` block: an optional mark (`+` new, `~` changed, `-` removed), then one path from the
- *     project root, then words on what it is for (the format of the Program Design's file tree)
- *   - in any other fenced block: the file named in a comment on its first line (`// lib/repo.ts`, `# app/x.py`) and the
- *     headers of a git diff (`diff --git a/x b/x`, `--- a/x`, `+++ b/x`)
- * A path ending in `/` is a folder: known when a known file lies under it.
+ *   - an inline code span or a Markdown link target outside fenced blocks that ends in a known file extension
+ *     (`src/a.ts`, `src/a.ts:12-30`, `README.md`) or in `/` (a folder, `app/api/`); a branch (`aidw/reschedule`), a
+ *     media type (`application/json`), a route (`/api/x`), a package (`@scope/x`), a URL, a glob
+ *     or a property (`process.env`) is not
+ *   - each line of a ` ```tree ` block: box-drawing characters dropped, an optional mark (`+` new, `~` changed, `-`
+ *     removed), then one path from the project root, then words on what it is for (the Program Design's file tree)
+ *   - in any other fenced block: the headers of a git diff (`diff --git a/x b/x`, `--- a/x`, `+++ b/x`), and the file
+ *     named in a comment on its first line (`// lib/repo.ts`, `# app/x.py`)
+ * A path ending in `/` is a folder: known when a known file lies under it. A name with a space counts only with a `/`
+ * and a known extension. `\` is read as `/`. A path with a `..` segment is always unknown: refused, not skipped.
  */
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -30,23 +32,29 @@ export const prSummaryFile = (change: Change) => join(change.dir, "delivery", PR
 const EXT =
   /\.(md|mdx|txt|json|jsonc|ya?ml|toml|ini|lock|example|[cm]?[jt]sx?|py|rb|go|rs|java|kts?|swift|c|h|cpp|cs|php|sql|prisma|dbml|graphql|gql|css|scss|sass|less|html?|vue|svelte|astro|sh|bash|zsh|ps1|xml|svg|png|jpe?g|webp|gif|csv|tf|hcl|proto)$/i;
 
-/** A token that names a file or folder, cleaned of a line suffix; null when it is something else. */
-function asPath(raw: string): string | null {
+/**
+ * A token that names a file or folder, cleaned of a line suffix; null when it is something else. `strict` (prose: a
+ * code span, a link): only a known extension or a trailing `/` makes it a path, so `origin/main` or `i/o` is not one.
+ */
+function asPath(raw: string, strict = false): string | null {
   let s = raw.trim().replace(/^["'(]+|["'),.;]+$/g, "");
   s = s.replace(/(#L\d+(-L?\d+)?|:\d+(-\d+)?)$/, "");
-  if (!s || /\s/.test(s) || s.includes("://") || /[*?<>{}|`$]/.test(s)) return null;
+  if (!s || s.includes("://") || /[*?<>{}|`$]/.test(s)) return null;
+  // a name with a space is a path only when it clearly is one: a `/` and a known extension (`app/book now/page.tsx`)
+  if (/\s/.test(s) && !(s.includes("/") && EXT.test(s))) return null;
   if (s.startsWith("/") || s.startsWith("@") || s.startsWith("-") || s.startsWith("~")) return null;
   s = s.replace(/^\.\//, "");
-  if (s === "" || s === "." || s.startsWith("../")) return null;
-  if (s.includes("/") || EXT.test(s)) return s;
-  return null;
+  if (s === "" || s === ".") return null;
+  // a `../` path is kept: it is never in the diff, so it is refused rather than skipped
+  if (EXT.test(s) || (s.endsWith("/") && s.length > 1)) return s;
+  return !strict && s.includes("/") ? s : null;
 }
 
 /** The paths a summary names, in order of first appearance, without repeats. */
 export function summaryPaths(text: string): string[] {
   const out: string[] = [];
-  const add = (raw: string | undefined) => {
-    const p = raw === undefined ? null : asPath(raw);
+  const add = (raw: string | undefined, strict = false) => {
+    const p = raw === undefined ? null : asPath(raw, strict);
     if (p && !out.includes(p)) out.push(p);
   };
   const lines = text.replace(/\r\n?/g, "\n").split("\n");
@@ -59,27 +67,32 @@ export function summaryPaths(text: string): string[] {
         continue;
       }
       if (fence.info === "tree") {
-        add(/^\s*[+~-]?\s*(\S+)/.exec(line)?.[1]);
-      } else {
-        if (fence.first && line.trim()) {
-          add(/^\s*[+ -]?\s*(?:\/\/|#|--|\/\*)\s*(\S+?)(?:\s*\*\/)?\s*$/.exec(line)?.[1]);
-          fence.first = false;
-        }
-        const g = /^diff --git a\/(\S+) b\/(\S+)/.exec(line);
-        if (g) {
-          add(g[1]);
-          add(g[2]);
-        }
-        const h = /^(?:---|\+\+\+) [ab]\/(\S+)/.exec(line);
-        if (h) add(h[1]);
+        const box = /^[\s│├└┬┼─]+/;
+        const rest = line.replace(box, "");
+        add(/^\S+/.exec(rest.replace(/^[+~-]/, "").replace(box, ""))?.[0]);
+        continue;
       }
+      // git diff headers first: `--- a/x` is a header, not a `--` comment
+      const g = /^diff --git a\/(\S+) b\/(\S+)/.exec(line);
+      const h = /^(?:---|\+\+\+) (?:[ab]\/)?(\S+)/.exec(line);
+      if (g) {
+        add(g[1]);
+        add(g[2]);
+      } else if (h) {
+        if (h[1] !== "/dev/null") add(h[1]);
+      } else if (fence.first && line.trim()) {
+        add(/^\s*[+ -]?\s*(?:\/\/|#|--|\/\*)\s*(\S+?)(?:\s*\*\/)?\s*$/.exec(line)?.[1]);
+      }
+      if (line.trim()) fence.first = false;
       continue;
     }
     if (f) {
       fence = { mark: f[1]!, info: (f[2] ?? "").toLowerCase(), first: true };
       continue;
     }
-    for (const m of line.matchAll(/(`+)([^`]+?)\1(?!`)/g)) add(m[2]);
+    for (const m of line.matchAll(/(`+)([^`]+?)\1(?!`)/g)) add(m[2], true);
+    // Markdown link targets: [text](lib/a.ts); an anchor or a URL is not a file
+    for (const m of line.replace(/`[^`]*`/g, "").matchAll(/\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g)) if (!m[1]!.startsWith("#")) add(m[1], true);
   }
   return out;
 }
@@ -87,7 +100,8 @@ export function summaryPaths(text: string): string[] {
 /** The files a summary may name: the git diff of the Change Branch against its base, and the approved Artifacts. */
 export function knownPaths(p: Paths, change: Change, base: string, head: string): { files: Set<string>; diffFailed: string | null } {
   const files = new Set<string>();
-  const diff = git(p.project, ["diff", "--name-only", `${base}...${head}`]);
+  // --no-renames: a renamed file is listed under its old name too, so the summary may name either
+  const diff = git(p.project, ["diff", "--name-only", "--no-renames", `${base}...${head}`]);
   if (diff.ok) for (const f of diff.out.split("\n").filter(Boolean)) files.add(f);
   // the approved package of the Change's own version (src/approval.ts): change files under their path now, and under
   // the path they have while active, after the archive, and inside the Change folder, since the summary may use any
@@ -109,7 +123,10 @@ export function knownPaths(p: Paths, change: Change, base: string, head: string)
 /** The paths of the summary that name no known file (a folder is known when a known file lies under it). */
 export function unknownPaths(paths: string[], known: Set<string>): string[] {
   const all = [...known];
-  return paths.filter((x) => {
+  return paths.filter((raw) => {
+    // a path written with Windows separators is the same file; one that climbs with `..` is never known
+    const x = raw.replace(/\\/g, "/");
+    if (x.split("/").includes("..")) return true;
     if (known.has(x)) return false;
     const dir = x.endsWith("/") ? x : `${x}/`;
     return !all.some((k) => k.startsWith(dir));
@@ -120,6 +137,24 @@ export interface PrSummary {
   /** the summary as it goes into the body: its H1 dropped (the pull request has its own title) */
   text: string;
   file: string;
+  /** the sections of example 17 the summary lacks (`## Why`, `## Notes`, `## Change outline`): warned, not refused */
+  warnings: string[];
+}
+
+export const PR_SUMMARY_SECTIONS = ["Why", "Notes", "Change outline"] as const;
+
+/** The required sections the summary lacks, headings inside fenced blocks not counted. */
+export function missingSections(text: string): string[] {
+  let fence = false;
+  const heads = new Set<string>();
+  for (const line of text.replace(/\r\n?/g, "\n").split("\n")) {
+    if (/^\s*(```|~~~)/.test(line)) fence = !fence;
+    else if (!fence) {
+      const m = /^##\s+(.+?)\s*#*\s*$/.exec(line);
+      if (m) heads.add(m[1]!.toLowerCase());
+    }
+  }
+  return PR_SUMMARY_SECTIONS.filter((s) => !heads.has(s.toLowerCase()));
 }
 
 /**
@@ -141,5 +176,6 @@ export function readPrSummary(p: Paths, change: Change, base: string, head: stri
     .replace(/\r\n?/g, "\n")
     .replace(/^\s*# [^\n]*\n/, "")
     .trim();
-  return { text, file };
+  const warnings = missingSections(raw).map((m) => `${rel(p, file)} has no "## ${m}" section (Why in one sentence, 1 to 3 Notes, a Change outline of Views)`);
+  return { text, file, warnings };
 }

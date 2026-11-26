@@ -98,18 +98,26 @@ export function withChecksForYou(handoff: string, checks: string[]): string {
   };
   const at = lines.findIndex((_, i) => h2(i) === CHECKS_FOR_YOU.toLowerCase());
   if (at < 0 && !checks.length) return handoff;
+  // a check the user ticked stays ticked while its text is unchanged
+  const ticked = new Set(at < 0 ? [] : lines.slice(at + 1, next(at + 1)).flatMap((l) => (/^- \[[xX]\] /.test(l) ? [l.slice(6).trim()] : [])));
+  const kept = checks.map((c) => (ticked.has(c.replace(/^- \[ \] /, "")) ? c.replace(/^- \[ \] /, "- [x] ") : c));
   const block = [
     `## ${CHECKS_FOR_YOU}`,
     "",
-    ...(checks.length ? ["The plan left these checks to a person; the run did not stop for them. Tick each one you did.", "", ...checks] : ["None: every check of the plan ran automatically."]),
+    ...(checks.length ? ["The plan left these checks to a person; the run did not stop for them. Tick each one you did.", "", ...kept] : ["None: every check of the plan ran automatically."]),
     "",
   ];
   if (at >= 0) lines.splice(at, next(at + 1) - at, ...block);
   else {
     const overview = lines.findIndex((_, i) => h2(i) === "overview");
-    const where = overview >= 0 ? next(overview + 1) : lines.length;
-    if (where === lines.length && lines.at(-1) !== "") lines.push("");
-    lines.splice(where === lines.length ? lines.length : where, 0, ...block);
+    let where = overview >= 0 ? next(overview + 1) : lines.length;
+    // at the end of the file: drop trailing blank lines, then exactly one blank line before the heading
+    if (where === lines.length) {
+      while (lines.length && lines.at(-1) === "") lines.pop();
+      lines.push("");
+      where = lines.length;
+    }
+    lines.splice(where, 0, ...block);
   }
   return lines.join("\n");
 }

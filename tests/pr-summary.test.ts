@@ -133,7 +133,9 @@ describe("which paths a pull request summary names", () => {
   it("reads backticked paths, tree View lines and the file comment or git headers of other fenced blocks", () => {
     const text = [
       "See `src/a.ts:12-30`, `README.md`, `./lib/b.ts`, `docs/x.md#L3` and `src/`.",
-      "Not paths: `npm test`, `/api/x`, `@types/node`, `https://x.dev/a.md`, `src/**/*.ts`, `process.env`, `v1.2`.",
+      "Not paths: `npm test`, `/api/x`, `@types/node`, `https://x.dev/a.md`, `src/**/*.ts`, `process.env`, `v1.2`,",
+      "`aidw/reschedule`, `origin/main`, `application/json`, `GET/POST`, `owner/repo`, `i/o`, [the docs](https://x.dev/a.md), [up](#why).",
+      "A link: [the route](app/api/route.ts).",
       "```tree",
       "+ app/new.ts      new route",
       "~ app/old.ts",
@@ -149,7 +151,15 @@ describe("which paths a pull request summary names", () => {
       "+++ b/c/d.ts",
       "```",
     ].join("\n");
-    expect(summaryPaths(text)).toEqual(["src/a.ts", "README.md", "lib/b.ts", "docs/x.md", "src/", "app/new.ts", "app/old.ts", "app/gone.ts", "lib/repo.ts", "c/d.ts"]);
+    expect(summaryPaths(text)).toEqual(["src/a.ts", "README.md", "lib/b.ts", "docs/x.md", "src/", "app/api/route.ts", "app/new.ts", "app/old.ts", "app/gone.ts", "lib/repo.ts", "c/d.ts"]);
+  });
+
+  it("reads a diff whose first line is a git header as the header, not as a comment", () => {
+    expect(summaryPaths(["```diff", "--- a/lib/old.ts", "+++ b/lib/old.ts", "@@ -1 +1 @@", "```"].join("\n"))).toEqual(["lib/old.ts"]);
+  });
+
+  it("drops box-drawing characters in a tree View", () => {
+    expect(summaryPaths(["```tree", "│   ├── + app/a.ts   new", "└── ~ app/b.ts", "```"].join("\n"))).toEqual(["app/a.ts", "app/b.ts"]);
   });
 
   it("knows a folder when a known file lies under it", () => {
@@ -170,6 +180,19 @@ describe("aidw pr with the Documentation Role's summary (I8)", () => {
     expect(body).toContain("Patients move a booking themselves");
     expect(body).not.toContain("# Reschedule an appointment\n");
     expect(body).toMatch(/## Evidence\n\n- code: pass/);
+    // I11, M4: the manual checks are listed for the user, and do not make the pull request a draft
+    expect(body).toMatch(/## Needed from the user to finish\n\n- \[ \] T01 Booking API: a real phone receives the reschedule SMS\n/);
+    expect(r.out).toMatch(/ready for review/);
+    expect(r.out).not.toMatch(/WARNING/);
+  });
+
+  it("warns, without refusing, when a section of example 17 is missing", () => {
+    delivered();
+    write(root, `.aidw/changes/${ID}/delivery/pr-summary.md`, "# T\n\n## Why\n\nBecause.\n");
+    const r = cli(["pr", ID]);
+    expect(r.code, r.err).toBe(0);
+    expect(r.out).toMatch(/WARNING .*pr-summary\.md has no "## Notes" section/);
+    expect(r.out).toMatch(/WARNING .*has no "## Change outline" section/);
   });
 
   it("refuses a summary that names files absent from the diff and the approved Artifacts, naming each", () => {
@@ -245,6 +268,10 @@ describe("checks for you (I11, M4)", () => {
     expect(withChecksForYou(h, [])).toBe(h);
     const once = withChecksForYou(h, ["- [ ] T2 b: y"]);
     expect(withChecksForYou(once, ["- [ ] T2 b: y"])).toBe(once);
+    const ticked = once.replace("- [ ] T2 b: y", "- [x] T2 b: y");
+    expect(withChecksForYou(ticked, ["- [ ] T2 b: y", "- [ ] T3 c: z"])).toMatch(/- \[x\] T2 b: y\n- \[ \] T3 c: z/);
+    expect(withChecksForYou(ticked, ["- [ ] T2 b: y changed"])).toContain("- [ ] T2 b: y changed");
+    expect(withChecksForYou("# H\n\n## Overview\n\nIt books.\n", ["- [ ] T2 b: y"])).toMatch(/It books\.\n\n## Checks for you\n/);
     expect(withChecksForYou(once, [])).toContain("## Checks for you\n\nNone: every check of the plan ran automatically.\n\n## Run locally");
   });
 
