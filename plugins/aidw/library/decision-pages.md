@@ -205,6 +205,8 @@ screen mock, a color and type sample, a diagram as inline SVG or a short code sa
 - The fragment is isolated: its CSS does not leak into the page and the page's CSS does not reach it, so style it
   completely, including its own background and text color.
 - Keep it small (well under 60,000 characters) and use it only where it earns its place.
+- Lay it out after the example that fits what it shows, as the html-pages skill says
+  (`aidw vendor-path aidw/html-pages`); a mock of the product keeps the product's own tokens.
 
 ### Pages the CLI builds itself
 

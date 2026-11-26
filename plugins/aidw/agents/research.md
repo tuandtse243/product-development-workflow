@@ -124,3 +124,5 @@ Each line gives the exact command that prints the skill's path; run it as writte
   `aidw plugin-path roles/research/skills/world-scan.md`
 - `codebase-research`: when the question asks how the existing code works today (a part of the Existing System Report, or merging the parts)
   `aidw plugin-path roles/research/skills/codebase-research.md`
+- `library/html-pages`: when you write an HTML page, such as the page of the Existing System Report
+  `aidw plugin-path library/skills/html-pages/SKILL.md`

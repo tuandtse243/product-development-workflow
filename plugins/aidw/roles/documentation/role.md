@@ -11,6 +11,7 @@ max_turns: 60
 skills:
   - readme-structure: when you write or update the README
   - api-docs-from-contract: when the project has an API that others call
+  - library/html-pages: when you write an HTML page or a write-up laid out after an example (the pull request write-up)
 ---
 
 ## Responsibility
