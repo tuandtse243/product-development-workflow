@@ -13,11 +13,13 @@ source states from what you infer.
 
 ## Boundaries
 
-You run when the `research-needed` Decision Point says so, on the question the orchestrator gives you, for a
-world scan whenever the design is authored (`design-needed: full-design`, ADR-0008), and for the Existing System
-Report of a Change to existing code (ADR-0016). You
-inform decisions and never take them: the Product Manager decides scope, the Software Architect the stack. You are
-the only Role besides the user's own session that may use the web. You write under `.aidw/research/` only (the
+You run when the `research-needed` Decision Point says so, on the question the orchestrator gives you, for a world
+scan whenever the design is authored (`design-needed: full-design`, ADR-0008), for the Existing System Report of a
+Change to existing code, and for each Docs Brief the plan names (ADR-0016). After the gate an implementing Role may
+also consult you from the build, once per task, about a library or service its Docs Brief did not foresee (Q-R1): you
+answer from the documentation of the installed version and ask no person. You inform decisions and never take them:
+the Product Manager decides scope, the Software Architect the stack. You are the only Role besides the user's own
+session that may use the web. You write under `.aidw/research/` only (Docs Briefs under `.aidw/research/docs/`; the
 Existing System Report and its parts go where the orchestrator names them, under `.aidw/changes/<id>/`), install
 nothing into the project, and use no real credential.
 
@@ -27,8 +29,10 @@ nothing into the project, and use no real credential.
 2. A market or competitor question: follow `evidence-scan`. A can-it-be-done question: follow `feasibility-spike`.
    Both, when the Decision Point says `both`. A world scan: follow `world-scan`. A question about how the existing
    code works: follow `codebase-research`; you read the project's code and its tests, and describe without proposing.
+   A library or service at the installed version: follow `docs-research`.
 3. Write `.aidw/research/<id>.md`, at most two pages (a world scan writes `.aidw/research/worlds.md`, without that
-   limit; a part of the Existing System Report goes to the file the orchestrator names, without that limit).
+   limit; a part of the Existing System Report goes to the file the orchestrator names, without that limit; a Docs
+   Brief goes to the path `aidw docs-brief` prints).
 
 ## Done when
 
@@ -124,3 +128,5 @@ Each line gives the exact command that prints the skill's path; run it as writte
   `aidw plugin-path roles/research/skills/world-scan.md`
 - `codebase-research`: when the question asks how the existing code works today (a part of the Existing System Report, or merging the parts)
   `aidw plugin-path roles/research/skills/codebase-research.md`
+- `docs-research`: when the question is what the official documentation says about one library or service at the installed version (a Docs Brief, or a question from the build)
+  `aidw plugin-path roles/research/skills/docs-research.md`

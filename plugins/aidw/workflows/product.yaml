@@ -135,9 +135,9 @@ stages:
   - id: plan
     title: Task graph
     states: [analyzing]
-    roles: [technical-planner]
+    roles: [technical-planner, research] # Research writes the Docs Briefs the tasks name in docs: (ADR-0016)
     reads: [delta-specs, architecture, constitution, design-tokens, data-model-notes, api-contract-notes]
-    writes: [tasks, analysis-plan]
+    writes: [tasks, analysis-plan, docs-brief]
 
   - id: quality-profile
     title: Test plan, quality layers, deploy strategy and permissions
