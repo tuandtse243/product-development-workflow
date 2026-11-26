@@ -12,7 +12,8 @@ built, tasks, quality layers, merge danger), so do not repeat it.
 ## The file: `.aidw/changes/<id>/delivery/pr-summary.md`
 
 Lay it out after example 17 (`aidw plugin-path library/vendor/anthropics/html-effectiveness/17-pr-writeup.html`; the
-html-pages skill says what to take from it). Keep its order, not its colours or panels:
+html-pages skill says what to take from it), and say in your reply that you followed example 17. Keep its order,
+not its colours or panels:
 
 1. `# <title>`, then one line saying what the pull request does. `aidw pr` drops the title (the pull request has its
    own) and keeps the line.
@@ -40,7 +41,9 @@ of another fenced block. A branch (`aidw/reschedule`), a route (`/api/bookings`)
 is not read as a path, nor a command in backticks (`node scripts/build.mjs`). A bare file name in prose
 (`README.md`, but also `Next.js`) is never refused, so write a file you mean with its folder. It also warns, without refusing, when `## Why`, `## Notes` or `## Change outline` is missing. Take the paths from
 `git diff --name-only <base>...HEAD`, not from the plan: a file the plan named and the code did not need is not in the
-diff.
+diff. Name such a file nowhere, not in the summary, not in your reply, not even to say it was not created: a plan is an
+approved Artifact, the files it lists are not. Say it in words ("the separate lock module the plan named was not
+needed") and put the path the code used instead.
 
 ## Right and wrong
 

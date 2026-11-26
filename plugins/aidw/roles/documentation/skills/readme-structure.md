@@ -13,8 +13,15 @@ how do I use it, how do I change it. Describe what exists. Never what was planne
 - Read the existing README and keep what is true: update it, do not replace someone's document with a template.
 - Read the manifest scripts, the environment template, the compose file and the CI workflow: the README must agree
   with them.
-- **Run every command you will write**, from a state as close to a fresh clone as you can get. A command you
-  could not run (it needs a credential, a paid service, a deploy) is marked "not run here", with why.
+- Take the package manager from the lockfile, not from the old README: `pnpm-lock.yaml` is pnpm, `yarn.lock` is
+  yarn, `bun.lock` or `bun.lockb` is bun, `package-lock.json` is npm.
+- **Run every command you will write, before you write it**, from a state as close to a fresh clone as you can get:
+  install, then the start or dev script, then the check that it works. Write the quick start from what ran. A command
+  you could not run (it needs a credential, a paid service, a deploy, or there is no shell) is still listed in the
+  order you would run it, with the output you expect, and marked "not run here" with the reason that stopped it.
+- A command that needs an environment variable you know the template does not list (you read the template, or the
+  brief says so): add the name to `.env.example` with a safe placeholder, and report it as a difference. A variable
+  you only suspect is missing is reported, not added.
 
 ## Sections, in this order (leave out what does not apply)
 

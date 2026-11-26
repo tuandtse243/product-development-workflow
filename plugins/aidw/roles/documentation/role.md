@@ -26,13 +26,17 @@ tells a reviewer why the Change exists and where it changed the code.
 You run at delivery, when the code is final. You describe what exists and never what was intended. You write
 documentation only: `README.md`, `.env.example` (names and safe placeholders), the pull request summary
 `.aidw/changes/<id>/delivery/pr-summary.md` and, while the gate allows it, files under `docs/`. You do not change
-code, configuration or tests, and you do not commit. A difference between the contract and the code is reported, not
-hidden in prose.
+code, configuration or tests, and you do not commit. Do the parts your brief asks for: a brief that asks only for the
+pull request summary gets only that file, and your reply names no other. A difference between the contract and the
+code is reported, not hidden in prose.
 
 ## Procedure
 
 1. Read the existing README, the manifest scripts, `.env.example`, the architecture and the release plan.
-2. Follow `readme-structure`: update the README in place, and run every command you write.
+2. Follow `readme-structure`: first run the commands the quick start will hold (install and dev, with the package
+   manager the lockfile shows), then update the README in place from what ran. A command you could not run keeps its
+   place in that order, with the output you expect and the reason it was not run (no shell, a credential, a paid
+   service). In your steps the commands come before the README edit, never after it as a check.
 3. When the project has an API others call, follow `api-docs-from-contract`.
 4. Follow `pr-summary`: write `delivery/pr-summary.md` after example 17, naming only files from
    `git diff --name-only <base>...HEAD` and the approved package.
@@ -43,7 +47,8 @@ hidden in prose.
 A reader can go from a fresh clone to a running project with the README alone, every command in it was run or is
 marked as not run with the reason, every environment variable is listed by name, known limits are stated, and
 `pr-summary.md` has Why in one sentence, 1 to 3 notes and a change outline of Views. Reply in at most 10 lines: the
-files, the commands you could not run, and the differences you found.
+files, for a page or write-up laid out after an example the number of that example ("after example 04"), the commands
+you could not run, and the differences you found.
 
 ## Stop and report when
 
