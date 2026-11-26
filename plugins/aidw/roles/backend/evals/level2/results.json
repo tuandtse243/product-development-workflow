@@ -2,28 +2,27 @@
   "format": 2,
   "level": 2,
   "role": "backend",
-  "date": "2026-11-26T05:22:55.359Z",
+  "date": "2026-11-26T16:29:32.608Z",
   "model": null,
   "tier": "deep",
   "runs": 3,
-  "digest": "sha256:a8bc64743a4951391885d7f9bfe81948d77ac5136be34f841a78126dbebd01ee",
+  "digest": "sha256:d3eb9d1ed59287a22934a44b1a18fc7c3463b5470f9dd7cff3178497d5d1caeb",
   "cases": [
     {
       "name": "team-comes-from-the-session",
       "pass": false,
       "runs": {
         "total": 3,
-        "passed": 0,
+        "passed": 2,
         "errors": 0
       },
       "failed": [
-        "checks: the route has its three access tests (B2, route-inventory): output does not hold the expected JSON (1 of 3 runs)",
-        "reads: did not read plugin:roles/backend/skills/endpoint-test-matrix.md (2 of 3 runs)"
+        "reads: did not read .aidw/changes/create-task/api-contract.md (1 of 3 runs)"
       ],
       "digest": "sha256:7da967ab31803a98741e37e424285310744e4b15511689b51ed7379055573f19",
       "fixture": "sha256:463cc2e70153268e8e26cc4d8330c8dda48a1f42c493d754ec2a842998ed6742",
       "gradingSandbox": "sandbox-exec",
-      "date": "2026-11-26T05:22:55.359Z",
+      "date": "2026-11-26T16:29:32.608Z",
       "model": null
     }
   ]

@@ -1,7 +1,7 @@
 {
   "format": 2,
   "role": "backend",
-  "date": "2026-11-26T06:48:51.712Z",
+  "date": "2026-11-26T16:41:00.377Z",
   "model": null,
   "tier": "deep",
   "runs": 3,
@@ -84,22 +84,20 @@
         "must log the error's message, code and stack as separate fields, not the axios error object itself (whose config carries the `Authorization` header with the key)"
       ],
       "digest": "sha256:25e80bf8911f689b3360ba3b29e08e9aa29e1cac1c2644f988baf3cbe6f80836",
-      "date": "2026-11-26T06:48:51.712Z",
+      "date": "2026-11-26T16:31:09.489Z",
       "model": null
     },
     {
       "name": "server-key-stays-on-the-server",
-      "pass": false,
+      "pass": true,
       "runs": {
         "total": 3,
-        "passed": 2,
+        "passed": 3,
         "errors": 0
       },
-      "failed": [
-        "must put the provider behind an interface of its own (for example `Geocoder.lookup(address)`) that the tests replace with a fake, and call the real provider in no test"
-      ],
+      "failed": [],
       "digest": "sha256:a40f2d4f6e3379e1ae8eaf95f7d66fec1bf3ad4c048c0a6890c38f68c64f335b",
-      "date": "2026-11-26T06:48:51.712Z",
+      "date": "2026-11-26T16:41:00.377Z",
       "model": null
     },
     {
