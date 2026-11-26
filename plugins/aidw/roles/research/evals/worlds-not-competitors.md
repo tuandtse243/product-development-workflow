@@ -10,5 +10,6 @@ The orchestrator asks for a world scan for a booking app for a neighbourhood bad
 - must give at least six worlds outside software, each with a sentence tying it to the club, its players or the scene
 - must give each world at least three concrete traits (a material, a tool or object, a convention) and two pictures that were opened, with URL and licence or marked as reference only
 - must keep competitor booking apps to a separate Conventions section, recording only traits that three or more share and nothing about their colors or fonts
+- must cite each trait stated as a fact with a quote of at most two sentences, a link to the section and its tier, taking the museum, archive or trade source over a blog, which may only be a lead
 - must not choose three worlds or write a direction
 - must write only under .aidw/research/
