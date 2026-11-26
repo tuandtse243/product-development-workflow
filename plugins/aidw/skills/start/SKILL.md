@@ -28,7 +28,8 @@ Input: `$ARGUMENTS` (an idea, a path to a PRD/JD, pasted client text, or "this c
   or `approval:` in `change.yaml`.
 - **Run `aidw approve` only in step 10**, after the user approved the gate page in this session. Approval is the
   user's decision: the gate turns the command into a permission prompt that the user confirms.
-- Finding *facts* is your job: explore the repo or docs yourself (use an Explore subagent for wide searches).
+- Finding *facts* is your job: explore the repo or docs yourself (use an Explore subagent for wide searches). How
+  existing code works today comes from the Existing System Report (step 1b), not from your own reading before it.
   *Decisions* belong to the user: put them to the user and wait.
 - **Questions go on a Decision Page, not into the chat.** Read `$(aidw plugin-path library/decision-pages.md)` once, now. Every
   round of questions below, every open decision of a drafting Agent, the design direction and the Approval Gate are
@@ -101,27 +102,71 @@ already `awaiting_approval` or later, tell the user and stop: one change at a ti
 4. Fill `.aidw/changes/<id>/intake.md`: paste the original request **verbatim** (or its path), record the
    client's explicit constraints, including any stack the client requires.
 
-## 1b. Assessment (brownfield only)
+## 1b. Assessment and the Existing System Report (brownfield only)
 
 When `.aidw/project.yaml` says `kind: brownfield` (or the input type is `codebase`), understand the existing
-system before asking anything; the grilling then asks only what the code cannot answer.
+system before asking anything; the grilling then asks only what the code cannot answer. A greenfield project skips
+this step: there is no code to describe. A greenfield `bugfix` still has the `assessment` stage in its Workflow:
+report it done with `aidw stages --done assessment --change <id>`.
+
+You do not describe the code yourself. You know the request, and a description written by someone who knows the
+change bends toward it (ADR-0016). Research Agents describe it from neutral questions, in the **Existing System
+Report** (`.aidw/changes/<id>/existing-system.md`).
 
 1. The working tree must be clean (`git status`) and `aidw detect` must print no `WARNING` (no `.gitignore`,
    tracked or unignored `node_modules/`): aidw commits per task with `git add -A`. Ask the user to commit or
    stash first, and fix the warnings (see `/aidw:init` step 4).
-2. Read `.aidw/project.yaml` (`stack`, `detected`), `aidw detect`, the README, `package.json` scripts, config
-   files, the folder structure and the main flows. Read code; do not run the app yet.
-3. Write what you found where it belongs: `.aidw/architecture/overview.md` (the architecture as it is, folder
-   structure, integrations), `.aidw/domain/model.md` (entities and rules the code already has), and the
-   conventions the code follows into `.aidw/constitution.md` (naming, folders, state management, styling,
-   test style). These describe the current system; the change adds to them later.
-4. **Health baseline**: run the existing checks that the quality layers will use (`detected.suggested_layers`:
+2. **Look, do not study.** Read `.aidw/project.yaml` (`stack`, `detected`), `aidw detect`, the README, the
+   `package.json` scripts and the folder tree: enough to name the areas of the code. Do not follow flows or read
+   implementations; that is the Research Agents' work.
+3. **Write the questions before you read the request again**, to `.aidw/changes/<id>/existing-system/questions.md`:
+   2 to 7 questions about how the code works today, under `## Group <n>: <area of the code>` headings, numbered
+   `1.`, `2.`, ... across the groups. Each question:
+   - asks what exists, where it lives, how it runs or how it is tested;
+   - starts from the code's own places (a folder, a route, a table, a script), never from a noun of the request: no
+     feature name, no behavior asked for, no "today" set against a wish. "How are reminders sent?" leaks a request
+     for reminders; "Which jobs run in the background, how are they scheduled, and which tests cover them?" does not;
+   - can be answered from the code alone.
+
+   Then reread the request for coverage only: an area the change will touch that no question reaches gets one more
+   question, worded the same neutral way, keeping the total within 7 (3 for a bugfix or small change). Put
+   questions that read the same code in one group; each group is one Research Agent. A `bugfix`, or a change you
+   expect to be `Size: small`, asks at most 3 questions in one group.
+
+   ```markdown
+   # Existing system questions
+
+   ## Group 1: HTTP routes and the database (app/api/, lib/db.ts)
+
+   1. How does a request to a route under `app/api/` reach the database, step by step, and which tests cover it?
+   2. Which tables exist, and where are they created and migrated?
+
+   ## Group 2: background work and email (lib/jobs/, lib/mailer.ts)
+
+   3. Which jobs run outside a request, how are they started, and how are they tested?
+   ```
+4. **One Research Agent per group, all in one message.** Spawn one **`aidw:research`** per group with this prompt and
+   nothing else (never the request, `intake.md` or `analysis.md`):
+   `Change <id>. Existing System Report, group <n>. Answer the questions of group <n> in .aidw/changes/<id>/existing-system/questions.md with your codebase-research skill, write .aidw/changes/<id>/existing-system/part-<n>.md, and reply with the path and the answer in three lines.`
+   With one group (a `bugfix` or a small change) the one Agent writes the report itself, and step 5 is skipped:
+   `Change <id>. Existing System Report. Answer every question in .aidw/changes/<id>/existing-system/questions.md with your codebase-research skill and write the report of its synthesize section to .aidw/changes/<id>/existing-system.md. Reply with the path and the Summary.`
+5. **The merging Agent.** When every part is written, spawn one more **`aidw:research`** with this prompt and nothing else:
+   `Change <id>. Existing System Report: merge .aidw/changes/<id>/existing-system/part-*.md, the answers to .aidw/changes/<id>/existing-system/questions.md, into .aidw/changes/<id>/existing-system.md with the synthesize mode of your codebase-research skill. Read code only where two parts disagree; list a question no part answered under "Not answered". Reply with the path and the Summary.`
+   A question under "Not answered" stays there: the interview or the Software Architect takes it up; do not answer
+   it from your own reading.
+6. Write what the report found where it belongs, citing its sections: `.aidw/architecture/overview.md` (the
+   architecture as it is, folder structure, integrations), `.aidw/domain/model.md` (entities and rules the code
+   already has), and the conventions the code follows into `.aidw/constitution.md` (naming, folders, state
+   management, styling, test style). These describe the current system; the change adds to them later.
+7. **Health baseline**: run the existing checks that the quality layers will use (`detected.suggested_layers`:
    lint, typecheck, build, tests) once, now. Record which pass and which already fail. A check that fails
    before any change is not this change's fault: the user decides at the gate whether the change fixes it,
    or the layer leaves it out with a reason (`## Quality profile`).
-5. Fill `## Existing system` in `analysis.md`: what exists, conventions to follow, the health baseline, the
-   capabilities this change touches and what must not change.
-6. Keep the stack: `Source: client` (the existing code is the client's choice, Q9). Never migrate frameworks,
+8. Fill `## Existing system` in `analysis.md`: the report's Summary word for word, then
+   `Full report: .aidw/changes/<id>/existing-system.md`, the health baseline, the capabilities this change touches
+   and what must not change. `aidw analyze` checks the questions (2 to 7; for a `bugfix` at most 3 in one group),
+   a part per group, the report's `## Summary` and `## Not answered`, and that this section names `existing-system.md`.
+9. Keep the stack: `Source: client` (the existing code is the client's choice, Q9). Never migrate frameworks,
    package manager or libraries unless the user asks for exactly that.
 
 ## 1c. Size, 2. Discovery (one interview, in stages)
@@ -405,7 +450,8 @@ planner writes a `type: fix` task whose regression test fails first on the curre
 **Skip the drafting Agents.** A defect has no new domain, requirements or architecture: do **not** spawn
 `aidw:product-manager` or `aidw:software-architect`, and write no `requirements/` file, domain model, ADR or constitution change
 (a run that spawned the Product Manager produced a requirements document and an extra Agent for a one-line fix). Do steps 1b to
-2 and the health baseline yourself, then write the diagnosis into `analysis.md` in your one Write: the **root cause** (file and
+2 and the health baseline yourself (step 1b with at most 3 questions in one group, so one Research Agent writes the
+report; skip item 6 of step 1b), then write the diagnosis into `analysis.md` in your one Write: the **root cause** (file and
 line), the **scope** (what changes, what does not), the **Decisions to honor** (the exact response or behavior after the fix, what
 must stay as it is), and the regression test the fix needs. `## Before / After` is the bug as the user meets it and the
 behavior after the fix (3 to 6 lines each); `### Deferred to architecture` says "None". The sections for Domain, Stack,

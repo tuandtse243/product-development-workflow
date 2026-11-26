@@ -21,6 +21,8 @@ import { defaultTaskRole, implementerOf } from "./roles.js";
 import { answerOf, checkDecisions } from "./decisions.js";
 import { checkScopeRound } from "./scope.js";
 import { checkBeforeAfter, EXISTING_SYSTEM_FILE, owesBeforeAfter } from "./beforeafter.js";
+import { checkExistingSystem } from "./existingsystem.js";
+import { workflowIdOf } from "./machine.js";
 
 const TITLE_ADVISED = 60;
 const isPlanned = (t: { origin?: unknown }): boolean => t.origin === undefined || t.origin === "plan";
@@ -239,6 +241,11 @@ export function analyzeChange(p: Paths, id: string): Diags {
       const existing = sections(analysis).find((s) => s.name.toLowerCase() === "existing system");
       if (!existing) d.error(rel(p, analysisFile), 'brownfield project: missing section "## Existing system" (assessment of the current code)');
       else if (!existing.body) d.error(rel(p, analysisFile), 'section "## Existing system" is empty', existing.line);
+      // I1, Q3, M2 (ADR-0016): the Existing System Report, its questions and parts; older Changes are not judged again.
+      if (owesBeforeAfter(change)) {
+        const opts = { dir: change.dir, shown: rel(p, change.dir), analysisFile: rel(p, analysisFile), bugfix: workflowIdOf(p, change) === "bugfix", small: sizeOf(analysis) === "small" };
+        checkExistingSystem(analysis, opts, d);
+      }
     }
   }
   // Baseline specs (aidw baseline) start as skeletons; an unfinished one must not reach the gate.

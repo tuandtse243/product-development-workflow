@@ -37,11 +37,18 @@ stages:
     roles: [product-manager]
     writes: [intake]
 
+  - id: assessment
+    title: Existing System Report (at most 3 neutral questions, one Research Agent)
+    states: [intake]
+    roles: [software-architect, research]
+    reads: [intake, project-config]
+    writes: [existing-system]
+
   - id: diagnosis
     title: Diagnosis of the defect (at most 3 questions, only what the code cannot answer)
     states: [analyzing]
     roles: [product-manager, business-analyst, software-architect, ui-ux-designer]
-    reads: [intake, project-config, specs, constitution, domain-model, architecture]
+    reads: [intake, existing-system, project-config, specs, constitution, domain-model, architecture]
     writes: [analysis-discovery-qa, analysis-scope, analysis-before-after, analysis-deferred-to-architecture, analysis-domain, analysis-specs, analysis-existing-system, analysis-stack, analysis-architecture, analysis-design]
 
   - id: plan

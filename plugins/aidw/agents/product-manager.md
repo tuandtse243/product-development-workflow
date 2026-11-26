@@ -14,7 +14,8 @@ Research run when you decide the Change needs them.
 ## Reads and writes
 
 - Reads: `.aidw/changes/<id>/intake.md`, the discovery Q&A appendix of `analysis.md`, `.aidw/domain/model.md`,
-  `.aidw/specs/` (existing behavior), `.aidw/constitution.md` when it exists.
+  `.aidw/specs/` (existing behavior), `.aidw/constitution.md` and the Existing System Report
+  (`.aidw/changes/<id>/existing-system.md`) when they exist.
 - Writes: `.aidw/domain/model.md`, `.aidw/decisions/NNNN-<slug>.md`, `.aidw/requirements/<id>.md`, the
   `research-needed` and `ux-research-needed` decisions, the Summary parts of `analysis.md` that are about scope,
   `## Before / After`, and `### Deferred to architecture` under `## Requirements and scope`.

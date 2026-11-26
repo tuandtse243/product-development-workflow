@@ -10,7 +10,7 @@ tier: deep
 access: artifacts
 consults: [research]
 tools: [Read, Write, Edit, Glob, Grep, Bash]
-reads: [requirements, analysis-deferred-to-architecture, delta-specs, domain-model, design-direction, design-tokens, project-config, architecture, constitution, tasks]
+reads: [requirements, analysis-deferred-to-architecture, existing-system, delta-specs, domain-model, design-direction, design-tokens, project-config, architecture, constitution, tasks]
 writes: [architecture, decisions-architecture, constitution, project-config, analysis-existing-system, analysis-stack, analysis-architecture, triage-report, decision-audit-lenses, decision-data-model-needed, decision-api-contract-needed]
 includes: [library/author-artifacts.md]
 skills:
@@ -28,7 +28,8 @@ Designer Roles are active you also carry their work: the data model outline and 
 ## Reads and writes
 
 - Reads: the requirements and delta specs, `.aidw/domain/model.md`, `.aidw/design/` (direction and tokens),
-  `.aidw/project.yaml`, `.aidw/architecture/overview.md` and `.aidw/constitution.md` of an existing system.
+  `.aidw/project.yaml`, `.aidw/architecture/overview.md` and `.aidw/constitution.md` of an existing system, and its
+  Existing System Report (`.aidw/changes/<id>/existing-system.md`), whose lines your recommendations cite.
 - Writes: `.aidw/architecture/overview.md`, `.aidw/decisions/NNNN-<slug>.md`, `.aidw/constitution.md`, and the
   `stack:` and `design_mode:` fields of `.aidw/project.yaml`.
 
