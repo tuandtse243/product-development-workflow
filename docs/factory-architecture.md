@@ -120,7 +120,10 @@ procedure all implementing Roles follow, so it exists once. `reads` and `writes`
 `aidw roster` refuses an id that is not in the Roster, a Role that is not active, and the Role itself, and the
 generated agent ends with a "Consultation" note naming them. The first pairs: `ux-research`, `product-manager` and
 `software-architect` ask `research`; `technical-planner` asks `software-architect`; `backend`, `frontend` and
-`fullstack` ask `api-designer`, `database-architect` and `software-architect`.
+`fullstack` ask `api-designer`, `database-architect` and `software-architect`. Every implementing Role (`backend`,
+`frontend`, `fullstack`, `database`, `devops`, `integration`) may also ask `research`, at most once per task
+(ADR-0016, amending ADR-0013): when a library behaves otherwise than its Docs Brief says, or the task meets one the
+plan did not foresee.
 
 `rules.md` is a table (plan R2): one row per rule that can be answered pass or fail.
 
@@ -214,6 +217,7 @@ from the generated `agents/backend.md`:
 | Scenarios, requirement text, Decisions to honor, Touches, Verify, envelope, finished dependencies | brief |
 | Constitution, domain model, architecture, data model, API contract and OpenAPI, test plan, ADRs | brief, "Read first", each only when the file exists |
 | Consultation rule (who may be asked: the authors of this task's contracts that the Role `consults`) | brief |
+| Patterns to Follow (`patterns:`, up to 3 snippets of at most 40 lines) and the Answer and Pitfalls of each Docs Brief the task names (`docs:`), since the rpi upgrades | brief, inlined |
 | Skills picked by signal (`incremental-implementation`, `test-driven-development`, `verification-before-completion`, `api-and-interface-design`, `aidw/api-design-rules`; `aidw/schema-evolution` when Touches hit the data layer) | brief |
 | Framework pack of the project (`stacks/express.md`...) | brief, implement only; **was missing** from the review brief |
 | Language pack (`stacks/node.md`, `stacks/python.md`) | **was missing**: the agent file says `stacks/<language>.md` and left the Agent to guess the language |
@@ -259,6 +263,19 @@ one owner, no Workflow stage reads an Artifact that no earlier stage writes, and
 validates before the Change leaves the stage that produces it. When a Planned Role is carried, the carrier
 writes the Artifact and the registry still names the true owner.
 
+The rpi upgrades added these Artifacts (`validate` is the command that checks each one):
+
+| Artifact | Path (under `.aidw/`) | Owner | Validated by |
+|---|---|---|---|
+| `existing-system` | `changes/<id>/existing-system.md` | `research` | `aidw analyze` |
+| `existing-system-part` | `changes/<id>/existing-system/part-<n>.md` | `research` | `aidw analyze` |
+| `docs-brief` | `research/docs/<lib>@<major.minor>-<topic>.md` (the project's, not one Change's) | `research` | `aidw docs-brief` |
+| `program-design` | `changes/<id>/program-design.md` | `software-architect` | `aidw analyze` |
+| `pr-summary` | `changes/<id>/delivery/pr-summary.md` | `documentation` | `aidw pr` |
+| `analysis-before-after` | `analysis.md`, `## Before / After` | `product-manager` | `aidw analyze` |
+| `analysis-deferred-to-architecture` | `analysis.md`, `### Deferred to architecture` | `product-manager` | `aidw analyze` |
+| `analysis-system-design-round` | `analysis.md`, `### System design round` | `software-architect` | `aidw analyze` |
+
 ## 7. Orchestration
 
 The CLI computes every transition from the Workflow definition ([ADR-0003](adr/0003-cli-owns-flow-declared-decision-points.md)).
@@ -270,6 +287,100 @@ the CLI renders a **Decision Page** ([ADR-0007](adr/0007-decision-pages-are-view
 direction, an escalated task's decision, the audit pick list and the Approval Gate. The user's choices come back as
 pasted text that the CLI checks before anything is recorded; the page is a view under `.aidw/run/pages/` and never
 an Artifact. How a Role writes one: `plugins/aidw/library/decision-pages.md`.
+
+**Every question with options carries a View (ADR-0017).** A question's data gets `view: {kind, text}` (or a list),
+with `kind` one of `diff`, `tree`, `calltree`, `component`, `pseudocode`; the CLI renders it escaped in a monospace
+block and colours a diff's added and removed lines. A mock in the `html` slot counts as the View. `aidw page render`
+refuses a question with options that has neither on the question or on any option, except a yes or no (exactly the
+keys `yes` and `no`) and a name (`naming: true`); an open question has no options and needs none. The rule holds in
+the chat too: a question asked there puts its View as a fenced block under it. Pages and sections pick a layout
+modelled on a vendored html-effectiveness example: `approaches` (01, a question's options as rows with View, pros and
+cons and metric chips), `walkthrough` (04, numbered steps through the code), `plan` (16, figures and a timeline) and
+`before-after` (17). An option may carry `metrics`, at most 4, the same names on every option, each a figure with its
+unit only when known, otherwise `low`, `medium` or `high` with a `why` (D4). Two user commands serve the same rules
+outside a run: `/aidw:show-me` (the vendored humanlayer show-me Skill: the smallest View of a topic) and
+`/aidw:html-pages` (the Authored Skill `library/skills/html-pages`: which of the 20 vendored examples fits which kind
+of page, and what to take from it).
+
+**How Artifacts are written (I6, I10, D5, D6; `library/author-artifacts.md`, `library/implement-a-task.md`).**
+Sub-headings in free sections state a finding; the prose is plain and gets one pass to shorten. A technical
+recommendation cites its evidence: a path and lines from the Existing System Report or the code, or a source on a
+greenfield project. A recorded decision (a line of `## Decisions to honor`, a settled Design Question, an ADR) has
+indented `Why:` and `Rejected:` lines; `aidw analyze` warns when one is missing, so older one-line decisions still
+pass. Implementers follow a precedence when documents disagree: brief and `tasks.yaml`, then ADRs and architecture,
+then the Program Design, specs, requirements, analysis and intake. When the higher one cannot be built as written,
+the implementer reports three lines (Expected, Found, Why this matters) in a Consultation or as `BLOCKED: documents
+disagree`; the run skill opens a Deviation for the Role that wrote the higher document with the three lines as its
+reason, instead of retrying the task.
+
+**The Existing System Report (ADR-0016; I1, I2, I4, Q3, M1, M2, M10).** On a brownfield Change the Orchestrator
+does not describe the code itself, since it knows the request. In the `assessment` stage it looks at the folder tree
+only, then writes 2 to 7 neutral questions about today's code to `existing-system/questions.md` before rereading the
+request (no noun of the request in a question, OP1), grouped by area. One Research Agent per group answers with the
+`codebase-research` Skill (modes locate, analyze, patterns, synthesize; describe only, no critique or proposal; how
+each part is tested, with tests read kept apart from checks run) into `existing-system/part-<n>.md`, all in one
+message; one more Research Agent merges the parts into `existing-system.md`, reading code only where two parts
+disagree (OP2) and listing what no part answered under `## Not answered`. `## Existing system` in `analysis.md`
+becomes the report's Summary with a pointer to the file. Greenfield skips it. A `bugfix` or a `Size: small` Change
+asks at most 3 questions in one group, and its one Agent writes the report directly; `bugfix` gained an `assessment`
+stage for it. `aidw analyze` checks the questions, a part per group, the `## Summary` and `## Not answered` sections,
+and that `## Existing system` names the file.
+
+**Before / After and Deferred to architecture (D1, I9).** The Summary of `analysis.md` gets `## Before / After`
+(`### Before` and `### After`, 3 to 6 lines each, as the user sees it; Before comes from the Existing System Report
+when there is one, otherwise from today's workaround), and `## Requirements and scope` gets `### Deferred to
+architecture`: technical questions discovery set aside, `- DA<n>: ...`, each answered under the same id in
+`## Architecture`. The gate page shows Before / After first of all, then the open findings of the plan review, the
+authored sections, the Program Design as Views, the Decision Points and the plan.
+
+**The System Design round and the Program Design (ADR-0015; D2, D3, I5, Q2 to Q7).** The Software Architect lists
+every technical choice under `### Design Questions` in `## Architecture`: a settled one as `- DQ<n>` with `Chosen:`,
+`Why:`, `Rejected:`, and at most 5 left `Open:` (hard to reverse, options about equal, or a change in cost or
+operation). Stage `system-design-round` is a round of questions, not a gate: open Design Questions go on the Decision
+Page `system-design`, each option with a View of its code shape and its metrics; the checked answer is recorded under
+`### System design round` and each open question becomes a settled one. With nothing open the round is one question
+in the chat (summary, link, a fenced View), recorded as `confirmed: <reply>`. Then stage `program-design`: a second
+Architect run writes `program-design.md` with the required `## File tree` (a diff of the tree, `+` new, `~` changed,
+`-` removed) and `## Signatures and contracts` (diffs for shapes that exist, full shapes for new code), and optional
+call trees, component trees, a dependency map and pseudocode. A `Size: small` Change gets the short version (the two
+required parts) and no round; a `bugfix` has no round and the main session writes its short Program Design. The
+Program Design joins the approved package as **package version 4**: code that differs from it is a Deviation, the
+implementer reports the mismatch, and the code-reviewer makes an unrecorded difference a blocking finding.
+
+**Docs Briefs (ADR-0016; R1 to R9, Q-R1 to Q-R3).** A Docs Brief is what the official documentation says about one
+library or service at the installed version on one topic: front matter (`lib`, `version`, `topic`, `date`) and the
+sections Question, Answer, Evidence (a claim table with a Quote column of at most two sentences, a link to the section
+anchor and the version each claim holds for), Pitfalls and Not found. Research writes it with the `docs-research`
+Skill to `.aidw/research/docs/<lib>@<major.minor>-<topic>.md`, where later Changes reuse it while the installed
+major.minor matches and it is at most 90 days old (under 0.0.x only the same patch, a prerelease only itself). Every
+Research Skill follows one source ladder (`roles/research/references/sources.md`): 1 the official docs of that
+version; 2 changelogs, migration guides, maintainers' issues and examples; 3 named experts and organisations, at most
+medium confidence; 4 forums and blogs, leads only, or a "users report" row that is always low confidence (OP4).
+AI-written and copied pages are excluded. Official docs are fetched in order: a configured docs MCP server, then
+`/llms.txt` and the Markdown pages it lists, then HTML, with WebFetch only, never curl. "Best practice" needs the
+official docs or two independent sources of tiers 1 to 3; pitfalls are always searched; the search budget is 2 to 3
+searches and 3 to 5 pages before refining. `aidw docs-brief <lib>@<version> <topic>` reports a brief FRESH (exit 0)
+or MISSING, STALE or INVALID (exit 1, with the path Research writes); `aidw docs-brief --change <id>` does it for
+every `docs:` entry of the plan.
+
+**The plan carries patterns, docs and manual checks (I3, I11, R8, M4, M13, OP3; `src/planrefs.ts`).** The
+Technical Planner cuts the tasks from the Program Design and may give each task `patterns: [{path, why}]` (Patterns
+to Follow, `path:from-to`, at most 3), `docs: ["<lib>@<version> <topic>"]` (a library new to the project or
+sensitive to its version) and `manual: [...]` (checks only a human can make). Research writes the Docs Briefs in the
+`plan` stage, before the plan review. `aidw brief` inlines up to 3 snippets of at most 40 lines and the Answer and
+Pitfalls of each Docs Brief. `aidw analyze` refuses a pattern whose file or lines are gone, a `docs:` entry with no
+fresh Docs Brief, and a library that the Program Design imports, that no manifest of the project lists
+(`package.json`, `pyproject.toml`, `go.mod`, ...) and that no task's `docs:` names. On a greenfield project that
+means every library the Program Design imports needs a `docs:` entry and a fresh Docs Brief before the gate; a Stack
+Pack does not exempt one (R3). The gate's plan section lists all three per task. The run does not stop for `manual:` checks: `aidw deliver` lists them under `## Checks for you`
+in the handoff, and the pull request under *Needed from the user to finish*, without making it a draft. `aidw deliver`
+also warns when the Change added a direct dependency to a manifest that no Docs Brief covers; it compares the
+manifests, not the lockfile, whose indirect packages no Docs Brief would cover (R2).
+
+**Older Changes are not judged again.** `aidw change new` records `analysis_template` on the Change. Template 2 brings
+Before / After, Deferred to architecture and the Existing System Report checks; template 3 the System Design round,
+the Program Design and the plan's references. A Change created before keeps passing `aidw analyze` as it did, which
+matters because a Deviation reruns the checks after the gate on an `analysis.md` that can no longer change.
 
 Six kinds of decision, and who makes each:
 
@@ -478,8 +589,9 @@ the upstream fix loop: `openDeviationFor(p, id, {role, files, reason, task, plug
 **Package version.** The approval record names the package version it was hashed with (`approval.package`). Version 2
 added the contracts (`openapi.yaml`, `api-contract.md`, `data-model.md`, `data-model.dbml`) to the hashed and frozen
 files; an approval that names no version is version 1 and keeps the older list, so a Change approved before the upgrade
-does not turn into drift. `aidw approve` writes version 2; a Deviation's close keeps the approval's version, so a
-contract the user never approved is never adopted into the package after the gate.
+does not turn into drift. Version 3 binds the cap on Agent runs (below); version 4, which `aidw approve` writes now,
+adds `program-design.md`. A Deviation's close keeps the approval's version, so a contract or a Program Design the
+user never approved is never adopted into the package after the gate.
 
 **Not built** (D10). Work outside the permission envelope is never done: `aidw not-built <T> --reason "..." [--cause
 envelope|environment]` sets the task to `not_built` with `not_built: {cause, reason, at}`, and every open task that
@@ -552,7 +664,13 @@ package as it was approved), *Not built and why* (each task with its cause and r
 and where its discarded work is; layers; converge scenarios; the cap with runs used), and *Needed from the user to
 finish* (derived from the causes: what to provide for an environment cause, what to do by hand for work outside the
 envelope or never automatic, `aidw cap` for the cap, a failed deploy, the plan-review findings carried from the gate,
-the questions no Role could answer). Then the summary, tasks, evidence and merge danger as before.
+the questions no Role could answer, and the tasks' `manual:` checks). Then the summary, tasks, evidence and merge
+danger as before. The summary is the Documentation Role's `delivery/pr-summary.md` when it wrote one (I8, Q5, M8; its
+`pr-summary` Skill): laid out after html-effectiveness example 17, Why in one sentence, 1 to 3 notes (Deviations,
+migrations) and a change outline made of Views; otherwise the Analysis summary. `aidw pr` refuses a summary that names
+a file neither in the git diff of the Change Branch nor among the approved Artifacts (a path with `..` is always
+refused; a bare file name in prose is not checked, as it cannot be told from a product name), and notes a missing
+section of example 17 as a warning.
 
 Order at delivery: package, check, then `aidw pr <id>` (writes `.aidw/run/pr-<id>.md`, records `run.pr` in
 change.yaml, prints ready or draft, whether the push is granted and a `NEXT:`), then `aidw pr <id> --create`, then the
@@ -629,8 +747,10 @@ The Orchestrator proposes the Workflow, the user confirms, and a flag can name i
 ### Workflow files today
 
 `workflows/product.yaml` (greenfield) and `workflows/feature.yaml` (brownfield) describe the flow aidw runs now, not
-the 12 stages above: `product` has 17 stages and `feature` 18 (it adds the assessment), each tied to Change states,
-with one approval gate; the only stage added since is the `plan-review` before it (section 7). The scope of `product` is a round of its discovery stage (`scope_round: true`):
+the 12 stages above: `product` has 19 stages and `feature` 20 (it adds the assessment, which writes the Existing
+System Report), each tied to Change states, with one approval gate. Added since: the `plan-review` before the gate,
+and `system-design-round` (after `architecture`) and `program-design` (after `contracts`, before `plan`) from the rpi
+upgrades (section 7); the `plan` stage now has `research` beside the planner, for the Docs Briefs. The scope of `product` is a round of its discovery stage (`scope_round: true`):
 the user answers the `scope` Decision Page, the answer is recorded under `### Scope round` in the discovery appendix of
 `analysis.md`, and `aidw analyze` refuses the package without it. A Change created under that Workflow (named or by
 default) records `scope_round: true`, so the check follows the Change, not today's Workflow file. Nothing is approved
@@ -642,13 +762,15 @@ it spawns from `product.yaml`.
 
 ### feature (brownfield)
 
-The product Workflow without the scope round. It starts with the existing-system assessment aidw already
-does, then requirements. One Approval Gate before build (design, architecture and plan).
+The product Workflow without the scope round. It starts with the assessment, where Research Agents write the
+Existing System Report from neutral questions (section 7), then requirements. One Approval Gate before build (design,
+architecture, Program Design and plan).
 
 ### bugfix
 
-Reproduce with a failing regression test, diagnose, plan, plan review (section 7), fix, review, verify, converge,
-handover. **No Approval Gate.** The boundary that keeps larger work out (Q40): after diagnosis the CLI checks the planned fix, and if
+Assess (an Existing System Report of at most 3 questions, one Research Agent; a greenfield bugfix reports the stage
+done), reproduce with a failing regression test, diagnose, write the short Program Design, plan, plan review
+(section 7), fix, review, verify, converge, handover. **No Approval Gate.** The boundary that keeps larger work out (Q40): after diagnosis the CLI checks the planned fix, and if
 it changes behavior written in a spec, needs a migration, or needs more than 3 tasks, the Change is
 reclassified to `feature` and stops at that Workflow's gate. A production deploy still asks.
 The main session writes the diagnosis itself (no product-manager or architect Agent); only the planner is spawned. The red-first
@@ -688,7 +810,7 @@ plugins/aidw/
   library/             shared procedures and skills (implement-a-task.md, author-artifacts.md); vendor/ moves here
   stacks/              language packs (node.md) and framework packs; library/code-style.md holds the language-neutral rules
   agents/              GENERATED from roles/
-  skills/              user commands: start, approve, run, resume, status, deliver, init
+  skills/              user commands: start, approve, run, resume, status, deliver, init, show-me, html-pages
   hooks/  bin/aidw
 ```
 
@@ -751,6 +873,10 @@ In the user's project, `.aidw/` keeps its current shape and gains `roles/<id>/` 
   tier's, when its shared digest differs (the Role changed after the last write: run all cases), when a case has no
   entry or one made from another version of its case file (run that case), when a case had fewer than 3 runs, or
   when a case did not pass. A file of the old format is still checked against the digest of the whole Role.
+- **What a Role eval cannot test.** The neutral questions of the Existing System Report are written by the
+  Orchestrator, which is not a Role, so no Role eval checks that they keep the request out (OP1, R1). The guard is
+  the wording rule in step 1b of the `start` Skill (questions written before rereading the request, no noun of the
+  request in a question) and the test that pins it; there is no CLI leak check.
 - **End to end:** the existing fixtures (`evals/fixtures/brownfield-app`, `greenfield-jd`) and `aidw cost`,
   which already reports cost per agent type, catch coordination problems and cost regressions.
 
@@ -798,4 +924,6 @@ the user in the user's language. The commands `/aidw:start`, `approve`, `run`, `
 `deliver` keep their names through all four steps. The gate's Bash patterns stay a first line of defense, not a
 sandbox: a Role denied Bash writes is also denied inline interpreter code (`node -e`, `python -c`, `bash -c`...),
 protected paths are matched without case, and a command split into words for an allow holds only space and tab
-(`company/permissions.md`); what still slips through is surfaced by the Stop-hook backstop.
+(`company/permissions.md`); what still slips through is surfaced by the Stop-hook backstop. A Docs Brief file
+name cannot hold a Go module path, so a `docs:` entry names a Go module by its short name (`go-redis@9.5.1 ...` for
+`github.com/redis/go-redis/v9`).

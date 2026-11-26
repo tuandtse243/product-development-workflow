@@ -212,7 +212,7 @@ describe("aidw brief inlines patterns and Docs Briefs", () => {
     expect(cli("approve", ID).code).toBe(0);
     expect(cli("transition", ID, "executing").code).toBe(0);
     const brief = readFileSync(cli("brief", "T01").out.trim(), "utf8");
-    expect(brief).toMatch(/## Patterns to follow/);
+    expect(brief).toMatch(/## Patterns to Follow/);
     expect(brief).toMatch(/### `lib\/store\.ts:1-45`: shape 1-45\n\n```ts\nexport const line1 = 1;/);
     expect(brief).toMatch(/export const line40 = 40;\n```\n\(lines 41-45 cut: read them in the file\)/);
     expect(brief).not.toMatch(/line41 = 41/);
@@ -225,7 +225,7 @@ describe("aidw brief inlines patterns and Docs Briefs", () => {
     expect(brief).toMatch(/\*\*Pitfalls\*\*\n\nz\.coerce turns "" into 0\./);
     expect(brief).not.toMatch(/## Evidence/);
     // the reviewer judges against the same patterns and briefs
-    expect(readFileSync(cli("brief", "T01", "--for", "review").out.trim(), "utf8")).toMatch(/## Patterns to follow[\s\S]*## Docs Briefs/);
+    expect(readFileSync(cli("brief", "T01", "--for", "review").out.trim(), "utf8")).toMatch(/## Patterns to Follow[\s\S]*## Docs Briefs/);
   });
 
   it("says so when the lines are gone", () => {

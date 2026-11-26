@@ -1,5 +1,6 @@
 ---
 case: program-design-diffs-what-exists
+covers: [program-design]
 ---
 ## Input
 
