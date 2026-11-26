@@ -99,7 +99,7 @@ describe("workflow consistency", () => {
 
   it("rejects a role that is not in the roster and an artifact that is not registered", () => {
     const root = copy();
-    edit(root, "workflows/product.yaml", /(id: plan[\s\S]*?roles: \[)technical-planner\]/, "$1ghost]");
+    edit(root, "workflows/product.yaml", /(id: plan[\s\S]*?roles: \[)technical-planner/, "$1ghost");
     edit(root, "workflows/product.yaml", /(id: plan[\s\S]*?writes: \[)tasks,/, "$1made-up,");
     const out = errors(root);
     expect(out).toMatch(/role "ghost" is not in roster\.yaml/);
@@ -114,10 +114,10 @@ describe("workflow consistency", () => {
 
   it("rejects a second Approval Gate, and the old scope gate", () => {
     const root = copy();
-    edit(root, "workflows/product.yaml", /(id: plan[\s\S]*?writes: \[tasks, analysis-plan\]\n)/, "$1    gate: approval\n");
+    edit(root, "workflows/product.yaml", /(id: plan[\s\S]*?writes: \[tasks, analysis-plan[^\]\n]*\]\n)/, "$1    gate: approval\n");
     expect(errors(root)).toMatch(/at most one stage has gate: approval or approval-auto \(found 2\)/);
     const root2 = copy();
-    edit(root2, "workflows/product.yaml", /(id: plan[\s\S]*?writes: \[tasks, analysis-plan\]\n)/, "$1    gate: scope-approval\n");
+    edit(root2, "workflows/product.yaml", /(id: plan[\s\S]*?writes: \[tasks, analysis-plan[^\]\n]*\]\n)/, "$1    gate: scope-approval\n");
     expect(errors(root2)).toMatch(/stage plan: gate must be approval or approval-auto or production-deploy/);
   });
 

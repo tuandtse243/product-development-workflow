@@ -401,7 +401,7 @@ function consultBrief(p: Paths, change: Change, c: Consultation, req: ConsultReq
     "- Never guess. An answer the asker builds on must come from an Artifact, the code or a stated reason.",
     ...(c.after_gate && c.task && c.to === RESEARCH_ROLE
       ? [
-          "- The asker builds a task and met a question about a library or service that its Docs Brief did not foresee. Read the installed version first (the lockfile, or the stack in the architecture) and answer for that version from its official documentation, with a link and a short quote for each claim; say what you could not find and where you looked. Do not ask any person (ADR-0014): what the sources do not settle, you write as not found.",
+          "- The asker builds a task and met a question about a library or service that its Docs Brief did not foresee. Read the installed version first (the lockfile, or the stack in the architecture) and answer for that version from its official documentation, with a link and a short quote for each claim; say what you could not find and where you looked. Follow your Skill `docs-research` and the sources page it names (`aidw plugin-path roles/research/references/sources.md`): the source ladder, a docs MCP server then llms.txt then HTML, WebFetch only. Do not ask any person (ADR-0014): what the sources do not settle, you write as not found.",
         ]
       : []),
     ...(c.after_gate
