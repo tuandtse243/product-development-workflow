@@ -232,6 +232,17 @@ describe("aidw pr with the Documentation Role's summary (I8)", () => {
     expect(bad.err).toContain("`../shared/lock.ts`");
   });
 
+  it("keeps the summary and warns when the git diff cannot be read (D12: the run still ends in a pull request)", () => {
+    delivered();
+    write(root, `.aidw/changes/${ID}/delivery/pr-summary.md`, `${SUMMARY}\nAlso \`lib/ghost.ts\`.\n`);
+    git(root, "branch", "-D", "main");
+    const r = cli(["pr", ID]);
+    expect(r.code, r.err).toBe(0);
+    expect(readFileSync(join(root, ".aidw/run/pr-app.md"), "utf8")).toContain("Patients move a booking themselves");
+    expect(r.out).toMatch(/WARNING .*pr-summary\.md: the git diff \(main\.\.\.aidw\/app\) could not be read \(.+\), so the files it names were not checked: .*`lib\/ghost\.ts`/);
+    expect(r.out).toContain("`app/api/bookings/route.ts`");
+  });
+
   it("keeps the Analysis summary when there is no pr-summary.md", () => {
     delivered();
     const r = cli(["pr", ID]);
