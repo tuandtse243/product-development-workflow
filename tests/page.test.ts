@@ -345,7 +345,8 @@ describe("the page of an escalated task", () => {
 
 describe("the examples of the Decision Page guide", () => {
   const guide = readFileSync(join(__dirname, "../plugins/aidw/library/decision-pages.md"), "utf8");
-  const blocks = [...guide.matchAll(/```yaml\n([\s\S]*?)```/g)].map((m) => m[1] as string);
+  // Whole pages start with `layout:`; the snippets of the layouts section are checked in page-layouts.test.ts.
+  const blocks = [...guide.matchAll(/```yaml\n([\s\S]*?)```/g)].map((m) => m[1] as string).filter((b) => /^layout:/.test(b));
 
   it("are valid page data, one per layout", () => {
     expect(blocks).toHaveLength(3);
