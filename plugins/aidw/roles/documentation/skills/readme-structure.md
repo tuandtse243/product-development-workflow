@@ -16,9 +16,11 @@ how do I use it, how do I change it. Describe what exists. Never what was planne
 - Take the package manager from the lockfile, not from the old README: `pnpm-lock.yaml` is pnpm, `yarn.lock` is
   yarn, `bun.lock` or `bun.lockb` is bun, `package-lock.json` is npm.
 - **Run every command you will write, before you write it**, from a state as close to a fresh clone as you can get:
-  install, then the start or dev script, then the check that it works. Write the quick start from what ran. A command
-  you could not run (it needs a credential, a paid service, a deploy, or there is no shell) is still listed in the
-  order you would run it, with the output you expect, and marked "not run here" with the reason that stopped it.
+  install, then the start or dev script, then the check that it works. A dev or start script does not exit: run it
+  in the background or with a timeout, wait for its ready line or its first page, then stop it. Write the quick start
+  from what ran. A command you could not run (it needs a credential, a paid service or a deploy, or the session has
+  no shell) is still listed in the order you would run it, with the output you expect, and marked "not run here"
+  with the reason that stopped it.
 - A command that needs an environment variable you know the template does not list (you read the template, or the
   brief says so): add the name to `.env.example` with a safe placeholder, and report it as a difference. A variable
   you only suspect is missing is reported, not added.
