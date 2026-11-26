@@ -8,6 +8,7 @@ import { coverageReport, diffCoverage, trunkBase } from "./diffcover.js";
 import { loadTasks } from "./run.js";
 import { skillPath } from "./skills.js";
 import { analyzeChange, idsAfterChange, mainSpecIds } from "./analyze.js";
+import { beforeAfterSection } from "./beforeafter.js";
 import { approvalStatus, computeApprovalHash } from "./approval.js";
 import { runBackstop } from "./backstop.js";
 import { ChangeError, isState, listChangeIds, loadChange, resolveChangeId, stateOf, STATES } from "./change.js";
@@ -1441,7 +1442,9 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           const gateId = first.page.layout === "gate" && first.page.change ? resolveChangeId(p, first.page.change) : null;
           const lead = (id: string): PageSection[] => {
             const c = loadChange(p, id);
-            return [openFindingsSection(p, c, workflowOfChange(p, c, pluginRoot(env))), unansweredSection(c)].filter((x): x is PageSection => x !== null);
+            // D1: the Before / After of analysis.md, unless the page writes its own.
+            const beforeAfter = first.page.sections.some((s) => s.id === "before-after") ? null : beforeAfterSection(readText(join(c.dir, "analysis.md")) ?? "");
+            return [beforeAfter, openFindingsSection(p, c, workflowOfChange(p, c, pluginRoot(env))), unansweredSection(c)].filter((x): x is PageSection => x !== null);
           };
           const r = gateId ? parsePage(name, source, gateExtras(gateId), lead(gateId)) : first;
           if (r.problems.length) throw new OpError(`the data of page "${name}" (${rel(p, pageDataFile(p, name))}) has ${r.problems.length} problem(s):\n${r.problems.map((x) => `  - ${x}`).join("\n")}\nFix the file and render again.`);

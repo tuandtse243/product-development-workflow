@@ -346,6 +346,11 @@ user can check:
    decision without `Why:` or `Rejected:`. Implementers may not deviate from these without escalating, so be
    precise and include only real decisions. The `## Summary`
    must fit one page: goal, scope, the key decisions, and the risks and assumptions that need attention.
+   `## Before / After` has `### Before` and `### After`, 3 to 6 `- ` lines each, as the user sees it; Before draws
+   from `existing-system.md` and names it when the Change has that report, otherwise from today's workaround.
+   `### Deferred to architecture` (in `## Requirements and scope`) lists the technical questions discovery put
+   aside as `- DA1: <question>`, or says "None"; each id has its answer, `- DA1: <answer>`, in `## Architecture`.
+   `aidw analyze` checks all three for a Change created with `analysis_template: 2`.
 2. Run `aidw analyze <id>` and `aidw validate <id>`. Fix every error and re-run until both are clean.
 3. **Independent review** (stage `plan-review`). Run `aidw plan-review <id> --brief` (it refuses while `aidw analyze` has
    errors) and spawn the reviewer `aidw:code-reviewer` with exactly the printed `SPAWN` prompt. It grades the architecture, the plan
@@ -363,8 +368,9 @@ user can check:
 4. `aidw transition <id> awaiting_approval` (it re-runs both checks and refuses until the review is recorded).
 5. Present the package as a gate page (`layout: gate`, name `gate`, `change: <id>`): one section each for the summary
    and scope, the key decisions, the stack, the design (tokens as swatches in its `html` slot when there is UI), quality
-   and deploy, requested permissions, and risks and assumptions. The CLI adds the Decision Points and the plan size, and
-   puts the review's open findings first. Name
+   and deploy, requested permissions, and risks and assumptions. The CLI puts `## Before / After` of `analysis.md`
+   first of all (a section you write with the id `before-after` replaces it), then the review's open findings, and
+   adds the Decision Points and the plan size. Name
    `.aidw/changes/<id>/analysis.md` in the intro. Tell the user the link, and that once they agree to every section
    (or type `/aidw:approve`) the build starts by itself.
 6. **Stop and wait for the answer.** Do not start building before it. When the user pastes the page's answer, check it:
@@ -399,8 +405,9 @@ planner writes a `type: fix` task whose regression test fails first on the curre
 (a run that spawned the Product Manager produced a requirements document and an extra Agent for a one-line fix). Do steps 1b to
 2 and the health baseline yourself, then write the diagnosis into `analysis.md` in your one Write: the **root cause** (file and
 line), the **scope** (what changes, what does not), the **Decisions to honor** (the exact response or behavior after the fix, what
-must stay as it is), and the regression test the fix needs. The sections for Domain, Stack, Design, Architecture and Specs say
-"n/a for a bugfix". A bugfix has no `design-needed` decision (do not run `aidw decide design-needed`). Then spawn only the planner (step 7) with this
+must stay as it is), and the regression test the fix needs. `## Before / After` is the bug as the user meets it and the
+behavior after the fix (3 to 6 lines each); `### Deferred to architecture` says "None". The sections for Domain, Stack,
+Design, Architecture and Specs say "n/a for a bugfix". A bugfix has no `design-needed` decision (do not run `aidw decide design-needed`). Then spawn only the planner (step 7) with this
 prompt instead of the one there:
 `Change <id>. The diagnosis (root cause, scope, decisions to honor) is in .aidw/changes/<id>/analysis.md; there are no specs. Write .aidw/changes/<id>/tasks.yaml with one task of type fix (at most 3), with scope: <the capability it touches> and a regression test in its touches, run aidw plan and aidw analyze <id>, and reply with the number of tasks and every decision still open.`
 

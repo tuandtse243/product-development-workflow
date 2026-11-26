@@ -143,7 +143,7 @@ describe("the user sends the package back from the gate", () => {
     write(root, ".aidw/run/pages/gate.yaml", `layout: gate\ntitle: Approve\nchange: ${ID}\nsections:\n  - id: scope\n    title: Scope\n    body: Booking.\n`);
     expect(cli(root, "page", "render", "gate").code).toBe(0);
     const html = readFileSync(join(root, ".aidw/run/pages/gate.html"), "utf8");
-    expect([...html.matchAll(/data-sec="([^"]+)"/g)].map((m) => m[1])[0]).toBe("open-findings");
+    expect([...html.matchAll(/data-sec="([^"]+)"/g)].map((m) => m[1]).slice(0, 2)).toEqual(["before-after", "open-findings"]);
     expect(html).toContain("round 3: a slot cache nobody needs");
   });
 });

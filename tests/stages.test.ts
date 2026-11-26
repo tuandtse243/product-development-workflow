@@ -207,6 +207,9 @@ describe("aidw stages", () => {
   it("counts a stage done by its filled-in Artifacts when stages.yaml is missing (a change started before it)", () => {
     const root = project();
     rmSync(join(root, ".aidw/changes", ID, "stages.yaml"));
+    // started before stages.yaml, so before analysis_template 2 too
+    const meta = join(root, ".aidw/changes", ID, "change.yaml");
+    writeFileSync(meta, readFileSync(meta, "utf8").replace(/^analysis_template: .*\n/m, ""));
     cli(root, "transition", ID, "intake");
     cli(root, "transition", ID, "analyzing");
     // the empty template proves nothing

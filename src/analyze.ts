@@ -20,6 +20,7 @@ import { pluginRoot } from "./plugin.js";
 import { defaultTaskRole, implementerOf } from "./roles.js";
 import { answerOf, checkDecisions } from "./decisions.js";
 import { checkScopeRound } from "./scope.js";
+import { checkBeforeAfter, EXISTING_SYSTEM_FILE, owesBeforeAfter } from "./beforeafter.js";
 
 const TITLE_ADVISED = 60;
 const isPlanned = (t: { origin?: unknown }): boolean => t.origin === undefined || t.origin === "plan";
@@ -231,6 +232,8 @@ export function analyzeChange(p: Paths, id: string): Diags {
     checkAnalysisDoc(analysis, rel(p, analysisFile), d);
     // ADR-0011: a Workflow with a scope round (product) records it in the discovery appendix before the gate.
     if (scopeRoundOf(change)) d.add(checkScopeRound(change, analysis, rel(p, analysisFile)));
+    // D1, I9: Before / After as the user sees it, and the technical questions deferred to the Software Architect.
+    if (owesBeforeAfter(change)) checkBeforeAfter(analysis, rel(p, analysisFile), { existingSystem: existsSync(join(change.dir, EXISTING_SYSTEM_FILE)) }, d);
     // S10: a brownfield change states what exists and what it must not break.
     if (projectKind(p) === "brownfield") {
       const existing = sections(analysis).find((s) => s.name.toLowerCase() === "existing system");

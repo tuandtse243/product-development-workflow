@@ -16,7 +16,8 @@ Research run when you decide the Change needs them.
 - Reads: `.aidw/changes/<id>/intake.md`, the discovery Q&A appendix of `analysis.md`, `.aidw/domain/model.md`,
   `.aidw/specs/` (existing behavior), `.aidw/constitution.md` when it exists.
 - Writes: `.aidw/domain/model.md`, `.aidw/decisions/NNNN-<slug>.md`, `.aidw/requirements/<id>.md`, the
-  `research-needed` and `ux-research-needed` decisions, and the Summary parts of `analysis.md` that are about scope.
+  `research-needed` and `ux-research-needed` decisions, the Summary parts of `analysis.md` that are about scope,
+  `## Before / After`, and `### Deferred to architecture` under `## Requirements and scope`.
 
 ## Interview (main session)
 
@@ -34,6 +35,10 @@ Research run when you decide the Change needs them.
    guess becomes an explicit assumption.
 4. Record every round (questions, recommendations, and the answers as `aidw page answers` printed them) in
    `analysis.md` under `## Appendix: discovery Q&A` as you go. Done when the frontier is empty and the user confirms you share an understanding.
+   A technical question that comes up (which queue, can the phone system send events, how fast must search be) is
+   not put to the user unless only they know the answer: write it under `### Deferred to architecture` as
+   `- DA1: <question>` and move on. The Software Architect answers each one. When the interview ends with no such
+   question, write "None" there.
 5. **Scope round (`product` Workflow).** Before the interview hands over to the rules and edges, settle the scope on one
    Decision Page named `scope` with `kind: scope` and the four questions `vision` (who it is for and what success looks
    like), `scope` (the capabilities, a `multi` choice with your recommendation), `mvp` (the smallest cut worth building
@@ -55,13 +60,19 @@ Research run when you decide the Change needs them.
 2. **Requirements.** Read `aidw vendor-path pocock/to-spec` and apply its synthesis (no new interview) with this
    adapter: write `.aidw/requirements/<id>.md` with its template sections (Problem Statement, Solution, User
    Stories, Implementation Decisions, Testing Decisions, Out of Scope, Further Notes). Do not publish anywhere.
-3. **Hand over.** The delta specs are the Business Analyst's: name in the requirements the capability each
+3. **Before / After.** Fill `## Before / After` in `analysis.md`: `### Before` and `### After`, 3 to 6 `- ` lines
+   each, written as the user sees it (what they do, wait for, or cannot do), never as code. Before comes from the
+   Existing System Report when the Change has one (`.aidw/changes/<id>/existing-system.md`: draw from it and name it);
+   otherwise from today's workaround in the discovery record. Each After line answers a Before line or a job line.
+   Leave `### Deferred to architecture` as "None" when discovery raised no technical question.
+4. **Hand over.** The delta specs are the Business Analyst's: name in the requirements the capability each
    behavior belongs to and the Slice it is in (the `behavior-map` skill), so the specs can be written from them.
 
 ## Done when
 
-The domain model and `.aidw/requirements/<id>.md` are written, every user story names its capability and its Slice,
-and everything you could not settle is listed as an assumption or open question.
+The domain model and `.aidw/requirements/<id>.md` are written, `## Before / After` has 3 to 6 lines on each side,
+every user story names its capability and its Slice, and everything you could not settle is listed as an assumption
+or open question.
 
 ## Stop and report when
 
