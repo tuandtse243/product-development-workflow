@@ -21,7 +21,7 @@ import {
   type AgentRunner,
   type Installer,
 } from "../src/evallevel2.js";
-import { loadEvalCases, sharedDigest } from "../src/evals.js";
+import { loadEvalCases, sharedDigest, workingDigest } from "../src/evals.js";
 
 const repo = join(__dirname, "..");
 const plugin = join(repo, "plugins", "aidw");
@@ -488,7 +488,7 @@ describe("aidw eval --level 2", () => {
     expect(r.out.match(/run \d: agent ok, tests ok, checks ok, reads ok, criteria ok \(\d+ turns\) \S+aidw-l2-backend-tiny-\d-/g)).toHaveLength(3);
     expect(r.out).toMatch(/wrote roles\/backend\/evals\/level2\/results\.json/);
     const rec = JSON.parse(readFileSync(level2ResultsFile(s.root, "backend"), "utf8"));
-    expect(rec).toMatchObject({ format: 2, level: 2, role: "backend", model: null, tier: "deep", runs: 3, digest: sharedDigest(s.root, "backend") });
+    expect(rec).toMatchObject({ format: 2, level: 2, role: "backend", model: null, tier: "deep", runs: 3, digest: workingDigest(s.root, "backend") });
     expect(rec.cases).toEqual([expect.objectContaining({ name: "tiny", pass: true, runs: { total: 3, passed: 3, errors: 0 }, failed: [], model: null })]);
     expect(rec.cases[0].digest).toMatch(/^sha256:/);
     expect(rec.cases[0].fixture).toMatch(/^sha256:/);

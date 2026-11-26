@@ -149,7 +149,7 @@ export interface RunRecord {
  * `tiers.yaml`. Dotfiles (`.DS_Store`) are left out. The runner's own prompts (the
  * answer and grading prompts in src/evalrun.ts) are not Role content and are not in it.
  */
-function roleFiles(root: string, id: string, noCases: boolean): string[] {
+function roleFiles(root: string, id: string, noCases: boolean, noScripts = false): string[] {
   const files: string[] = [];
   const evals = `roles/${id}/evals/`;
   const walk = (rel: string) => {
@@ -158,6 +158,8 @@ function roleFiles(root: string, id: string, noCases: boolean): string[] {
     if (statSync(abs).isDirectory()) {
       // Level 2 cases (src/evallevel2.ts) have their own digests and result file: not level 1's shared content.
       if (rel === `${evals}level2`) return;
+      // The Role's scripts run only in a working session (level 2); level 1's prompt never holds them.
+      if (noScripts && rel === `roles/${id}/scripts`) return;
       for (const n of readdirSync(abs).sort()) if (!n.startsWith(".")) walk(`${rel}/${n}`);
     } else if (rel === `${evals}results.json`) return;
     else if (noCases && rel.startsWith(evals) && !rel.slice(evals.length).includes("/") && rel.endsWith(".md")) return;
@@ -193,8 +195,17 @@ export function roleDigest(root: string, id: string): string {
   return digestOf(root, roleFiles(root, id, false));
 }
 
-/** roleDigest without the case files (`roles/<id>/evals/*.md`): what every case's answer depends on. */
+/**
+ * roleDigest without the case files (`roles/<id>/evals/*.md`) and without the Role's scripts (`roles/<id>/scripts/`):
+ * what every level 1 answer depends on. Level 1 shows the model the Role's instructions and skills, never a script, so a
+ * script fix leaves level 1's results standing.
+ */
 export function sharedDigest(root: string, id: string): string {
+  return digestOf(root, roleFiles(root, id, true, true));
+}
+
+/** sharedDigest with the Role's scripts: what a level 2 session works with (it runs them). */
+export function workingDigest(root: string, id: string): string {
   return digestOf(root, roleFiles(root, id, true));
 }
 

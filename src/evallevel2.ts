@@ -5,7 +5,7 @@ import { homedir, platform, tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import YAML from "yaml";
 import { Diags } from "./diag.js";
-import { caseEntries, digestOf, RESULTS_FORMAT, sharedDigest, type CaseRecord, type RunRecord } from "./evals.js";
+import { caseEntries, digestOf, RESULTS_FORMAT, workingDigest, type CaseRecord, type RunRecord } from "./evals.js";
 import { parseGrade, type CriterionResult, type Exec } from "./evalrun.js";
 import { pathsFor } from "./project.js";
 import { loadRole, loadRuleTable, roleDir } from "./roles.js";
@@ -1593,7 +1593,7 @@ export interface Level2Digests {
 export function takeLevel2Digests(root: string, id: string, env: NodeJS.ProcessEnv = process.env): Level2Digests {
   const fx = fixturesDir(root, env);
   return {
-    shared: sharedDigest(root, id),
+    shared: workingDigest(root, id),
     cases: new Map(
       loadLevel2Cases(root, id).cases.map((c) => [c.name, { digest: level2CaseDigest(root, c), fixture: existsSync(join(fx, c.fixture)) ? fixtureDigest(join(fx, c.fixture)) : null }]),
     ),
@@ -1711,7 +1711,7 @@ export function checkLevel2(root: string, id: string, tierModel: string | null, 
   if (!rec || typeof rec !== "object" || rec.format !== RESULTS_FORMAT || rec.level !== 2) return d.warn(rf, `not a level 2 result file: run \`${run}\` again`);
   const name = (m: unknown) => (typeof m === "string" ? m : "default");
   if ((rec.model ?? null) !== tierModel) d.warn(rf, `made with model ${name(rec.model)}, not its tier's model (${name(tierModel)}): run \`${run}\` again`);
-  if (rec.digest !== sharedDigest(root, id)) return d.warn(rf, `older than the Role's content (it changed after ${rec.date}): run \`${run}\` again`);
+  if (rec.digest !== workingDigest(root, id)) return d.warn(rf, `older than the Role's content (it changed after ${rec.date}): run \`${run}\` again`);
   const entries = new Map(caseEntries(rec.cases).map((c) => [c.name, c as Level2CaseRecord]));
   const fx = fixturesDir(root, env);
   const missing: string[] = [];

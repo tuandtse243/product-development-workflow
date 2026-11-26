@@ -18242,7 +18242,7 @@ function caseEntries(cases) {
   return Array.isArray(cases) ? cases.filter((c) => !!c && typeof c === "object" && typeof c.name === "string") : [];
 }
 var RESULTS_FORMAT = 2;
-function roleFiles(root, id, noCases) {
+function roleFiles(root, id, noCases, noScripts = false) {
   const files = [];
   const evals = `roles/${id}/evals/`;
   const walk = (rel2) => {
@@ -18250,6 +18250,7 @@ function roleFiles(root, id, noCases) {
     if (!(0, import_node_fs40.existsSync)(abs)) return;
     if ((0, import_node_fs40.statSync)(abs).isDirectory()) {
       if (rel2 === `${evals}level2`) return;
+      if (noScripts && rel2 === `roles/${id}/scripts`) return;
       for (const n of (0, import_node_fs40.readdirSync)(abs).sort()) if (!n.startsWith(".")) walk(`${rel2}/${n}`);
     } else if (rel2 === `${evals}results.json`) return;
     else if (noCases && rel2.startsWith(evals) && !rel2.slice(evals.length).includes("/") && rel2.endsWith(".md")) return;
@@ -18279,6 +18280,9 @@ function roleDigest(root, id) {
   return digestOf2(root, roleFiles(root, id, false));
 }
 function sharedDigest(root, id) {
+  return digestOf2(root, roleFiles(root, id, true, true));
+}
+function workingDigest(root, id) {
   return digestOf2(root, roleFiles(root, id, true));
 }
 function caseDigest(root, caseFile) {
@@ -19747,7 +19751,7 @@ function printLevel2(rs) {
 function takeLevel2Digests(root, id, env = process.env) {
   const fx = fixturesDir(root, env);
   return {
-    shared: sharedDigest(root, id),
+    shared: workingDigest(root, id),
     cases: new Map(
       loadLevel2Cases(root, id).cases.map((c) => [c.name, { digest: level2CaseDigest(root, c), fixture: (0, import_node_fs42.existsSync)((0, import_node_path47.join)(fx, c.fixture)) ? fixtureDigest((0, import_node_path47.join)(fx, c.fixture)) : null }])
     )
@@ -19844,7 +19848,7 @@ function checkLevel2(root, id, tierModel2, d, env = process.env) {
   if (!rec || typeof rec !== "object" || rec.format !== RESULTS_FORMAT || rec.level !== 2) return d.warn(rf, `not a level 2 result file: run \`${run2}\` again`);
   const name = (m) => typeof m === "string" ? m : "default";
   if ((rec.model ?? null) !== tierModel2) d.warn(rf, `made with model ${name(rec.model)}, not its tier's model (${name(tierModel2)}): run \`${run2}\` again`);
-  if (rec.digest !== sharedDigest(root, id)) return d.warn(rf, `older than the Role's content (it changed after ${rec.date}): run \`${run2}\` again`);
+  if (rec.digest !== workingDigest(root, id)) return d.warn(rf, `older than the Role's content (it changed after ${rec.date}): run \`${run2}\` again`);
   const entries = new Map(caseEntries(rec.cases).map((c) => [c.name, c]));
   const fx = fixturesDir(root, env);
   const missing = [];

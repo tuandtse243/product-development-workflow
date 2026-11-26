@@ -737,7 +737,9 @@ In the user's project, `.aidw/` keeps its current shape and gains `roles/<id>/` 
   content: every file under `roles/<id>/` but the result file and the case files (`evals/*.md`), the generated
   `agents/<id>.md`, the shared procedures its `includes` names, the library skills its index lists and `tiers.yaml`;
   dotfiles are left out and line endings are read as LF. The runner's own prompts (the answer and grading prompts
-  in `src/evalrun.ts`) are not in the digest. Each case entry holds its runs, pass or fail, the criteria that
+  in `src/evalrun.ts`) are not in the digest, and neither are the Role's scripts (`roles/<id>/scripts/`): level 1
+  shows the model the Role's instructions and skills, never a script, so a script fix leaves its results standing.
+  Each case entry holds its runs, pass or fail, the criteria that
   failed, the date that case ran, the model asked for and a digest of its case file. A model of `null` means the
   claude CLI's default on that entry's date, so a file merged over time can mix the defaults of different dates;
   the actual model is not detected. For a tier that maps to `inherit`, `--model` writes nothing. The digests are
@@ -835,7 +837,7 @@ In the user's project, `.aidw/` keeps its current shape and gains `roles/<id>/` 
   read-only). A copy that cannot be prepared keeps `result.json` only.
 - **Level 2 result file.** `roles/<id>/evals/level2/results.json` (`format: 2`, `level: 2`), written under level 1's
   rules (source checkout, tier's model, `--case` merges, nothing written when content changed during the run). Its
-  shared digest is level 1's; each entry adds the digest of its case folder and of its fixture, and how its grading was
+  shared digest is level 1's with the Role's scripts added (a session runs them); each entry adds the digest of its case folder and of its fixture, and how its grading was
   confined (`gradingSandbox`: `sandbox-exec`, `bwrap`, `unshare` or `none`). A run whose grading ran with `none` writes
   nothing unless `AIDW_GRADE_SANDBOX=off` was set. For a Role with level 2 cases, `aidw roster` warns (never fails
   without `--strict`) when the file is missing, made on another model, older than the Role, a case folder or a fixture,

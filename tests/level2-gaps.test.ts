@@ -22,7 +22,7 @@ import {
   type AgentRunner,
   type Installer,
 } from "../src/evallevel2.js";
-import { roleDigest, sharedDigest } from "../src/evals.js";
+import { roleDigest, sharedDigest, workingDigest } from "../src/evals.js";
 
 /**
  * Gaps and edge cases of the level 2 harness (T18), found by the test agent. No model is reached: the Agent session
@@ -476,7 +476,7 @@ describe("level 2 gaps: digests", () => {
     const s = setup();
     const d = takeLevel2Digests(s.root, "backend", { ...s.env, AIDW_FIXTURES_DIR: temp("aidw-l2g-nofx-") });
     expect(d.cases.get("tiny")).toMatchObject({ fixture: null });
-    expect(d.shared).toBe(sharedDigest(s.root, "backend"));
+    expect(d.shared).toBe(workingDigest(s.root, "backend"));
   });
 });
 

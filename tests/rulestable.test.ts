@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
 import { takeDigests, writeResults as writeRecord, type CaseResult } from "../src/evalrun.js";
-import { caseDigest, checkEvals, loadEvalCases, roleDigest, sharedDigest } from "../src/evals.js";
+import { caseDigest, checkEvals, loadEvalCases, roleDigest, sharedDigest, workingDigest } from "../src/evals.js";
 import { checkRoster, loadRuleTable, parseRulesTable, writeAgents } from "../src/roles.js";
 import { bareBackend } from "./fixtures.js";
 
@@ -334,6 +334,19 @@ describe("the per-case result file (format 2)", () => {
     expect(caseDigest(root, `roles/backend/evals/${NAMES[0]}.md`)).not.toBe(one);
     expect(caseDigest(root, `roles/backend/evals/${NAMES[1]}.md`)).toBe(other);
     writeFileSync(join(evalsDir(root), "notes.txt"), "other files under evals/ are shared content\n");
+    expect(sharedDigest(root, "backend")).not.toBe(shared);
+  });
+
+  it("leaves the Role's scripts out of level 1's shared digest but not out of level 2's working digest", () => {
+    const root = copy();
+    tableRole(root);
+    const shared = sharedDigest(root, "backend");
+    const working = workingDigest(root, "backend");
+    mkdirSync(join(root, "roles", "backend", "scripts"), { recursive: true });
+    writeFileSync(join(root, "roles", "backend", "scripts", "probe.mjs"), "console.log('{}');\n");
+    expect(sharedDigest(root, "backend")).toBe(shared);
+    expect(workingDigest(root, "backend")).not.toBe(working);
+    touch(root, "roles/backend/role.md");
     expect(sharedDigest(root, "backend")).not.toBe(shared);
   });
 
