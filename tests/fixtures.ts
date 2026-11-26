@@ -89,6 +89,8 @@ export function write(root: string, rel: string, content: string): string {
   const file = join(root, rel);
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(file, content);
+  // Re-added every time a test writes a Change's analysis.md (not only the first): a test that removed program-design.md
+  // and then writes analysis.md again gets it back, so remove it after the last analysis.md write.
   const programDesign = join(dirname(file), "program-design.md");
   if (/(^|\/)\.aidw\/changes\/[^/]+\/analysis\.md$/.test(rel) && !existsSync(programDesign)) writeFileSync(programDesign, PROGRAM_DESIGN_MD);
   return file;

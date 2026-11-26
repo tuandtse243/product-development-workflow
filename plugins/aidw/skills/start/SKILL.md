@@ -297,7 +297,8 @@ metrics in the reply.
 - Open Design Questions: one Decision Page `system-design` (`layout: questions`, `role: software-architect`), one
   question per open `DQ<n>` with that id, the Agent's recommendation as `recommend`, its options each with a `view`
   of its code shape (a diff for a shape that exists, the full shape for new code) and the Agent's metrics as
-  `criteria` and `facts` (at most 4; a figure only when known, otherwise low, medium or high with why). Show the link
+  its `metrics` (at most 4, `{name, value, why}`, the same names on every option; a figure only when known,
+  otherwise low, medium or high with why; `library/decision-pages.md`, "Metrics"). Show the link
   and stop. Record the lines `aidw page answers system-design` prints word for word under `### System design round`
   in `## Architecture`, and turn each open question into a settled one (`Chosen:`, `Why:`, `Rejected:`). When an
   answer goes against the Agent's recommendation, spawn `aidw:software-architect` again with the answers to bring

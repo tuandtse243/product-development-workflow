@@ -16,6 +16,7 @@ import {
   fileTreeOf,
   MAX_OPEN_QUESTIONS,
   openQuestions,
+  namesPath,
   programDesignChangedPaths,
   programDesignSection,
   systemDesignRoundOf,
@@ -279,6 +280,25 @@ describe("code that differs from the approved Program Design is a Deviation (Q4)
     expect(programDesignChangedPaths(PROGRAM_DESIGN_MD, sig)).toEqual(["app/api/bookings/route.ts"]);
     const prose = `${PROGRAM_DESIGN_MD}\n## Pseudocode\n\n\`\`\`text\nlock the slot, then write\n\`\`\`\n`;
     expect(programDesignChangedPaths(PROGRAM_DESIGN_MD, prose)).toBeNull();
+  });
+
+  it("matches a path only as a whole path, never inside a longer one", () => {
+    expect(namesPath("see app/a.ts.", "app/a.ts")).toBe(true);
+    expect(namesPath("// app/a.ts\nexport function f()", "app/a.ts")).toBe(true);
+    expect(namesPath("// app/a.tsx", "app/a.ts")).toBe(false);
+    expect(namesPath("// lib/app/a.ts", "app/a.ts")).toBe(false);
+    expect(namesPath("app/a.ts/index", "app/a.ts")).toBe(false);
+    const before = "# P\n\n## File tree\n\n```text\n+ app/a.ts\n+ app/a.tsx\n```\n\n## Signatures and contracts\n\n```ts\n// app/a.tsx\nexport function A(): JSX.Element\n```\n";
+    expect(programDesignChangedPaths(before, before.replace("A(): JSX.Element", "A(p: Props): JSX.Element"))).toEqual(["app/a.tsx"]);
+  });
+
+  it("is read by the code reviewer, whose task review blocks on a file or signature that differs from it", () => {
+    const plugin = join(__dirname, "..", "plugins", "aidw");
+    const role = readFileSync(join(plugin, "roles", "code-reviewer", "role.md"), "utf8");
+    expect(/^reads: \[(.*)\]$/m.exec(role)?.[1]?.split(", ")).toContain("program-design");
+    const skill = readFileSync(join(plugin, "roles", "code-reviewer", "skills", "task-review.md"), "utf8");
+    expect(skill).toMatch(/\*\*Program Design\*\*/);
+    expect(skill).toMatch(/missing or differs is a\s+blocking finding unless a closed Deviation/);
   });
 
   it("is in every implementing task's brief", () => {

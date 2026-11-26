@@ -333,6 +333,15 @@ export function programDesignSection(text: string | null, changeId: string): Pag
 // --------------------------------------------------------------------------------------------- Deviation
 
 /**
+ * Whether a text names a path as a whole: `app/a.ts` is named in "see app/a.ts." but not in "app/a.tsx" or
+ * "lib/app/a.ts".
+ */
+export function namesPath(text: string, path: string): boolean {
+  const esc = path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?<![\\w./-])${esc}(?![\\w/-]|\\.\\w)`).test(text);
+}
+
+/**
  * The paths a change to the Program Design concerns: the file-tree lines added, removed or re-marked, and the paths the
  * file tree names that appear in a part whose text changed. null: the change names no path, so every task reads it.
  */
@@ -352,7 +361,7 @@ export function programDesignChangedPaths(before: string | null, after: string |
     const x = pb.get(name)?.body ?? "";
     const y = pa.get(name)?.body ?? "";
     if (x === y) continue;
-    const named = all.filter((path) => x.includes(path) || y.includes(path));
+    const named = all.filter((path) => namesPath(x, path) || namesPath(y, path));
     if (!named.length) return null;
     for (const path of named) paths.add(path);
   }

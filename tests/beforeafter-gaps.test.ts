@@ -179,7 +179,7 @@ describe("a new Change refuses the gate without the two parts", () => {
 });
 
 describe("the bugfix workflow", () => {
-  it("creates its Change with analysis_template 2, and its analyze checks both parts", () => {
+  it("creates its Change with analysis_template >= 2, and its analyze checks both parts", () => {
     setup(["--workflow", "bugfix"]);
     expect(changeYaml().workflow).toBe("bugfix");
     expect(changeYaml().analysis_template).toBeGreaterThanOrEqual(2);
