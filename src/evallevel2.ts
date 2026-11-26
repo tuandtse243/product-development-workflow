@@ -655,7 +655,7 @@ export const AGENT_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "Bash"];
 
 /**
  * The session's settings. No network: Bash runs only in Claude Code's sandbox (`sandbox.enabled`, no allowed hosts,
- * `failIfUnavailable`), the sandbox's escape hatch is off (`allowUnsandboxedCommands: false`), and Bash is allowed only
+ * `failIfUnavailable`; binding a local port is allowed so tests can start the app on 127.0.0.1), the sandbox's escape hatch is off (`allowUnsandboxedCommands: false`), and Bash is allowed only
  * because it is sandboxed (`autoAllowBashIfSandboxed`), never by an allow rule: where the sandbox cannot run, Bash asks,
  * and with `--permission-prompts none` that is a denial. WebFetch and WebSearch are not among `--tools` and are denied
  * besides. Reads outside the copy are allowed only in the session's plugin copy (and not at all for a bare run); reads
@@ -686,7 +686,8 @@ export function sessionSettings(o: { pluginRoot: string; project: string; denyRe
       failIfUnavailable: true,
       autoAllowBashIfSandboxed: true,
       allowUnsandboxedCommands: false,
-      network: { allowedDomains: [] },
+      // Tests start the app on 127.0.0.1 (the backend fixture's helpers do); without this, listen() is EPERM.
+      network: { allowedDomains: [], allowLocalBinding: true },
     },
   };
 }

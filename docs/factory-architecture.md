@@ -787,7 +787,9 @@ In the user's project, `.aidw/` keeps its current shape and gains `roles/<id>/` 
   file, in a trimmed environment (PATH, HOME, TMPDIR, the locale, the user, and what signs claude in and reaches it: API
   key, OAuth token, `CLAUDE_CONFIG_DIR`, Bedrock/Vertex, proxies, CA certificates; the calling session's `CLAUDECODE`,
   other `CLAUDE_CODE_*` settings, `ANTHROPIC_MODEL` and `MAX_THINKING_TOKENS` are dropped). No network: Bash runs only
-  in Claude Code's sandbox (`failIfUnavailable`) with no allowed hosts and no unsandboxed escape, and is allowed only
+  in Claude Code's sandbox (`failIfUnavailable`) with no allowed hosts and no unsandboxed escape, but with
+  `allowLocalBinding` (the session's own tests start the app on 127.0.0.1; the pilot's sessions without it could not
+  run them, `listen EPERM`), and is allowed only
   because it is sandboxed (where the sandbox cannot run, Bash would ask, and no one answers); WebFetch and WebSearch are
   absent and denied. A watcher starts the session in its own process group, keeps the raw log, and stops the whole group
   at the limits (25 minutes; 60 turns, which `--max-turns` also enforces) or when it is stopped itself; it settles on the
@@ -837,12 +839,12 @@ In the user's project, `.aidw/` keeps its current shape and gains `roles/<id>/` 
   nothing unless `AIDW_GRADE_SANDBOX=off` was set. For a Role with level 2 cases, `aidw roster` warns (never fails
   without `--strict`) when the file is missing, made on another model, older than the Role, a case folder or a fixture,
   from fewer than 3 runs, not passed, or graded with `none`. A malformed level 2 case is an error, as for level 1.
-- **Not yet proven by a real run** (the harness is tested with fakes only): that `--agent aidw:<role>` with `-p` runs
-  the Role's agent as the main session; that the sandbox keys (`sandbox.enabled`, `failIfUnavailable`,
-  `autoAllowBashIfSandboxed`, `allowUnsandboxedCommands: false`, no allowed domains) block the network as intended, that
-  the `Read(...)` deny rules also stop a sandboxed Bash `cat`, and that the sandbox lets Bash write nowhere but the
-  project (if it can write the run folder, the snapshot's digest still turns a changed snapshot into an ERROR); and that
-  `--setting-sources project` keeps the user's own `~/.claude/CLAUDE.md` out of the session.
+- **Proven by the backend pilot** (6 real sessions, 2026-11-26): `--agent aidw:<role>` with `-p` runs the Role's
+  agent as the main session; `--setting-sources project` keeps the user's own `~/.claude/CLAUDE.md` out of the
+  session; the sandbox is applied to Bash (it refused a local `listen` until `allowLocalBinding` was set).
+- **Not yet proven by a real run:** that the sandbox keys block outbound network as intended (no session tried it),
+  that the `Read(...)` deny rules also stop a sandboxed Bash `cat`, and that the sandbox lets Bash write nowhere but the
+  project (if it can write the run folder, the snapshot's digest still turns a changed snapshot into an ERROR).
 - **Residual risks.** Where no grading sandbox can be applied, the held-out tests and checks run code the session wrote
   with the user's own rights and network (such runs record `none` and are not written by default); there the graded code
   can also rewrite the run folder's files while it runs, though the grading reads its inputs from memory and fresh

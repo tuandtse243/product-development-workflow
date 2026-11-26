@@ -19087,7 +19087,8 @@ function sessionSettings(o) {
       failIfUnavailable: true,
       autoAllowBashIfSandboxed: true,
       allowUnsandboxedCommands: false,
-      network: { allowedDomains: [] }
+      // Tests start the app on 127.0.0.1 (the backend fixture's helpers do); without this, listen() is EPERM.
+      network: { allowedDomains: [], allowLocalBinding: true }
     }
   };
 }
