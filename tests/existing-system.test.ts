@@ -183,6 +183,19 @@ describe("aidw analyze: the Existing System Report of a brownfield Change", () =
     expect(warnings()).toContain("Size: small normally asks at most 3 question(s) in one group, answered by one Agent (3 in 2 group(s))");
   });
 
+  it("does not count an indented numbered sub-list as questions", () => {
+    const g = questionGroups("## Group 1: routes\n\n1. Which routes exist, in order:\n   1. under app/api/?\n   2. under app/admin/?\n2. Which tests cover them?\n");
+    expect(g[0]!.questions).toEqual(["Which routes exist, in order:", "Which tests cover them?"]);
+  });
+
+  it("tells a Size: small Change that is not a bugfix that it still writes 2 to 7 questions (Q3)", () => {
+    brownfield();
+    fullReport();
+    write(root, `${dir()}/analysis.md`, BROWNFIELD_ANALYSIS.replace("## Summary\n\n", "## Summary\n\nSize: small\n\n"));
+    write(root, `${dir()}/existing-system/questions.md`, "## Group 1: code\n\n1. How does a request reach the database?\n");
+    expect(errors()).toContain("1 question(s): a Size: small Change that is not a bugfix still writes 2 to 7 neutral questions about today's code (Q3)");
+  });
+
   it("reads groups and numbered questions, and ignores numbered lines in a code block", () => {
     const g = questionGroups(`${QUESTIONS}\n\`\`\`\n4. not a question\n\`\`\`\n`);
     expect(g.map((x) => [x.title, x.questions.length])).toEqual([
@@ -253,7 +266,10 @@ describe("the orchestrator's step 1b and the Research Role (OP1, OP2; the T6 rev
 
   it("skips greenfield and keeps a bugfix or small change to 3 questions and one Agent (M1, M2)", () => {
     expect(step).toMatch(/greenfield project skips/i);
-    expect(step).toMatch(/`bugfix`, or a change you expect to be `Size: small`, asks at most 3 questions in one group/);
+    expect(step).toContain("aidw stages --done assessment --change <id>");
+    expect(step).toMatch(/keeping the total within 7 \(3 for a bugfix or small change\)/);
+    expect(skill).toMatch(/skip item 6 of step 1b/);
+    expect(step).toMatch(/`bugfix`, or a change you\s+expect to be `Size: small`, asks at most 3 questions in one group/);
     expect(step).toMatch(/one Agent writes the report itself/);
   });
 

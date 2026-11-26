@@ -38,7 +38,7 @@ stages:
     writes: [intake]
 
   - id: assessment
-    title: Existing System Report (at most 3 neutral questions, one Research Agent) and the health baseline
+    title: Existing System Report (at most 3 neutral questions, one Research Agent)
     states: [intake]
     roles: [software-architect, research]
     reads: [intake, project-config]

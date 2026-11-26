@@ -29,7 +29,8 @@ export interface QuestionGroup {
   questions: string[];
 }
 
-const QUESTION = /^\s*\d+[.)]\s+(\S.*)$/;
+/** A question is a numbered line at column 0; an indented numbered line is a sub-list inside a question. */
+const QUESTION = /^\d+[.)]\s+(\S.*)$/;
 
 /**
  * The groups of a questions file: each `## ` heading opens a group, each numbered line (`1. ...`) is a question.
@@ -84,6 +85,8 @@ export function checkExistingSystem(analysis: string, o: ExistingSystemOpts, d: 
     if (count === 0) d.error(qShown, 'no questions: write each as a numbered line ("1. ...") under a "## " group heading');
     else if (o.bugfix && (count > QUESTIONS.smallMax || groups.length > 1)) {
       d.error(qShown, `a bugfix asks at most ${small} (${count} in ${groups.length} group(s))`);
+    } else if (!o.bugfix && o.small && count < QUESTIONS.min) {
+      d.error(qShown, `${count} question(s): a Size: small Change that is not a bugfix still writes ${QUESTIONS.min} to ${QUESTIONS.max} neutral questions about today's code (Q3)`);
     } else if (!o.bugfix && (count < QUESTIONS.min || count > QUESTIONS.max)) {
       d.error(qShown, `${count} question(s): write ${QUESTIONS.min} to ${QUESTIONS.max} neutral questions about today's code`);
     } else if (o.small && (count > QUESTIONS.smallMax || groups.length > 1)) {

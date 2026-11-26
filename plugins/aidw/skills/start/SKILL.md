@@ -106,7 +106,8 @@ already `awaiting_approval` or later, tell the user and stop: one change at a ti
 
 When `.aidw/project.yaml` says `kind: brownfield` (or the input type is `codebase`), understand the existing
 system before asking anything; the grilling then asks only what the code cannot answer. A greenfield project skips
-this step: there is no code to describe.
+this step: there is no code to describe. A greenfield `bugfix` still has the `assessment` stage in its Workflow:
+report it done with `aidw stages --done assessment --change <id>`.
 
 You do not describe the code yourself. You know the request, and a description written by someone who knows the
 change bends toward it (ADR-0016). Research Agents describe it from neutral questions, in the **Existing System
@@ -128,8 +129,9 @@ Report** (`.aidw/changes/<id>/existing-system.md`).
    - can be answered from the code alone.
 
    Then reread the request for coverage only: an area the change will touch that no question reaches gets one more
-   question, worded the same neutral way. Put questions that read the same code in one group; each group is one
-   Research Agent. A `bugfix`, or a change you expect to be `Size: small`, asks at most 3 questions in one group.
+   question, worded the same neutral way, keeping the total within 7 (3 for a bugfix or small change). Put
+   questions that read the same code in one group; each group is one Research Agent. A `bugfix`, or a change you
+   expect to be `Size: small`, asks at most 3 questions in one group.
 
    ```markdown
    # Existing system questions
@@ -449,7 +451,7 @@ planner writes a `type: fix` task whose regression test fails first on the curre
 `aidw:product-manager` or `aidw:software-architect`, and write no `requirements/` file, domain model, ADR or constitution change
 (a run that spawned the Product Manager produced a requirements document and an extra Agent for a one-line fix). Do steps 1b to
 2 and the health baseline yourself (step 1b with at most 3 questions in one group, so one Research Agent writes the
-report), then write the diagnosis into `analysis.md` in your one Write: the **root cause** (file and
+report; skip item 6 of step 1b), then write the diagnosis into `analysis.md` in your one Write: the **root cause** (file and
 line), the **scope** (what changes, what does not), the **Decisions to honor** (the exact response or behavior after the fix, what
 must stay as it is), and the regression test the fix needs. `## Before / After` is the bug as the user meets it and the
 behavior after the fix (3 to 6 lines each); `### Deferred to architecture` says "None". The sections for Domain, Stack,
