@@ -112,6 +112,7 @@ export const SKILLS_WITH_NOTES: ReadonlySet<string> = new Set([
   "astral/uv",
   "anthropic/frontend-design",
   "emil/animate",
+  "humanlayer/show-me",
 ]);
 
 export function selectSkills(t: Task, kind: BriefKind, opts: { retry?: boolean; reviewFix?: boolean } = {}): SkillPick[] {
