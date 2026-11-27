@@ -74,7 +74,9 @@ Research run when you decide the Change needs them.
    adapter: write `.aidw/requirements/<id>.md` with its template sections (Problem Statement, Solution, User
    Stories, Implementation Decisions, Testing Decisions, Out of Scope, Further Notes). Do not publish anywhere.
 4. **Before / After.** Fill `## Before / After` in `analysis.md`: `### Before` and `### After`, 3 to 6 `- ` lines
-   each, written as the user sees it (what they do, wait for, or cannot do), never as code. Before comes from the
+   each, written as the user sees it (what they do, wait for, or cannot do), never as code. The lines are in the
+   user's language, the `lang` of the gate page (Vietnamese for a Vietnamese user); keep the headings `## Before / After`,
+   `### Before` and `### After` exactly as they are, the CLI checks them. Before comes from the
    Existing System Report when the Change has one (`.aidw/changes/<id>/existing-system.md`: draw from it and name it);
    otherwise from today's workaround in the discovery record. Each After line answers a Before line or a job line.
    Leave `### Deferred to architecture` as "None" when discovery raised no technical question.

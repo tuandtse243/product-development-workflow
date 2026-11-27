@@ -1,4 +1,5 @@
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { gateLabels } from "./labels.js";
 import { join, relative, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
@@ -1456,19 +1457,20 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const p = project();
         const sub = need(rest[0], "render | answers | audit | triage");
         const lang = str(args.flags.lang);
-        const gateExtras = (id: string): PageSection[] => {
+        const gateExtras = (id: string, lg: string): PageSection[] => {
+          const L = gateLabels(lg);
           const c = loadChange(p, id);
           const all = readDecisions(c);
           const points = workflowOfChange(p, c, pluginRoot(env)).decisions.map((x) => {
             const r = all[x.id];
-            return r ? `**${x.id}**: ${[r.answer].flat().join(", ")} (${r.reason || "no reason recorded"})` : `**${x.id}**: open (${x.options.join(" | ")})`;
+            return r ? `**${x.id}**: ${[r.answer].flat().join(", ")} (${r.reason || L.noReason})` : `**${x.id}**: ${L.open} (${x.options.join(" | ")})`;
           });
           const tasks = parseTasks(readText(join(c.dir, "tasks.yaml")) ?? "").tasks;
           return [
-            ...(points.length ? [{ id: "decision-points", title: "Decision Points", body: "", points, html: "" }] : []),
+            ...(points.length ? [{ id: "decision-points", title: L.decisionPoints, body: "", points, html: "" }] : []),
             // T13: the plan as stages, with each task's patterns, Docs Briefs (linked) and checks for the user
-            ...(tasks.length ? [planGateSection(p, tasks, pagesDir(p), parallelConfig(p, c).max)] : []),
-            ...[grantsSection(p, c)].filter((x): x is PageSection => x !== null),
+            ...(tasks.length ? [planGateSection(p, tasks, pagesDir(p), parallelConfig(p, c).max, lg)] : []),
+            ...[grantsSection(p, c, lg)].filter((x): x is PageSection => x !== null),
           ];
         };
         const load = (name: string) => {
@@ -1477,16 +1479,16 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           if (source === null) throw new OpError(`no page data at ${rel(p, pageDataFile(p, name))}: write it first (aidw plugin-path library/decision-pages.md says how)`);
           const first = parsePage(name, source);
           const gateId = first.page.layout === "gate" && first.page.change ? resolveChangeId(p, first.page.change) : null;
-          const lead = (id: string): PageSection[] => {
+          const lead = (id: string, lg: string): PageSection[] => {
             const c = loadChange(p, id);
             // D1: the Before / After of analysis.md, unless the page writes its own.
-            const beforeAfter = first.page.sections.some((s) => s.id === "before-after") ? null : beforeAfterSection(readText(join(c.dir, "analysis.md")) ?? "");
-            return [beforeAfter, openFindingsSection(p, c, workflowOfChange(p, c, pluginRoot(env))), unansweredSection(c)].filter((x): x is PageSection => x !== null);
+            const beforeAfter = first.page.sections.some((s) => s.id === "before-after") ? null : beforeAfterSection(readText(join(c.dir, "analysis.md")) ?? "", lg);
+            return [beforeAfter, openFindingsSection(p, c, workflowOfChange(p, c, pluginRoot(env)), lg), unansweredSection(c, lg)].filter((x): x is PageSection => x !== null);
           };
           // Q4: the Program Design is approved at the gate, so the gate shows it, unless the page writes its own.
-          const programDesign = (id: string): PageSection[] =>
-            first.page.sections.some((s) => s.id === "program-design") ? [] : [programDesignSection(readText(join(loadChange(p, id).dir, PROGRAM_DESIGN_FILE)), id)].filter((x): x is PageSection => x !== null);
-          const r = gateId ? parsePage(name, source, [...programDesign(gateId), ...gateExtras(gateId)], lead(gateId)) : first;
+          const programDesign = (id: string, lg: string): PageSection[] =>
+            first.page.sections.some((s) => s.id === "program-design") ? [] : [programDesignSection(readText(join(loadChange(p, id).dir, PROGRAM_DESIGN_FILE)), id, lg)].filter((x): x is PageSection => x !== null);
+          const r = gateId ? parsePage(name, source, [...programDesign(gateId, first.page.lang), ...gateExtras(gateId, first.page.lang)], lead(gateId, first.page.lang)) : first;
           if (r.problems.length) throw new OpError(`the data of page "${name}" (${rel(p, pageDataFile(p, name))}) has ${r.problems.length} problem(s):\n${r.problems.map((x) => `  - ${x}`).join("\n")}\nFix the file and render again.`);
           return r.page;
         };

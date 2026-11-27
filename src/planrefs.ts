@@ -12,6 +12,7 @@
  * `docs:` names (OP3). The gate's plan section lists all three; `aidw deliver` warns about a package the Change added to
  * a manifest that no Docs Brief covers.
  */
+import { gateLabels } from "./labels.js";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { builtinModules } from "node:module";
 import { join, relative, sep } from "node:path";
@@ -529,7 +530,8 @@ const escHtml = (s: string): string => s.replace(/&/g, "&amp;").replace(/</g, "&
  * The gate's plan section (layout plan): the shape as figures, one step per task in the stage it runs in, with its
  * patterns, Docs Briefs and checks for the user; the Docs Briefs as links. `pagesDir` is where the page is written.
  */
-export function planGateSection(p: Paths, tasks: Task[], pagesDir: string, parallelMax = 1): PageSection {
+export function planGateSection(p: Paths, tasks: Task[], pagesDir: string, parallelMax = 1, lang?: string): PageSection {
+  const L = gateLabels(lang);
   const shape = planShape(tasks);
   const byId = new Map(tasks.map((t) => [t.id, t]));
   const briefs: { entry: string; check: DocsBriefCheck }[] = [];
@@ -541,29 +543,29 @@ export function planGateSection(p: Paths, tasks: Task[], pagesDir: string, paral
       if (!t) continue;
       const lines: string[] = [];
       const pats = taskPatterns(t);
-      if (pats.length) lines.push(`Patterns: ${pats.map((x) => `\`${x.path}\`${x.why ? ` (${x.why})` : ""}`).join("; ")}`);
+      if (pats.length) lines.push(`${L.patterns}: ${pats.map((x) => `\`${x.path}\`${x.why ? ` (${x.why})` : ""}`).join("; ")}`);
       const docs = taskDocs(t).map((x) => ({ entry: x.entry, check: checkDocsBrief(p.aidw, x.ref) }));
       briefs.push(...docs.filter((x) => !briefs.some((b) => b.check.rel === x.check.rel)));
-      if (docs.length) lines.push(`Docs: ${docs.map((x) => `\`${x.entry}\` (${x.check.status})`).join("; ")}`);
+      if (docs.length) lines.push(`${L.docs}: ${docs.map((x) => `\`${x.entry}\` (${x.check.status})`).join("; ")}`);
       const checks = taskManual(t);
       manual.push(...checks.map((c) => `**${id}**: ${c}`));
-      if (checks.length) lines.push(`For you to check: ${checks.join("; ")}`);
+      if (checks.length) lines.push(`${L.forYouToCheck}: ${checks.join("; ")}`);
       const tags = [String(t.role ?? ""), ...(t.risk === "high" ? ["risk: high"] : [])].filter(Boolean);
-      steps.push({ title: `${id} ${String(t.title ?? "")}`.trim(), when: `stage ${i + 1}`, at: "", detail: lines.join("\n"), tags, hot: false, views: [] });
+      steps.push({ title: `${id} ${String(t.title ?? "")}`.trim(), when: `${L.stage} ${i + 1}`, at: "", detail: lines.join("\n"), tags, hot: false, views: [] });
     }
   });
-  const figures: Record<string, string> = { Tasks: String(shape.tasks), Stages: String(shape.levels.length), "Widest stage": String(shape.width) };
-  if (manual.length) figures["Checks for you"] = String(manual.length);
+  const figures: Record<string, string> = { [L.tasks]: String(shape.tasks), [L.stages]: String(shape.levels.length), [L.widestStage]: String(shape.width) };
+  if (manual.length) figures[L.checksForYou] = String(manual.length);
   const html = briefs.length
-    ? `<p><b>Docs Briefs</b> (what the official documentation says, written by Research)</p><ul>${briefs
+    ? `<p><b>${L.docsBriefs}</b> (${L.docsBriefsNote})</p><ul>${briefs
         .map((b) => `<li><a href="${escHtml(relative(pagesDir, b.check.path).split(sep).join("/"))}">${escHtml(b.entry)}</a> <code>${escHtml(b.check.rel)}</code> ${escHtml(b.check.status)}</li>`)
         .join("")}</ul>`
     : "";
   return {
     id: "plan",
-    title: "Plan",
+    title: L.plan,
     body: planSummary(tasks),
-    points: [...planInfo(tasks, parallelMax), ...(manual.length ? ["The build does not stop for these; delivery lists them under \"Checks for you\":", ...manual] : [])],
+    points: [...planInfo(tasks, parallelMax), ...(manual.length ? [L.planChecksNote, ...manual] : [])],
     html,
     layout: "plan",
     figures,
