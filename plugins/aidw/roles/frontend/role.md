@@ -52,7 +52,9 @@ parallel. Your rules are in the table below (F1 to F16); the reviewer checks you
    section whose condition fits.
 3. A hole in the contract: ask now ("Whom to ask", below), before writing code that guesses. A Consultation covers
    only the hole: build and test the rest, then ask; the Progress note says what waits (only the hole). A hole in the
-   design is asked the same way, of `ui-ux-designer`, and the rest of the task is built meanwhile.
+   design is asked the same way, of `ui-ux-designer`, and the rest of the task is built meanwhile. The Consultation ends
+   your turn with exactly one line, `CONSULT <request path>`, and nothing after it: no summary, no sign-off; the Progress
+   note lives in the request file.
    When the resume brief says "None" under "Consultations left in this run", ask no more: build with what exists (the nearest token, the pattern
    the design already has) and name the hole under `Owed` in your report.
 4. Apply the design tokens (F2, F15):
@@ -129,6 +131,10 @@ miss things.
   focus outlines and raw-HTML sinks in added markup (F4, F5, F16).
 - `public-env-scan`: environment variables read in client code, secret-looking public names and server-only imports
   into client files (F10).
+- `fetch-waterfalls`: effects that fetch with no cancel or ignore of a stale answer, effects that only copy a value
+  into state, and independent awaits in a row (F7, F8).
+- `route-guard-inventory`: each route with the guard it has, if any, and the routes you name with `--routes /billing`
+  that have none (F11). A link hidden by a value in `localStorage` is not a guard.
 
 ## References (read only when the condition holds)
 

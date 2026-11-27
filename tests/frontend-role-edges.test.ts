@@ -608,14 +608,12 @@ describe("frontend docs and the research report agree", () => {
     for (const m of [...body.matchAll(/aidw plugin-path ([\w./-]+)/g)].filter((x) => !x[1]!.startsWith("roles/frontend/scripts"))) expect(existsSync(join(plugin, m[1]!)), m[1]).toBe(true);
   });
 
-  it("the three first scripts role.md lists are the ones section 5 of the report names", () => {
+  it("the five scripts role.md lists are the ones section 5 of the report names", () => {
     const section = /^## 5\.[\s\S]*?(?=^## 6\.)/m.exec(report)?.[0] ?? "";
     expect(section.length).toBeGreaterThan(100);
     const listed = [...body.matchAll(/^- `([a-z0-9-]+)`: /gm)].map((m) => m[1]!).filter((n) => ["token-literals", "a11y-names", "public-env-scan", "fetch-waterfalls", "route-guard-inventory"].includes(n));
     for (const n of listed) expect(section, n).toContain(n);
-    expect(listed.sort()).toEqual(["a11y-names", "public-env-scan", "token-literals"]);
-    // the two scripts held back are not listed as available
-    expect(body).not.toMatch(/^- `(fetch-waterfalls|route-guard-inventory)`/m);
+    expect(listed.sort()).toEqual(["a11y-names", "fetch-waterfalls", "public-env-scan", "route-guard-inventory", "token-literals"]);
   });
 
   it("every rule that names a script names one from the report's section 5", () => {

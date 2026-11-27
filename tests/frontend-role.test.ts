@@ -9,7 +9,7 @@ import { generateAgents, loadRole, loadRuleTable, parseRulesTable, RULE_CHECKERS
 const plugin = join(__dirname, "..", "plugins", "aidw");
 const rulesFile = join(plugin, "roles", "frontend", "rules.md");
 const skillsDir = join(plugin, "roles", "frontend", "skills");
-const SCRIPTS = ["token-literals", "a11y-names", "public-env-scan"];
+const SCRIPTS = ["token-literals", "a11y-names", "public-env-scan", "fetch-waterfalls", "route-guard-inventory"];
 const AUTHORED = ["screen-states", "accessible-interactions", "testing-through-the-user", "client-data-and-state", "forms-from-the-contract"];
 const LIBRARY = ["library/react-rules"];
 const REFERENCES = ["library/vendor/vercel/command.md", "library/vendor/impeccable/harden.md", "library/vendor/impeccable/clarify.md"];
@@ -31,7 +31,7 @@ describe("frontend rules.md (T20)", () => {
     }
   });
 
-  it("a rule names a measuring script exactly when a script checks it, and only the scripts that ship first", () => {
+  it("a rule names a measuring script exactly when a script checks it, and only the scripts the Role ships", () => {
     for (const r of rules) {
       const named = [...r.rule.matchAll(/`([a-z0-9]+(?:-[a-z]+)+)`/g)].map((m) => m[1]!).filter((n) => !/^(api|ui|software|aria|color|v)-/.test(n)); // Roles, attributes, CSS and template syntax are not scripts
       for (const n of named) expect(SCRIPTS, `${r.id} names ${n}`).toContain(n);
