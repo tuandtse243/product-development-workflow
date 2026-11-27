@@ -166,7 +166,8 @@ generated agent files are up to date.
   Pass/fail checks stay in the CLI. The helpers the scripts share (`_common.mjs`: the tree walk, the lines a diff
   adds, comment masking, the CLI frame) live in `library/scripts/`, one copy for every Role: a script imports
   `../../../library/scripts/_common.mjs`, which resolves inside the plugin it runs from. A file starting with `_` is
-  a helper, not a tool. The tests live under `tests/` (fixture trees in temp dirs, the script run with `node <path>`). The backend Role has five:
+  a helper, not a tool. The tests live under `tests/` (fixture trees in temp dirs, the script run with
+  `node <path>`). The backend Role has five:
   `route-inventory` (routes, the tests that call each, the B2 access cases those tests assert), `env-names` (names
   read against `.env.example`, never a value), `error-shape-probe` (error bodies against the declared error shape,
   statically and on responses the tests captured), `query-count` (statements for 1 row and N rows; also a module a
