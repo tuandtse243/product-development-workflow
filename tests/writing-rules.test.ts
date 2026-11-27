@@ -124,11 +124,11 @@ describe("backlog skill rules (B7, B8)", () => {
     const step1 = skill.split("## 1. Intake")[1]?.split("## 1b.")[0] ?? "";
     expect(step1).toMatch(/Test browser preflight/);
     expect(step1).toContain("aidw browser start");
-    expect(step1).toMatch(/Change has UI/);
+    expect(step1).toMatch(/likely has UI/);
     const step8 = skill.split("## 8. Test plan")[1]?.split("## 9.")[0] ?? "";
     expect(step8).toContain("aidw browser status");
-    expect(step8).toMatch(/never ask/);
-    expect(step8).toMatch(/aidw run` starts the browser itself/);
+    expect(step8).toMatch(/Do not ask a second time/);
+    expect(step8).toMatch(/aidw run` \(the runner path\) starts\s+the browser itself/);
     expect(step8).not.toMatch(/ask the user to run `aidw browser start`/);
   });
 });

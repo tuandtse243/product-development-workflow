@@ -109,9 +109,9 @@ already `awaiting_approval` or later, tell the user and stop: one change at a ti
 3. `aidw transition <id> intake`
 4. Fill `.aidw/changes/<id>/intake.md`: paste the original request **verbatim** (or its path), record the
    client's explicit constraints, including any stack the client requires.
-5. **Test browser preflight.** Ask about the test browser here, once, never in the middle of a stage. Only when the
-   Change has UI and the project has an e2e layer (or will get one). Run `aidw browser start`. If the sandbox blocks
-   it, ask the user once to run `aidw browser start` in their own terminal. Step 8 only checks `aidw browser status`.
+5. **Test browser preflight.** When the request likely has UI, ask one question here, once: run the test browser as
+   Chrome over CDP (the default) or as a launched browser? Then run `aidw browser start`. If the sandbox blocks it,
+   ask the user once to run `aidw browser start` in their own terminal. Step 8 only checks `aidw browser status`.
 
 ## 1b. Assessment and the Existing System Report (brownfield only)
 
@@ -274,7 +274,7 @@ the user, in the system design round.
 
 **Reuse path.** When the project already has `.aidw/design/tokens.yaml` from an earlier Change and this Change adds
 no new kind of screen, there is no Decision Page. Record `aidw decide design-needed reuse-existing --reason "<why>"`
-and confirm it with one line in the chat. Otherwise the Decision Page below stays as it is.
+and confirm it with one line in the chat, as a yes or no question (see the Ground rules). Otherwise the Decision Page below stays as it is.
 
 Detect design assets: Figma links, screenshots, an existing design system, brand guides. Then choose the
 mode with the user, as a question on a Decision Page (`design`) whose options are the modes that fit this change, with a `view` (a `tree` of what each mode puts under `.aidw/design/`). Read `$(aidw plugin-path roles/ui-ux-designer/references/design-tokens.md)` for how each mode produces tokens.
@@ -430,10 +430,13 @@ user can check:
 - **E2E browser.** Claude Code's sandbox usually blocks launching Chromium, so the default is **Chrome over
   CDP**: Playwright connects to a Chrome that runs outside the sandbox (setup and fixture in the quality-layers
   profile, "E2E browser over CDP"). The question was asked at intake (step 1, "Test browser preflight"). Here, only
-  check `aidw browser status`; never ask the user in the middle of this stage. `aidw run` starts the browser itself
-  when it is not running. Write the CDP setup into the e2e layer and a Decision to honor (`E2E connects to Chrome
-  over CDP at E2E_CDP_URL, which aidw sets from aidw browser start; no default port`). Use a launched browser
-  instead only if the user prefers it and a real launch works in this session.
+  check `aidw browser status`. A `chrome cdp` FAIL from `aidw doctor` is retried with `aidw browser start`; if the
+  user declined at intake, record it as a note under the Summary's risks. Do not ask a second time. The one
+  exception: UI showed up later and the preflight was skipped; ask then, once. `aidw run` (the runner path) starts
+  the browser itself when it is not running, and stops with needs_user if the launch fails. A build in this session
+  (3 or fewer tasks, step 10) does not: ask the user to run `! aidw browser start`. Write the CDP setup into the e2e
+  layer and a Decision to honor (`E2E connects to Chrome over CDP at E2E_CDP_URL, which aidw sets from aidw browser
+  start; no default port`). Use the launched browser instead if the user chose it at intake.
 - **Parallel.** `parallel: { max: 3 }` in quality.yaml is the default (1 turns waves off). A wave task runs in
   `.aidw/run/worktrees/<change>/<task>`, inside the project, so dependencies resolve from the main checkout's
   `node_modules`. If the stack needs its own install per worktree, add an offline install as `parallel.setup`
