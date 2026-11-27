@@ -213,7 +213,11 @@ export function runLoop(p: Paths, id: string, opts: RunnerOptions = {}): RunnerR
   let last = fingerprint(p, id);
   // the machine check runs once at the start (and again before every deploy session)
   let checked = false;
+  let costUsd = 0;
+  let costSessions = 0;
+  let turns = 0;
   const result = (outcome: RunnerOutcome, state: string, message: string): RunnerResult => {
+    if (runs > 0) record(`total: ${runs} session${runs === 1 ? "" : "s"}${costSessions ? `, ${money(costUsd)}${costSessions < runs ? ` (${costSessions} of ${runs} reported)` : ""}, ${turns} turns` : ", cost not reported"}`);
     if (env.AIDW_RUN_DETACHED === "1") rmSync(pidFile(p), { force: true });
     record(`stop: ${outcome}: ${message}`);
     try {
@@ -271,7 +275,10 @@ export function runLoop(p: Paths, id: string, opts: RunnerOptions = {}): RunnerR
     if (runs >= maxRuns) return result("max_runs", state, `${runs} sessions ran; raise --max-runs to continue`);
 
     const prompt = state === "delivered" && (!pr || ready) ? `/aidw:deliver ${id}` : `/aidw:resume ${id}`;
-    const args = ["-p", prompt, "--permission-mode", mode, ...(opts.keepMcp ? [] : ["--strict-mcp-config"]), ...(opts.extraArgs ?? [])];
+    const extra = opts.extraArgs ?? [];
+    // json output carries the final message with the session's cost and turns; a caller's own --output-format wins
+    const format = extra.some((x) => x === "--output-format" || x.startsWith("--output-format=")) ? [] : ["--output-format", "json"];
+    const args = ["-p", prompt, "--permission-mode", mode, ...format, ...(opts.keepMcp ? [] : ["--strict-mcp-config"]), ...extra];
     record(`session ${runs + 1}: ${claude} ${args.map((a) => (/\s/.test(a) ? JSON.stringify(a) : a)).join(" ")}`);
     const r = spawnSync(claude, args, {
       cwd: p.project,
@@ -281,10 +288,17 @@ export function runLoop(p: Paths, id: string, opts: RunnerOptions = {}): RunnerR
       maxBuffer: 64 * 1024 * 1024,
     });
     runs++;
-    const output = `${r.stdout ?? ""}\n${r.stderr ?? ""}`.trim();
-    // the user's own settings warnings repeat in every session and bury the answer
-    const tail = output.split("\n").filter((l) => !NOISE.test(l)).slice(-8).join("\n");
-    record(`session ${runs} ended: exit ${r.status ?? r.error?.message ?? "?"}${tail ? `\n${tail.replace(/^/gm, "  | ")}` : ""}`);
+    const parsed = parseSessionJson(r.stdout ?? "");
+    const output = parsed ? `${parsed.text}\n${r.stderr ?? ""}`.trim() : `${r.stdout ?? ""}\n${r.stderr ?? ""}`.trim();
+    if (parsed?.cost != null) {
+      costUsd += parsed.cost;
+      costSessions++;
+    }
+    turns += parsed?.turns ?? 0;
+    // the user's own settings warnings repeat in every session and bury the answer; the final message is kept whole
+    const tail = output.split("\n").filter((l) => !NOISE.test(l)).join("\n").trim();
+    const figures = [parsed?.cost != null ? money(parsed.cost) : "", parsed?.turns != null ? `${parsed.turns} turns` : ""].filter(Boolean).join(", ");
+    record(`session ${runs} ended: exit ${r.status ?? r.error?.message ?? "?"}${figures ? `, ${figures}` : ""}${tail ? `\n${tail.replace(/^/gm, "  | ")}` : ""}`);
     if (r.error && (r.error as NodeJS.ErrnoException).code === "ENOENT") {
       return result("claude_failed", state, `cannot run "${claude}": install Claude Code or pass --claude <path>`);
     }
@@ -311,6 +325,23 @@ export function runLoop(p: Paths, id: string, opts: RunnerOptions = {}): RunnerR
       backoff = 0;
     }
     last = fp;
+  }
+}
+
+const money = (usd: number): string => `$${usd.toFixed(4)}`;
+
+/** `claude -p --output-format json`: the final message, the cost and the turns; null when the output is not that JSON. */
+export function parseSessionJson(stdout: string): { text: string; cost: number | null; turns: number | null } | null {
+  try {
+    const j = JSON.parse(stdout.trim()) as { result?: unknown; total_cost_usd?: unknown; num_turns?: unknown };
+    if (!j || typeof j !== "object" || Array.isArray(j) || (j.result === undefined && j.total_cost_usd === undefined)) return null;
+    return {
+      text: typeof j.result === "string" ? j.result : "",
+      cost: typeof j.total_cost_usd === "number" ? j.total_cost_usd : null,
+      turns: typeof j.num_turns === "number" ? j.num_turns : null,
+    };
+  } catch {
+    return null;
   }
 }
 
