@@ -1,12 +1,25 @@
 {
   "format": 2,
   "role": "technical-planner",
-  "date": "2026-11-26T17:46:25.727Z",
+  "date": "2026-11-27T10:01:57.496Z",
   "model": null,
   "tier": "deep",
   "runs": 3,
-  "digest": "sha256:405650c7fe1f336da434cb7fdfa2b7b6137b89b7fa14a099cb041556cd341568",
+  "digest": "sha256:939004f5d1c5fa090385f4f770af7edeebf8da66742036c85745fe89589999fd",
   "cases": [
+    {
+      "name": "accepts-a-warning-with-its-reason",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": [],
+      "digest": "sha256:0d8c2616ebaf6a4d36f20852453c8f032da99c819042862feb00c9dfa2c71eaa",
+      "date": "2026-11-27T10:01:57.496Z",
+      "model": null
+    },
     {
       "name": "cut-from-the-program-design",
       "pass": true,
@@ -17,7 +30,7 @@
       },
       "failed": [],
       "digest": "sha256:89a500e40702b60247bacd07d60359de753906ce09a80432edcd490e924443ff",
-      "date": "2026-11-26T17:46:25.727Z",
+      "date": "2026-11-27T10:01:57.496Z",
       "model": null
     },
     {
@@ -30,7 +43,7 @@
       },
       "failed": [],
       "digest": "sha256:90db8ddacb9042fc7f944ce5207166e5be2e8dd54999ef769235c5e7d6af6c89",
-      "date": "2026-11-26T17:46:25.727Z",
+      "date": "2026-11-27T10:01:57.496Z",
       "model": null
     },
     {
@@ -43,7 +56,7 @@
       },
       "failed": [],
       "digest": "sha256:e334550c9ae7269ee41266a884cd7f580759f0a72d9e1b59d51dfc72e24bc94a",
-      "date": "2026-11-26T17:46:25.727Z",
+      "date": "2026-11-27T10:01:57.496Z",
       "model": null
     }
   ]
