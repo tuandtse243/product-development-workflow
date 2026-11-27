@@ -118,7 +118,7 @@ export const SKILLS_WITH_NOTES: ReadonlySet<string> = new Set([
 
 /**
  * `designTokens`: the approved design has tokens (`.aidw/design/tokens.yaml` parses and is not empty). A frontend task
- * then applies a design and does not make one, so `anthropic/frontend-design` (a design lead's "take aesthetic risk")
+ * then applies a design and does not make one (so does a fullstack task, which follows the frontend rules), so `anthropic/frontend-design` (a design lead's "take aesthetic risk")
  * is left out for it.
  */
 export function selectSkills(t: Task, kind: BriefKind, opts: { retry?: boolean; reviewFix?: boolean; designTokens?: boolean } = {}): SkillPick[] {
@@ -147,7 +147,7 @@ export function selectSkills(t: Task, kind: BriefKind, opts: { retry?: boolean; 
   const api = role !== "frontend" && (touches.some((g) => API_TOUCH.test(g)) || role === "backend");
   const data = touches.some((g) => (role === "frontend" ? CLIENT_DATA_TOUCH : DATA_TOUCH).test(g)) || role === "database";
   if (ui) add("frontend-ui-engineering", "touches UI files");
-  if (ui && !(role === "frontend" && opts.designTokens)) add("anthropic/frontend-design", "touches UI files: an interface with a point of view (a frontend task with approved design tokens follows them instead, so it does not load this)");
+  if (ui && !((role === "frontend" || role === "fullstack") && opts.designTokens)) add("anthropic/frontend-design", "touches UI files: an interface with a point of view (a frontend task with approved design tokens follows them instead, so it does not load this)");
   if (ui && MOTION_HINT.test([t.title ?? "", ...list(t.scenarios)].join(" ").replace(/[/_.-]/g, " "))) add("emil/animate", "the task is about motion");
   if (api) add("api-and-interface-design", "touches API or server code");
   if (api) add("aidw/api-design-rules", "touches API or server code: the concrete rules (errors, lists, repeated writes)");

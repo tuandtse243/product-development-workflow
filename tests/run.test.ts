@@ -439,11 +439,27 @@ describe("skill selection by Role", () => {
     expect(withTokens("frontend", false)).toContain("anthropic/frontend-design");
     expect(withTokens("frontend", true)).not.toContain("anthropic/frontend-design");
     expect(withTokens("frontend", true)).toContain("addy/frontend-ui-engineering");
-    expect(withTokens("fullstack", true)).toContain("anthropic/frontend-design"); // only the frontend Role is changed
+    // fullstack follows the frontend rules: the same split
+    expect(withTokens("fullstack", false)).toContain("anthropic/frontend-design");
+    expect(withTokens("fullstack", true)).not.toContain("anthropic/frontend-design");
+    expect(withTokens("fullstack", true)).toContain("addy/frontend-ui-engineering");
   });
 
   it("a frontend task's brief leaves anthropic/frontend-design out when tokens.yaml is approved, and keeps it without", () => {
     const tasks = RUN_TASKS().replace(/role: fullstack-engineer/g, "role: frontend").replace('"app/api/bookings/**", ', "");
+    const ids = (root: string) => {
+      cli(root, "task", "start", "T01");
+      return cli(root, "brief", "T01", "--json").json().skills.map((s: { id: string }) => s.id) as string[];
+    };
+    const withTokens = executingProject({ tasks });
+    expect(ids(withTokens)).not.toContain("anthropic/frontend-design");
+    const without = executingProject({ tasks });
+    rmSync(join(without, ".aidw/design/tokens.yaml"));
+    expect(ids(without)).toContain("anthropic/frontend-design");
+  });
+
+  it("a fullstack task's brief leaves anthropic/frontend-design out with approved tokens, and keeps it without", () => {
+    const tasks = RUN_TASKS().replace(/role: fullstack-engineer/g, "role: fullstack");
     const ids = (root: string) => {
       cli(root, "task", "start", "T01");
       return cli(root, "brief", "T01", "--json").json().skills.map((s: { id: string }) => s.id) as string[];
