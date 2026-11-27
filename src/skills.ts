@@ -30,6 +30,8 @@ export function skillPath(vendorDir: string, id: string): string {
 const UI_TOUCH = /(^|\/)(components?|pages|views|layouts?|styles?|ui|public)(\/|$)|\.(tsx|jsx|vue|svelte|css|scss|html)\b|(^|\/)(src\/)?app\/(?!api\/)/;
 const API_TOUCH = /(^|\/)(api|server|routes?|actions?|trpc|graphql|controllers?|services?|handlers?|middleware)(\/|\.|$)/;
 const DATA_TOUCH = /(^|\/)(supabase|migrations?|prisma|drizzle|db|database|schema)(\/|\.|$)/;
+// A client's `schema.ts` is a form schema (zod, yup), not the data layer: for the frontend Role `schema` alone is no signal.
+const CLIENT_DATA_TOUCH = /(^|\/)(supabase|migrations?|prisma|drizzle|db|database)(\/|\.|$)/;
 const SECURITY_HINT = /\b(auth|login|logout|sign-?in|sign-?up|session|password|permissions?|roles?|rls|policy|policies|payments?|stripe|checkout|billing|webhooks?|middleware|admin|tokens?|secrets?)\b/i;
 const BROWSER_VERIFY = /\b(playwright|cypress|e2e)\b/i;
 const DOCKERFILE_TOUCH = /(^|\/)(Dockerfile[\w.-]*|\.dockerignore|docker)(\/|$|\*)/i;
@@ -114,7 +116,12 @@ export const SKILLS_WITH_NOTES: ReadonlySet<string> = new Set([
   "emil/animate",
 ]);
 
-export function selectSkills(t: Task, kind: BriefKind, opts: { retry?: boolean; reviewFix?: boolean } = {}): SkillPick[] {
+/**
+ * `designTokens`: the approved design has tokens (`.aidw/design/tokens.yaml` parses and is not empty). A frontend task
+ * then applies a design and does not make one (so does a fullstack task, which follows the frontend rules), so `anthropic/frontend-design` (a design lead's "take aesthetic risk")
+ * is left out for it.
+ */
+export function selectSkills(t: Task, kind: BriefKind, opts: { retry?: boolean; reviewFix?: boolean; designTokens?: boolean } = {}): SkillPick[] {
   const picks: SkillPick[] = [];
   const add = (name: string, reason: string) => {
     const id = name.includes("/") ? name : ADDY(name);
@@ -136,14 +143,15 @@ export function selectSkills(t: Task, kind: BriefKind, opts: { retry?: boolean; 
   add("obra/verification-before-completion", "core: run the proof before you say it works");
 
   const ui = touchesUi(t) || role === "frontend";
-  const api = touches.some((g) => API_TOUCH.test(g)) || role === "backend";
-  const data = touches.some((g) => DATA_TOUCH.test(g)) || role === "database";
+  // A frontend task calls an API, it never designs one: `actions.ts` or `src/api/client.ts` in its Touches is a client.
+  const api = role !== "frontend" && (touches.some((g) => API_TOUCH.test(g)) || role === "backend");
+  const data = touches.some((g) => (role === "frontend" ? CLIENT_DATA_TOUCH : DATA_TOUCH).test(g)) || role === "database";
   if (ui) add("frontend-ui-engineering", "touches UI files");
-  if (ui) add("anthropic/frontend-design", "touches UI files: an interface with a point of view, inside the approved design tokens");
+  if (ui && !((!role || role === "frontend" || role === "fullstack") && opts.designTokens)) add("anthropic/frontend-design", "touches UI files: an interface with a point of view (a frontend or fullstack task with approved design tokens follows them instead, so it does not load this)");
   if (ui && MOTION_HINT.test([t.title ?? "", ...list(t.scenarios)].join(" ").replace(/[/_.-]/g, " "))) add("emil/animate", "the task is about motion");
   if (api) add("api-and-interface-design", "touches API or server code");
   if (api) add("aidw/api-design-rules", "touches API or server code: the concrete rules (errors, lists, repeated writes)");
-  else if (data) add("api-and-interface-design", "touches the data layer (schema is an interface)");
+  else if (data && role !== "frontend") add("api-and-interface-design", "touches the data layer (schema is an interface)");
   // No signal, no skill: a slice touching only plain logic gets the core pair, nothing "just in case".
   if (isSecuritySensitive(t)) add("security-and-hardening", "security-sensitive task (risk or auth/payment/permissions)");
   if (list(t.verify).some((v) => BROWSER_VERIFY.test(v))) add("browser-testing-with-devtools", "verify runs browser/E2E tests");

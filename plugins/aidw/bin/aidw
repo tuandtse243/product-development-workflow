@@ -10629,10 +10629,10 @@ function selectSkills(t, kind, opts = {}) {
   add("test-driven-development", "core: tests per scenario before code");
   add("obra/verification-before-completion", "core: run the proof before you say it works");
   const ui = touchesUi(t) || role === "frontend";
-  const api = touches.some((g) => API_TOUCH.test(g)) || role === "backend";
+  const api = role !== "frontend" && (touches.some((g) => API_TOUCH.test(g)) || role === "backend");
   const data = touches.some((g) => DATA_TOUCH.test(g)) || role === "database";
   if (ui) add("frontend-ui-engineering", "touches UI files");
-  if (ui) add("anthropic/frontend-design", "touches UI files: an interface with a point of view, inside the approved design tokens");
+  if (ui && !(role === "frontend" && opts.designTokens)) add("anthropic/frontend-design", "touches UI files: an interface with a point of view, inside the approved design tokens");
   if (ui && MOTION_HINT.test([t.title ?? "", ...list2(t.scenarios)].join(" ").replace(/[/_.-]/g, " "))) add("emil/animate", "the task is about motion");
   if (api) add("api-and-interface-design", "touches API or server code");
   if (api) add("aidw/api-design-rules", "touches API or server code: the concrete rules (errors, lists, repeated writes)");
@@ -15556,6 +15556,10 @@ function uiScenarioAdvice(p, id, tasks, d, tf) {
 var import_node_fs34 = require("node:fs");
 var import_node_path39 = require("node:path");
 var import_yaml18 = __toESM(require_dist(), 1);
+function requiresOf(v) {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return {};
+  return Object.fromEntries(Object.entries(v).filter((e) => typeof e[1] === "string"));
+}
 function frameworkPacks(root) {
   const dir = (0, import_node_path39.join)(root, "stacks");
   if (!(0, import_node_fs34.existsSync)(dir)) return [];
@@ -15572,14 +15576,15 @@ function frameworkPacks(root) {
     const h = head;
     const strs = (v) => Array.isArray(v) ? v.map(String) : [];
     if (typeof h?.framework === "string" && Array.isArray(h.roles)) {
-      out.push({ id: name.slice(0, -3), framework: h.framework, roles: h.roles.map(String), file: (0, import_node_path39.join)(dir, name), skills: strs(h.skills), reviewSkills: strs(h.review_skills), detectedAs: typeof h.detected_as === "string" ? h.detected_as : "framework" });
+      out.push({ id: name.slice(0, -3), framework: h.framework, roles: h.roles.map(String), file: (0, import_node_path39.join)(dir, name), skills: strs(h.skills), reviewSkills: strs(h.review_skills), detectedAs: typeof h.detected_as === "string" ? h.detected_as : "framework", requires: requiresOf(h.requires) });
     }
   }
   return out;
 }
 function packsOf(root, stack) {
   const all2 = frameworkPacks(root);
-  const hit = (p) => (stack[p.detectedAs] ?? "").toLowerCase().startsWith(p.framework.toLowerCase());
+  const starts = (key, name) => (stack[key] ?? "").toLowerCase().startsWith(name.toLowerCase());
+  const hit = (p) => starts(p.detectedAs, p.framework) && Object.entries(p.requires).every(([k, n]) => starts(k, n));
   const frameworks = all2.filter((p) => p.detectedAs === "framework" && hit(p));
   return frameworks.length ? frameworks : all2.filter((p) => p.detectedAs !== "framework" && hit(p));
 }
@@ -17289,7 +17294,9 @@ function buildBrief(p, id, taskId, kind, vendorDir) {
   const ruleFiles = [builder, ...loadRole(pluginHome, builder)?.follows_rules ?? []].map((r) => ({ role: r, file: (0, import_node_path42.join)(pluginHome, "roles", r, "rules.md") })).filter((x) => (0, import_node_fs37.existsSync)(x.file)).map((x) => ({ ...x, table: loadRuleTable(pluginHome, x.role) }));
   const exampleId = ruleFiles.find((x) => x.table?.length)?.table?.[0]?.id;
   const followed = ruleFiles.filter((x) => x.role !== builder);
-  const picked = selectSkills(t, kind, { retry, reviewFix: kind === "implement" && !!fixReview });
+  const tokenInfo = buildsScreens(t) || t.role === "frontend" ? loadTokens(p) : null;
+  const approvedTokens = tokenInfo && tokenInfo.diags.errors.length === 0 ? tokenInfo.tokens : [];
+  const picked = selectSkills(t, kind, { retry, reviewFix: kind === "implement" && !!fixReview, designTokens: approvedTokens.length > 0 });
   const skills = [...picked, ...fromPacks.filter((s) => !picked.some((x) => x.id === s.id))].map((s) => ({ ...s, path: skillPath(vendorDir, s.id) }));
   const reqs = requirementsAfterChange(p, id);
   const scenarioIds = list7(t.scenarios);
@@ -17334,8 +17341,7 @@ ${req.raw.trim()}` : `<!-- ${r}: not found in specs after this change -->`;
   const touches = list7(t.touches);
   const verify2 = list7(t.verify);
   const decisions = decisionsToHonor(readText((0, import_node_path42.join)(tf.change.dir, "analysis.md")) ?? "");
-  const tokenInfo = buildsScreens(t) ? loadTokens(p) : null;
-  const tokens = tokenInfo && tokenInfo.diags.errors.length === 0 ? tokenInfo.tokens : [];
+  const tokens = buildsScreens(t) ? approvedTokens : [];
   const shots = shotsDir(p, id, taskId);
   const reportFile2 = (0, import_node_path42.join)(p.run, `report-${taskId}.md`);
   if (kind === "implement") (0, import_node_fs37.rmSync)(reportFile2, { force: true });

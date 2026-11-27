@@ -61,13 +61,19 @@ function countCode(dir: string, budget = { left: MAX_WALK }): number {
   return n;
 }
 
-const DEPS: { dep: RegExp; role: string; name: string }[] = [
+/** `backend`: a server framework that is also recorded under the `backend` key when another framework (Remix) holds `framework`. */
+const DEPS: { dep: RegExp; role: string; name: string; backend?: boolean }[] = [
   { dep: /^next$/, role: "framework", name: "Next.js" },
   { dep: /^nuxt$/, role: "framework", name: "Nuxt" },
   { dep: /^@sveltejs\/kit$/, role: "framework", name: "SvelteKit" },
   { dep: /^astro$/, role: "framework", name: "Astro" },
-  { dep: /^@remix-run\/react$|^react-router$/, role: "framework", name: "React Router / Remix" },
-  { dep: /^@nestjs\/core$/, role: "framework", name: "NestJS" },
+  // Server-rendering React routers are frameworks of their own (the Remix app packages, not `@remix-run/router`);
+  // `react-router` alone is the library a Vite SPA uses, so it is a `router`, not the `framework`
+  { dep: /^@remix-run\/(react|node|dev|serve|express|cloudflare|architect|deno)$/, role: "framework", name: "Remix" },
+  { dep: /^@react-router\/dev$/, role: "framework", name: "React Router framework mode" },
+  { dep: /^react-router$|^react-router-dom$/, role: "router", name: "React Router" },
+  { dep: /^@tanstack\/react-router$/, role: "router", name: "TanStack Router" },
+  { dep: /^@nestjs\/core$/, role: "framework", name: "NestJS", backend: true },
   { dep: /^express$/, role: "server", name: "Express" },
   { dep: /^fastify$/, role: "server", name: "Fastify" },
   { dep: /^hono$/, role: "server", name: "Hono" },
@@ -107,10 +113,10 @@ const DEPS: { dep: RegExp; role: string; name: string }[] = [
 ];
 
 /** Python dependency names (normalised: lower case, `-`) to what they tell about the stack. */
-const PY_DEPS: { dep: RegExp; role: string; name: string }[] = [
-  { dep: /^django$/, role: "framework", name: "Django" },
-  { dep: /^fastapi$/, role: "framework", name: "FastAPI" },
-  { dep: /^flask$/, role: "framework", name: "Flask" },
+const PY_DEPS: { dep: RegExp; role: string; name: string; backend?: boolean }[] = [
+  { dep: /^django$/, role: "framework", name: "Django", backend: true },
+  { dep: /^fastapi$/, role: "framework", name: "FastAPI", backend: true },
+  { dep: /^flask$/, role: "framework", name: "Flask", backend: true },
   { dep: /^uvicorn$|^gunicorn$|^hypercorn$/, role: "server", name: "ASGI/WSGI server" },
   { dep: /^sqlalchemy$/, role: "orm", name: "SQLAlchemy" },
   { dep: /^sqlmodel$/, role: "orm", name: "SQLModel" },
@@ -233,18 +239,22 @@ export function detectProject(dir: string): Detection {
   const codeFiles = countCode(dir);
 
   const stack: Record<string, string> = {};
-  for (const { dep, role, name } of DEPS) {
+  for (const { dep, role, name, backend } of DEPS) {
     const hit = depNames.find((d) => dep.test(d));
-    if (!hit || stack[role]) continue;
+    if (!hit) continue;
     const version = String(deps[hit] ?? "").replace(/^[\^~>=<\s]+/, "").split(" ")[0];
-    stack[role] = version && /^\d/.test(version) ? `${name} ${version}` : name;
+    const value = version && /^\d/.test(version) ? `${name} ${version}` : name;
+    if (!stack[role]) stack[role] = value;
+    else if (backend && !stack.backend) stack.backend = value;
   }
   const py = detectPython(dir);
-  for (const { dep, role, name } of PY_DEPS) {
+  for (const { dep, role, name, backend } of PY_DEPS) {
     const hit = py ? Object.keys(py.deps).find((d) => dep.test(d)) : undefined;
-    if (!hit || stack[role]) continue;
+    if (!hit) continue;
     const v = py?.deps[hit] ?? "";
-    stack[role] = v && role !== "database" ? `${name} ${v}` : name; // a driver's version is not the database's
+    const value = v && role !== "database" ? `${name} ${v}` : name; // a driver's version is not the database's
+    if (!stack[role]) stack[role] = value;
+    else if (backend && !stack.backend) stack.backend = value;
   }
   if (py?.configured.ruff && !stack.linter) stack.linter = "Ruff";
   if (py?.configured.pytest && !stack["unit tests"]) stack["unit tests"] = "pytest";

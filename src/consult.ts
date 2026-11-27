@@ -140,7 +140,7 @@ export function contractAuthors(p: Paths, id: string, task: Task, pluginRoot: st
     registry = null;
   }
   if (!registry) return [];
-  const names = BRIEF_READS.filter((r) => !r.ui || touchesUi(task)).map((r) => r.name);
+  const names = BRIEF_READS.filter((r) => !r.ui || touchesUi(task) || task.role === "frontend").map((r) => r.name);
   const owners = new Set<string>();
   for (const n of names) {
     const e = registry[n];
@@ -575,6 +575,7 @@ export function consultNextText(p: Paths, id: string, c: Consultation): string {
  *     task, so two implementers of one wave could each write the other's request; `aidw consult` still checks that the
  *     Role runs that task, and a forged request of a run that already asked is refused)
  *   - an author: its request under the normal `.aidw/` rule (null)
+ *   - a reviewer (a read-only Role that `answers_consultations`): only its answer above; everything else null, so its deny stands
  */
 export function consultWrite(p: Paths, file: string, agent: string, role: string | null): { allow: boolean; reason: string } | null {
   const low = (x: string) => x.toLowerCase();

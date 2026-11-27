@@ -72,7 +72,7 @@ describe("backend role.md (T13)", () => {
 
   it("fullstack follows backend's rules and points at its rules.md", () => {
     const fs = loadRole(plugin, "fullstack")!;
-    expect(fs.follows_rules).toEqual(["backend"]);
+    expect(fs.follows_rules).toEqual(["backend", "frontend"]);
     expect(fs.body).toMatch(/roles\/backend\/rules\.md/);
   });
 

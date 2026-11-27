@@ -1,5 +1,6 @@
 ---
 case: waterfall-and-effect-state
+covers: [F7, F8, client-data-and-state, library/react-rules]
 ---
 ## Input
 

@@ -301,7 +301,7 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
         return deny("deviations.yaml and deviations/ are the CLI's record of Deviations; only `aidw deviation` writes them");
       }
       // ADR-0013: the request of the Agent running a task, the answer of the consulted Role, nothing else
-      const consult = role === "reviewer" ? null : consultWrite(p, file, name, role);
+      const consult = consultWrite(p, file, name, role); // a reviewer: only the answer file of a Consultation addressed to it
       if (consult) return consult.allow ? allow(consult.reason) : deny(consult.reason);
       if (same(dirname(file), p.run) && PLAN_REVIEW_FILE.test(basename(file)) && name !== "code-reviewer") {
         return deny("the plan review's verdict is written only by the code-reviewer that the orchestrator spawned with its brief");
@@ -321,6 +321,7 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
     const worktrees = join(p.run, "worktrees");
     if (insideAnyCase(worktrees, file)) {
       const parts = relative(lower(worktrees), lower(file)).split(sep);
+      if (role === "author") return deny("a task's worktree holds project code: only that task's implementer writes there, never an authoring role (a Consultation answer is a file under .aidw/run/)");
       if (parts.length < 3) return deny("write inside a task's worktree (.aidw/run/worktrees/<change>/<task>/...)");
       if (parts[2] === AIDW_DIR) return deny("the worktree's .aidw/ is a stale copy; aidw state lives in the main checkout and is the orchestrator's");
       const st = gateState(p);
