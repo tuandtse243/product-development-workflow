@@ -269,7 +269,12 @@ const isSmall = (change: Change) => sizeOf(analysisOf(change)) === "small";
 function roundNote(change: Change): string {
   if (!owesProgramDesign(change)) return "";
   if (isSmall(change)) return "Size: small has no system design round: report the stage done";
-  return roundAdvice(analysisOf(change));
+  const advice = roundAdvice(analysisOf(change));
+  if (!advice.startsWith("no Design Question is open")) return advice;
+  // F5: the data model and the API contract are designed before the round, so its summary names them
+  const d = readDecisions(change);
+  const names = [d["data-model-needed"]?.answer === "design" ? "the data model" : "", ["openapi", "actions"].includes(String(d["api-contract-needed"]?.answer)) ? "the API contract" : ""].filter(Boolean);
+  return names.length ? `${advice}; name ${names.join(" and ")} in the summary` : advice;
 }
 
 /** Records that the lead finished (or, by a Decision Point, skipped) an analysis stage. */

@@ -53,6 +53,9 @@ you, says which may run at the same time: `aidw stages <id>` lists them as `done
 - `NEXT: run these N stages in parallel, one subagent each, all in one message: ...`: do the interview part of each (the
   questions only you can ask, on one Decision Page where possible) and record its Decision Point, then spawn the drafting
   Agent of every listed stage **in a single message** (parallel Agent calls), each with the prompt of its step below.
+- **The order of the design stages** is: the architecture draft (step 6), then the data model and API contract when
+  needed (6b, stage `contracts`), then the system design round and Program Design (6c). The round confirms the whole
+  design, and Program Design follows it directly.
 - A stage that its Decision Point skips (`none`), or that you did yourself, is still done: report it.
 - When a stage's work is done (its Agent replied and its open decisions are settled), report it on its own:
   `aidw stages --done <stage> --change <id>`. The output prints the next `NEXT:`. A gate stage is never reported: it is
@@ -247,6 +250,12 @@ one with real alternatives, using the Agent's recommendation as `recommend`; the
 answer in `analysis.md`'s discovery appendix and spawn that Agent again with the answer, until validation is clean and
 nothing is open.
 
+**A reply that says `conflicts with DQ<n>: <why>`** is not an open decision (a Role after the Software Architect, such as
+the Database Architect or the API Designer, disagrees with a settled Design Question). It never goes to the user as
+it is. Spawn `aidw:software-architect` again with the objection and the DQ: it keeps the DQ (and says why) or changes
+it, in `### Design Questions`. Spawn the Role that objected again afterwards. Only a DQ that comes back `Open` reaches
+the user, in the system design round.
+
 ## 5. Design decision (Q3)
 
 Detect design assets: Figma links, screenshots, an existing design system, brand guides. Then choose the
@@ -290,7 +299,37 @@ Its Procedure (`$(aidw plugin-path roles/software-architect/role.md)`) holds the
 `stack:` and `design_mode:` fields of `.aidw/project.yaml`. It lists every technical choice under `### Design
 Questions` in `## Architecture`: settled ones with `Chosen:`, `Why:` and `Rejected:`, and at most 5 left `Open:` for
 the user (hard to reverse, options about equal, or a change in cost or operation), each with its options, Views and
-metrics in the reply.
+metrics in the reply. Two of those questions are always settled, never left `Open`: `DQ: data model needed` and
+`DQ: API contract needed` (step 6b).
+
+## 6b. Data model and API contract (each only when needed)
+
+Two choices, made by the Software Architect in its draft as Design Questions (`DQ: data model needed`, `DQ: API contract
+needed`), never put to the user as a page of their own. The Architect settles both: it recommends an answer and the DQ
+keeps the reasons (`Chosen:`, `Why:`, `Rejected:`). `none` is right for a Change that adds no table and no operation
+another part calls. Read the settled DQs and record them, with the same reasons:
+
+- `aidw decide data-model-needed <design|none> --reason "<why>"`. `design` when the Change adds or alters tables or
+  collections beyond a column or two, has a rule the database must enforce (uniqueness, no double booking), or changes
+  something that already holds data.
+- `aidw decide api-contract-needed <openapi|actions|none> --reason "<why>"`. `openapi` when the Change adds or changes
+  HTTP routes that a separate client, another service or a parallel task will call; `actions` for server actions or
+  RPC with the same need; `none` when one task owns both sides.
+
+A DQ that is missing or left `Open`: spawn `aidw:software-architect` again to settle it (these two are never put to the
+user). The stage `contracts` runs after the architecture draft and before the system design round, so the user
+confirms a design whose data model and contract already exist.
+
+Spawn the chosen ones **in one message** (they do not depend on each other), each with its prompt and nothing else:
+
+- **`aidw:database-architect`**: `Change <id>. Requirements, specs and architecture are drafted. Design the data model as your Procedure says in .aidw/changes/<id>/ and reply with the paths, the entities, the irreversible steps and every decision still open. When a design choice goes against a settled Design Question, reply "conflicts with DQ<n>: <why>" instead of opening a decision.`
+- **`aidw:api-designer`**: `Change <id>. Requirements, specs and architecture are drafted; the api-contract-needed decision is <openapi|actions>. Write the contract as your Procedure says in .aidw/changes/<id>/ and reply with the paths, the number of operations, any breaking change and every decision still open. When a design choice goes against a settled Design Question, reply "conflicts with DQ<n>: <why>" instead of opening a decision.`
+
+Handle their open decisions as in step 3; a `conflicts with DQ<n>` goes back to the Software Architect first (step 3). A
+breaking change or an irreversible step goes into the Summary's risks: the user decides it at the gate. The planner
+reads `data-model.md` and `api-contract.md` when they exist.
+
+## 6c. System design round and Program Design
 
 **System design round (stage `system-design-round`).** A round of questions, not a gate: nothing is approved here
 (ADR-0015). `aidw stages <id>` says what it asks.
@@ -304,39 +343,20 @@ metrics in the reply.
   answer goes against the Agent's recommendation, spawn `aidw:software-architect` again with the answers to bring
   the architecture in line.
 - Nothing open: one question in the chat (`library/decision-pages.md`, "One question after a design"): two or three
-  lines of summary, the link to `.aidw/architecture/overview.md` and a View of the main shape as a fenced block.
+  lines of summary, the link to `.aidw/architecture/overview.md` and a View of the main shape as a fenced block. The
+  summary names the data model and the API contract when the Change has them (step 6b), with the link to each file.
   Record the reply as `confirmed: <the reply>` under `### System design round`.
 - `Size: small`: no round. Report the stage done.
 
 `aidw stages --done system-design-round` refuses while a question is open or the round is not recorded.
 
-**Program Design (stage `program-design`, after step 6b).** Spawn **`aidw:software-architect`** again with this prompt
+**Program Design (stage `program-design`, right after the round).** Spawn **`aidw:software-architect`** again with this prompt
 and nothing else:
 `Change <id>. The system design round is recorded in .aidw/changes/<id>/analysis.md under "## Architecture". Write .aidw/changes/<id>/program-design.md as your program-design skill says (the short version: Size is <small|normal>), and reply with the path, the files per mark and every shape still open.`
 It writes the file-tree diff and the main signatures and contracts, with call trees, component trees, a dependency
 map or pseudocode where they help. The planner cuts the tasks from it, the gate shows it, and code that differs from
 it after approval is a Deviation. `aidw stages --done program-design` refuses it without its required parts. Handle
 its open shapes as in step 3.
-
-## 6b. Data model and API contract (each only when needed)
-
-Two Decision Points, decided with the Software Architect's hat on, after the architecture is drafted. Recommend an
-answer and say why (one Decision Page with both questions, each with its `decision:` and a `view`: a `tree` of the files each answer adds, such as a migration or `openapi.yaml`); `none` is right for a Change that adds no table and no operation another part calls.
-
-- `aidw decide data-model-needed <design|none> --reason "<why>"`. `design` when the Change adds or alters tables or
-  collections beyond a column or two, has a rule the database must enforce (uniqueness, no double booking), or changes
-  something that already holds data.
-- `aidw decide api-contract-needed <openapi|actions|none> --reason "<why>"`. `openapi` when the Change adds or changes
-  HTTP routes that a separate client, another service or a parallel task will call; `actions` for server actions or
-  RPC with the same need; `none` when one task owns both sides.
-
-Spawn the chosen ones **in one message** (they do not depend on each other), each with its prompt and nothing else:
-
-- **`aidw:database-architect`**: `Change <id>. Requirements, specs and architecture are drafted. Design the data model as your Procedure says in .aidw/changes/<id>/ and reply with the paths, the entities, the irreversible steps and every decision still open.`
-- **`aidw:api-designer`**: `Change <id>. Requirements, specs and architecture are drafted; the api-contract-needed decision is <openapi|actions>. Write the contract as your Procedure says in .aidw/changes/<id>/ and reply with the paths, the number of operations, any breaking change and every decision still open.`
-
-Handle their open decisions as in step 3. A breaking change or an irreversible step goes into the Summary's risks:
-the user decides it at the gate. The planner reads `data-model.md` and `api-contract.md` when they exist.
 
 ## 7. Plan (task graph)
 
