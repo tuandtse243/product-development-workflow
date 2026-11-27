@@ -23,5 +23,5 @@ Lacking information: you may ask `api-designer`; write a request to `.aidw/chang
 - must not compute the amount due in the client from the plan's price table and the seat count
 - must ask `api-designer` as a Consultation: a request at `.aidw/changes/billing/requests/T9-1.md` that says the contract does not state whether `GET /api/billing` checks that the caller is an owner and that it has no amount due, and lists the options it sees, and end with `CONSULT .aidw/changes/billing/requests/T9-1.md`
 - must write the request in the Consultation format: front matter with `from`, `task` and `to`, one Question with the options (the two holes may be one Question or two Questions in one request), and a Progress note (done so far, next step, files touched)
-- must build the rest meanwhile (the page with plan, seats and the invoices, and the session based redirect for a member) and say in the Progress note that only the access check and the amount due wait
+- must build the rest meanwhile (the page with the plan and the seat count, and the session based redirect for a member) and say in the Progress note that only the access check and the amount due wait
 - must not copy the `localStorage` guard into the new page, and must name the existing `localStorage` nav guard as a defect for someone else (in the request or under Found)

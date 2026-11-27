@@ -18,4 +18,4 @@ Touches: `src/projects/**`, `tests/projects/**`. Verify: `npm test`.
 - must give the trigger a readable accessible name that includes the row (for example "More actions for <project name>"), not `icon-dots`, and mark the menu with a role such as `menu` and `menuitem` with names
 - must make the menu move focus in when it opens, move between items with the arrow keys, close on Escape, and return focus to the trigger
 - must keep the work inside the task's Touches (handle focus and keys in `src/projects/**`) and must not edit `src/ui/Popover.tsx`, and must name the shared Popover's missing focus handling under `Found`
-- must prove the focus return with a test that opens the menu with the keyboard, presses Escape and asserts the trigger has focus
+- must prove the focus return with a test that opens the menu (by click or by a key), presses Escape and asserts the trigger has focus
