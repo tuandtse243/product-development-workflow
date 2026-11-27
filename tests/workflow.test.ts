@@ -70,6 +70,7 @@ describe("aidw workflow", () => {
     expect(a.json().files).toEqual([
       ".aidw/changes/2026-11-08-booking/analysis.md",
       ".aidw/changes/2026-11-08-booking/intake.md",
+      ".aidw/changes/2026-11-08-booking/program-design.md", // the Program Design (ADR-0015, package version 4)
       ".aidw/changes/2026-11-08-booking/quality.yaml",
       ".aidw/changes/2026-11-08-booking/specs/booking/spec.md",
       ".aidw/changes/2026-11-08-booking/tasks.yaml",

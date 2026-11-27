@@ -17,6 +17,11 @@ autonomous build → layered quality gates → living specs → complete deliver
   with merge per task and integration verify; `aidw run`, the headless auto-resume runner; brownfield detection,
   `## Existing system`, lazy baseline specs). Milestone B awaits trial 3: [`docs/trial-3.md`](docs/trial-3.md).
   (set `AIDW_HOOK_LOG=<file>` to trace every hook call).
+  **rpi upgrades code done**: Research Agents write the Existing System Report from neutral questions; the Software
+  Architect puts open Design Questions to the user in a System Design round, then writes a Program Design that is
+  approved with the package; Docs Briefs record what the official docs say at the installed version; every question
+  with options shows a View; tasks carry Patterns to Follow, `docs:` and `manual:` checks; the pull request opens with
+  the Documentation Role's summary. `/aidw:show-me` and `/aidw:html-pages` are user commands.
 
 ## Use it in a project (local, no install)
 
@@ -37,14 +42,16 @@ claude --plugin-dir /path/to/product-development-workflow/plugins/aidw
 - One change at a time per project.
 - Monorepos (pnpm workspaces, turbo, nx) are not supported yet: `aidw init` warns.
 - From `executing` on, task commits go to the branch `aidw/<change-id>` (or the feature branch you were on), never
-  to `main`. aidw does not merge or push.
+  to `main`. aidw never merges; it pushes the Change Branch and opens one pull request only when you grant it at the
+  Approval Gate (ADR-0012).
 
 See [`docs/roadmap.md`](docs/roadmap.md) for what is planned.
 
 ## Vendored skills
 
-Selected skills from `mattpocock/skills` and `addyosmani/agent-skills` (both MIT) live verbatim in
-`plugins/aidw/library/vendor/`; see each `UPSTREAM.md`. Update with `node scripts/vendor.mjs <pocock|addy>` and review
+Selected skills from `mattpocock/skills`, `addyosmani/agent-skills` and other upstreams (among them humanlayer's
+`show-me` and the 20 examples of `anthropics/html-effectiveness`, both MIT) live verbatim in
+`plugins/aidw/library/vendor/`; see each `UPSTREAM.md`. Update with `node scripts/vendor.mjs <upstream>` and review
 the diff. They sit outside `skills/`, so Claude Code never auto-loads them; aidw skills load them by path.
 
 ## Layout
@@ -119,5 +126,6 @@ aidw run [<id>] [--permission-mode M] [-- <claude args>]  unattended loop in you
 aidw converge                                every changed scenario has a passing test; gaps become tasks
 aidw deploy                                  approved preview deploy + smoke checks (or record none/local)
 aidw deliver [--check]                       delivery package (generated parts + handoff skeleton), checklist
+aidw docs-brief <lib>@<version> <topic>      is a fresh Docs Brief there (same major.minor, <= 90 days)? --change <id>: every docs: entry
 aidw gate | backstop | stop-failure          hook entry points (JSON on stdin)
 ```

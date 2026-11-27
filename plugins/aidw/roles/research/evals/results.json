@@ -1,0 +1,80 @@
+{
+  "format": 2,
+  "role": "research",
+  "date": "2026-11-26T16:39:21.625Z",
+  "model": "sonnet",
+  "tier": "standard",
+  "runs": 3,
+  "digest": "sha256:b03d4360e828633fbc0369e33f1e037020bb72c675774eded72916302d2ac95b",
+  "cases": [
+    {
+      "name": "brief-for-the-installed-version",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": [],
+      "digest": "sha256:93022b33a7325f1a2b9bc958a51855d2b9e0846683ccb99d093b892599c0c2e4",
+      "date": "2026-11-26T05:58:02.568Z",
+      "model": "sonnet"
+    },
+    {
+      "name": "describes-the-code-without-proposing",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": [],
+      "digest": "sha256:875695b3a8df38d46f191d3481bd741799907f3cdb3929dd66e0bd8c597e8591",
+      "date": "2026-11-26T05:58:02.568Z",
+      "model": "sonnet"
+    },
+    {
+      "name": "merges-parts-reading-only-contradictions",
+      "pass": false,
+      "runs": {
+        "total": 3,
+        "passed": 2,
+        "errors": 0
+      },
+      "failed": [
+        "must not claim to have read any code other than the lines where the parts disagree, and must not add a finding that neither part made"
+      ],
+      "digest": "sha256:5699e084d425db47d691beac79b6b80e167ba47d724e098a9132e3b1f08bd635",
+      "date": "2026-11-26T05:58:02.568Z",
+      "model": "sonnet"
+    },
+    {
+      "name": "the-obvious-answer-is-wrong",
+      "pass": false,
+      "runs": {
+        "total": 3,
+        "passed": 2,
+        "errors": 0
+      },
+      "failed": [
+        "must prepare the evidence table so each limit will be quoted in at most two sentences, with a link to its section's anchor (or its heading when the page has none) and its tier, and a column that marks source fact against inference with a confidence"
+      ],
+      "digest": "sha256:44c2dfc7852e7c4a10d83d9e6b4ed531cf5f19ac7638d00cc3c8ca17692fa8f2",
+      "date": "2026-11-26T16:36:12.135Z",
+      "model": "sonnet"
+    },
+    {
+      "name": "worlds-not-competitors",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": [],
+      "digest": "sha256:45e282cb1ca6936d54eca789e7b733bef1d0d0694947b574d66cb4a97700d07f",
+      "date": "2026-11-26T16:39:21.625Z",
+      "model": "sonnet"
+    }
+  ]
+}

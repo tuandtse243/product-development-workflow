@@ -34,7 +34,16 @@ const EXISTING = `
 
 Next.js 15 app router, in-memory todo store in lib/todos.ts, one API route. Lint, typecheck and 2 unit tests pass
 today. This change touches the todos capability (baseline spec written) and keeps the API shape.
+Full report: existing-system.md.
 `;
+
+/** The Existing System Report of a Change (ADR-0016): one group of questions, answered by one Agent. */
+function existingSystemReport(root: string): void {
+  const dir = `.aidw/changes/${ID}`;
+  write(root, `${dir}/existing-system/questions.md`, "## Group 1: lib/ and app/api/\n\n1. How is a todo stored and read?\n2. Which tests cover lib/todos.ts?\n");
+  write(root, `${dir}/existing-system.md`, "# Existing system\n\n## Summary\n\n- Todos live in memory (lib/todos.ts:3).\n\n## Not answered\n\nNone.\n");
+}
+const WITH_REPORT = (analysis: string) => analysis.replace("## Domain", `${EXISTING}\n## Domain`).replace("### Before\n\n", "### Before\n\nFrom existing-system.md.\n\n");
 
 const DELTA = `## MODIFIED Requirements
 
@@ -124,7 +133,8 @@ describe("brownfield analysis and baseline specs", () => {
     const root = analyzing();
     cli(root, "baseline", "todos");
     write(root, ".aidw/specs/todos/spec.md", BASELINE);
-    write(root, `.aidw/changes/${ID}/analysis.md`, ANALYSIS_MD.replace("## Domain", `${EXISTING}\n## Domain`));
+    existingSystemReport(root);
+    write(root, `.aidw/changes/${ID}/analysis.md`, WITH_REPORT(ANALYSIS_MD));
     write(root, `.aidw/changes/${ID}/specs/todos/spec.md`, DELTA);
     write(root, `.aidw/changes/${ID}/tasks.yaml`, `tasks:\n  - id: T01\n    title: Due dates\n    role: fullstack-engineer\n    type: feat\n    scenarios: [todos/add-a-todo/trimmed-title]\n    touches: ["lib/**", "tests/**"]\n    verify: ["pnpm test"]\n    status: pending\n`);
     write(root, `.aidw/changes/${ID}/quality.yaml`, "layers:\n  - name: code\n    run: [pnpm lint]\n  - name: unit\n    run: [pnpm test]\n  - name: e2e\n    run: [pnpm test:e2e]\ndeploy:\n  target: none\n");
@@ -183,7 +193,8 @@ describe("repo hygiene (aidw commits with git add -A)", () => {
     rmSync(join(root, ".gitignore"));
     cli(root, "init");
     cli(root, "change", "new", ID);
-    write(root, `.aidw/changes/${ID}/analysis.md`, ANALYSIS_MD.replace("## Domain", `${EXISTING}\n## Domain`));
+    existingSystemReport(root);
+    write(root, `.aidw/changes/${ID}/analysis.md`, WITH_REPORT(ANALYSIS_MD));
     write(root, `.aidw/changes/${ID}/specs/notes/spec.md`, `## Purpose\nNotes attached to todos, kept next to the todo they describe.\n\n## ADDED Requirements\n\n${REQ("Note works")}`);
     write(root, `.aidw/changes/${ID}/tasks.yaml`, `tasks:\n  - id: T01\n    title: x\n    role: fullstack-engineer\n    type: feat\n    scenarios: [notes/note-works/note-works-works]\n    touches: ["lib/**", "tests/**"]\n    verify: ['node -e "process.exit(0)"']\n    status: pending\n`);
     write(root, `.aidw/changes/${ID}/quality.yaml`, "layers:\n  - name: code\n    run: ['node -e \"process.exit(0)\"']\ndeploy:\n  target: none\n");

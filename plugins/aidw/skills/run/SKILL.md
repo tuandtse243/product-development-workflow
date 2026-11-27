@@ -107,6 +107,12 @@ aidw next --change <id> --json
    prompt (`Task brief: <path>. Read it and implement the task.`). Wait for it.
 3. If the implementer ends with `CONSULT <path>`, it lacks information and asks another Role: go to *consult*
    below. Never answer for that Role yourself and never take the question to the user.
+   A `BLOCKED: documents disagree` reply (Expected / Found / Why this matters) is not an environment cause, and it is
+   not retried: a retry brief drops the implementer's report note and Triage never sees the three lines. Open a
+   Deviation for the Role that wrote the higher document, with the three lines as its reason:
+   `aidw deviation open --change <id> --role <author> --files <that document> --task <T> --reason "<the three lines>"`
+   (see **`deviation`**); then `aidw checkpoint <T>` for the attempt in flight. Closing the Deviation runs `<T>` again
+   on the corrected document.
    If it reports a blocker no Role can answer (a credential, a service that is down), that is an environment cause
    (ADR-0014): `aidw not-built <T> --cause environment --reason "<its words>" --change <id>`. The task and its
    dependants are not built, the rest carries on, the pull request says what the user must provide; tell the user in
@@ -219,8 +225,8 @@ Do the step **and** the `meanwhile` action in one message (parallel calls), so t
 `meanwhile` means nothing may run beside the asker (its work sits on the main checkout, or no slot is free): do only the step.
 The Agent wrote a request file and ended its turn with `CONSULT <path>`:
 1. `aidw consult <path> --change <id>`. It checks the request (the pair its Role declares, one level deep, at most 2 per
-   Agent run, in the build only the authors of the contracts the task reads, one open question per run) and prints the
-   brief and the `SPAWN` line of the consulted Role. Refused: the asker goes on without the answer. Spawn a fresh
+   Agent run, in the build only the authors of the contracts the task reads and Research once per task (ADR-0016),
+   one open question per run) and prints the brief and the `SPAWN` line of the consulted Role. Refused: the asker goes on without the answer. Spawn a fresh
    implementer with `aidw brief <T> --change <id>` and the refusal line in its prompt. Never answer in its place.
 2. Spawn the Agent named on the `SPAWN` line with the printed prompt and nothing else (`step: answer`). It writes
    `.aidw/changes/<id>/consult/C<NN>.answer.md` and replies with its `STATUS:` line.

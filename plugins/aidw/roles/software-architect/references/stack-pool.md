@@ -26,7 +26,8 @@ Auth and payment providers are chosen per project by the AI and listed in the An
 ## Putting a stack question to the user
 
 A stack question is a choice on a Decision Page: two to four options from the pool that really fit, your
-recommendation and why. The criteria that usually separate them:
+recommendation and why, and on each option a `view` of kind `tree` with the files that option adds to the project
+(the page refuses a choice without a View). The criteria that usually separate them:
 
 | Question | Criteria worth showing |
 |---|---|

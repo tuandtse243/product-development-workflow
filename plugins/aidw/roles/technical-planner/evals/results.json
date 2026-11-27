@@ -1,0 +1,50 @@
+{
+  "format": 2,
+  "role": "technical-planner",
+  "date": "2026-11-26T17:46:25.727Z",
+  "model": null,
+  "tier": "deep",
+  "runs": 3,
+  "digest": "sha256:405650c7fe1f336da434cb7fdfa2b7b6137b89b7fa14a099cb041556cd341568",
+  "cases": [
+    {
+      "name": "cut-from-the-program-design",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": [],
+      "digest": "sha256:89a500e40702b60247bacd07d60359de753906ce09a80432edcd490e924443ff",
+      "date": "2026-11-26T17:46:25.727Z",
+      "model": null
+    },
+    {
+      "name": "parallel-tasks-share-names",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": [],
+      "digest": "sha256:90db8ddacb9042fc7f944ce5207166e5be2e8dd54999ef769235c5e7d6af6c89",
+      "date": "2026-11-26T17:46:25.727Z",
+      "model": null
+    },
+    {
+      "name": "vertical-slices-not-a-chain",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": [],
+      "digest": "sha256:e334550c9ae7269ee41266a884cd7f580759f0a72d9e1b59d51dfc72e24bc94a",
+      "date": "2026-11-26T17:46:25.727Z",
+      "model": null
+    }
+  ]
+}

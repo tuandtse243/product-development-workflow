@@ -18,8 +18,14 @@ import { touchesApi, touchesUi } from "./skills.js";
 import { planAdvice } from "./plan.js";
 import { pluginRoot } from "./plugin.js";
 import { defaultTaskRole, implementerOf } from "./roles.js";
-import { answerOf, checkDecisions } from "./decisions.js";
+import { answerOf, checkDecisions, workflowOfChange } from "./decisions.js";
 import { checkScopeRound } from "./scope.js";
+import { checkBeforeAfter, EXISTING_SYSTEM_FILE, owesBeforeAfter } from "./beforeafter.js";
+import { checkProgramDesign, checkSystemDesign, PROGRAM_DESIGN_FILE, programDesignDue } from "./programdesign.js";
+import type { Workflow } from "./workflow.js";
+import { checkExistingSystem } from "./existingsystem.js";
+import { workflowIdOf } from "./machine.js";
+import { checkPlanRefs } from "./planrefs.js";
 
 const TITLE_ADVISED = 60;
 const isPlanned = (t: { origin?: unknown }): boolean => t.origin === undefined || t.origin === "plan";
@@ -47,15 +53,34 @@ export const PLACEHOLDER = "TODO(aidw)";
 /** `- D1: ...` bullets of "## Decisions to honor": concrete approved choices the code must keep. */
 const DECISION = /^\s*[-*]\s+\**(D\d+)\**\s*:\s*(\S.*)$/;
 
+interface Decision {
+  id: string;
+  /** The bullet and its indented `Why:` / `Rejected:` lines, joined into one line. */
+  text: string;
+}
+
+/**
+ * The decisions of "## Decisions to honor". Since D6 a decision records what was chosen, why, and why the other
+ * options were not: indented lines under the bullet (`  Why: ...`, `  Rejected: ...`) belong to it. The old
+ * one-line form (`- D1: <decision>`) is read the same way and only lacks the reasons.
+ */
+function decisionRecords(body: string): Decision[] {
+  const out: { id: string; parts: string[] }[] = [];
+  let cur: { id: string; parts: string[] } | null = null;
+  for (const l of body.split(/\r?\n/)) {
+    const m = DECISION.exec(l);
+    if (m) out.push((cur = { id: m[1] as string, parts: [(m[2] as string).trim()] }));
+    else if (cur && /^\s+\S/.test(l) && !/^\s*[-*]\s/.test(l)) cur.parts.push(l.trim());
+    else if (!/^\s*$/.test(l)) cur = null; // a blank line keeps the decision open for its indented reasons
+  }
+  return out.map((d) => ({ id: d.id, text: d.parts.join(" ") }));
+}
+
 /** The approved decisions every implementer and reviewer must honor (empty when the section says None). */
 export function decisionsToHonor(analysis: string): string[] {
   const s = sections(analysis).find((x) => x.name.toLowerCase() === "decisions to honor");
   if (!s) return [];
-  return s.body
-    .split(/\r?\n/)
-    .map((l) => DECISION.exec(l))
-    .filter((m): m is RegExpExecArray => m !== null)
-    .map((m) => `${m[1]}: ${(m[2] as string).trim()}`);
+  return decisionRecords(s.body).map((d) => `${d.id}: ${d.text}`);
 }
 export const STACK_SOURCES = ["client", "ai", "fallback"] as const;
 export const DESIGN_MODES = ["existing", "claude_design", "ai_design", "hybrid"] as const;
@@ -166,6 +191,12 @@ function checkAnalysisDoc(text: string, file: string, d: Diags): void {
       else ids.add(m[1] as string);
     }
     if (!bullets.length) d.error(file, '"## Decisions to honor" must list "- D<n>: <decision>" bullets, or say "None"', honor.line);
+    // D6: a warning, not an error, so a Change written before the rule (one line per decision) still passes
+    for (const r of decisionRecords(honor.body)) {
+      const missing = [/\bWhy:/i.test(r.text) ? "" : '"Why:"', /\bRejected:/i.test(r.text) ? "" : '"Rejected:"'].filter(Boolean);
+      if (missing.length)
+        d.warn(file, `"## Decisions to honor": ${r.id} says no ${missing.join(" and no ")}: add indented lines "Why: <reason>" and "Rejected: <option> (<why not>)", or "Rejected: none"`, honor.line);
+    }
   }
   const perms = byName.get("permissions");
   if (perms && !/^\s*[-*]\s+\S/m.test(perms.body) && !/^\s*none\b/im.test(perms.body)) {
@@ -194,6 +225,17 @@ export function sizeOf(analysis: string | null): Size | "invalid" {
  */
 const scopeRoundOf = (change: Change): boolean => change.data.scope_round === true || change.data.scope_gate === true;
 
+/** The Workflow of the Change, or null when the plugin cannot say (no roster, an unknown Workflow). */
+function workflowOrNull(p: Paths, change: Change): Workflow | null {
+  const root = pluginRoot(process.env);
+  if (!existsSync(join(root, "roster.yaml"))) return null;
+  try {
+    return workflowOfChange(p, change, root);
+  } catch {
+    return null;
+  }
+}
+
 /** Runs every pre-gate consistency check for one change. */
 export function analyzeChange(p: Paths, id: string): Diags {
   const d = new Diags();
@@ -201,18 +243,30 @@ export function analyzeChange(p: Paths, id: string): Diags {
 
   const analysisFile = join(change.dir, "analysis.md");
   const analysis = readText(analysisFile);
+  const due = programDesignDue(change, workflowOrNull(p, change), sizeOf(analysis) === "small");
   if (analysis === null) d.error(rel(p, analysisFile), "analysis.md is missing");
   else {
     checkAnalysisDoc(analysis, rel(p, analysisFile), d);
     // ADR-0011: a Workflow with a scope round (product) records it in the discovery appendix before the gate.
     if (scopeRoundOf(change)) d.add(checkScopeRound(change, analysis, rel(p, analysisFile)));
+    // D1, I9: Before / After as the user sees it, and the technical questions deferred to the Software Architect.
+    if (owesBeforeAfter(change)) checkBeforeAfter(analysis, rel(p, analysisFile), { existingSystem: existsSync(join(change.dir, EXISTING_SYSTEM_FILE)) }, d);
+    // D2, D3, Q5: the Design Questions are settled, and a normal Change records its system design round.
+    if (due.programDesign || due.round) checkSystemDesign(analysis, rel(p, analysisFile), { round: due.round }, d);
     // S10: a brownfield change states what exists and what it must not break.
     if (projectKind(p) === "brownfield") {
       const existing = sections(analysis).find((s) => s.name.toLowerCase() === "existing system");
       if (!existing) d.error(rel(p, analysisFile), 'brownfield project: missing section "## Existing system" (assessment of the current code)');
       else if (!existing.body) d.error(rel(p, analysisFile), 'section "## Existing system" is empty', existing.line);
+      // I1, Q3, M2 (ADR-0016): the Existing System Report, its questions and parts; older Changes are not judged again.
+      if (owesBeforeAfter(change)) {
+        const opts = { dir: change.dir, shown: rel(p, change.dir), analysisFile: rel(p, analysisFile), bugfix: workflowIdOf(p, change) === "bugfix", small: sizeOf(analysis) === "small" };
+        checkExistingSystem(analysis, opts, d);
+      }
     }
   }
+  // I5, Q2, Q5: the Program Design has its required parts (the short one of a small Change too).
+  if (due.programDesign) checkProgramDesign(p, change, { small: sizeOf(analysis) === "small" }, d);
   // Baseline specs (aidw baseline) start as skeletons; an unfinished one must not reach the gate.
   for (const f of walkFiles(p.specs)) {
     if (!f.endsWith(".md")) continue;
@@ -338,6 +392,8 @@ export function analyzeChange(p: Paths, id: string): Diags {
     if (quality && quality.deploy.target !== "none") d.warn(rel(p, analysisFile), "Size: small does not deploy unless the user asked for it; set the deploy target to none");
   }
   for (const advice of planAdvice(tasks)) d.warn(tf, advice);
+  // I3, R8, OP3: patterns point at code that exists, each docs entry has a fresh Docs Brief, new libraries are researched.
+  checkPlanRefs(p, change, tasks, tf, d, { programDesign: due.programDesign ? readText(join(change.dir, PROGRAM_DESIGN_FILE)) : null });
   return d;
 }
 

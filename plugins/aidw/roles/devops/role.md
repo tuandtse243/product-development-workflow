@@ -4,6 +4,7 @@ description: "Implements one aidw task for Docker, CI/CD and environments (Docke
 mode: worker
 tier: deep
 access: write
+consults: [research]
 tools: [Read, Write, Edit, Glob, Grep, Bash]
 reads: [tasks, constitution, architecture, quality]
 writes: []

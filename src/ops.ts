@@ -14,6 +14,7 @@ import {
   type State,
 } from "./change.js";
 import { analyzeChange, PLACEHOLDER } from "./analyze.js";
+import { ANALYSIS_TEMPLATE } from "./beforeafter.js";
 import { boundaryExceeded, boundaryOf } from "./boundary.js";
 import { SCOPE_ROUND_HEADING } from "./scope.js";
 import { recordBaseline } from "./backstop.js";
@@ -204,6 +205,8 @@ export function newChange(p: Paths, id: string, opts: { title?: string; inputTyp
       `created_at: ${now()}`,
       `skip_specs: ${opts.skipSpecs === true}`,
       ...(opts.scopeRound ? ["scope_round: true"] : []),
+      // D1, I9: this Change's analysis.md has Before / After and Deferred to architecture, and aidw analyze requires them.
+      `analysis_template: ${ANALYSIS_TEMPLATE}`,
       "approval: null",
       "run:",
       "  paused: null",
@@ -227,23 +230,40 @@ Size: normal (small | normal: small is a bugfix or tweak, at most 3 tasks, see /
 
 ${PLACEHOLDER}: one page the user can review in minutes - goal, scope, the 5-10 key decisions, and the risks and assumptions that need their attention.
 
+## Before / After
+
+### Before
+
+${PLACEHOLDER}: 3 to 6 lines, as the user sees it today, one "- " line each. With an Existing System Report
+(existing-system.md) draw them from it and name it; otherwise from today's workaround in the discovery answers.
+
+### After
+
+${PLACEHOLDER}: 3 to 6 lines, as the user will see it once this Change is built, one "- " line each.
+
 ## Decisions to honor
 
-${PLACEHOLDER}: the concrete choices the code must keep, one per line as "- D1: <decision>" (names, keys, formats,
-tools, libraries, conventions, limits). Implementers stop and report instead of deviating; reviewers check them.
-Write "None" only if there are none.
+${PLACEHOLDER}: the concrete choices the code must keep (names, keys, formats, tools, libraries, conventions,
+limits), each as "- D1: <decision>" with two indented lines: "Why: <reason, with its evidence>" and
+"Rejected: <option> (<why not>)", or "Rejected: none". Implementers stop and report instead of deviating; reviewers
+check them. Write "None" only if there are none.
 
 ## Requirements and scope
 
 ${PLACEHOLDER}: in scope, out of scope, assumptions. Link .aidw/requirements/<change>.md.
+
+### Deferred to architecture
+
+${PLACEHOLDER}: technical questions raised in discovery that the user should not have to answer, one per line as
+"- DA1: <question>"; the Software Architect answers each in "## Architecture" as "- DA1: <answer>". Or "None".
 ${
   brownfield
     ? `
 ## Existing system
 
-${PLACEHOLDER}: brownfield assessment. What exists (stack from project.yaml, structure, main flows), conventions
-the change follows, the health baseline (which existing checks pass or fail today), the capabilities this change
-touches and their baseline specs (aidw baseline <capability>), and what must not change.
+${PLACEHOLDER}: brownfield assessment. The Summary of the Existing System Report, word for word, with a line naming
+existing-system.md for the full report; then the health baseline (which existing checks pass or fail today), the
+capabilities this change touches and their baseline specs (aidw baseline <capability>), and what must not change.
 `
     : ""
 }
@@ -265,7 +285,9 @@ ${PLACEHOLDER}: design references, bundle, or AI design direction. UI work also 
 
 ## Architecture
 
-${PLACEHOLDER}: architecture overview and new ADRs. Link .aidw/architecture/overview.md.
+${PLACEHOLDER}: architecture overview and new ADRs. Link .aidw/architecture/overview.md. Add "### Design Questions"
+(each technical choice as "- DQ1: <question>" with "Open:" or "Chosen:", "Why:", "Rejected:" lines) and, for a
+Size: normal Change, "### System design round" (the checked answer, word for word); see /aidw:start step 6.
 
 ## Specs
 

@@ -41,6 +41,16 @@ Ask about each; a blank is recorded as an explicit assumption, never filled in s
   today's way.
 - **Out of scope**: say it back to the user as a list, and get a yes.
 
+## Technical questions wait for the architect
+
+The user answers what they need and how they work; they should not have to choose a queue or guess whether their
+phone system has an API. When such a question comes up, write it as `- DA1: <question>` under
+`### Deferred to architecture` (in `## Requirements and scope`) and go on. Ask the user only the part that is theirs:
+"Is a five-minute delay in the reminder acceptable?" is theirs; "Should reminders go through a job queue?" is not.
+That split happens in the interview, with the user there; when you draft from the record, the DA line is the
+question's only place. The Software Architect answers each line before the gate. An interview that raised no
+technical question ends with "None" under that heading.
+
 ## Signs the interview is not done
 
 - A requirement only makes sense if you already know the solution ("the user clicks Export").
@@ -54,8 +64,16 @@ In `analysis.md` under the discovery Q&A: the job lines, one per user kind; toda
 done; assumptions, each marked as assumed. The requirements quote these, so a reader can trace a scenario back to
 a job.
 
+Today's workaround becomes the `### Before` of `## Before / After`: 3 to 6 lines of what the user does, waits for or
+cannot do now, in their words. When the Change has an Existing System Report (`existing-system.md`), Before draws
+on it instead and names it, because the code shows what the user really meets. `### After` says, in the same
+voice, what each of those lines becomes. A line that mentions a table, an endpoint or a component is written for
+the wrong reader.
+
 ## Sources
 
 Ideas, not wording: jobs to be done (Christensen; Ulwick's outcome statements), the JTBD and problem-framing
 skills of deanpeters/Product-Manager-Skills and phuryn/pm-skills, and the discovery habits in Teresa Torres's
-*Continuous Discovery Habits*. Matt Pocock's `grilling` stays the interview method.
+*Continuous Discovery Habits*. Matt Pocock's `grilling` stays the interview method. Keeping technical
+questions out of the product interview comes from the "Deferred to TDD" list of HumanLayer's rpi plugin
+(`create-prd`, MIT); the before-and-after views from its `create-design-discussion`.

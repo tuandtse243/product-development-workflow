@@ -441,6 +441,31 @@ Dribbble, Pinterest or Behance (blocked, and forbidden by their terms). Deferred
 families, a keyed vector model for marks (Recraft), paid reference sources (Mobbin, Refero), a curated image
 catalog shipped with the plugin (only if the owner judges the found images poor).
 
+## rpi upgrades (decided 2026-11-26, grilling session)
+
+Ideas taken from HumanLayer's `rpi` plugin (MIT) after five rounds of questions. Decisions:
+[ADR-0015](adr/0015-system-design-round-and-approved-program-design.md) (System Design round, binding Program
+Design), [ADR-0016](adr/0016-research-describes-the-code-and-the-official-docs.md) (Existing System Report, Docs
+Brief, implementers consult Research) and [ADR-0017](adr/0017-every-question-carries-a-view.md) (a View on every
+question, html-effectiveness examples). The full decision list and the handover are in
+[`plans/rpi-upgrades.md`](plans/rpi-upgrades.md). Each Authored Skill ships with at least one Role eval.
+
+- **Wave 1, writing and library.** Vendor `show-me` and the 20 html-effectiveness examples; Authored Skill
+  `html-pages`; user commands `/aidw:show-me`, `/aidw:html-pages`. Headers that state a finding, plain prose and a
+  self-shortening pass; document precedence and a three-line mismatch report; recommendations with evidence; decisions
+  that record the rejected options; `Deferred to architecture`; a source ladder, a quote column and a search budget
+  for every Research skill.
+- **Wave 2, research.** Existing System Report (neutral questions, parallel Research Agents, one merging Agent);
+  Skill `codebase-research`; Skill `docs-research` and the Docs Brief store; implementers consult Research once per
+  task.
+- **Wave 3, design and questions.** Before / After first in the Summary and the gate; Design Questions from the
+  architect; the System Design round; the Program Design; the `view:` field, options with code and metrics, CLI
+  layouts modelled on the examples.
+- **Wave 4, plan and delivery.** `patterns:`, `docs:` and `manual:` in `tasks.yaml` and in briefs; the pull request
+  summary written by Documentation with its paths checked.
+- **Later.** An `explain` Workflow; fixing after delivery (with `/aidw:amend`); a drafted problem statement and a
+  success measure in discovery; a `refactor` Workflow; refreshing Stack Packs against official docs.
+
 ## Backlog
 
 - Per-server MCP tier map (for example Vercel deploy as tier 3).

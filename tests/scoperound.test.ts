@@ -97,6 +97,7 @@ questions:
     multi: true
     recommend: [capture, tag]
     why: Search can wait while the first users have few notes.
+    view: { kind: tree, text: "notes app\\n  capture a note\\n  tag with a client\\n  search (later)" }
     options:
       - { key: capture, name: Capture a note, summary: The core job }
       - { key: tag, name: Tag with a client, summary: Find calls by client }

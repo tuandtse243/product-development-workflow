@@ -21,9 +21,11 @@ If you cannot say what proof looks like, the question is not ready: return it.
 
 ## 2. Read first
 
-The answer is often in the official documentation, the changelog, the issue tracker or the limits page. Cite the
-exact page and its date. A spike that documentation already answers is not run. A claim from memory about what a
-library or service does is not evidence: versions change.
+The answer is often in the official documentation, the changelog, the issue tracker or the limits page. Run
+`aidw plugin-path roles/research/references/sources.md` and read the file it prints: search and cite as it says,
+with the sentence that decides the answer quoted and the link going to its section. A forum answer or a blog post
+only tells you where to look. A spike that documentation already answers is not run. A claim from memory about what
+a library or service does is not evidence: versions change.
 
 ## 3. If an experiment is needed
 
@@ -38,7 +40,7 @@ library or service does is not evidence: versions change.
 
 - **Question** and why it matters to the decision.
 - **Answer**: yes, no, or not determined; in one sentence.
-- **Proof**: the citation, or the command and its output, and the versions.
+- **Proof**: the quote with its tier and its link to the section, or the command and its output, and the versions.
 - **Limits found on the way**: quotas, missing features, costs, licence terms, anything a plan must respect.
 - **What was not tested** and would still need to be.
 
@@ -49,4 +51,4 @@ answer is "no", say what the nearest thing that does work is, as a fact, and lea
 
 Ideas, not wording: the spike of Extreme Programming (Kent Beck, Ward Cunningham), the spike skill of the hermes
 agent project, and the "make the test first" habit of scientific method: decide what would falsify the claim
-before you look.
+before you look. The reading discipline comes from this Role's `sources.md`.

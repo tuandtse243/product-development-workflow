@@ -8,6 +8,8 @@ import { coverageReport, diffCoverage, trunkBase } from "./diffcover.js";
 import { loadTasks } from "./run.js";
 import { skillPath } from "./skills.js";
 import { analyzeChange, idsAfterChange, mainSpecIds } from "./analyze.js";
+import { beforeAfterSection } from "./beforeafter.js";
+import { PROGRAM_DESIGN_FILE, programDesignSection } from "./programdesign.js";
 import { approvalStatus, computeApprovalHash } from "./approval.js";
 import { runBackstop } from "./backstop.js";
 import { ChangeError, isState, listChangeIds, loadChange, resolveChangeId, stateOf, STATES } from "./change.js";
@@ -16,6 +18,8 @@ import { pluginRoot, resolvePluginFile } from "./plugin.js";
 import { installRunner } from "./installcheck.js";
 import { BrowserError, browserEnv, browserStatus, startBrowser, stopBrowser, usesOwnBrowser } from "./browser.js";
 import { checkArtifacts } from "./artifacts.js";
+import { checkDocsBrief, parseDocsRef } from "./docsbrief.js";
+import { planGateSection, taskDocs } from "./planrefs.js";
 import { fetchFont, runShotsWorker, SHOTS_WORKER, takeShots } from "./mock.js";
 import { boundaryOf } from "./boundary.js";
 import { buildAuditBrief, chosenLenses, compileReport, lensRoles, pickFindings } from "./audit.js";
@@ -301,6 +305,10 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
   vendor-path <upstream>/<skill>         absolute path of a vendored SKILL.md (e.g. pocock/grilling)
   diff-coverage <lcov> [--min 80] [--base <ref>]  coverage of the lines added since the change's first task started
   plugin-path <path>                     absolute path of a plugin file (e.g. roles/software-architect/references/stack-pool.md)
+  docs-brief <lib>@<version> <topic>     whether a fresh Docs Brief exists (.aidw/research/docs/<lib>@<major.minor>-<topic>.md,
+                                         same major.minor, at most 90 days old): FRESH exits 0; MISSING, STALE or INVALID
+                                         exit 1 with the path Research writes it to (docs-research)
+  docs-brief --change <id>               the same for every docs: entry of the plan (tasks.yaml)
   eval [<role>] [--case <name>] [--model <m>] [--runs <n>] [--without <id,...> | --bare] [--answers]
                                          run a Role's cases with claude -p (no tools) and grade each answer against its
                                          criteria; without a Role, every active Role. Costs tokens; exits 1 when a case fails.
@@ -1111,6 +1119,35 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         return 0;
       }
 
+      case "docs-brief": {
+        // ADR-0016, R9: a Docs Brief is reused while the installed major.minor matches and it is at most 90 days old.
+        const p = project();
+        if (rest[0] === undefined && args.flags.change !== undefined) {
+          // R8, M13: every docs entry of the plan; Research writes each brief that is not fresh before the plan review.
+          const id = resolveChangeId(p, str(args.flags.change));
+          const tasks = parseTasks(readText(join(loadChange(p, id).dir, "tasks.yaml")) ?? "").tasks;
+          const rows = tasks.flatMap((t) => taskDocs(t).map((x) => ({ task: t.id, entry: x.entry, ...checkDocsBrief(p.aidw, x.ref) })));
+          const due = rows.filter((r) => r.status !== "fresh");
+          const lines = rows.map((r) => `${r.status.toUpperCase()} ${r.rel} (${r.task}: ${r.entry})${r.status === "fresh" ? "" : `: ${r.reasons.join("; ")}`}\n`);
+          const spawn = due.length
+            ? `Spawn aidw:research once per brief, all in one message: "Write the Docs Brief for <entry> with your docs-research skill, to <path>."\n`
+            : rows.length
+              ? "Every Docs Brief of the plan is fresh.\n"
+              : "The plan names no docs.\n";
+          emit({ ok: due.length === 0, change: id, briefs: rows }, `${lines.join("")}${spawn}`);
+          return due.length ? 1 : 0;
+        }
+        let c;
+        try {
+          c = checkDocsBrief(p.aidw, parseDocsRef(`${need(rest[0], "<lib>@<version>")} ${rest.slice(1).join(" ")}`));
+        } catch (e) {
+          throw new UsageError((e as Error).message);
+        }
+        const tail = c.status === "fresh" ? "" : `Research writes it with docs-research, to ${c.rel}\n`;
+        emit({ ok: c.status === "fresh", ...c }, `${c.status.toUpperCase()} ${c.rel}: ${c.reasons.join("; ")}\n${tail}`);
+        return c.status === "fresh" ? 0 : 1;
+      }
+
       case "eval": {
         const root = pluginRoot(env);
         if (args.flags.level !== undefined && args.flags.level !== "1") {
@@ -1286,8 +1323,8 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const plan = st === "delivered" || st === "archived" ? writePrBody(p, id, { ...(base ? { base } : {}), env }) : planPr(p, id, { ...(base ? { base } : {}), env });
         const next = prNext(p, id, plan, env.AIDW_RUNNER === "1");
         emit(
-          { ok: true, change: id, title: plan.title, head: plan.head, base: plan.base, ready: plan.ready, why: plan.why, granted: plan.granted, url: plan.record?.url ?? null, body: plan.body, body_file: rel(p, plan.bodyFile), commands: plan.commands, next },
-          `title: ${plan.title}\n${plan.ready ? "ready for review" : `draft: ${plan.why.join("; ")}`}\npush: ${plan.granted ? "granted at the Approval Gate" : "not granted (the gate asks)"}\nbody: ${rel(p, plan.bodyFile)}\n\n${plan.body}\n${next}\n`,
+          { ok: true, change: id, title: plan.title, head: plan.head, base: plan.base, ready: plan.ready, why: plan.why, granted: plan.granted, url: plan.record?.url ?? null, body: plan.body, body_file: rel(p, plan.bodyFile), commands: plan.commands, warnings: plan.warnings, next },
+          `title: ${plan.title}\n${plan.ready ? "ready for review" : `draft: ${plan.why.join("; ")}`}\npush: ${plan.granted ? "granted at the Approval Gate" : "not granted (the gate asks)"}\nbody: ${rel(p, plan.bodyFile)}\n\n${plan.body}\n${plan.warnings.map((w) => `WARNING ${w}\n`).join("")}${next}\n`,
         );
         return 0;
       }
@@ -1514,7 +1551,8 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           const tasks = parseTasks(readText(join(c.dir, "tasks.yaml")) ?? "").tasks;
           return [
             ...(points.length ? [{ id: "decision-points", title: "Decision Points", body: "", points, html: "" }] : []),
-            ...(tasks.length ? [{ id: "plan", title: "Plan", body: planSummary(tasks), points: [], html: "" }] : []),
+            // T13: the plan as stages, with each task's patterns, Docs Briefs (linked) and checks for the user
+            ...(tasks.length ? [planGateSection(p, tasks, pagesDir(p))] : []),
             ...[grantsSection(p, c)].filter((x): x is PageSection => x !== null),
           ];
         };
@@ -1526,9 +1564,14 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           const gateId = first.page.layout === "gate" && first.page.change ? resolveChangeId(p, first.page.change) : null;
           const lead = (id: string): PageSection[] => {
             const c = loadChange(p, id);
-            return [openFindingsSection(p, c, workflowOfChange(p, c, pluginRoot(env))), unansweredSection(c)].filter((x): x is PageSection => x !== null);
+            // D1: the Before / After of analysis.md, unless the page writes its own.
+            const beforeAfter = first.page.sections.some((s) => s.id === "before-after") ? null : beforeAfterSection(readText(join(c.dir, "analysis.md")) ?? "");
+            return [beforeAfter, openFindingsSection(p, c, workflowOfChange(p, c, pluginRoot(env))), unansweredSection(c)].filter((x): x is PageSection => x !== null);
           };
-          const r = gateId ? parsePage(name, source, gateExtras(gateId), lead(gateId)) : first;
+          // Q4: the Program Design is approved at the gate, so the gate shows it, unless the page writes its own.
+          const programDesign = (id: string): PageSection[] =>
+            first.page.sections.some((s) => s.id === "program-design") ? [] : [programDesignSection(readText(join(loadChange(p, id).dir, PROGRAM_DESIGN_FILE)), id)].filter((x): x is PageSection => x !== null);
+          const r = gateId ? parsePage(name, source, [...programDesign(gateId), ...gateExtras(gateId)], lead(gateId)) : first;
           if (r.problems.length) throw new OpError(`the data of page "${name}" (${rel(p, pageDataFile(p, name))}) has ${r.problems.length} problem(s):\n${r.problems.map((x) => `  - ${x}`).join("\n")}\nFix the file and render again.`);
           return r.page;
         };

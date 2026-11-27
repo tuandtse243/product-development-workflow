@@ -4,7 +4,7 @@ description: "Implements one aidw task that is the server side of a Slice (API, 
 mode: worker
 tier: deep
 access: write
-consults: [api-designer, database-architect, software-architect]
+consults: [api-designer, database-architect, software-architect, research]
 tools: [Read, Write, Edit, Glob, Grep, Bash]
 reads: [tasks, delta-specs, constitution, architecture]
 writes: []

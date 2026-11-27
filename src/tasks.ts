@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import YAML from "yaml";
 import { Diags } from "./diag.js";
 import { typeProblem } from "./commit.js";
+import { planRefProblems } from "./planrefs.js";
 
 /**
  * pending -> running -> review -> done        (implement, checkpoint, independent review)
@@ -117,6 +118,8 @@ export function validateTasksText(text: string, file: string): Diags {
     const tp = typeProblem(t);
     if (tp) d.error(file, `${where} ${tp}`);
     if (t.risk !== undefined && t.risk !== "normal" && t.risk !== "high") d.error(file, `${where}: "risk" must be normal or high`);
+    // T13 (I3, R8, I11): code to imitate, the Docs Briefs the task builds on, the checks a human makes
+    for (const m of planRefProblems(t)) d.error(file, `${where}${m}`);
     if (t.status !== undefined && !(TASK_STATUSES as readonly string[]).includes(String(t.status))) {
       d.error(file, `${where}: unknown status "${String(t.status)}" (expected ${TASK_STATUSES.join(", ")})`);
     }

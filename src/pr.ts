@@ -1,9 +1,11 @@
 /**
  * `aidw pr`: the run always ends in a pull request (D12): ready when everything passed, a draft otherwise. The body
- * opens with three fixed sections (src/draft.ts), then the Analysis summary, tasks, evidence and merge danger, all
- * built from primary sources, never from an LLM summary. Pushing and opening the PR is tier 3 (the gate asks for
- * `aidw pr --create`) unless the Approval Gate granted it (src/grants.ts); the pull request opens before the archive,
- * while the grant still covers the Change. `run.pr` in change.yaml records it, so /aidw:resume updates the same one.
+ * opens with three fixed sections (src/draft.ts), then the summary, tasks, evidence and merge danger. The summary is the
+ * Documentation Role's `delivery/pr-summary.md` when it wrote one (checked: it names no file outside the diff and the
+ * approved package, src/prsummary.ts), else the Analysis summary; everything else is built from primary sources.
+ * Pushing and opening the PR is tier 3 (the gate asks for `aidw pr --create`) unless the Approval Gate granted it
+ * (src/grants.ts); the pull request opens before the archive, while the grant still covers the Change. `run.pr` in
+ * change.yaml records it, so /aidw:resume updates the same one.
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -11,7 +13,8 @@ import { join } from "node:path";
 import YAML from "yaml";
 import { ChangeError, loadChange, saveChange, stateOf, type Change } from "./change.js";
 import { aidwCommitMessage, header, scopeOf } from "./commit.js";
-import { keepDiscardedWork, prReadiness, prSections } from "./draft.js";
+import { keepDiscardedWork, PR_SECTIONS, prReadiness, prSections } from "./draft.js";
+import { manualChecks } from "./deliver.js";
 import { approvalStatus } from "./approval.js";
 import { bindingProblem, boundPush, githubSlug, GRANT_STATES, pushGrantReason, readGrants } from "./grants.js";
 import { secretsInChanges, secretsProblem } from "./secrets.js";
@@ -21,6 +24,7 @@ import { commitAidw, OpError } from "./ops.js";
 import { readText, rel, type Paths } from "./project.js";
 import { sections } from "./spec/parse.js";
 import { parseTasks, type Task } from "./tasks.js";
+import { readPrSummary } from "./prsummary.js";
 
 export interface PrPlan {
   title: string;
@@ -36,6 +40,8 @@ export interface PrPlan {
   /** D12: ready when everything passed and nothing is not built; a draft otherwise, for the reasons in `why` */
   ready: boolean;
   why: string[];
+  /** what `aidw pr` notes without refusing: a pr-summary.md that lacks a section of example 17 */
+  warnings: string[];
   /** the gate lets `aidw pr <id> --create` through without asking (the push grant holds now) */
   granted: boolean;
   /** what change.yaml records of the pull request (`run.pr`) */
@@ -122,13 +128,13 @@ export function planPr(p: Paths, id: string, opts: { base?: string; env?: NodeJS
   const taskRows = tasks.map((t) => `- ${t.id} ${String(t.title ?? "")} (${String(t.status ?? "pending")})`);
   const danger = mergeDanger(p, id, tasks, base, head);
   const where = rel(p, change.dir);
+  // I8: the Documentation Role's summary (after example 17) replaces the Analysis summary; refused when it names a file
+  // that is neither in the diff nor an approved Artifact (src/prsummary.ts)
+  const written = readPrSummary(p, change, base, head);
   const body = [
     // D12: three fixed sections first, in this order, "Nothing." when empty
-    ...prSections(p, change, tasks),
-    "## Summary",
-    "",
-    summary || String(change.data.title ?? id),
-    "",
+    ...withManualChecks(prSections(p, change, tasks), manualChecks(tasks)),
+    ...(written ? [written.text, ""] : ["## Summary", "", summary || String(change.data.title ?? id), ""]),
     "## Tasks",
     "",
     ...taskRows,
@@ -153,7 +159,20 @@ export function planPr(p: Paths, id: string, opts: { base?: string; env?: NodeJS
   ];
   // the gate's own rule (src/grants.ts): does `aidw pr <id> --create` pass without asking right now?
   const granted = pushGrantReason(p, `aidw pr ${id} --create`, GRANT_STATES, p.project, opts.env ?? process.env) !== null;
-  return { title, body, head, base, remote, repo, bodyFile, commands, ready: readiness.ready, why: readiness.why, granted, record: prRecord(change) };
+  return { title, body, head, base, remote, repo, bodyFile, commands, ready: readiness.ready, why: readiness.why, warnings: written?.warnings ?? [], granted, record: prRecord(change) };
+}
+
+/**
+ * I11, M4: the tasks' manual checks go under "Needed from the user to finish", one line each, after what is there (in
+ * place of "Nothing."). They do not make the pull request a draft: readiness is computed without them.
+ */
+function withManualChecks(lines: string[], checks: string[]): string[] {
+  const h = lines.indexOf(`## ${PR_SECTIONS[2]}`);
+  if (!checks.length || h < 0) return lines;
+  let end = h + 2;
+  while (end < lines.length && lines[end] !== "") end++;
+  const body = lines.slice(h + 2, end).filter((l) => l !== "Nothing.");
+  return [...lines.slice(0, h + 2), ...body, ...checks, ...lines.slice(end)];
 }
 
 /**

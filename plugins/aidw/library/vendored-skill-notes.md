@@ -160,3 +160,17 @@ against the MongoDB manual):
 - `pattern-schema-versioning.md`: its strict validator requires the new fields, so it rejects the old documents it says it accepts.
 - `fundamental-document-size.md`: BSON caps nesting at 100 levels, so "100+ levels" cannot occur.
 - `SKILL.md` recommends a two-way reference for many-to-many, which `fundamental-embed-vs-reference.md` advises against.
+
+## humanlayer/show-me
+
+Pick the View as it says, but never open a page yourself: `Bash(open ...)` is replaced by a link. A page goes through
+the page rules of `decision-pages.md` (`aidw page render` for page data, the `html` slot for your own HTML), and the
+user gets its link with one or two lines on what it shows. A View on a Decision Page goes in the question's data, not
+next to it in the chat. Its front matter and `agents/openai.yaml` concern other tools: ignore them.
+
+## anthropics/html-effectiveness (20 example pages)
+
+Examples to model a page on, not a skill and not templates: the `html-pages` skill says which example fits which
+kind of page and what to take from it. Take layout and components, not the examples' content, labels or colours.
+Most of them carry a `<script>`; an aidw page carries none and loads nothing from the network, so where the two
+differ the page rules in `decision-pages.md` win.

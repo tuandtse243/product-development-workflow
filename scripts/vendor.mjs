@@ -1,4 +1,4 @@
-// Vendors selected upstream skills into plugins/aidw/library/vendor/<upstream>/ (blueprint 7.3, decision D-17).
+// Vendors selected upstream skills into plugins/aidw/library/vendor/<upstream>/ or its `dest` (blueprint 7.3, decision D-17).
 //
 //   node scripts/vendor.mjs <upstream> [--ref <git ref>]
 //
@@ -6,6 +6,7 @@
 // copies the upstream LICENSE and records the exact commit in UPSTREAM.md.
 // An upstream may also list `files` (single files that are not skills, such as a rule catalog) and a `notice`
 // (its third-party notices). An upstream with no skills is fetched file by file, without the tarball.
+// `dest` overrides the folder under library/vendor/ (default: the upstream's key), e.g. "anthropics/html-effectiveness".
 // Review the result with `git diff plugins/aidw/library/vendor/<upstream>` and keep or revert per skill.
 import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
@@ -52,7 +53,7 @@ if (Object.keys(up.skills).length || up.shared) {
   }
 }
 
-const dest = join("plugins/aidw/library/vendor", name);
+const dest = join("plugins/aidw/library/vendor", up.dest ?? name);
 rmSync(dest, { recursive: true, force: true });
 mkdirSync(dest, { recursive: true });
 

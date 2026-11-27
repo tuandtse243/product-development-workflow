@@ -24,7 +24,9 @@ All progress lives in `.aidw/` and git, so resuming needs no memory of the previ
      has a triage diagnosis whose cause is `plan`, `spec` or `architecture` (a Change escalated by an aidw from before
      ADR-0014, which no longer escalates them), ask with a Decision Page: `aidw page triage <T>
      --change <id> --lang <en|vi>` prints its link; give the user the link and two lines, and when they paste the answer
-     check it with `aidw page answers triage-<t>` (the task id in lowercase) before acting on it:
+     check it with `aidw page answers triage-<t>` (the task id in lowercase) before acting on it. When `aidw page triage`
+     refuses a Decide block without a View, add a `view` to that block in the diagnosis notes and run it again (or add it
+     to `.aidw/run/pages/triage-<t>.yaml` and run `aidw page render triage-<t>`):
      - the cause is resolved (they fixed it, or gave the missing decision): `aidw transition <id> executing`,
        then for each task that is `escalated`, `aidw task retry <T>` (fresh attempt budget). Only on the
        user's explicit go-ahead: retrying is their decision.
