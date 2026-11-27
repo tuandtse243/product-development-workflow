@@ -691,7 +691,7 @@ describe("review fixes", () => {
 
   it("route-inventory reads a status passed to an expect…/assert… helper, as a number or a constant", () => {
     const root = project({
-      "src/a.ts": "router.post('/api/projects/:projectId/tasks', create);\nrouter.get('/notes/:id', getNote);\nrouter.get('/docs/:id', getDoc);\nrouter.get('/teams/:id', getTeam);\n",
+      "src/a.ts": "router.post('/api/projects/:projectId/tasks', create);\nrouter.get('/notes/:id', getNote);\nrouter.get('/docs/:id', getDoc);\nrouter.get('/teams/:id', getTeam);\nrouter.post('/invoices/:invoiceId/payments', pay);\nrouter.post('/refunds/:id', refund);\n",
       "tests/a.test.ts":
         "const problem = (status, type) => ({ status, type });\n" +
         "const UNAUTH = problem(401, 'unauthenticated');\n" +
@@ -711,7 +711,29 @@ describe("review fixes", () => {
         "\n".repeat(40) +
         "it('team other', async () => { const res = await team(t2.id); expect(res.status).toBe(404); });\n" +
         "\n".repeat(40) +
-        "it('team owner', async () => { const res = await team(t1.id); expect(res.status).toBe(200); });\n",
+        "it('team owner', async () => { const res = await team(t1.id); expect(res.status).toBe(200); });\n" +
+        "const pay = (user: { token: string } | null, invoiceId: string, key: string | null) => {\n" +
+        "  const req = http.post(`/invoices/${invoiceId}/payments`);\n" +
+        "  if (user) req.set(auth(user));\n" +
+        "  return req.send({});\n" +
+        "};\n" +
+        "\n".repeat(40) +
+        "it('pay none', async () => { const res = await pay(null, i.id, 'k'); expect(res.status).toBe(401); });\n" +
+        "\n".repeat(40) +
+        "it('pay other', async () => { const res = await pay(bob, i.id, 'k'); expect(res.status).toBe(404); });\n" +
+        "\n".repeat(40) +
+        "it('pay owner', async () => { const res = await pay(ana, i.id, 'k'); expect(res.status).toBe(201); });\n" +
+        "const refundUrl = (id: string) => `/refunds/${id}`;\n" +
+        "const refund = (user: string | null, id: string) => {\n" +
+        "  const req = http.post(refundUrl(id));\n" +
+        "  return req.send({});\n" +
+        "};\n" +
+        "\n".repeat(40) +
+        "it('refund none', async () => { const res = await refund(null, r.id); expect(res.status).toBe(401); });\n" +
+        "\n".repeat(40) +
+        "it('refund other', async () => { const res = await refund('bob', r.id); expect(res.status).toBe(404); });\n" +
+        "\n".repeat(40) +
+        "it('refund owner', async () => { const res = await refund('ana', r.id); expect(res.status).toBe(201); });\n",
     });
     const routes = runScript(S("route-inventory.mjs"), [root]).json.routes;
     expect(routes.find((x: any) => x.path === "/api/projects/:projectId/tasks").accessCases).toEqual({ noIdentity: true, otherUser: true, owner: true });
@@ -719,6 +741,10 @@ describe("review fixes", () => {
     expect(routes.find((x: any) => x.path === "/notes/:id").accessCases).toEqual({ noIdentity: true, otherUser: false, owner: false });
     // A status built in the argument (problem(401, …)) counts; build(LIMIT) does not.
     expect(routes.find((x: any) => x.path === "/teams/:id").accessCases).toEqual({ noIdentity: true, otherUser: true, owner: true });
+    // a helper whose block body of several lines calls the route
+    expect(routes.find((x: any) => x.path === "/invoices/:invoiceId/payments").accessCases).toEqual({ noIdentity: true, otherUser: true, owner: true });
+    // a helper that builds the path, used by a helper that calls it
+    expect(routes.find((x: any) => x.path === "/refunds/:id").accessCases).toEqual({ noIdentity: true, otherUser: true, owner: true });
     expect(routes.find((x: any) => x.path === "/docs/:id").accessCases).toEqual({ noIdentity: true, otherUser: true, owner: false });
   });
 
