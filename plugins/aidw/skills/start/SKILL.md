@@ -189,7 +189,7 @@ your suggested answer. The checked answer goes into the discovery appendix word 
 **Discovery asks only product questions:** what the user wants, sees or gets. Never put the Size, or a question whose
 options are mechanisms (a version column, a database trigger, an index), on a discovery page. Rewrite such a question
 as the product rule ("what does the second editor see?"), and write the mechanism under `### Deferred to
-architecture` as a `DA<n>` line.
+architecture` as a question for the architect (`- DA<n>: <question>`).
 
 1. **The job (Product Manager).** `$(aidw plugin-path roles/product-manager/role.md)` and its `discovery-frame` skill:
    the job to be done, today's workaround, the measure of done, scope and what is out. You set the size yourself

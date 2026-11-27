@@ -49,7 +49,7 @@ phone system has an API. When such a question comes up, write it as `- DA1: <que
 "Is a five-minute delay in the reminder acceptable?" is theirs; "Should reminders go through a job queue?" is not.
 The same holds for the options of a choice. If an option is a mechanism (a version column, a database trigger, an
 index), the user cannot weigh it. Ask the product rule instead ("what does the second editor see when two people
-edit the same booking?"), and write the mechanism as a `DA` line. The size of the Change is not a question either:
+edit the same booking?"), and write the mechanism as a question for the architect (a `DA` line). The size of the Change is not a question either:
 set `Size: small|normal` yourself, say why in the Summary, and the user confirms it at the gate.
 That split happens in the interview, with the user there; when you draft from the record, the DA line is the
 question's only place. The Software Architect answers each line before the gate. An interview that raised no
