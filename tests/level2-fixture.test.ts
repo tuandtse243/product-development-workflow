@@ -152,7 +152,10 @@ describe.skipIf(!nodeModules)("the backend-api fixture (cached packages)", () =>
         writeFileSync(pj, readFileSync(pj, "utf8").replace('"test": "vitest run"', '"test": "exit 0"'));
         writeFileSync(join(cwd, "vitest.config.ts"), 'export default { test: { include: ["tests/**/*.test.ts"], exclude: ["tests/held-out/**"] } };\n');
         writeFileSync(join(cwd, "tests/helpers.ts"), "export const testApp = () => { throw new Error('x'); };\n");
+        writeFileSync(join(cwd, "tests/http.ts"), "export const http = () => { throw new Error('x'); };\n");
       };
+      // the helpers the held-out tests import, the in-process client among them
+      expect(pilot().restore).toEqual(expect.arrayContaining(["tests/helpers.ts", "tests/http.ts"]));
       const [r] = runLevel2({ root: plugin, role: "backend", runs: 1, agent: overlayAgent(["team-comes-from-the-session", "team-comes-from-the-session-trusts-header"], cheat), exec: () => "[]", install: noInstall, runsDir: runsDir() }, "team-comes-from-the-session");
       const x = r!.results[0]!;
       const tests = x.steps.find((s) => s.step === "tests")!;
@@ -160,6 +163,8 @@ describe.skipIf(!nodeModules)("the backend-api fixture (cached packages)", () =>
       expect(tests.failed.join("\n")).toMatch(/ignores x-team-id/);
       const rep = JSON.parse(readFileSync(join(x.dir, "held-out.json"), "utf8"));
       expect(rep.numPassedTests + rep.numFailedTests).toBe(12);
+      // a broken helper or client would fail all 12: they were put back, so the header-trusting route passes most
+      expect(rep.numPassedTests).toBeGreaterThan(0);
       // what the held-out files declare, as vitest lists them under the restored config
       expect(JSON.parse(readFileSync(join(x.dir, "held-out-list.json"), "utf8"))).toHaveLength(12);
       expect(x.steps.find((s) => s.step === "checks")!.failed.join("\n")).toMatch(/package\.json[\s\S]*vitest\.config\.ts|vitest\.config\.ts[\s\S]*package\.json/);

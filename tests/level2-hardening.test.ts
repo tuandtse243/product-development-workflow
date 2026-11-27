@@ -1,5 +1,8 @@
 import { execFileSync } from "node:child_process";
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { once } from "node:events";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
@@ -319,10 +322,21 @@ describe("H2: the grading commands' sandbox", () => {
   });
 
   // Only where the sandbox can be applied (not inside another sandbox, as in a Claude Code session).
-  it.skipIf(sb.how === "none")("lets a command reach localhost and nothing else", () => {
-    const local = 'node -e \'const h=require("http");const s=h.createServer((q,r)=>r.end("ok")).listen(0,"127.0.0.1",()=>h.get("http://127.0.0.1:"+s.address().port,(r)=>r.on("data",(d)=>{console.log(String(d));s.close()})))\'';
-    expect(runCheck({ name: "local", run: local, expect: { exit: 0, matches: "^ok$" } }, tmpdir(), process.env, sb)).toEqual({ pass: true, why: "" });
+  it.skipIf(sb.how === "none")("lets a command reach no network: no outbound host, no localhost port, no bind", async () => {
     const out = 'node -e \'require("net").connect(443,"1.1.1.1").on("connect",()=>process.exit(0)).on("error",()=>process.exit(7))\'';
     expect(runCheck({ name: "out", run: out, expect: { exit: 7 } }, tmpdir(), process.env, sb)).toEqual({ pass: true, why: "" });
+    // A server outside the sandbox on localhost (a local proxy, say) is out of reach.
+    const outside = createServer((_q, r) => r.end("ok")).listen(0, "127.0.0.1");
+    await once(outside, "listening");
+    try {
+      const port = (outside.address() as AddressInfo).port;
+      const local = `node -e 'require("net").connect(${port},"127.0.0.1").on("connect",()=>process.exit(0)).on("error",()=>process.exit(7))'`;
+      expect(runCheck({ name: "local", run: local, expect: { exit: 7 } }, tmpdir(), process.env, sb)).toEqual({ pass: true, why: "" });
+    } finally {
+      outside.close();
+    }
+    const bind = 'node -e \'require("net").createServer().listen(0,"127.0.0.1",()=>process.exit(0)).on("error",()=>process.exit(7))\'';
+    // bwrap's own network namespace has a loopback of its own; elsewhere binding is refused.
+    if (sb.how !== "bwrap") expect(runCheck({ name: "bind", run: bind, expect: { exit: 7 } }, tmpdir(), process.env, sb)).toEqual({ pass: true, why: "" });
   }, 30_000);
 });

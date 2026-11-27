@@ -19093,8 +19093,9 @@ function sessionSettings(o) {
       failIfUnavailable: true,
       autoAllowBashIfSandboxed: true,
       allowUnsandboxedCommands: false,
-      // Tests start the app on 127.0.0.1 (the backend fixture's helpers do); without this, listen() is EPERM.
-      network: { allowedDomains: [], allowLocalBinding: true }
+      // No allowLocalBinding: on macOS it also lets a command connect to any localhost port. The backend fixture's tests
+      // serve requests in-process (tests/http.ts), with no socket.
+      network: { allowedDomains: [] }
     }
   };
 }
@@ -19301,7 +19302,7 @@ var real2 = (p) => {
   }
 };
 function sandboxProfile(scope) {
-  const net = ["(version 1)", "(allow default)", '(deny network-outbound (remote ip "*:*"))', '(allow network-outbound (remote ip "localhost:*"))', "(deny network-outbound (remote unix-socket))"];
+  const net = ["(version 1)", "(allow default)", "(deny network*)"];
   if (!scope) return net.join("");
   const sub = (p) => `(subpath ${sbQuote(real2(p))})`;
   return [...net, "(deny file-write*)", `(allow file-write* ${sub(scope.project)} ${sub(scope.scratch)} (subpath "/dev"))`].join("");
@@ -19326,7 +19327,7 @@ function gradingSandbox(env = process.env, scope) {
     const binds = scope ? [scope.project, scope.scratch].flatMap((p) => ["--bind", real2(p), real2(p)]) : [];
     return { how: how2, wrap: (cmd2) => ["bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", ...binds, "--unshare-net", "--die-with-parent", "sh", "-c", cmd2] };
   }
-  if (how2 === "unshare") return { how: how2, wrap: (cmd2) => ["unshare", "-rn", "sh", "-c", `ip link set lo up >/dev/null 2>&1 || true; ${cmd2}`] };
+  if (how2 === "unshare") return { how: how2, wrap: (cmd2) => ["unshare", "-rn", "sh", "-c", cmd2] };
   return none;
 }
 function sh(command, cwd, env, sandbox, timeoutMs = 10 * 60 * 1e3) {

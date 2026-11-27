@@ -655,7 +655,7 @@ export const AGENT_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "Bash"];
 
 /**
  * The session's settings. No network: Bash runs only in Claude Code's sandbox (`sandbox.enabled`, no allowed hosts,
- * `failIfUnavailable`; binding a local port is allowed so tests can start the app on 127.0.0.1), the sandbox's escape hatch is off (`allowUnsandboxedCommands: false`), and Bash is
+ * `failIfUnavailable`, no local binding), the sandbox's escape hatch is off (`allowUnsandboxedCommands: false`), and Bash is
  * allowed by a rule as well as by `autoAllowBashIfSandboxed` (sandboxed loops and `$(…)` commands still asked for
  * approval, which no one gives here); where the sandbox cannot run, the session does not start. WebFetch and WebSearch are not among `--tools` and are denied
  * besides. Reads outside the copy are allowed only in the session's plugin copy (and not at all for a bare run); reads
@@ -688,8 +688,9 @@ export function sessionSettings(o: { pluginRoot: string; project: string; denyRe
       failIfUnavailable: true,
       autoAllowBashIfSandboxed: true,
       allowUnsandboxedCommands: false,
-      // Tests start the app on 127.0.0.1 (the backend fixture's helpers do); without this, listen() is EPERM.
-      network: { allowedDomains: [], allowLocalBinding: true },
+      // No allowLocalBinding: on macOS it also lets a command connect to any localhost port. The backend fixture's tests
+      // serve requests in-process (tests/http.ts), with no socket.
+      network: { allowedDomains: [] },
     },
   };
 }
@@ -1008,11 +1009,12 @@ const real = (p: string) => {
 };
 
 /**
- * The macOS profile: outbound network only to localhost (the tests' own servers), no Unix sockets, and with a scope no
- * writes but to the project, the command's scratch folder and /dev.
+ * The macOS profile: no network at all (no outbound connection, localhost and Unix sockets included, and no bind; the
+ * fixtures' tests serve requests in-process), and with a scope no writes but to the project, the command's scratch
+ * folder and /dev.
  */
 export function sandboxProfile(scope?: GradingScope): string {
-  const net = ["(version 1)", "(allow default)", '(deny network-outbound (remote ip "*:*"))', '(allow network-outbound (remote ip "localhost:*"))', "(deny network-outbound (remote unix-socket))"];
+  const net = ["(version 1)", "(allow default)", "(deny network*)"];
   if (!scope) return net.join("");
   const sub = (p: string) => `(subpath ${sbQuote(real(p))})`;
   return [...net, "(deny file-write*)", `(allow file-write* ${sub(scope.project)} ${sub(scope.scratch)} (subpath "/dev"))`].join("");
@@ -1021,9 +1023,10 @@ export function sandboxProfile(scope?: GradingScope): string {
 let probed: SandboxKind | null = null;
 /**
  * The confinement of the grading commands (the held-out tests and the checks run code the session wrote):
- *   macOS  `sandbox-exec` with sandboxProfile(scope): localhost only, no Unix sockets, writes only in the scope
- *   Linux  `bwrap` with / read-only, the scope writable and its own network (loopback only);
- *          without bwrap, `unshare -rn` (network only: writes are not confined)
+ *   macOS  `sandbox-exec` with sandboxProfile(scope): no network, writes only in the scope
+ *   Linux  `bwrap` with / read-only, the scope writable and a network namespace of its own with only its own
+ *          loopback (the host's localhost is out of reach); without bwrap, `unshare -rn` (an empty network
+ *          namespace, its loopback left down: writes are not confined)
  * Each is probed once; where none works (inside another sandbox, a container without user namespaces) commands run
  * unconfined and the run records `none`. `AIDW_GRADE_SANDBOX=off` turns it off.
  */
@@ -1046,7 +1049,7 @@ export function gradingSandbox(env: NodeJS.ProcessEnv = process.env, scope?: Gra
     const binds = scope ? [scope.project, scope.scratch].flatMap((p) => ["--bind", real(p), real(p)]) : [];
     return { how, wrap: (cmd) => ["bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", ...binds, "--unshare-net", "--die-with-parent", "sh", "-c", cmd] };
   }
-  if (how === "unshare") return { how, wrap: (cmd) => ["unshare", "-rn", "sh", "-c", `ip link set lo up >/dev/null 2>&1 || true; ${cmd}`] };
+  if (how === "unshare") return { how, wrap: (cmd) => ["unshare", "-rn", "sh", "-c", cmd] };
   return none;
 }
 
