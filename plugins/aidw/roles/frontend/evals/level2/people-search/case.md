@@ -35,9 +35,9 @@ answer says "No one matches" and the text; a `503` is an alert with a Retry that
 The checks run the Role's `fetch-waterfalls` (no `uncancelled-effect-fetch` or `derived-state-effect` in the added code),
 that every scenario id names a test, the whole suite, the typecheck, and that nothing outside Touches changed (only
 `src/people/`, `tests/people/`, `src/data/useFetch.ts`, `src/routes.tsx` and the run and change folders of `.aidw/`).
-A model grades only what the Agent says about the hook. Known limit: with `--base` the script sees only the lines the
-session added, so a session that edits the body of `useFetch` without touching its `useEffect` line is not read by it;
-the held-out tests catch a stale answer whatever the hook does.
+A model grades only what the Agent says about the hook. The script reads the whole `useFetch` file when the session
+edited it (also an edit of the body only), so a debounce with `clearTimeout` and no abort is reported; the held-out tests
+still catch a stale answer whatever the hook does (a 300 ms debounce is longer than their typing, so they alone would pass it).
 
 ## Criteria
 

@@ -395,8 +395,11 @@ export function PeopleSearch() {
         expect(t.out).toMatch(/7 passed/);
         expect(g.check(/nothing outside Touches/)).toMatchObject({ pass: true });
       }, 600_000);
-      // TODO(fe-scripts2): prove fetch-waterfalls passes ${v} once the fixed script lands
-      it.skip(`the fetch-waterfalls check passes ${v}`, () => {});
+      it.skipIf(scriptMissing("fetch-waterfalls"))(`the fetch-waterfalls check passes ${v}`, () => {
+        const g = graded(c(), "people-search", v);
+        const r = g.check(/fetch-waterfalls/);
+        expect(r.pass, `${v}: ${r.why}`).toBe(true);
+      }, 300_000);
     }
 
     it("LIMIT: a debounce with clearTimeout and no abort, written in the body of useFetch, passes the held-out tests (300 ms is longer than the typing)", () => {
@@ -404,8 +407,10 @@ export function PeopleSearch() {
       const t = g.heldOut();
       expect(t.status, t.out).toBe(0);
     }, 600_000);
-    // TODO(fe-scripts2): prove fetch-waterfalls fails people-search-debounce-racy (it edits the hook's body only) once the fixed script lands
-    it.skip("the fetch-waterfalls check fails people-search-debounce-racy", () => {});
+    it.skipIf(scriptMissing("fetch-waterfalls"))("the fetch-waterfalls check fails people-search-debounce-racy (it edits the hook's body only)", () => {
+      const g = graded(c(), "people-search", "people-search-debounce-racy");
+      expect(g.check(/fetch-waterfalls/)).toMatchObject({ pass: false });
+    }, 300_000);
 
     it("a plausible correct solution that fixes useFetch inside Touches and uses it passes the held-out tests, the checks and the notices tests", () => {
       const g = graded(c(), "people-search");
@@ -546,8 +551,11 @@ suite(
         expect(t.status, t.out).toBe(0);
         expect(t.out).toMatch(/6 passed/);
       }, 600_000);
-      // TODO(fe-scripts2): prove route-guard-inventory reports no unguarded-route or route-not-found for billing-page-guard-${v}
-      it.skip(`the route-guard-inventory check passes billing-page-guard-${v}`, () => {});
+      it.skipIf(scriptMissing("route-guard-inventory"))(`the route-guard-inventory check passes billing-page-guard-${v}`, () => {
+        const g = graded(c(), "billing-page-guard", `billing-page-guard-${v}`);
+        const r = g.check(/route-guard-inventory/);
+        expect(r.pass, `${v}: ${r.why}`).toBe(true);
+      }, 300_000);
     }
 
     it("a nav with a Sign out navigate('/') and no guard on /billing fails the member, signed-out and checking tests", () => {
@@ -557,8 +565,10 @@ suite(
       const failed = failedTests(t.out).join("\n");
       for (const f of [/a member sees that the page/, /signed out, the visitor/, /the session answer has not arrived/]) expect(failed, t.out).toMatch(f);
     }, 600_000);
-    // TODO(fe-scripts2): prove route-guard-inventory reports unguarded-route for billing-page-guard-signout-nav-only
-    it.skip("the route-guard-inventory check fails billing-page-guard-signout-nav-only", () => {});
+    it.skipIf(scriptMissing("route-guard-inventory"))("the route-guard-inventory check fails billing-page-guard-signout-nav-only", () => {
+      const g = graded(c(), "billing-page-guard", "billing-page-guard-signout-nav-only");
+      expect(g.check(/route-guard-inventory/)).toMatchObject({ pass: false, why: expect.stringMatching(/unguarded-route/) });
+    }, 300_000);
 
     it("the guard check finds the guarded /billing route of the correct solution only (route-guard-inventory)", () => {
       const names = c().checks.map((ch) => ch.name).join("\n");
