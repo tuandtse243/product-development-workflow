@@ -1349,7 +1349,9 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
     .map((x) => ({ ...x, table: loadRuleTable(pluginHome, x.role) }));
   const exampleId = ruleFiles.find((x) => x.table?.length)?.table?.[0]?.id;
   const followed = ruleFiles.filter((x) => x.role !== builder);
-  const picked = selectSkills(t, kind, { retry, reviewFix: kind === "implement" && !!fixReview });
+  const tokenInfo = buildsScreens(t) || t.role === "frontend" ? loadTokens(p) : null;
+  const approvedTokens = tokenInfo && tokenInfo.diags.errors.length === 0 ? tokenInfo.tokens : [];
+  const picked = selectSkills(t, kind, { retry, reviewFix: kind === "implement" && !!fixReview, designTokens: approvedTokens.length > 0 });
   const skills = [...picked, ...fromPacks.filter((s) => !picked.some((x) => x.id === s.id))]
     .map((s) => ({ ...s, path: skillPath(vendorDir, s.id) }));
   const reqs = requirementsAfterChange(p, id);
@@ -1405,8 +1407,7 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
   const touches = list(t.touches);
   const verify = list(t.verify);
   const decisions = decisionsToHonor(readText(join(tf.change.dir, "analysis.md")) ?? "");
-  const tokenInfo = buildsScreens(t) ? loadTokens(p) : null;
-  const tokens = tokenInfo && tokenInfo.diags.errors.length === 0 ? tokenInfo.tokens : [];
+  const tokens = buildsScreens(t) ? approvedTokens : [];
   const shots = shotsDir(p, id, taskId);
   const reportFile = join(p.run, `report-${taskId}.md`);
   if (kind === "implement") rmSync(reportFile, { force: true }); // a note from an earlier attempt would be stale

@@ -423,6 +423,28 @@ describe("skill selection by Role", () => {
     expect(pick("fullstack", ["components/booking/actions.ts"])).toContain("aidw/api-design-rules"); // only frontend is exempt
   });
 
+  it("a frontend task gets anthropic/frontend-design only when the approved design has no tokens", () => {
+    const withTokens = (role: string, designTokens: boolean) =>
+      selectSkills({ id: "T", title: "x", role, type: "feat", verify: ["pnpm vitest"], touches: ["components/calendar/**"] } as never, "implement", { designTokens }).map((s) => s.id);
+    expect(withTokens("frontend", false)).toContain("anthropic/frontend-design");
+    expect(withTokens("frontend", true)).not.toContain("anthropic/frontend-design");
+    expect(withTokens("frontend", true)).toContain("addy/frontend-ui-engineering");
+    expect(withTokens("fullstack", true)).toContain("anthropic/frontend-design"); // only the frontend Role is changed
+  });
+
+  it("a frontend task's brief leaves anthropic/frontend-design out when tokens.yaml is approved, and keeps it without", () => {
+    const tasks = RUN_TASKS().replace(/role: fullstack-engineer/g, "role: frontend").replace('"app/api/bookings/**", ', "");
+    const ids = (root: string) => {
+      cli(root, "task", "start", "T01");
+      return cli(root, "brief", "T01", "--json").json().skills.map((s: { id: string }) => s.id) as string[];
+    };
+    const withTokens = executingProject({ tasks });
+    expect(ids(withTokens)).not.toContain("anthropic/frontend-design");
+    const without = executingProject({ tasks });
+    rmSync(join(without, ".aidw/design/tokens.yaml"));
+    expect(ids(without)).toContain("anthropic/frontend-design");
+  });
+
   it("a database task gets the data skills", () => {
     expect(pick("database", ["src/bookings/**"])).toEqual([
       ...core,
