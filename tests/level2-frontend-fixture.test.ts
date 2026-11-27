@@ -141,6 +141,8 @@ describe.skipIf(!ready)(`the frontend-web fixture and level 2 case ${CASE} (cach
     // copies DayList: a <div onClick> named by its raw icon key is no button, so every test that picks a slot fails
     { overlay: `${CASE}-div-slots`, fails: [/every open slot is a button named by its time/, /picking a slot opens a dialog/, /Escape closes the dialog/], passes: [/a day with no slots/] },
     // trusts the shared Dialog: focus stays on <body> after Escape
+    // names the slot's icon by its raw key: the button is still named by its time, but the name holds "icon-clock"
+    { overlay: `${CASE}-icon-key-name`, fails: [/every open slot is a button named by its time/], passes: [/picking a slot opens a dialog/, /Escape closes the dialog/, /confirming sends the booking/, /a failed load is an alert/] },
     { overlay: `${CASE}-no-focus-return`, fails: [/Escape closes the dialog without booking and puts focus back on the slot/], passes: [/picking a slot opens a dialog/, /a failed load is an alert/] },
     // copies useLoad: a failed load becomes the empty list
     { overlay: `${CASE}-empty-on-error`, fails: [/a failed load is an alert with a Retry/], passes: [/Escape closes the dialog/, /a day with no slots/] },
@@ -155,6 +157,29 @@ describe.skipIf(!ready)(`the frontend-web fixture and level 2 case ${CASE} (cach
       for (const p of w.passes) expect(failed, t.out).not.toMatch(p);
     }, 600_000);
   }
+
+  it("a reference that words the confirm button and the failure alert differently still passes the held-out tests (7 of 7)", () => {
+    const g = graded(pilot(), CASE, `${CASE}-reworded`);
+    const t = g.heldOut();
+    expect(t.status, t.out).toBe(0);
+    expect(t.out).toMatch(/7 passed/);
+  }, 600_000);
+
+  it.skipIf(missingScripts.includes("a11y-names"))("the a11y-names check fails the div-slots solution and passes the correct one", () => {
+    const bad = graded(pilot(), CASE, `${CASE}-div-slots`);
+    expect(bad.check(/a11y-names/)).toMatchObject({ pass: false, why: expect.stringMatching(/div-click|no-name/) });
+    expect(graded(pilot(), CASE).check(/a11y-names/)).toMatchObject({ pass: true });
+  }, 300_000);
+
+  it.skipIf(missingScripts.includes("token-literals"))("the token check fails a radius, a shadow, a font and a z-index literal, not only colors and lengths", () => {
+    const g = graded(pilot(), CASE);
+    const css = join(g.project, "src", "booking", "booking.css");
+    writeFileSync(css, readFileSync(css, "utf8") + `\n.slot { border-radius: 7px; box-shadow: 0 2px 9px rgba(3, 4, 5, 0.31); font-family: "Papyrus", serif; z-index: 77; }\n`);
+    // the check's own output, whole (a failed check's reason keeps only its tail)
+    const r = g.sh(pilot().checks.find((ch) => /token-literals/.test(ch.name))!.run);
+    expect(r.status).not.toBe(0);
+    for (const kind of ["radius", "shadow", "font", "z-index"]) expect(r.out).toContain(`"kind":"${kind}"`);
+  }, 300_000);
 
   it("the untouched fixture fails the held-out tests (no route yet) and the scenario-id check", () => {
     const g = graded(pilot());
@@ -184,6 +209,37 @@ describe.skipIf(!ready)(`the frontend-web fixture and level 2 case ${CASE} (cach
       writeFileSync(i.logFile, lines.map((l) => JSON.stringify(l)).join("\n"));
       return { exit: 0, timedOut: false, turnLimit: false, turns: lines.length - 1 };
     };
+
+  it.skipIf(missingScripts.includes("token-literals"))("a session that adds a token for its literal still fails the token check: the tokens file is restored before grading", () => {
+    const c = pilot();
+    expect(c.restore).toContain(".aidw/design/tokens.yaml");
+    const cheat: AgentRunner = (i) => {
+      cpSync(join(reference, CASE), i.cwd, { recursive: true });
+      const css = join(i.cwd, "src", "booking", "booking.css");
+      writeFileSync(css, readFileSync(css, "utf8") + "\n.slot {\n  min-width: 73px;\n}\n");
+      const tokens = join(i.cwd, ".aidw", "design", "tokens.yaml");
+      writeFileSync(tokens, readFileSync(tokens, "utf8") + "\n  - name: size-slot-min\n    kind: size\n    value: 73px\n    use: the least width of a slot button\n");
+      writeFileSync(i.logFile, JSON.stringify({ type: "result", subtype: "success", result: "done" }));
+      return { exit: 0, timedOut: false, turnLimit: false, turns: 1 };
+    };
+    const [r] = runLevel2({ root: plugin, role: "frontend", runs: 1, agent: cheat, exec: () => "[]", install: noInstall, runsDir: temp("aidw-l2fe-runs-") }, CASE);
+    const checks = r!.results[0]!.steps.find((st) => st.step === "checks")!;
+    expect(checks.failed.join("\n")).toMatch(/no literal that is not a token.*73px/s);
+    // and editing the tokens file is itself outside Touches
+    expect(checks.failed.join("\n")).toMatch(/nothing outside Touches.*\.aidw\/design\/tokens\.yaml/s);
+  }, 600_000);
+
+  it("the Touches check allows .aidw/run and .aidw/changes, and fails on any other file of .aidw/", () => {
+    const g = graded(pilot(), CASE);
+    const list = (files: string[]) => {
+      const f = join(g.project, "..", "changed.txt");
+      writeFileSync(f, files.join("\n") + "\n");
+      return { ...g.env, AIDW_CHANGED: f };
+    };
+    const ch = pilot().checks.find((x) => /nothing outside Touches/.test(x.name))!;
+    expect(runCheck(ch, g.project, list(["src/booking/BookSlotScreen.tsx", ".aidw/run/report-T01.md", ".aidw/changes/book-a-slot/tasks.yaml"]))).toMatchObject({ pass: true });
+    for (const f of [".aidw/design/tokens.yaml", ".aidw/constitution.md"]) expect(runCheck(ch, g.project, list([f]))).toMatchObject({ pass: false });
+  }, 300_000);
 
   it.skipIf(missingScripts.length > 0)("passes a whole run on the correct reference solution: tests, checks, reads, and the grader", () => {
     const c = pilot();

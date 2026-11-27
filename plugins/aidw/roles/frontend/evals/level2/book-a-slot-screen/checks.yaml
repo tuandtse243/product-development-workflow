@@ -10,10 +10,10 @@ checks:
     run: >-
       node "$(aidw plugin-path roles/frontend/scripts/a11y-names.mjs)" --base "$AIDW_BASE" . |
       node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>{const bad=JSON.parse(s).findings.filter((f)=>f.problem==="no-name"||f.problem==="div-click");if(bad.length){console.log(JSON.stringify(bad));process.exit(1)}})'
-  - name: no color or length literal in the added styles (F2, token-literals)
+  - name: no literal that is not a token in the added styles (F2, token-literals)
     run: >-
       node "$(aidw plugin-path roles/frontend/scripts/token-literals.mjs)" --base "$AIDW_BASE" . |
-      node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>{const bad=JSON.parse(s).findings.filter((f)=>f.kind==="color"||f.kind==="length");if(bad.length){console.log(JSON.stringify(bad));process.exit(1)}})'
+      node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>{const bad=JSON.parse(s).findings;if(bad.length){console.log(JSON.stringify(bad));process.exit(1)}})'
   - name: every scenario id names a test in tests/booking
     run: >-
       for id in slots-loading open-slots-of-a-day pick-a-slot close-without-booking confirm-the-booking
@@ -29,5 +29,5 @@ checks:
     run: >-
       changed=$(if [ -n "$AIDW_CHANGED" ]; then cat "$AIDW_CHANGED"; else git diff --name-only "$AIDW_BASE";
       git ls-files --others --exclude-standard; fi);
-      out=$(printf '%s\n' "$changed" | grep -vE '^(src/booking/|tests/booking/|tests/held-out/|src/routes\.tsx$|\.aidw/)' | grep -v '^$');
+      out=$(printf '%s\n' "$changed" | grep -vE '^(src/booking/|tests/booking/|tests/held-out/|src/routes\.tsx$|\.aidw/(run|changes)/)' | grep -v '^$');
       test -z "$out" || { echo "$out"; exit 1; }

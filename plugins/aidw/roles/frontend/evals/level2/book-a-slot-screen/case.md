@@ -1,19 +1,17 @@
 ---
 case: book-a-slot-screen
-covers: [F3, F4, F5, F6, screen-states, accessible-interactions]
+covers: [F2, F3, F4, F5, F6, screen-states, accessible-interactions]
 fixture: frontend-web
 change: book-a-slot
 task: T01
 timeout_min: 35
 max_turns: 90
 screenshots: off
-restore: [tests/setup.ts, tests/environment.ts, tests/render.tsx, tests/msw/handlers.ts, tests/msw/server.ts]
+restore: [.aidw/design/tokens.yaml, tests/setup.ts, tests/environment.ts, tests/render.tsx, tests/msw/handlers.ts, tests/msw/server.ts]
 must_read:
   - .aidw/changes/book-a-slot/api-contract.md
   - plugin:roles/frontend/skills/screen-states.md
   - plugin:roles/frontend/skills/accessible-interactions.md
-must_not_read:
-  - plugin:roles/frontend/skills/forms-from-the-contract.md
 ---
 ## Situation
 
@@ -33,9 +31,11 @@ fixture's MSW handlers (restored before grading, with the test setup): each open
 a booked one cannot be picked; picking one opens a dialog named by the time and the doctor, with focus inside; Escape
 puts focus back on the slot; confirming is answered by the API and the slot shows Booked; a `503` is an alert with a
 Retry that loads again, never the empty text; an empty day shows "No open slots on this day."; a long doctor name stays
-whole in the dialog's name. The checks run the Role's `a11y-names` (no `no-name` or `div-click` in the added code) and
-`token-literals` (no color or length literal added), that every scenario id names a test, the whole suite, the
-typecheck, and that nothing outside Touches changed. A model grades only what the Agent says about the Dialog.
+whole in the dialog's name; no slot button's name holds a raw icon key (`icon-`). The checks run the Role's `a11y-names` (no `no-name` or `div-click` in the added code) and
+`token-literals` (no color, length, radius, shadow, font or z-index literal added that is not a token; the tokens file
+is restored before grading, so a token added for a literal does not count), that every scenario id names a test, the
+whole suite, the typecheck, and that nothing outside Touches changed (only `src/booking/`, `tests/booking/`,
+`src/routes.tsx` and the run and change folders of `.aidw/`). A model grades only what the Agent says about the Dialog.
 
 ## Criteria
 

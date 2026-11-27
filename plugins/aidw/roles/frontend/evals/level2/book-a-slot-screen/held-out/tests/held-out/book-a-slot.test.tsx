@@ -52,6 +52,8 @@ describe("book a slot (held out)", () => {
     renderAt(DAY);
     expect(await screen.findByRole("button", { name: /09:00/ })).toBeEnabled();
     expect(screen.getByRole("button", { name: /09:30/ })).toBeEnabled();
+    // the name is the time (plus words), never an icon's raw key
+    for (const t of ["09:00", "09:30"]) expect(screen.getByRole("button", { name: new RegExp(t) })).not.toHaveAccessibleName(/icon-/);
     expect(notPickable("10:00")).toBe(true);
     expect(shownBooked("10:00")).toBe(true);
   });
@@ -60,7 +62,8 @@ describe("book a slot (held out)", () => {
     const { user } = renderAt(DAY);
     await user.click(await screen.findByRole("button", { name: /09:00/ }));
     const dialog = await screen.findByRole("dialog", { name: /09:00/ });
-    expect(dialog).toHaveAccessibleName(/Dr\. Ana Lima/);
+    // the doctor may arrive a moment after the dialog opens
+    await waitFor(() => expect(dialog).toHaveAccessibleName(/Dr\. Ana Lima/));
     expect(dialog).toContainElement(document.activeElement as HTMLElement);
   });
 
@@ -78,7 +81,12 @@ describe("book a slot (held out)", () => {
     const { user } = renderAt(DAY);
     await user.click(await screen.findByRole("button", { name: /09:00/ }));
     const dialog = await screen.findByRole("dialog", { name: /09:00/ });
-    await user.click(within(dialog).getByRole("button", { name: /confirm|^book/i }));
+    // the dialog's action button: the one that is neither Cancel nor Close
+    const leave = within(dialog).queryAllByRole("button", { name: /^(cancel|close)\b/i });
+    const confirm = within(dialog)
+      .getAllByRole("button")
+      .find((b) => !leave.includes(b));
+    await user.click(confirm!);
     await waitFor(() => expect(shownBooked("09:00")).toBe(true));
     expect(notPickable("09:00")).toBe(true);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -90,8 +98,7 @@ describe("book a slot (held out)", () => {
     const reads = countSlotReads();
     server.use(http.get(SLOTS, () => new HttpResponse(null, { status: 503 }), { once: true }));
     const { user } = renderAt(DAY);
-    const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent(/could not|couldn.t|cannot|can.t|failed|unable/i);
+    await screen.findByRole("alert");
     expect(screen.queryByText(/no open slots/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /09:00/ })).not.toBeInTheDocument();
     const before = reads.count();
@@ -114,6 +121,6 @@ describe("book a slot (held out)", () => {
     const { user } = renderAt(DAY);
     await user.click(await screen.findByRole("button", { name: /09:00/ }));
     const dialog = await screen.findByRole("dialog", { name: /09:00/ });
-    expect(dialog).toHaveAccessibleName(expect.stringContaining(long));
+    await waitFor(() => expect(dialog).toHaveAccessibleName(expect.stringContaining(long)));
   });
 });
