@@ -254,6 +254,12 @@ describe("level 2 cases: screenshots: off", () => {
     expect(() => noScreenshotsBrief("## Rules\n\n- Report in at most 10 lines.\n")).toThrow(/no screenshot line to drop/);
   });
 
+  it("refuses a brief where one screenshot line, or more than two, would be dropped", () => {
+    const one = brief.split("\n").filter((l) => !/^- Take screenshots with Playwright\b/.test(l)).join("\n");
+    expect(() => noScreenshotsBrief(one)).toThrow(/exactly the two screenshot lines.*1 lines match/);
+    expect(() => noScreenshotsBrief(`${brief}\n- Take screenshots with Playwright again.\n`)).toThrow(/exactly the two screenshot lines.*3 lines match/);
+  });
+
   it("reads the key: off drops the lines, on or none keeps them, anything else is an error", () => {
     const root = pluginWithCase();
     const file = join(root, "roles", "backend", "evals", "level2", "tiny", "case.md");

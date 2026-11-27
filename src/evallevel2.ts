@@ -576,12 +576,14 @@ export function bareBrief(text: string, pluginRoot: string): string {
 /**
  * The brief without its screenshot lines (a case with `screenshots: off`): the fixture has no browser and no Playwright,
  * so a session told to save screenshots would spend its turns failing at it. The design tokens and their rules stay.
- * Throws when the brief has no screenshot line to drop (no screen with tokens, or new wording this filter must follow).
+ * Throws unless exactly the two screenshot lines are there to drop (no screen with tokens, or new wording this filter must follow).
  */
 export function noScreenshotsBrief(text: string): string {
   const lines = text.split("\n");
   const kept = lines.filter((l) => !/^- \*\*Screenshots\*\*:/.test(l) && !/^- Take screenshots with Playwright\b/.test(l));
-  if (kept.length === lines.length) throw new Error("screenshots: off, but the brief has no screenshot line to drop: the task builds no screen with design tokens, or the brief changed its wording");
+  const dropped = lines.length - kept.length;
+  if (dropped === 0) throw new Error("screenshots: off, but the brief has no screenshot line to drop: the task builds no screen with design tokens, or the brief changed its wording");
+  if (dropped !== 2) throw new Error(`screenshots: off drops exactly the two screenshot lines of the brief, but ${dropped} lines match: the brief changed its wording`);
   return kept.join("\n");
 }
 
