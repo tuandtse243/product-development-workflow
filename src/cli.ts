@@ -71,6 +71,7 @@ import { abandonDeviation, closeDeviation, finishDeviations, openDeviationFor } 
 import { loadDeviations } from "./deviationrecord.js";
 import { buildPlanReviewBrief, MAX_FIX_ROUNDS, openFindingsSection, recordPlanReview } from "./planreview.js";
 import { buildConflictBrief, buildMergeReviewBrief, resolveConflict } from "./conflict.js";
+import { computeStats, ruleIdWarning, statsText, validSince } from "./stats.js";
 import { VERSION } from "./version.js";
 
 function reviewLine(r: { task: string; verdict: string; status: string; commit: string | null; warning?: string; conflict?: string }, verdict: string, notes: string): string {
@@ -172,9 +173,10 @@ function nextText(n: NextAction): string {
 }
 
 /** D10: one Agent run the CLI is about to print a SPAWN line for (src/agentruns.ts); the same key is counted once. */
-function spawned(p: Paths, id: string, kind: AgentRunKind, key: string, task?: string): void {
+function spawned(p: Paths, id: string, kind: AgentRunKind, key: string, task?: string, agent?: string): void {
   try {
-    countAgentRun(loadChange(p, id), kind, key, task);
+    const role = task ? taskField(p, id, task, "role") : "";
+    countAgentRun(loadChange(p, id), kind, key, task, { ...(role ? { role } : {}), ...(agent ? { agent } : {}) });
   } catch {
     // counting never blocks the run
   }
@@ -361,7 +363,8 @@ Unattended (in your own terminal, not inside Claude Code):
   brief <task> [--for implement|review]  write the context packet for a fresh subagent; prints its path
   skills <task> [--for implement|review] vendored skills selected for the task
   checkpoint <task> [--timeout <sec>]    evidence: a test per scenario id + every verify command passes
-  verdict <task> [--notes-file F]        record the reviewer's verdict from .aidw/run/review-<task>.md (first line VERDICT: pass|fix)
+  verdict <task> [--notes-file F]        record the reviewer's verdict from .aidw/run/review-<task>.md (first line VERDICT: pass|fix);
+                                         warns when a fix review of a Role with a rule table cites no rule id
   review <task> pass|fix [--notes-file F | --notes T] [--no-commit]
                                          record the independent review; pass marks done and commits
   verify [--layer L] [--fresh]           (verifying) run quality layers not yet passing on the current code;
@@ -380,6 +383,10 @@ Hooks:
   stop-failure                           StopFailure hook: pauses running changes
   session-start                          SessionStart hook: appends the plugin bin/ to PATH via CLAUDE_ENV_FILE
   cost [--session <id prefix>] [--last N]  where the tokens of this project's Claude Code sessions went (orchestrator vs subagents)
+  stats [--role R] [--change ID] [--since YYYY-MM-DD]
+                                         per Role, from every Change (active and archived): tasks, first-attempt passes
+                                         (a rate from 5 ended tasks up), rule ids cited by fix reviews, Triage causes;
+                                         --role lists that Role's tasks; writes nothing
   version
 
 States: ${STATES.join(", ")}
@@ -391,7 +398,7 @@ interface Args {
   flags: Record<string, string | true>;
 }
 
-const VALUE_FLAGS = new Set(["role", "files", "consultation", "remove-reason", "scope-reason", "summary", "cause", "task", "session", "last", "root", "title", "input-type", "workflow", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude", "model", "case", "runs", "without", "text", "lang", "weights", "to", "done", "cannot", "raise", "base", "level"]);
+const VALUE_FLAGS = new Set(["role", "files", "consultation", "remove-reason", "scope-reason", "summary", "cause", "task", "session", "last", "root", "title", "input-type", "workflow", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude", "model", "case", "runs", "without", "text", "lang", "weights", "to", "done", "cannot", "raise", "base", "level", "since"]);
 
 export function parseArgs(argv: string[]): Args {
   const pos: string[] = [];
@@ -677,8 +684,8 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         }
         const r = startTask(p, id, need(rest[1], "task id"), { worktree: args.flags.worktree === true });
         const brief = buildBrief(p, id, r.task, "implement", join(pluginRoot(env), "library", "vendor"));
-        spawned(p, id, "implementer", `${r.task}:r${taskField(p, id, r.task, "runs")}`, r.task);
         const agent = agentForTask(pluginRoot(env), r.role);
+        spawned(p, id, "implementer", `${r.task}:r${taskField(p, id, r.task, "runs")}`, r.task, agent);
         emit(
           { ok: true, change: id, ...r, agent, brief: brief.path },
           `${r.task} running: attempt ${r.attempt} of ${r.maxAttempts}${r.resumed ? " (resumed)" : ""}${r.base ? `, base ${r.base.slice(0, 8)}` : ""}${r.worktree ? `, worktree ${r.worktree}` : ""}\nbrief ${brief.path}\nSPAWN ${agent} with: Task brief: ${brief.path}. Read it and implement the task.\n`,
@@ -694,13 +701,13 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const kind = str(args.flags.for) ?? "implement";
         if (kind === "triage" && cmd === "brief") {
           const tb = buildTriageBrief(p, id, taskId);
-          spawned(p, id, "triage", `${taskId}:${taskField(p, id, taskId, "runs")}`, taskId);
+          spawned(p, id, "triage", `${taskId}:${taskField(p, id, taskId, "runs")}`, taskId, AGENTS.triage);
           emit({ change: id, task: taskId, for: kind, path: tb.path }, `${tb.path}\nSPAWN ${AGENTS.triage} with: Triage brief: ${tb.path}. Read it and write your answer as it says.\nThen: aidw triage ${taskId}\n`);
           return 0;
         }
         if (kind === "upstream" && cmd === "brief") {
           const ub = buildUpstreamBrief(p, id, taskId, { pluginHome: pluginRoot(env) });
-          spawned(p, id, "author", `${taskId}:${ub.deviation}`, taskId);
+          spawned(p, id, "author", `${taskId}:${ub.deviation}`, taskId, `aidw:${ub.role}`);
           emit(
             { change: id, task: taskId, for: kind, path: ub.path, role: ub.role, cause: ub.cause, round: ub.round, files: ub.files, deviation: ub.deviation, deviation_brief: ub.deviationBrief },
             `${ub.path}\nDeviation ${ub.deviation} is open for the ${ub.role}: ${ub.files.join(", ")}\nSPAWN aidw:${ub.role} with: Upstream brief: ${ub.path}. Read it and fix your Artifact as it says.\nThen: aidw deviation close, and aidw upstream ${taskId} (or, when it replies CANNOT FIX, aidw upstream ${taskId} --cannot "<its reason>")\n`,
@@ -709,19 +716,19 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         }
         if (kind === "conflict" && cmd === "brief") {
           const cb = buildConflictBrief(p, id, taskId);
-          spawned(p, id, "integration", `${taskId}:${taskField(p, id, taskId, "conflict")}`, taskId);
+          spawned(p, id, "integration", `${taskId}:${taskField(p, id, taskId, "conflict")}`, taskId, "aidw:integration");
           emit({ change: id, task: taskId, for: kind, path: cb.path }, `${cb.path}\nSPAWN aidw:integration with: Conflict brief: ${cb.path}. Read it and resolve the conflict.\nThen: aidw resolve ${taskId}\n`);
           return 0;
         }
         if (kind === "merge-review" && cmd === "brief") {
           const mb = buildMergeReviewBrief(p, id, taskId);
-          spawned(p, id, "merge-reviewer", `${taskId}:${taskField(p, id, taskId, "conflict")}`, taskId);
+          spawned(p, id, "merge-reviewer", `${taskId}:${taskField(p, id, taskId, "conflict")}`, taskId, AGENTS.taskReview);
           emit({ change: id, task: taskId, for: kind, path: mb.path }, `${mb.path}\nSPAWN ${AGENTS.taskReview} with: Merge review brief: ${mb.path}. Review the merge and reply with the verdict.\nThen: aidw verdict ${taskId}\n`);
           return 0;
         }
         if (kind !== "implement" && kind !== "review") throw new UsageError('--for must be "implement" or "review" (or "triage", "upstream", "conflict", "merge-review" for brief)');
         const b = buildBrief(p, id, taskId, kind, join(pluginRoot(env), "library", "vendor"));
-        if (kind === "review" && cmd === "brief") spawned(p, id, "reviewer", `${taskId}:r${taskField(p, id, taskId, "runs")}`, taskId);
+        if (kind === "review" && cmd === "brief") spawned(p, id, "reviewer", `${taskId}:r${taskField(p, id, taskId, "runs")}`, taskId, AGENTS.taskReview);
         if (cmd === "skills") {
           emit({ change: id, task: taskId, for: kind, skills: b.skills }, b.skills.map((s) => `${s.path}  # ${s.reason}\n`).join(""));
         } else {
@@ -735,7 +742,9 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const id = resolveChangeId(p, str(args.flags.change));
         const timeout = str(args.flags.timeout);
         if (timeout !== undefined && !(Number(timeout) > 0)) throw new UsageError("--timeout must be a number of seconds");
-        const r = checkpoint(p, id, need(rest[0], "task id"), timeout ? { timeoutMs: Number(timeout) * 1000 } : {});
+        const cpTask = need(rest[0], "task id");
+        const cpRole = taskField(p, id, cpTask, "role");
+        const r = checkpoint(p, id, cpTask, { ...(timeout ? { timeoutMs: Number(timeout) * 1000 } : {}), agent: agentForTask(pluginRoot(env), cpRole || undefined) });
         const lines = [
           `${r.ok ? "PASS" : r.status === "blocked" ? "BLOCKED (environment)" : r.status === "not_built" ? "NOT BUILT (environment)" : "FAIL"} ${r.task} -> ${r.status === "blocked" ? "running, no attempt used" : r.status === "not_built" ? `not built, with ${(r.not_built ?? []).join(", ")}; the rest carries on` : r.status}  (evidence ${r.evidence})`,
           ...Object.entries(r.scenarios).map(([s, locs]) => `  ${locs.length ? "ok     " : "MISSING"} ${s}${locs.length ? `  ${locs[0]}` : ""}`),
@@ -753,7 +762,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
             after = `review ${auto.task}: auto-passed (converge tests, or a layer fix its own reviewer judges again)${auto.commit ? ` (commit ${auto.commit.slice(0, 8)})` : ""}\n${settledNextLine(p, id)}${sessionEnd(env, p, id)}`;
           } else {
             reviewBrief = buildBrief(p, id, r.task, "review", join(pluginRoot(env), "library", "vendor")).path;
-            spawned(p, id, "reviewer", `${r.task}:r${taskField(p, id, r.task, "runs")}`, r.task);
+            spawned(p, id, "reviewer", `${r.task}:r${taskField(p, id, r.task, "runs")}`, r.task, AGENTS.taskReview);
             after = `review brief ${reviewBrief}\nSPAWN ${AGENTS.taskReview} with: ${REVIEWER_PROMPT(reviewBrief)}\nThen: aidw verdict ${r.task}\n`;
           }
         } else if (r.status === "blocked") {
@@ -786,7 +795,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const group = r.awaitingReviews ?? (a ? [a] : []);
         if (group.length) {
           const rounds = (layer: string) => loadTasks(p, id).tasks.filter((t) => t.origin === "quality" && t.layer === layer).length;
-          for (const x of group) spawned(p, id, "layer-reviewer", `${x.layer}:${rounds(x.layer)}:${git(p.project, ["rev-parse", "HEAD"]).out}`);
+          for (const x of group) spawned(p, id, "layer-reviewer", `${x.layer}:${rounds(x.layer)}:${git(p.project, ["rev-parse", "HEAD"]).out}`, undefined, x.agent);
         }
         const reviewer = (x: typeof group[number]) => `\n${group.length > 1 ? `  layer  ${x.layer}\n` : ""}  agent  ${x.agent}\n  brief  ${x.brief}\n  prompt Layer review brief: ${x.brief}. Review the layer and reply with the verdict.\n`;
         emit(
@@ -980,7 +989,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const notesFile = str(args.flags["notes-file"]);
         const notes = notesFile ? readFileSync(notesFile, "utf8") : (str(args.flags.notes) ?? "");
         if (verdict === "fix" && !notes.trim()) throw new UsageError("a fix verdict needs --notes or --notes-file");
-        const r = recordReview(p, id, taskId, verdict, notes, { commit: args.flags["no-commit"] !== true });
+        const r = recordReview(p, id, taskId, verdict, notes, { commit: args.flags["no-commit"] !== true, agent: AGENTS.taskReview });
         emit(
           { ok: true, change: id, ...r },
           `${reviewLine(r, verdict, notes)}${settledNextLine(p, id)}${r.status === "done" ? sessionEnd(env, p, id) : ""}`,
@@ -1003,7 +1012,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         if (r.blocked && !marked) after = `NEXT: the machine refused a check, not the code. Run \`aidw resolve ${taskId} --change ${id}\` once more outside the sandbox (dangerouslyDisableSandbox: true); if it is refused again, the task is not built (environment) and the run carries on.\n`;
         if (r.ok) {
           const mb = buildMergeReviewBrief(p, id, taskId);
-          spawned(p, id, "merge-reviewer", `${taskId}:${taskField(p, id, taskId, "conflict")}`, taskId);
+          spawned(p, id, "merge-reviewer", `${taskId}:${taskField(p, id, taskId, "conflict")}`, taskId, AGENTS.taskReview);
           after = `review brief ${mb.path}\nSPAWN ${AGENTS.taskReview} with: Merge review brief: ${mb.path}. Review the merge and reply with the verdict.\nThen: aidw verdict ${taskId}\n`;
         }
         emit(
@@ -1064,11 +1073,24 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const notes = readFileSync(file, "utf8");
         const verdict = parseVerdict(notes);
         if (!verdict) throw new OpError(`${file} does not start with "VERDICT: pass" or "VERDICT: fix"; spawn a fresh reviewer once more, and if it is still unclear record it with \`aidw review ${taskId} fix --notes-file\``);
-        const r = recordReview(p, id, taskId, verdict, notes, { commit: args.flags["no-commit"] !== true });
+        // T19: before the review is recorded (a merge review is not held to the Role's rules)
+        const before = loadTasks(p, id).tasks.find((t) => t.id === taskId);
+        const ruleWarning = verdict === "fix" && before?.status === "review" ? ruleIdWarning(pluginRoot(env), typeof before.role === "string" ? before.role : undefined, notes) : null;
+        const r = recordReview(p, id, taskId, verdict, notes, { commit: args.flags["no-commit"] !== true, agent: AGENTS.taskReview });
         emit(
-          { ok: true, change: id, ...r },
-          `${reviewLine(r, verdict, notes)}${settledNextLine(p, id)}${r.status === "done" ? sessionEnd(env, p, id) : ""}`,
+          { ok: true, change: id, ...r, ...(ruleWarning ? { rule_warning: ruleWarning } : {}) },
+          `${reviewLine(r, verdict, notes)}${ruleWarning ? `  warning: ${ruleWarning}\n` : ""}${settledNextLine(p, id)}${r.status === "done" ? sessionEnd(env, p, id) : ""}`,
         );
+        return 0;
+      }
+
+      case "stats": {
+        const p = project();
+        const since = str(args.flags.since);
+        if (since !== undefined && !validSince(since)) throw new UsageError("--since must be a date: YYYY-MM-DD");
+        const opts = { ...(str(args.flags.role) ? { role: str(args.flags.role) as string } : {}), ...(str(args.flags.change) ? { change: str(args.flags.change) as string } : {}), ...(since ? { since } : {}) };
+        const s = computeStats(p, pluginRoot(env), opts);
+        emit(s, statsText(s));
         return 0;
       }
 
@@ -1680,7 +1702,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           }
           const r = resumeConsultation(p, id, cid);
           const c = r.consultation;
-          spawned(p, id, "resumed", cid, c.task);
+          spawned(p, id, "resumed", cid, c.task, r.agent);
           const after = c.task ? `Then, when it reports: aidw checkpoint ${c.task}` : `Then, when it reports: continue stage ${c.stage} (\`aidw stages\`)`;
           emit(
             { ok: true, change: id, ...r },
@@ -1693,7 +1715,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const id = resolveChangeId(p, changeOfRequest(p, abs, str(args.flags.change)));
         const r = requestConsultation(p, id, abs, pluginRoot(env));
         const c = r.consultation;
-        spawned(p, id, "consulted", c.id, c.task);
+        spawned(p, id, "consulted", c.id, c.task, r.agent);
         emit(
           { ok: true, change: id, ...r },
           `${c.id} recorded: ${c.from} (${c.task ?? `stage ${c.stage}`}) asks ${c.to}\nbrief ${r.brief}\nSPAWN ${r.agent} with: Consultation brief: ${r.brief}. Read it and answer as it says.\nThen: aidw consult answer ${c.id}\nMeanwhile the other tasks or stages carry on.\n`,
