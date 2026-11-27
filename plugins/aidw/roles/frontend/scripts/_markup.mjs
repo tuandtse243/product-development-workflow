@@ -89,25 +89,6 @@ function parseOpenTag(code, start, j) {
   return null;
 }
 
-/** Index of the `</name>` that closes the element whose opening tag ends at `from`, and the index after it; null when not found. */
-function closingTag(code, name, from) {
-  const re = /<(\/?)([A-Za-z][\w.:-]*)?/g;
-  re.lastIndex = from;
-  let depth = 1;
-  for (let m = re.exec(code); m && m.index - from < 50000; m = re.exec(code)) {
-    if (m[2] !== name) continue;
-    if (m[1]) {
-      const gt = code.indexOf(">", m.index);
-      if (--depth === 0) return gt < 0 ? null : { start: m.index, end: gt + 1 };
-      continue;
-    }
-    const open = parseOpenTag(code, m.index, m.index + m[0].length);
-    if (open && !open.selfClosing) depth++;
-    if (open) re.lastIndex = open.end;
-  }
-  return null;
-}
-
 /**
  * Every JSX element of comment-masked code, nested ones included: [{ name, index, attrs: Map(name -> attr), spread,
  * openEnd, selfClosing, closeStart, closeEnd }]. An attr is { kind: "string" | "expr" | "bool", value, index, valueStart }.
@@ -115,24 +96,38 @@ function closingTag(code, name, from) {
  */
 export function jsxElements(code) {
   const out = [];
+  const stacks = new Map(); // name -> open non-self-closing elements not closed yet
+  const closes = [];
+  for (const m of code.matchAll(/<\/([A-Za-z][\w.:-]*)\s*>/g)) closes.push({ name: m[1], start: m.index, end: m.index + m[0].length });
+  let c = 0;
+  const closeUpTo = (limit) => {
+    for (; c < closes.length && closes[c].start < limit; c++) {
+      const stack = stacks.get(closes[c].name);
+      const el = stack?.pop();
+      if (el && closes[c].start - el.openEnd < 50000) { el.closeStart = closes[c].start; el.closeEnd = closes[c].end; }
+    }
+  };
   for (let i = code.indexOf("<"); i >= 0; i = code.indexOf("<", i + 1)) {
     TAG.lastIndex = i;
     const m = TAG.exec(code);
     if (!m || !tagContext(code, i)) continue;
     const open = parseOpenTag(code, i, TAG.lastIndex);
     if (!open) continue;
-    const close = open.selfClosing ? null : closingTag(code, m[1], open.end);
-    out.push({
+    closeUpTo(i); // one pass over the tags, so an unclosed <li> or <br> costs nothing more
+    const el = {
       name: m[1],
       index: i,
       attrs: new Map(open.attrs.map((a) => [a.name, a])),
       spread: open.spread,
       openEnd: open.end,
       selfClosing: open.selfClosing,
-      closeStart: close ? close.start : null,
-      closeEnd: close ? close.end : null,
-    });
+      closeStart: null,
+      closeEnd: null,
+    };
+    out.push(el);
+    if (!open.selfClosing) { if (!stacks.has(m[1])) stacks.set(m[1], []); stacks.get(m[1]).push(el); }
   }
+  closeUpTo(code.length);
   return out;
 }
 
@@ -149,7 +144,7 @@ export function attrText(attr) {
 
 // ---------------------------------------------------------------- CSS
 
-const DECL = /(^|[{;])(\s*)([-$@]{0,2}[A-Za-z_][\w-]*)\s*:(?!:)\s*([^;{}]*?)\s*(?=;|}|$)/dg;
+const DECL = /(^|[{;}])(\s*)([-$@]{0,2}[A-Za-z_][\w-]*)\s*:(?!:)\s*([^;{}]*?)\s*(?=;|}|$)/dg;
 
 /**
  * The declarations of comment-masked CSS text: [{ prop (lowercase), value, index (of the value), definition }].

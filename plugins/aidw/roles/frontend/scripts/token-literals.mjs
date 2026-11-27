@@ -33,8 +33,8 @@ are never findings (as the CLI's design check).
 
 Options:
   --base <ref>      only literals on lines added since <ref> (working tree against the ref, plus untracked files)
-  --tokens <file>   the tokens file, relative to [dir] (default .aidw/design/tokens.yaml); without one every literal
-                    is listed and "tokensFile" is null
+  --tokens <file>   the tokens file, relative to [dir] or absolute (default .aidw/design/tokens.yaml); without one
+                    every literal is listed and "tokensFile" is null
   --text            short text instead of JSON
   --help            this text
 
@@ -42,16 +42,22 @@ Output (JSON): { tool, schemaVersion: 1, root, base, tokensFile, tokens, finding
   value?, nearestToken?: { name, value } }], tokenValues: [{ file, line, kind, literal, token }], skipped }
 "literal" is what is written (a whole Tailwind class for an arbitrary value; "value" is then the CSS value read
 from it). "skipped" lists what was not read: public/ and static/ output, *.min.* and *.bundle.*, files over 512 KB,
-unreadable files.
+unreadable files, files with a template literal that never closes, and a note when 0 tokens were parsed from a
+non-empty tokens file.
+
+A string that is one hex color is read only where its name speaks of color (fill, stroke, color, bg, accent, hex, ...):
+href="#cafe" and querySelector('#facade') are anchors. A bare number in sx={{}} is a theme spacing multiplier, not px.
+White and black written as hsl() or oklch() are allowed like #fff and #000.
 
 Limits: plain objects other than style and sx (a theme object, StyleSheet.create) are not read; color names (red,
 tomato) are not colors here; a font shorthand is read for its lengths only; .vue and .svelte files come later.
 
-Exit: 0 when the scan ran (whatever it found), 2 on a usage or read error (an unreadable or malformed tokens file).
+Exit: 0 when the scan ran (whatever it found), 2 on a usage or read error (an unreadable or malformed tokens file, or a
+"tokens:" with inline or flow content: write it as a block list).
 `;
 
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { resolve } from "node:path";
 import { changedSince, isAdded, isTestFile, JS_EXTS, lineIndex, loadSources, maskComments, projectRoot, runCli, splitTop, table, UsageError } from "../../../library/scripts/_common.mjs";
 import { colorsIn, cssChunks, cssDeclarations, cssProp, isStyleFile, jsxElements, normalizeColor, objectEntries, STYLE_EXTS, stringLiterals } from "./_markup.mjs";
 
@@ -77,10 +83,13 @@ function stripComment(line) {
   return line;
 }
 
-/** The `tokens:` list of a tokens.yaml (block items, or flow maps `- { name: x, ... }`): [{ name, kind, value, dark? }]. */
+/**
+ * The `tokens:` list of a tokens.yaml (block items, or flow maps `- { name: x, ... }`): { items: [{ name, kind, value,
+ * dark? }], bodyLines } (bodyLines: the lines under `tokens:`). A `tokens:` key with inline content (`tokens: [ ... ]`) is an error.
+ */
 function parseTokensYaml(text) {
   const items = [];
-  let inTokens = false, seenKey = false, cur = null;
+  let inTokens = false, seenKey = false, cur = null, bodyLines = 0;
   const set = (key, raw) => { if (cur) cur[key] = scalar(raw); };
   const flow = (body) => {
     for (const part of splitTop(body)) {
@@ -93,11 +102,16 @@ function parseTokensYaml(text) {
     if (!line.trim()) continue;
     if (/^\S/.test(line)) {
       inTokens = /^tokens\s*:/.test(line);
-      if (inTokens) seenKey = true;
+      if (inTokens) {
+        seenKey = true;
+        const inline = line.replace(/^tokens\s*:/, "").trim();
+        if (inline && !/^(\[\s*\]|~|null)$/.test(inline)) throw new UsageError("`tokens:` has inline or flow content this script cannot read; write the tokens as a block list (one `- name: ...` item per token)");
+      }
       cur = null;
       continue;
     }
     if (!inTokens) continue;
+    bodyLines++;
     let rest = line.trim();
     if (rest === "-" || rest.startsWith("- ")) {
       cur = {};
@@ -109,7 +123,7 @@ function parseTokensYaml(text) {
     if (m) set(m[1], m[2]);
   }
   if (!seenKey) throw new UsageError("no `tokens:` list in the tokens file");
-  return items.filter((t) => typeof t.name === "string" && t.name && typeof t.value === "string" && t.value);
+  return { items: items.filter((t) => typeof t.name === "string" && t.name && typeof t.value === "string" && t.value), bodyLines };
 }
 
 // ---------------------------------------------------------------- values
@@ -117,6 +131,9 @@ function parseTokensYaml(text) {
 const LENGTH = /(?<![\w.#-])(-?(?:\d+\.?\d*|\.\d+))(px|rem)(?![\w-])/dg;
 const toPx = (n, unit) => (unit === "rem" ? n * 16 : n);
 const ALLOWED_COLORS = new Set(["#000000", "#ffffff", "#00000000"]);
+// White and black written as hsl() or oklch() (any hue; lightness 100% or 0%, no chroma), without alpha or with alpha 1.
+const BW_HSL = /^hsla?\(\s*[\d.]+(?:deg)?[\s,]+[\d.]+%[\s,]+(?:0|100)%(?:\s*[,/]\s*(?:1|100%|1\.0+))?\s*\)$/;
+const BW_OKLCH = /^oklch\(\s*(?:0|1|0%|100%|0?\.0+|1\.0+)\s+0(?:\.0+)?%?\s+[\d.]+(?:deg)?(?:\s*\/\s*(?:1|100%|1\.0+))?\s*\)$/;
 const GENERIC_FONTS = new Set(["serif", "sans-serif", "monospace", "cursive", "fantasy", "system-ui", "ui-sans-serif", "ui-serif", "ui-monospace", "ui-rounded", "math", "emoji", "fangsong", "inherit", "initial", "unset", "revert", "-apple-system", "blinkmacsystemfont"]);
 const firstFamily = (v) => (v.split(",")[0] ?? "").replace(/["']/g, "").trim().toLowerCase();
 const COLOR_ANY = /#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3,4})\b|\b(?:rgba?|hsla?|oklch|oklab|lab|lch|hwb)\([^()]*\)/gi;
@@ -172,7 +189,7 @@ function checker(tokens) {
   return (kind, literal, extra = {}) => {
     if (kind === "color") {
       const n = normalizeColor(literal);
-      if (!n || ALLOWED_COLORS.has(n)) return null;
+      if (!n || ALLOWED_COLORS.has(n) || BW_HSL.test(n) || BW_OKLCH.test(n)) return null;
       const hit = ix.colors.find((t) => t.n === n);
       if (hit) return { token: hit.name };
       const c = rgb(n);
@@ -216,7 +233,7 @@ function checker(tokens) {
 
 const SHADOW_PROPS = new Set(["box-shadow", "text-shadow"]);
 const RADIUS_PROP = /^border(-[a-z]+)*-radius$|^border-radius$/;
-const UNITLESS = new Set(["opacity", "flex", "flex-grow", "flex-shrink", "font-weight", "line-height", "order", "z-index", "zoom", "scale", "aspect-ratio", "grid-row", "grid-column", "animation-iteration-count", "column-count", "orphans", "widows", "tab-size"]);
+const UNITLESS = new Set(["opacity", "flex", "flex-grow", "flex-shrink", "font-weight", "line-height", "order", "z-index", "zoom", "scale", "aspect-ratio", "grid-row", "grid-column", "animation-iteration-count", "column-count", "orphans", "widows", "tab-size", "stroke-width", "-webkit-line-clamp", "line-clamp", "fill-opacity", "stroke-opacity", "stop-opacity", "flood-opacity", "stroke-miterlimit", "stroke-dasharray", "stroke-dashoffset", "flex-positive", "flex-negative", "grid-area", "grid-row-start", "grid-row-end", "grid-column-start", "grid-column-end", "border-image-slice", "font-size-adjust", "initial-letter", "max-lines", "volume", "counter-increment", "counter-reset"]);
 
 /** Literals of one CSS declaration: [{ kind, literal, index, px?, unit? }] (index relative to the value). */
 function declLiterals(prop, value) {
@@ -238,7 +255,8 @@ function declLiterals(prop, value) {
     if (!/var\(|theme\(/.test(value)) out.push({ kind: "font", literal: value.trim(), index: 0 });
     return out;
   }
-  for (const c of colorsIn(own)) out.push({ kind: "color", literal: c.literal, index: c.index });
+  // hsl(var(--x)) and oklch(var(--l) var(--c) var(--h)) are derived from tokens: the function's own text was blanked above.
+  for (const c of colorsIn(own)) if (!/\b(?:var|theme|env)\(/i.test(value.slice(c.index, c.index + c.literal.length))) out.push({ kind: "color", literal: c.literal, index: c.index });
   if (!custom && /^(transition|animation)/.test(prop)) return out;
   const kind = RADIUS_PROP.test(prop) ? "radius" : "length";
   for (const m of own.matchAll(LENGTH)) out.push({ kind, literal: m[0], index: m.index, px: toPx(Number(m[1]), m[2]), unit: m[2] });
@@ -273,6 +291,14 @@ function twLiterals(text) {
   return out;
 }
 
+// A string that is one hex color counts when what it is assigned to or passed to speaks of color (fill="#e5533d",
+// const accent = '#e5533d', setColor('#fff')); href="#cafe" and querySelector('#facade') are anchors, not colors.
+const COLOR_CONTEXT = /(?:hex|colou?r|fill|stroke|bg|background|border|shadow|outline|accent|tint|theme|palette|brand|swatch|gradient|stop|flood|lighting|primary|secondary)/i;
+const hexContext = (code, start) => {
+  const m = /([A-Za-z_$][\w$.-]*)\s*(?:=|:|\()\s*\{?\s*$/.exec(code.slice(Math.max(0, start - 80), start));
+  return !!m && COLOR_CONTEXT.test(m[1]);
+};
+
 const DEFINITION_FILE = /(^|\/)(tailwind\.config|theme|tokens|design-tokens)\.[\w.]+$|\.tokens\.[\w.]+$/;
 
 /** Every literal of one file: [{ kind, literal, value?, index, definition, px?, unit? }] (index in the file). */
@@ -293,17 +319,17 @@ function fileLiterals(file, src) {
   }
   if (isStyleFile(file)) return found;
   // style={{ }} and sx={{ }}: CSS values of an object literal (nested objects for selectors too)
-  const objectLiterals = (body, offset) => {
+  const objectLiterals = (body, offset, unitless = false) => {
     for (const e of objectEntries(body, offset)) {
       const v = e.value.trim();
-      if (v.startsWith("{") && v.endsWith("}")) { objectLiterals(v.slice(1, -1), e.valueIndex + 1); continue; }
+      if (v.startsWith("{") && v.endsWith("}")) { objectLiterals(v.slice(1, -1), e.valueIndex + 1, unitless); continue; }
       const prop = cssProp(e.key);
       const str = /^(["'`])([^"'`]*)\1$/.exec(v);
       if (str) { for (const l of declLiterals(prop, str[2])) add({ ...l, index: e.valueIndex + 1 + l.index }); continue; }
       const num = /^-?\d*\.?\d+$/.exec(v);
       if (!num) continue;
       if (prop === "z-index") add({ kind: "z-index", literal: v, index: e.valueIndex });
-      else if (!UNITLESS.has(prop)) add({ kind: RADIUS_PROP.test(prop) ? "radius" : "length", literal: v, value: `${v}px`, index: e.valueIndex, px: Number(v), unit: "px" });
+      else if (!unitless && !UNITLESS.has(prop)) add({ kind: RADIUS_PROP.test(prop) ? "radius" : "length", literal: v, value: `${v}px`, index: e.valueIndex, px: Number(v), unit: "px" });
     }
   };
   for (const el of jsxElements(code)) {
@@ -313,14 +339,15 @@ function fileLiterals(file, src) {
       const inner = a.value.trim();
       if (!inner.startsWith("{") || !inner.endsWith("}")) continue;
       const start = a.valueStart + a.value.indexOf("{") + 1;
-      objectLiterals(code.slice(start, start + inner.length - 2), start);
+      // a bare number in sx is a theme spacing multiplier (MUI), not px
+      objectLiterals(code.slice(start, start + inner.length - 2), start, name === "sx");
     }
   }
   // strings: Tailwind arbitrary values, and a string that is one color literal
   for (const s of stringLiterals(code)) {
     for (const l of twLiterals(s.text)) add({ ...l, index: s.start + 1 + l.index });
     const whole = s.text.trim();
-    if (s.quote !== "`" && isColorValue(whole) && /^(#|rgb|hsl|oklch|oklab|lab|lch|hwb)/i.test(whole)) add({ kind: "color", literal: whole, index: s.start + 1 + s.text.indexOf(whole) });
+    if (s.quote !== "`" && isColorValue(whole) && /^(#|rgb|hsl|oklch|oklab|lab|lch|hwb)/i.test(whole) && (!whole.startsWith("#") || hexContext(code, s.start))) add({ kind: "color", literal: whole, index: s.start + 1 + s.text.indexOf(whole) });
   }
   return found;
 }
@@ -336,17 +363,24 @@ await runCli({
     const changed = values.base ? changedSince(root, values.base) : null;
     let tokensFile = values.tokens ?? ".aidw/design/tokens.yaml";
     let tokens = [];
-    if (existsSync(join(root, tokensFile))) {
+    const notes = [];
+    const tokensPath = resolve(root, tokensFile); // an absolute path is used as is
+    if (existsSync(tokensPath)) {
       let text;
-      try { text = readFileSync(join(root, tokensFile), "utf8"); } catch (e) { throw new UsageError(`cannot read ${tokensFile}: ${e.code ?? e.message}`); }
-      try { tokens = parseTokensYaml(text); } catch (e) { throw new UsageError(`${tokensFile}: ${e.message}`); }
+      try { text = readFileSync(tokensPath, "utf8"); } catch (e) { throw new UsageError(`cannot read ${tokensFile}: ${e.code ?? e.message}`); }
+      try {
+        const parsed = parseTokensYaml(text);
+        tokens = parsed.items;
+        if (tokens.length === 0 && parsed.bodyLines > 0) notes.push({ file: tokensFile, reason: "0 tokens parsed from a file with content under tokens: (each token needs name and value)" });
+      } catch (e) { throw new UsageError(`${tokensFile}: ${e.message}`); }
     } else if (values.tokens) throw new UsageError(`no tokens file at ${values.tokens}`);
     else tokensFile = null;
     const check = checker(tokens);
 
     const findings = [];
     const tokenValues = [];
-    const { sources, skipped } = loadSources(root, [...STYLE_EXTS, ...JS_EXTS]);
+    const { sources, skipped } = loadSources(root, [...STYLE_EXTS, ...JS_EXTS], { checkTemplates: true });
+    skipped.push(...notes);
     for (const { file, src } of sources) {
       if (isTestFile(file)) continue;
       const line = lineIndex(src);

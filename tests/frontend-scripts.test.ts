@@ -385,7 +385,7 @@ describe("public-env-scan", () => {
 
   it("with --base looks only at the lines the diff adds, but client files still come from the whole tree", () => {
     const root = project({
-      "package.json": JSON.stringify({ dependencies: { vite: "5" } }),
+      "package.json": JSON.stringify({ dependencies: { vite: "5", react: "18" } }),
       "src/main.ts": "import { cfg } from './cfg';\nprocess.env.OLD_NAME;\n",
       "lib-outside.ts": "",
       "src/cfg.ts": "export const cfg = 1;\n",
@@ -398,7 +398,7 @@ describe("public-env-scan", () => {
   });
 
   it("prints short text with --text", () => {
-    const root = project({ "package.json": JSON.stringify({ dependencies: { vite: "5" } }), "src/a.ts": "process.env.DB_URL;\n" });
+    const root = project({ "package.json": JSON.stringify({ dependencies: { vite: "5", react: "18" } }), "src/a.ts": "process.env.DB_URL;\n" });
     const r = runScript(S("public-env-scan.mjs"), [root, "--text"]);
     expect(r.stdout).toMatch(/^framework: vite; public prefix: VITE_; client files: 1/);
     expect(r.stdout).toMatch(/without the public prefix \(1\):\n {2}DB_URL {2}src\/a\.ts:1/);

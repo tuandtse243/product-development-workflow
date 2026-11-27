@@ -423,7 +423,7 @@ describe("token-literals on derived values and realistic styles", () => {
 describe("public-env-scan on realistic env reads", () => {
   it("reads destructured env and bracket access; a run-time key, an alias and a string are not seen", () => {
     const root = project({
-      "package.json": JSON.stringify({ dependencies: { vite: "5" } }),
+      "package.json": JSON.stringify({ dependencies: { vite: "5", react: "18" } }),
       "src/env.ts": [
         "const { VITE_API_URL, VITE_SENTRY_DSN: dsn, DB_URL = 'x' } = import.meta.env;",
         "const key = 'VITE_X';",
@@ -435,26 +435,27 @@ describe("public-env-scan on realistic env reads", () => {
     });
     const r = env(root);
     expect(r.json.reads.map((x: any) => `${x.line} ${x.name} ${x.public}`)).toEqual(["1 DB_URL false", "1 VITE_API_URL true", "1 VITE_SENTRY_DSN true", "5 VITE_BRACKET true"]);
-    expect(r.json.secretLooking.map((x: any) => x.name)).toEqual(["VITE_SENTRY_DSN"]);
+    // A DSN is meant for the browser (F10's list has no DSN word).
+    expect(r.json.secretLooking).toEqual([]);
   });
 
-  it("does not count reads in src/server, src/api and *.server.* as client reads, but lists their secret-looking public names", () => {
+  it("counts every file under src/ of a Vite SPA as client code (spec section 5), but not *.server.* files", () => {
     const root = project({
-      "package.json": JSON.stringify({ dependencies: { vite: "5" } }),
+      "package.json": JSON.stringify({ dependencies: { vite: "5", react: "18" } }),
       "src/main.tsx": "export const u = import.meta.env.VITE_URL;\n",
       "src/server/secrets.ts": "export const s = process.env.STRIPE_SECRET_KEY;\nexport const p = import.meta.env.VITE_PRIVATE_TOKEN;\n",
-      "src/api/handler.ts": "export const h = process.env.API_KEY;\n",
+      "src/api/client.ts": "export const h = process.env.API_KEY;\n",
       "src/routes.server.ts": "export const r = process.env.SERVER_ONLY;\n",
     });
     const r = env(root);
-    expect(r.json.clientFiles).toBe(1);
-    expect(r.json.reads.map((x: any) => `${x.file} ${x.name}`)).toEqual(["src/main.tsx VITE_URL"]);
+    expect(r.json.clientFiles).toBe(3);
+    expect(r.json.reads.map((x: any) => `${x.file} ${x.name} ${x.public}`)).toEqual(["src/api/client.ts API_KEY false", "src/main.tsx VITE_URL true", "src/server/secrets.ts STRIPE_SECRET_KEY false", "src/server/secrets.ts VITE_PRIVATE_TOKEN true"]);
     expect(r.json.secretLooking).toEqual([{ name: "VITE_PRIVATE_TOKEN", file: "src/server/secrets.ts", line: 2 }]);
   });
 
   it("never opens .env or .env.local, and reads .env.example (CRLF, commented, export) for names only", () => {
     const root = project({
-      "package.json": JSON.stringify({ dependencies: { vite: "5" } }),
+      "package.json": JSON.stringify({ dependencies: { vite: "5", react: "18" } }),
       ".env": "VITE_SECRET_KEY=abc\n",
       ".env.local": "VITE_LOCAL_TOKEN=abc\n",
       ".env.example": "VITE_PUBLIC_URL=x\r\n# VITE_ADMIN_PASSWORD=hunter2\r\nexport VITE_MAPBOX_TOKEN=pk.xyz\r\nVITE_SUPABASE_ANON_KEY=\r\n",
@@ -526,7 +527,7 @@ describe("frontend scripts on input edge cases", () => {
 
   it("gives the right line numbers for CRLF files", () => {
     const root = project({
-      "package.json": JSON.stringify({ dependencies: { vite: "5" } }),
+      "package.json": JSON.stringify({ dependencies: { vite: "5", react: "18" } }),
       "src/c.css": ".a {\r\n  color: #123456;\r\n  padding: 13px;\r\n}\r\n.b {\r\n  outline: none;\r\n}\r\n",
       "src/C.tsx": "export const C = () => (\r\n  <div\r\n    className=\"p-[13px]\"\r\n    style={{\r\n      margin: '7px',\r\n    }}\r\n    onClick={go}\r\n  >\r\n    <img src=\"a.png\" />\r\n  </div>\r\n);\r\nconst k = import.meta.env.VITE_AUTH_TOKEN;\r\n",
     });
@@ -542,7 +543,7 @@ describe("frontend scripts on input edge cases", () => {
     const big = `export const P = () => (<div>\n${rows}${tail}`;
     expect(big.length).toBeGreaterThan(480_000);
     expect(big.length).toBeLessThan(512 * 1024);
-    const root = project({ "package.json": JSON.stringify({ dependencies: { vite: "5" } }), "src/Big.tsx": big, "src/Huge.tsx": "export const H = 1;\n".repeat(30000) });
+    const root = project({ "package.json": JSON.stringify({ dependencies: { vite: "5", react: "18" } }), "src/Big.tsx": big, "src/Huge.tsx": "export const H = 1;\n".repeat(30000) });
     for (const name of ["token-literals.mjs", "a11y-names.mjs", "public-env-scan.mjs"]) {
       const t = Date.now();
       const r = runScript(S(name), [root]);
@@ -557,7 +558,7 @@ describe("frontend scripts on input edge cases", () => {
 
   it("does not crash on syntax it cannot parse, and still scans the other files", () => {
     const files = {
-      "package.json": JSON.stringify({ dependencies: { vite: "5" } }),
+      "package.json": JSON.stringify({ dependencies: { vite: "5", react: "18" } }),
       "src/Unbalanced.tsx": "export const U = () => (\n  <div style={{ color: '#123456' }\n    <img src=\"x.png\" >\n  </div\n}}}}((((\n",
       "src/Bin.tsx": "\u0000\u0001\u0002<div onClick={x}>�",
       "src/Ok.tsx": "export const K = () => <div onClick={go} style={{ margin: '7px' }}>x</div>;\nconst v = import.meta.env.API_KEY;\n",
@@ -576,7 +577,7 @@ describe("frontend scripts on input edge cases", () => {
 
   it("BUG: a file whose template literal never closes is listed in skipped, not silently half-read", () => {
     const root = project({
-      "package.json": JSON.stringify({ dependencies: { vite: "5" } }),
+      "package.json": JSON.stringify({ dependencies: { vite: "5", react: "18" } }),
       "src/Broken.tsx": "const a = `oops\nconst k = import.meta.env.VITE_SECRET_TOKEN;\n",
     });
     // Today the read after the unclosed backtick is taken as string text: no read, no secretLooking, nothing skipped.
@@ -661,5 +662,214 @@ describe("library/scripts/_common.mjs after the move", () => {
     expect(third.frontend.working).not.toBe(after.frontend.working);
     expect(third.backend.working).toBe(after.backend.working);
     for (const r of ROLES) expect(third[r].shared, r).toBe(before[r].shared);
+  });
+});
+
+// ---------------------------------------------------------------- regressions of the review findings
+
+describe("review fixes: public-env-scan", () => {
+  it("M2a: vite in the devDependencies only for vitest does not make a backend's src/ client code", () => {
+    const backend = project({
+      "package.json": JSON.stringify({ dependencies: { express: "4" }, devDependencies: { vite: "5", vitest: "2" } }),
+      "src/db.ts": "export const u = process.env.DATABASE_URL;\n",
+    });
+    expect(env(backend).json).toMatchObject({ framework: "none", clientFiles: 0, reads: [] });
+    const spa = project({
+      "package.json": JSON.stringify({ devDependencies: { vite: "5" } }),
+      "index.html": "<div id=root></div>\n",
+      "vite.config.ts": "export default {};\n",
+      "src/main.ts": "export const u = import.meta.env.VITE_URL;\n",
+    });
+    expect(env(spa).json).toMatchObject({ framework: "vite", clientFiles: 1 });
+    for (const lib of ["react", "vue", "svelte", "preact"]) {
+      const r = project({ "package.json": JSON.stringify({ dependencies: { [lib]: "1" }, devDependencies: { vite: "5" } }), "src/a.ts": "export const a = 1;\n" });
+      expect(env(r).json.framework, lib).toBe("vite");
+    }
+  });
+
+  it("M2c: a .js specifier reaches the .ts or .tsx file (TypeScript ESM style)", () => {
+    const root = project({
+      "package.json": JSON.stringify({ dependencies: { next: "15" } }),
+      "app/C.tsx": "'use client';\nimport { a } from './util.js';\nimport { B } from './B.js';\nexport const C = () => a + B;\n",
+      "app/util.ts": "export const a = process.env.UTIL_VALUE;\n",
+      "app/B.tsx": "export const B = process.env.B_VALUE;\n",
+    });
+    const r = env(root).json;
+    expect(r.clientFiles).toBe(3);
+    expect(r.reads.map((x: any) => x.name)).toEqual(["B_VALUE", "UTIL_VALUE"]);
+  });
+
+  it("M2: Remix, React Router framework mode and TanStack Start are reported as unsupported, exit 0", () => {
+    for (const dep of ["@remix-run/react", "@react-router/dev", "@tanstack/react-start"]) {
+      const root = project({ "package.json": JSON.stringify({ dependencies: { react: "19", [dep]: "1" }, devDependencies: { vite: "5" } }), "app/routes/a.tsx": "export const a = process.env.X;\n" });
+      const r = env(root);
+      expect(r.code, dep).toBe(0);
+      expect(r.json.framework, dep).toBe("none");
+      expect(r.json.skipped.map((s: any) => s.file), dep).toEqual(["package.json"]);
+      expect(r.json.skipped[0].reason, dep).toMatch(/not supported/);
+    }
+  });
+
+  it("L5: DSN and AUTH alone are not secret words; KEY, SECRET, TOKEN, PASSWORD and PRIVATE are", () => {
+    const root = project({
+      "package.json": JSON.stringify({ dependencies: { vite: "5", react: "18" } }),
+      "src/a.ts": [
+        "const a = import.meta.env.VITE_SENTRY_DSN;",
+        "const b = import.meta.env.VITE_AUTH_DOMAIN;",
+        "const c = import.meta.env.VITE_AUTH0_CLIENT_ID;",
+        "const d = import.meta.env.VITE_API_KEY;",
+        "const e = import.meta.env.VITE_DB_PASSWORD;",
+        "const f = import.meta.env.VITE_PRIVATE_URL;",
+        "const g = import.meta.env.VITE_AUTH_TOKEN;",
+      ].join("\n"),
+    });
+    expect(env(root).json.secretLooking.map((x: any) => x.name)).toEqual(["VITE_API_KEY", "VITE_AUTH_TOKEN", "VITE_DB_PASSWORD", "VITE_PRIVATE_URL"]);
+  });
+
+  it("import { type A } with only type specifiers is erased too", () => {
+    const root = project({
+      "package.json": JSON.stringify({ dependencies: { next: "15" } }),
+      "app/C.tsx": "'use client';\nimport { type User } from '@/server/db';\nexport type { User } from '@/server/db';\nexport const C = 1;\n",
+      "src/server/db.ts": "import 'server-only';\nexport type User = { id: string };\n",
+    });
+    expect(env(root).json.serverImportsInClient).toEqual([]);
+  });
+});
+
+describe("review fixes: a11y-names", () => {
+  const names = (body: string) => probs(a11y(project({ "src/A.tsx": `import { Gear } from 'lucide-react';\nexport const A = () => (\n<>\n${body}\n</>\n);\n` })));
+
+  it("M3: IconButton and Iconography are not icons; *Icon and a library import are; <i> needs to be empty or without text", () => {
+    expect(names([
+      "<button><IconButton /></button>",
+      "<button><Iconography /></button>",
+      "<button><SearchIcon /></button>",
+      "<button><Gear /></button>",
+      "<button><i>Save</i></button>",
+      '<button><i className="fa fa-x"></i></button>',
+      "<button><i /></button>",
+      "<button><Icon /></button>",
+    ].join("\n"))).toEqual(["src/A.tsx:6 no-name button", "src/A.tsx:7 no-name button", "src/A.tsx:9 no-name button", "src/A.tsx:10 no-name button", "src/A.tsx:11 no-name button"]);
+  });
+
+  it("L1: x, X, the multiplication sign and &times; alone are a symbol, not a name", () => {
+    const r = a11y(project({ "src/A.tsx": "export const A = () => (<>\n<button>x</button>\n<button>X</button>\n<button>×</button>\n<button>&times;</button>\n<button>Xbox</button>\n<button>Close</button>\n</>);\n" }));
+    expect(probs(r)).toEqual(["src/A.tsx:2 no-name button", "src/A.tsx:3 no-name button", "src/A.tsx:4 no-name button", "src/A.tsx:5 no-name button"]);
+    expect(r.json.findings[0].detail).toMatch(/only a symbol/);
+  });
+
+  it("M4: a styled-components template with no outer block is one scope for :focus-visible", () => {
+    const root = project({
+      "src/S.tsx": [
+        "import styled, { css } from 'styled-components';",
+        "export const A = styled.button`",
+        "  outline: none;",
+        "  &:focus-visible { outline: 2px solid blue; }",
+        "`;",
+        "export const B = styled.button`",
+        "  outline: none;",
+        "  &:hover { color: red; }",
+        "`;",
+        "export const C = css`outline: 0; &:focus-visible { box-shadow: 0 0 0 2px blue; }`;",
+      ].join("\n"),
+    });
+    expect(probs(a11y(root))).toEqual(["src/S.tsx:7 outline-removed null"]);
+  });
+
+  it("a <Label> and a <FormLabel> bind and wrap a field like a <label>", () => {
+    const root = project({ "src/F.tsx": "export const F = () => (<>\n<FormLabel>Name<input /></FormLabel>\n<Label htmlFor=\"a\">A</Label><input id=\"a\" />\n<Label htmlFor=\"zzz\">Z</Label><input id=\"b\" />\n</>);\n" });
+    expect(probs(a11y(root))).toEqual(["src/F.tsx:4 no-label input"]);
+  });
+
+  it("a file with an unclosed template literal is skipped by all three scripts", () => {
+    const root = project({ "package.json": JSON.stringify({ dependencies: { vite: "5", react: "18" } }), "src/B.tsx": "const a = `oops\n<div onClick={x} style={{ margin: '7px' }} />\n" });
+    for (const r of [a11y(root), tok(root), env(root)]) {
+      expect(r.json.skipped).toEqual([{ file: "src/B.tsx", reason: expect.stringMatching(/unclosed template literal/) }]);
+      expect(r.json.findings ?? []).toEqual([]);
+    }
+  });
+
+  it("//: a URL or a comment-like text inside JSX text is text; a real trailing comment is still a comment", () => {
+    const root = project({
+      "src/U.tsx": [
+        "import { X } from 'lucide-react';",
+        "export const U = () => (<>",
+        "<p>a // b</p><button><X /></button>",
+        "<br /> <button><X /></button> // trailing <button><X /></button>",
+        "</>);",
+      ].join("\n"),
+    });
+    expect(probs(a11y(root))).toEqual(["src/U.tsx:3 no-name button", "src/U.tsx:4 no-name button"]);
+  });
+
+  it("closing tags are found for nested same-name elements and a long file of unclosed tags stays linear", () => {
+    const root = project({ "src/N.tsx": "export const N = () => (<>\n<button><button>ok</button></button>\n<a href=\"/x\"><a href=\"/y\"><svg /></a></a>\n</>);\n" });
+    expect(probs(a11y(root))).toEqual(["src/N.tsx:3 no-name a"]);
+  });
+});
+
+describe("review fixes: token-literals", () => {
+  it("M5: a bare number in sx is not px, and SVG and clamp properties are unitless", () => {
+    const root = project({
+      ".aidw/design/tokens.yaml": TOKENS,
+      "src/M.tsx": [
+        "export const M = () => (<>",
+        "<Box sx={{ p: 2, m: 3, width: 240, borderRadius: 2, zIndex: 999, mt: '13px' }} />",
+        "<p style={{ strokeWidth: 2, WebkitLineClamp: 3, fillOpacity: 0.5, strokeOpacity: 1, columnCount: 2, flexShrink: 0, order: 2, zoom: 2 }} />",
+        "</>);",
+      ].join("\n"),
+    });
+    expect(lits(tok(root))).toEqual(["src/M.tsx:2 length 13px", "src/M.tsx:2 z-index 999"]);
+  });
+
+  it("L7: white and black written as hsl() or oklch() are allowed; other colors in those forms are not", () => {
+    const root = project({
+      ".aidw/design/tokens.yaml": TOKENS,
+      "src/a.css": [
+        ".a { color: hsl(0 0% 100%); background: hsl(0, 0%, 0%); border-color: oklch(1 0 0); outline-color: oklch(0 0 0); }",
+        ".b { color: hsl(0 0% 50%); background: oklch(0.7 0.1 30); }",
+      ].join("\n"),
+    });
+    expect(lits(tok(root))).toEqual(["src/a.css:2 color hsl(0 0% 50%)", "src/a.css:2 color oklch(0.7 0.1 30)"]);
+  });
+
+  it("L3: a declaration right after a closing } is read", () => {
+    const root = project({ ".aidw/design/tokens.yaml": TOKENS, "src/n.scss": ".a { .b { color: var(--x); } padding: 13px; &:hover { margin: 5px } width: 7px; }\n" });
+    expect(lits(tok(root))).toEqual(["src/n.scss:1 length 13px", "src/n.scss:1 length 5px", "src/n.scss:1 length 7px"]);
+  });
+
+  it("hex strings: color-like names count, anchors and selectors do not", () => {
+    const root = project({
+      "src/h.ts": [
+        "const accent = '#abcdef';",
+        "ctx.fillStyle = '#123456';",
+        "setColor('#654321');",
+        "document.querySelector('#facade');",
+        "const link = '#cafe';",
+      ].join("\n"),
+    });
+    expect(lits(tok(root))).toEqual(["src/h.ts:1 color #abcdef", "src/h.ts:2 color #123456", "src/h.ts:3 color #654321"]);
+  });
+
+  it("L6: inline or flow tokens: exits 2 with a message; 0 tokens from a non-empty file is noted in skipped", () => {
+    const flow = project({ ".aidw/design/tokens.yaml": 'tokens: [{ name: a, kind: color, value: "#111111" }]\n', "src/a.css": ".a { color: #222222 }\n" });
+    const r = tok(flow);
+    expect(r.code).toBe(2);
+    expect(r.stderr).toMatch(/inline or flow/);
+    const empty = project({ ".aidw/design/tokens.yaml": "tokens:\n  - name: a\n    kind: color\n", "src/a.css": ".a { color: #222222 }\n" });
+    const e = tok(empty);
+    expect(e.code).toBe(0);
+    expect(e.json.tokens).toBe(0);
+    expect(e.json.skipped).toEqual([{ file: ".aidw/design/tokens.yaml", reason: expect.stringMatching(/0 tokens parsed/) }]);
+    expect(tok(project({ ".aidw/design/tokens.yaml": "tokens: []\n" })).json.skipped).toEqual([]);
+  });
+
+  it("N2: an absolute --tokens path is used as is", () => {
+    const elsewhere = project({ "t.yaml": TOKENS });
+    const root = project({ "src/a.css": ".a { color: #e5533d; padding: 13px }\n" });
+    const r = tok(root, ["--tokens", join(elsewhere, "t.yaml")]);
+    expect(r.code).toBe(0);
+    expect(r.json.tokens).toBe(6);
+    expect(r.json.tokenValues.map((t: any) => t.token)).toEqual(["accent"]);
   });
 });

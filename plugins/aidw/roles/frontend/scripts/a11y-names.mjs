@@ -8,14 +8,15 @@ Lists candidates in the JSX and styles of [dir] (default: the working directory)
   div-click          onClick on a non-interactive element (div, span, li, an <a> without href, ...) that lacks a
                      role, a tabIndex or a key handler (F4: use a button, or add all three)
   no-name            a button, a link (<a>, Link from next/link or react-router) or an element with an interactive
-                     role whose content is only an icon (<svg>, an *Icon component, <i>), only a symbol (x, ->) or
-                     empty, with no aria-label, aria-labelledby or title (F4)
+                     role whose content is only an icon (<svg>, a component named Icon or *Icon or imported from an
+                     icon library, an <i> that is empty or has no text), only a symbol (x, X, \u00d7, &times;, ->)
+                     or empty, with no aria-label, aria-labelledby or title (F4)
   no-label           an input, select or textarea with no aria-label or aria-labelledby, no id that a
-                     <label htmlFor> in the same file names and no wrapping <label> (F4)
+                     <label htmlFor> (or <Label htmlFor>) in the same file names and no wrapping label (F4)
   no-alt             an <img> (or next/image's Image) with no alt attribute; alt="" marks a decorative one (F4)
   positive-tabindex  a tabIndex above 0 (F4: it breaks the tab order)
   outline-removed    outline: none or 0 in a CSS rule with no :focus-visible in the same rule (or the rule that holds
-                     it), outline-none or outline-0 in a class string with no focus-visible: class, or outline in a
+                     it; a styled or emotion template with no outer block counts whole), outline-none or outline-0 in a class string with no focus-visible: class, or outline in a
                      style object (F5)
   raw-html           dangerouslySetInnerHTML, or .innerHTML / .outerHTML assigned, insertAdjacentHTML(), document.write()
                      (F16), unless the value is passed through a call named sanitize* or *purify*
@@ -33,9 +34,9 @@ Options:
 Output (JSON): { tool, schemaVersion: 1, root, base, findings: [{ file, line, element, problem, detail }], skipped }
 "element" is the tag name (div, button, img), the CSS selector for a rule, or null for a class string outside a tag.
 "skipped" lists what was not read: public/ and static/ output, *.min.* and *.bundle.*, files over 512 KB,
-unreadable files.
+unreadable files, files with a template literal that never closes.
 
-Limits: a component (<Button>, <IconButton>) is not looked into, only host elements and the Link and Image above;
+Limits: a component (<Button>, <IconButton>; IconButton is not an icon) is not looked into, only host elements and the Link and Image above;
 an accessible name from an expression child ({t('close')}) or from a nested element other than an icon is taken as
 present; an id built at run time counts as bound when the file has any htmlFor={...}; a sanitizer that is not
 called inline is not seen; .vue and .svelte templates come later.
@@ -44,7 +45,7 @@ Exit: 0 when the scan ran (whatever it found), 2 on a usage or read error.
 `;
 
 import { changedSince, inStringOf, isAdded, isTestFile, JS_EXTS, lineIndex, loadSources, maskComments, projectRoot, runCli, table } from "../../../library/scripts/_common.mjs";
-import { attrText, cssBlocks, cssChunks, jsxElements, STYLE_EXTS, stringLiterals } from "./_markup.mjs";
+import { attrText, cssBlocks, cssChunks, isStyleFile, jsxElements, STYLE_EXTS, stringLiterals } from "./_markup.mjs";
 
 const NATIVE_INTERACTIVE = new Set(["button", "input", "select", "textarea", "summary", "option", "details", "label", "a"]);
 const INTERACTIVE_ROLES = new Set(["button", "link", "checkbox", "menuitem", "menuitemcheckbox", "menuitemradio", "option", "radio", "switch", "tab", "treeitem", "combobox", "slider", "spinbutton", "textbox", "searchbox"]);
@@ -59,14 +60,26 @@ const JSX_FILE = /\.(jsx|tsx|js|mjs|cjs)$/;
 const has = (el, name) => el.attrs.has(name) && (el.attrs.get(name).kind !== "string" || el.attrs.get(name).value.trim() !== "");
 const roleOf = (el) => (attrText(el.attrs.get("role")) ?? "").trim();
 
-/** The names of icon components in a file: *Icon, Icon*, and the names imported from a known icon library. */
+/**
+ * Is an element an icon? An <svg>; an <i> that is empty, self-closing or has a className and no text; a component
+ * named Icon or *Icon (SearchIcon; not IconButton or Iconography); a name imported from a known icon library.
+ */
 function iconNames(code) {
   const names = new Set();
   for (const m of code.matchAll(/import\s+\{([^}]*)\}\s+from\s+["'][^"']+["']/g)) {
     if (!ICON_LIBS.test(m[0])) continue;
     for (const part of m[1].split(",")) { const n = part.trim().split(/\s+as\s+/).pop(); if (n) names.add(n); }
   }
-  return (name) => name === "svg" || name === "i" || /Icon$|^Icon[A-Z]?/.test(name) || names.has(name);
+  return (el) => {
+    if (el.name === "svg") return true;
+    if (el.name === "i") {
+      if (el.selfClosing) return true;
+      if (el.closeStart === null) return false;
+      const inner = code.slice(el.openEnd, el.closeStart).replace(/<[^>]*>/g, "").trim();
+      return inner === "" || (el.attrs.has("className") && !/[\p{L}\p{N}{]/u.test(inner));
+    }
+    return /^Icon$|[a-z0-9]Icon$/.test(el.name) || names.has(el.name);
+  };
 }
 
 /**
@@ -83,12 +96,13 @@ function contentName(code, el, all, isIcon) {
     const end = c.selfClosing || c.closeEnd === null ? c.openEnd : c.closeEnd;
     covered = end;
     if (c.name === "img" && (attrText(c.attrs.get("alt")) ?? (c.attrs.has("alt") ? "x" : "")).trim() !== "") return "text";
-    if (!isIcon(c.name) && c.name !== "img") return "unknown";
+    if (!isIcon(c) && c.name !== "img") return "unknown";
     for (let k = c.index; k < end; k++) if (text[k - el.openEnd] !== undefined) text[k - el.openEnd] = " ";
   }
   const rest = text.join("").replace(/\{\s*\}/g, " ").trim();
   if (!rest) return "none";
   if (/\{[^}]*\S[^}]*\}/.test(rest)) return "unknown";
+  if (/^(?:&times;|&#215;|&#xd7;|[xX\u00d7\u2715\u2716\u2717\u2718])$/i.test(rest)) return "symbol"; // a close mark is not a name
   return /[\p{L}\p{N}]/u.test(rest) ? "text" : "symbol";
 }
 
@@ -99,9 +113,10 @@ function jsxFindings(code) {
   const isIcon = iconNames(code);
   const linkComponent = LINK_IMPORT.test(code);
   const imageComponent = IMAGE_IMPORT.test(code);
-  const labelFor = new Set(all.filter((e) => e.name === "label").map((e) => attrText(e.attrs.get("htmlFor")) ?? attrText(e.attrs.get("for"))).filter(Boolean));
-  const dynamicFor = all.some((e) => e.name === "label" && e.attrs.get("htmlFor")?.kind === "expr" && attrText(e.attrs.get("htmlFor")) === null);
-  const labels = all.filter((e) => e.name === "label" && e.closeStart !== null);
+  const isLabel = (e) => e.name === "label" || /^(?:Label|\w+Label)$/.test(e.name); // <label>, shadcn/Radix <Label>, <FormLabel>
+  const labelFor = new Set(all.filter(isLabel).map((e) => attrText(e.attrs.get("htmlFor")) ?? attrText(e.attrs.get("for"))).filter(Boolean));
+  const dynamicFor = all.some((e) => isLabel(e) && e.attrs.get("htmlFor")?.kind === "expr" && attrText(e.attrs.get("htmlFor")) === null);
+  const labels = all.filter((e) => isLabel(e) && e.closeStart !== null);
   for (const el of all) {
     const host = /^[a-z]/.test(el.name);
     const role = roleOf(el);
@@ -178,7 +193,8 @@ function cssFindings(file, code) {
       const around = blocks.filter((b) => b.open < at && b.close > at);
       const inner = around.reduce((a, b) => (a && a.open > b.open ? a : b), null);
       const outer = around.reduce((a, b) => (a && a.open < b.open ? a : b), null);
-      const scope = outer ? `${outer.selector} ${chunk.text.slice(outer.open, outer.close)}` : "";
+      // A styled or emotion template is itself the rule: with no block around the declaration, the whole template is the scope.
+      const scope = outer ? `${outer.selector} ${chunk.text.slice(outer.open, outer.close)}` : isStyleFile(file) ? "" : chunk.text;
       if (/focus-visible/.test(scope)) continue;
       out.push({ index: chunk.offset + at, element: inner ? inner.selector || null : null, problem: "outline-removed", detail: `outline: ${m[2]} with no :focus-visible in the rule` });
     }
@@ -211,7 +227,7 @@ await runCli({
     const root = projectRoot(positionals);
     const changed = values.base ? changedSince(root, values.base) : null;
     const findings = [];
-    const { sources, skipped } = loadSources(root, [...JS_EXTS, ...STYLE_EXTS]);
+    const { sources, skipped } = loadSources(root, [...JS_EXTS, ...STYLE_EXTS], { checkTemplates: true });
     for (const { file, src } of sources) {
       if (isTestFile(file)) continue;
       const code = maskComments(src);
