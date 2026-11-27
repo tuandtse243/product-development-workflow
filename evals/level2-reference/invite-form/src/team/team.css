@@ -1,0 +1,10 @@
+/* Every value is a token (src/styles/tokens.css). */
+.team__form {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.team__error {
+  margin: 0;
+  color: var(--color-danger);
+}
