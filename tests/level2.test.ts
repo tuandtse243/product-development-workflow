@@ -12,6 +12,7 @@ import {
   jsonContains,
   level2ResultsFile,
   loadLevel2Cases,
+  noScreenshotsBrief,
   parseStreamLog,
   removeTree,
   runLevel2,
@@ -222,6 +223,65 @@ describe("level 2: the package cache", () => {
     const xdg = temp("aidw-l2-xdg-");
     const r = ensureFixturePackages(join(fixtures, "tiny-app"), "tiny-app", { XDG_CACHE_HOME: xdg }, install);
     expect(r.nodeModules.startsWith(join(xdg, "aidw", "fixtures", "tiny-app-"))).toBe(true);
+  });
+});
+
+describe("level 2 cases: screenshots: off", () => {
+  const brief = [
+    "## Rules",
+    "",
+    "- **Design**: style through the tokens below (CSS variables or theme), never hard-coded colors.",
+    "- **Screenshots**: when it works, save at most 6 PNG screenshots of the screens into `/x/shots` (create it).",
+    "- Take screenshots with Playwright through the project's `webServer` config (it starts and stops the app).",
+    "- Report in at most 10 lines.",
+    "",
+    "## Design tokens (approved; binding for UI)",
+    "",
+    "| Token | Kind | Value | Dark | Use |",
+    "",
+  ].join("\n");
+
+  it("drops the two screenshot lines of the brief and keeps the tokens and the design rule", () => {
+    const b = noScreenshotsBrief(brief);
+    expect(b).not.toMatch(/Screenshots\*\*|Playwright|\/x\/shots/);
+    expect(b).toMatch(/- \*\*Design\*\*: style through the tokens/);
+    expect(b).toMatch(/## Design tokens \(approved; binding for UI\)\n\n\| Token/);
+    expect(b).toMatch(/- Report in at most 10 lines\./);
+    expect(b.split("\n")).toHaveLength(brief.split("\n").length - 2);
+  });
+
+  it("refuses a brief with no screenshot line: the case's task builds no screen with tokens, or the wording changed", () => {
+    expect(() => noScreenshotsBrief("## Rules\n\n- Report in at most 10 lines.\n")).toThrow(/no screenshot line to drop/);
+  });
+
+  it("refuses a brief where one screenshot line, or more than two, would be dropped", () => {
+    const one = brief.split("\n").filter((l) => !/^- Take screenshots with Playwright\b/.test(l)).join("\n");
+    expect(() => noScreenshotsBrief(one)).toThrow(/exactly the two screenshot lines.*1 lines match/);
+    expect(() => noScreenshotsBrief(`${brief}\n- Take screenshots with Playwright again.\n`)).toThrow(/exactly the two screenshot lines.*3 lines match/);
+  });
+
+  it("reads the key: off drops the lines, on or none keeps them, anything else is an error", () => {
+    const root = pluginWithCase();
+    const file = join(root, "roles", "backend", "evals", "level2", "tiny", "case.md");
+    const text = readFileSync(file, "utf8");
+    const withKey = (v: string) => {
+      writeFileSync(file, text.replace("task: T01\n", `task: T01\nscreenshots: ${v}\n`));
+      return loadLevel2Cases(root, "backend");
+    };
+    expect(loadLevel2Cases(root, "backend").cases[0]!.screenshots).toBe(true);
+    expect(withKey("off").cases[0]!.screenshots).toBe(false);
+    expect(withKey("false").cases[0]!.screenshots).toBe(false);
+    expect(withKey("on").cases[0]!.screenshots).toBe(true);
+    const bad = withKey("never");
+    expect(bad.diags.errors.map((e) => e.message)).toEqual([expect.stringMatching(/screenshots: on or off/)]);
+  });
+
+  it("a run of a case with screenshots: off whose task has no screenshot lines is an ERROR that says why", () => {
+    const s = setup();
+    const file = join(s.root, "roles", "backend", "evals", "level2", "tiny", "case.md");
+    writeFileSync(file, readFileSync(file, "utf8").replace("task: T01\n", "task: T01\nscreenshots: off\n"));
+    const [r] = runLevel2({ root: s.root, role: "backend", runs: 1, agent: fakeAgent({ value: "new" }), exec: grader(true), install: s.install, env: s.env, runsDir: s.runsDir });
+    expect(r!.results[0]!.error).toMatch(/no screenshot line to drop/);
   });
 });
 
@@ -556,7 +616,8 @@ describe("aidw roster and level 2", () => {
   // These runs grade with AIDW_GRADE_SANDBOX=off (no sandbox can be applied inside a Claude Code session): that
   // warning is tested on its own below, and left out here.
   const NO_SANDBOX = /graded with no sandbox/;
-  const l2 = (out: string) => out.split("\n").filter((l) => l.includes("level2/results.json") && !NO_SANDBOX.test(l));
+  // backend's file only: the plugin's other Roles with level 2 cases (frontend) warn about their own
+  const l2 = (out: string) => out.split("\n").filter((l) => l.includes("backend/evals/level2/results.json") && !NO_SANDBOX.test(l));
 
   it("warns, never fails, when the results are missing, stale or failing", () => {
     const s = setup();

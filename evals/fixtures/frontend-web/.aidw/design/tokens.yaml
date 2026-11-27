@@ -1,0 +1,88 @@
+# The clinic web app's design tokens. src/styles/tokens.css is generated from this file (one CSS variable per token,
+# `--<name>`; dark values under prefers-color-scheme: dark).
+tokens:
+  - name: color-surface
+    kind: color
+    value: "#ffffff"
+    dark: "#14171c"
+    use: page and dialog backgrounds
+  - name: color-surface-raised
+    kind: color
+    value: "#f3f5f8"
+    dark: "#1e232b"
+    use: list rows, slot buttons at rest, the dialog backdrop's panel edge
+  - name: color-text
+    kind: color
+    value: "#1b2230"
+    dark: "#e7eaf0"
+    use: all body text and headings
+  - name: color-text-muted
+    kind: color
+    value: "#5a6475"
+    dark: "#a3acbb"
+    use: secondary text (specialty, counts, booked slots' time)
+    why: 5.9:1 on color-surface, so it stays readable as secondary text
+  - name: color-accent
+    kind: color
+    value: "#0b63c4"
+    dark: "#6aa8f2"
+    use: primary buttons, links, the focus ring of every control
+  - name: color-on-accent
+    kind: color
+    value: "#ffffff"
+    dark: "#0d1420"
+    use: text on color-accent (primary buttons)
+  - name: color-booked
+    kind: color
+    value: "#e4e8ee"
+    dark: "#2a303a"
+    use: background of a slot that is booked
+  - name: color-danger
+    kind: color
+    value: "#b42318"
+    dark: "#f97066"
+    use: error messages and the border of an error alert, never decoration
+  - name: color-backdrop
+    kind: color
+    value: "rgb(15 20 30 / 0.55)"
+    use: the page behind an open dialog
+  - name: font-body
+    kind: font
+    value: "Inter, system-ui, sans-serif"
+    use: every text of the app
+  - name: size-text
+    kind: size
+    value: "1rem"
+    use: body text, buttons and slot labels
+  - name: size-title
+    kind: size
+    value: "1.5rem"
+    use: page titles (h1) and dialog titles
+  - name: space-1
+    kind: space
+    value: "0.25rem"
+    use: gap between an icon and its text
+  - name: space-2
+    kind: space
+    value: "0.5rem"
+    use: padding inside buttons and slots, gap between slots
+  - name: space-3
+    kind: space
+    value: "1rem"
+    use: padding of dialogs and page sections, gap between sections
+  - name: radius-1
+    kind: radius
+    value: "6px"
+    use: buttons, slots and list rows
+  - name: radius-2
+    kind: radius
+    value: "12px"
+    use: dialogs and popover panels
+  - name: shadow-overlay
+    kind: shadow
+    value: "0 8px 24px rgb(15 20 30 / 0.18)"
+    use: dialogs and popover panels only
+  - name: focus-ring
+    kind: other
+    value: "2px solid var(--color-accent)"
+    use: the :focus-visible outline of every control; never removed without it

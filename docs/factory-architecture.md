@@ -775,7 +775,10 @@ In the user's project, `.aidw/` keeps its current shape and gains `roles/<id>/` 
   outside Claude Code's own sandbox (the session it starts sets up its sandbox itself, and the grading uses
   `sandbox-exec` or `bwrap`). A case is a folder: `case.md` (front matter `case` = the folder name, `covers`, `fixture`,
   `task`, optional `change`, `must_read`, `must_not_read`, `restore`, `timeout_min` (default 25), `max_turns` (default
-  60); `## Criteria` holds only what no machine can check), an optional `checks.yaml` (commands with an expected exit, a
+  60), `screenshots` (`on`, the default, or `off`: for a fixture with no browser the brief loses its two screenshot
+  lines, save the PNGs and take them with Playwright, and keeps the design tokens and the rule to style through them;
+  `off` on a task whose brief has no screenshot line is an ERROR of the run, since the case or the brief's wording is
+  wrong); `## Criteria` holds only what no machine can check), an optional `checks.yaml` (commands with an expected exit, a
   JSON subset of stdout or a regex; a bad `matches` regex is an error when the case loads), and `held-out/` (test files
   laid over the project at the same relative path after the session ends). A path in `must_read` is relative to the
   project, or `plugin:<path>` for a plugin file. Level 1 never reads these folders, and they are not part of level 1's
@@ -790,7 +793,17 @@ In the user's project, `.aidw/` keeps its current shape and gains `roles/<id>/` 
   re-approvals are written by hand (they say what changed) and are not a real review. PGlite
   runs one statement at a time, so a held-out test of a race makes it real by delaying each statement outside a
   transaction (requests sent at once then interleave) and, where a read then a write inside one transaction must fail,
-  by a BEFORE INSERT trigger that stores the rival row inside the route's own insert. Its files are what git lists in it. Its packages are installed once (`npm ci --ignore-scripts`, needs
+  by a BEFORE INSERT trigger that stores the rival row inside the route's own insert. For frontend: `frontend-web`, a
+  clinic's booking app (Vite 7, React 19, TypeScript, React Router 7; Vitest 3 with jsdom, Testing Library, user-event
+  and jest-dom; no Playwright), Change `book-a-slot` with the design tokens in `.aidw/design/tokens.yaml` and
+  `src/styles/tokens.css` generated from them. The network is MSW in-process (`msw/node`, started in `tests/setup.ts`
+  with `onUnhandledRequest: "error"`; the API is `tests/msw/handlers.ts` over an in-memory store reset after each test),
+  so no test needs a socket. Vitest runs in `tests/environment.ts`, jsdom with Node's own `AbortController` kept: Node's
+  `fetch` and `Request` refuse jsdom's signals, which React Router's navigations and `fetch(url, { signal })` use (a
+  jsdom `addEventListener(..., { signal })` would refuse Node's in turn). Files run one at a time and `findBy*` waits
+  3 s; its suite, with the pilot's reference solution and held-out tests, passed 16 copies at once, 3 times each,
+  under `sandbox-exec` with no network. The frontend cases restore the test harness (`tests/setup.ts`,
+  `tests/environment.ts`, `tests/render.tsx`, `tests/msw/`). Its files are what git lists in it. Its packages are installed once (`npm ci --ignore-scripts`, needs
   the network) into a cache keyed by the lockfile: `$AIDW_FIXTURE_CACHE`, else `$XDG_CACHE_HOME/aidw/fixtures`, else
   `~/.cache/aidw/fixtures`. The entry is made read-only and its digest is recorded in `.complete`; an entry that changed
   is refused (delete it to reinstall), and a finished entry is never deleted by a run. Each run copies the fixture to a
