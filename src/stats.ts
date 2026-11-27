@@ -64,10 +64,19 @@ function safe<T>(f: () => T): T | null {
   }
 }
 
-/** The known rule ids a review cites, each once, with the Role that owns it; ids not in a bound table are ignored. */
+/** The blocking part of a review: everything before its `Non-blocking:` heading (code-reviewer's format). */
+export function blockingPart(notes: string): string {
+  const m = /^[ \t>#*_-]*Non-blocking\b/im.exec(notes);
+  return m ? notes.slice(0, m.index) : notes;
+}
+
+/**
+ * The known rule ids the blocking part of a review cites, each once, with the Role that owns it; ids not in a bound
+ * table, and ids named only under `Non-blocking:`, are ignored.
+ */
 export function citedRules(notes: string, rules: Map<string, string>): { id: string; owner: string }[] {
   const out: { id: string; owner: string }[] = [];
-  for (const m of notes.matchAll(RULE_TOKEN)) {
+  for (const m of blockingPart(notes).matchAll(RULE_TOKEN)) {
     const owner = rules.get(m[0]);
     if (owner && !out.some((x) => x.id === m[0])) out.push({ id: m[0], owner });
   }
@@ -75,13 +84,20 @@ export function citedRules(notes: string, rules: Map<string, string>): { id: str
 }
 
 /**
- * `aidw verdict`: a fix review of a task bound by a rule table that cites no known rule id. Null when there is
- * nothing to warn about. Never throws.
+ * `aidw verdict`: a fix review whose blocking part cites no known rule id, for a task whose Role, or the Role that
+ * builds it, owns a rule table itself. A table followed through `follows_rules` does not count (a fullstack review
+ * about UI owes no backend id), nor does a task with no Role or an unknown one. Null when there is nothing to warn
+ * about. Never throws.
  */
 export function ruleIdWarning(pluginHome: string, role: string | undefined, notes: string): string | null {
-  const rules = safe(() => boundRules(pluginHome, role));
-  if (!rules || rules.size === 0) return null;
-  if (citedRules(notes, rules).length) return null;
+  if (!role) return null;
+  const builder = safe(() => implementerOf(pluginHome, role));
+  if (!builder) return null;
+  const rules = new Map<string, string>();
+  for (const r of new Set([role, builder])) for (const rule of safe(() => loadRuleTable(pluginHome, r)) ?? []) if (!rules.has(rule.id)) rules.set(rule.id, r);
+  if (rules.size === 0) return null;
+  const bound = safe(() => boundRules(pluginHome, role)) ?? rules;
+  if (citedRules(notes, bound).length) return null;
   const owners = [...new Set(rules.values())];
   return `the fix review cites no rule id of ${owners.join(", ")} (for example \`1. ${[...rules.keys()][0]}: <file>: <problem>\`); \`aidw stats\` counts broken rules from these ids`;
 }
@@ -106,12 +122,15 @@ function readEvidenceFile(dir: string, taskId: string): Evidence | null {
   const file = join(dir, "evidence", `${taskId}.json`);
   if (!existsSync(file)) return null;
   try {
-    const ev = JSON.parse(readFileSync(file, "utf8")) as Evidence;
+    const ev = JSON.parse(readFileSync(file, "utf8")) as unknown;
+    if (!isRecord(ev)) return null;
+    // entries that are not records (a hand edit, a damaged file) are dropped, never read
+    const records = <T>(v: unknown): T[] => (Array.isArray(v) ? (v.filter(isRecord) as T[]) : []);
     return {
-      ...ev,
-      checkpoints: Array.isArray(ev.checkpoints) ? ev.checkpoints : [],
-      reviews: Array.isArray(ev.reviews) ? ev.reviews : [],
-      ...(Array.isArray(ev.triage) ? { triage: ev.triage } : {}),
+      ...(ev as unknown as Evidence),
+      checkpoints: records<CheckpointRecord>(ev.checkpoints).map((c) => ({ ...c, verify: records(c.verify) })),
+      reviews: records<ReviewRecord>(ev.reviews),
+      ...(Array.isArray(ev.triage) ? { triage: records<TriageRecord>(ev.triage) } : {}),
     };
   } catch {
     return null;
@@ -158,7 +177,7 @@ export function readChanges(p: Paths): { changes: ChangeRef[]; tasks: TaskData[]
 export function isBlocked(c: CheckpointRecord): boolean {
   if (c.blocked === true) return true;
   if (c.ok) return false;
-  const failed = Array.isArray(c.verify) ? c.verify.find((v) => v.exit !== 0) : undefined;
+  const failed = Array.isArray(c.verify) ? c.verify.find((v) => isRecord(v) && v.exit !== 0) : undefined;
   return !!failed && !failed.timedOut && ENVIRONMENT_FAILURE.test(String(failed.tail ?? ""));
 }
 
@@ -184,8 +203,10 @@ export interface TaskStats {
   ran: boolean;
   /** implementer runs: tasks.yaml `runs`, or the checkpoints that were not refused for records before T19 */
   runs: number;
-  /** true/false for a planned task that ended; null when it has not ended or was added by the workflow */
+  /** true/false for a planned task that ended; null when it has not ended, was added by the workflow or is `excluded` */
   first_attempt: boolean | null;
+  /** an ended task left out of the first-attempt base: the machine refused every check, or its evidence is missing or unreadable */
+  excluded?: "refused" | "no evidence";
   /** rule ids cited by its fix reviews, with the Role that owns each */
   rules: { id: string; owner: string }[];
   triage: string[];
@@ -209,7 +230,7 @@ function startedOf(t: Task, ev: Evidence | null): string | undefined {
   return dates[0];
 }
 
-export function taskStats(d: TaskData, pluginHome: string): TaskStats | null {
+export function taskStats(d: TaskData, pluginHome: string, rulesOf: (role: string | undefined) => Map<string, string> = (r) => safe(() => boundRules(pluginHome, r)) ?? new Map()): TaskStats | null {
   const { task: t, ev } = d;
   const role = str(t.role) || "(none)";
   const status = str(t.status) || "pending";
@@ -218,7 +239,10 @@ export function taskStats(d: TaskData, pluginHome: string): TaskStats | null {
   if (!didRun && !nb) return null;
   const checkpoints = (ev?.checkpoints ?? []).filter((c) => !isBlocked(c));
   const reviews = (ev?.reviews ?? []).filter((r) => !isAutoReview(r));
-  const runs = Number.isInteger(t.runs) ? Number(t.runs) : checkpoints.length;
+  // A task revived after the machine refused its checks keeps its first-attempt chance: runs count from the first
+  // checkpoint that was not refused.
+  const firstRun = Number.isInteger(checkpoints[0]?.run) ? Number(checkpoints[0]?.run) : 1;
+  const runs = Number.isInteger(t.runs) ? Math.max(0, Number(t.runs) - firstRun + 1) : checkpoints.length;
   const added = ADDED_ORIGINS.includes(str(t.origin));
 
   // Triage: the T19 list; for records before it, what tasks.yaml still holds
@@ -240,14 +264,20 @@ export function taskStats(d: TaskData, pluginHome: string): TaskStats | null {
     upstream.push({ round: Number(t.upstream.round ?? 1), cause: str(t.upstream.cause), role: str(t.upstream.role) });
   }
 
-  const rules = safe(() => boundRules(pluginHome, str(t.role) || undefined)) ?? new Map<string, string>();
+  const rules = rulesOf(str(t.role) || undefined);
   const cited: { id: string; owner: string }[] = [];
-  for (const r of reviews) if (r.verdict === "fix") cited.push(...citedRules(String(r.notes ?? ""), rules));
+  // a merge review judges the integration Role's merge, not the task's rules
+  for (const r of reviews) if (r.verdict === "fix" && r.merge !== true) cited.push(...citedRules(String(r.notes ?? ""), rules));
 
   let first: boolean | null = null;
-  if (!added && didRun && (status === "done" || status === "not_built")) {
-    const oneRun = Number.isInteger(t.runs) ? Number(t.runs) === 1 : checkpoints.length === 1;
-    const thisRun = (x: { run?: number }) => !Number.isInteger(x.run) || x.run === 1;
+  let excluded: TaskStats["excluded"];
+  const ended = !added && didRun && (status === "done" || status === "not_built");
+  const refusedOnly = checkpoints.length === 0 && ((ev?.checkpoints.length ?? 0) > 0 || (status === "not_built" && nb?.cause === "environment"));
+  if (ended && refusedOnly) excluded = "refused";
+  else if (ended && ev === null) excluded = "no evidence";
+  else if (ended) {
+    const oneRun = Number.isInteger(t.runs) ? runs === 1 : checkpoints.length === 1;
+    const thisRun = (x: { run?: number }) => !Number.isInteger(x.run) || x.run === firstRun;
     const own = reviews.filter((r) => r.merge !== true && thisRun(r));
     first =
       status === "done" &&
@@ -280,6 +310,7 @@ export function taskStats(d: TaskData, pluginHome: string): TaskStats | null {
     ran: didRun,
     runs,
     first_attempt: first,
+    ...(excluded ? { excluded } : {}),
     rules: cited,
     triage,
     upstream: rounds,
@@ -309,12 +340,16 @@ export interface RoleStats {
   triage: Record<string, number>;
   upstream_rounds: number;
   not_built: Record<string, number>;
+  /** ended tasks left out of the first-attempt base because their evidence is missing or unreadable */
+  no_evidence: number;
+  /** ended tasks left out of the first-attempt base because the machine refused every check */
+  refused: number;
 }
 
 export interface StatsOptions {
   role?: string;
   change?: string;
-  /** YYYY-MM-DD: only tasks that started on or after that day */
+  /** YYYY-MM-DD (UTC): only tasks that started on or after that day */
   since?: string;
 }
 
@@ -327,15 +362,32 @@ export interface StatsReport {
   tasks?: TaskStats[];
 }
 
-const SINCE = /^\d{4}-\d{2}-\d{2}$/;
-export const validSince = (s: string): boolean => SINCE.test(s) && !Number.isNaN(Date.parse(`${s}T00:00:00Z`));
+const SINCE = /^(\d{4})-(\d{2})-(\d{2})$/;
+/** A real calendar day as YYYY-MM-DD (2026-02-30 is not one). */
+export function validSince(s: string): boolean {
+  const m = SINCE.exec(s);
+  if (!m) return false;
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  return d.toISOString().slice(0, 10) === s;
+}
 
 export function computeStats(p: Paths, pluginHome: string, opts: StatsOptions = {}): StatsReport {
   const { changes, tasks } = readChanges(p);
+  // the rule tables of a Role are read once per run, not once per task
+  const cache = new Map<string, Map<string, string>>();
+  const rulesOf = (role: string | undefined): Map<string, string> => {
+    const key = role ?? "";
+    let m = cache.get(key);
+    if (!m) {
+      m = safe(() => boundRules(pluginHome, role)) ?? new Map<string, string>();
+      cache.set(key, m);
+    }
+    return m;
+  };
   const inChange = (c: ChangeRef) => !opts.change || c.id === opts.change || c.dir.endsWith(`/${opts.change}`) || c.dir.endsWith(`\\${opts.change}`);
   const all = tasks
     .filter((d) => inChange(d.change))
-    .map((d) => taskStats(d, pluginHome))
+    .map((d) => taskStats(d, pluginHome, rulesOf))
     .filter((x): x is TaskStats => x !== null)
     .filter((x) => !opts.since || (x.started !== undefined && x.started.slice(0, 10) >= (opts.since as string)));
   const counted = changes.filter(inChange).filter((c) => all.some((x) => x.change === c.id));
@@ -344,7 +396,7 @@ export function computeStats(p: Paths, pluginHome: string, opts: StatsOptions = 
   const row = (role: string): RoleStats => {
     let r = roles.get(role);
     if (!r) {
-      r = { role, tasks: 0, ended: 0, first_attempt: 0, rate: null, added: 0, rule_ids: [], triage: {}, upstream_rounds: 0, not_built: {} };
+      r = { role, tasks: 0, ended: 0, first_attempt: 0, rate: null, added: 0, rule_ids: [], triage: {}, upstream_rounds: 0, not_built: {}, no_evidence: 0, refused: 0 };
       roles.set(role, r);
     }
     return r;
@@ -354,6 +406,8 @@ export function computeStats(p: Paths, pluginHome: string, opts: StatsOptions = 
     const r = row(x.role);
     if (x.ran) r.tasks++;
     if (x.origin && ADDED_ORIGINS.includes(x.origin)) r.added++;
+    if (x.excluded === "no evidence") r.no_evidence++;
+    if (x.excluded === "refused") r.refused++;
     if (x.first_attempt !== null) {
       r.ended++;
       if (x.first_attempt) r.first_attempt++;
@@ -407,24 +461,31 @@ function table(rows: string[][]): string {
   return rows.map((r) => r.map((c, i) => (i === r.length - 1 ? c : c.padEnd(widths[i] as number))).join("  ").trimEnd()).join("\n");
 }
 
-function footer(s: StatsReport): string[] {
+/** The footer names the Changes only up to this many, unless --change or --role narrowed the report. */
+export const MAX_LISTED_CHANGES = 10;
+
+function footer(s: StatsReport, names: boolean): string[] {
   const active = s.changes.filter((c) => !c.archived).length;
   const lines = [
     s.changes.length
-      ? `Changes counted: ${s.changes.length} (${active} active, ${s.changes.length - active} archived): ${s.changes.map((c) => `${c.id}${c.archived ? " (archived)" : ""}`).join(", ")}`
+      ? `Changes counted: ${s.changes.length} (${active} active, ${s.changes.length - active} archived)${names ? `: ${s.changes.map((c) => `${c.id}${c.archived ? " (archived)" : ""}`).join(", ")}` : ""}`
       : "Changes counted: none",
   ];
   const old = s.changes.filter((c) => c.predates).map((c) => c.id);
   if (s.partial) {
     lines.push(
-      `Triage figures are partial: ${old.length ? `${old.length} Change(s) predate the T19 records (${old.join(", ")}); ` : ""}for tasks without a Triage list in their evidence they come from tasks.yaml (the last Triage, the last upstream round and the not-built cause), which a retry or an upstream round clears.`,
+      `Triage figures are partial: ${old.length ? `${old.length} Change(s) predate the T19 records${names ? ` (${old.join(", ")})` : ""}; ` : ""}for tasks without a Triage list in their evidence they come from tasks.yaml (the last Triage, the last upstream round and the not-built cause), which a retry or an upstream round clears.`,
     );
   }
-  lines.push(`First attempt: done after one implementer run, its checkpoint and review passed, no Triage, no upstream round; a rate is shown from ${MIN_TASKS_FOR_RATE} ended tasks of a Role up. Tasks the workflow added are left out.`);
+  lines.push(`First attempt: done after one implementer run, its checkpoint and review passed, no Triage, no upstream round; a rate is shown from ${MIN_TASKS_FOR_RATE} ended tasks of a Role up. Tasks the workflow added, tasks whose every check the machine refused and tasks with no readable evidence are left out.`);
+  const noEv = s.roles.reduce((n, r) => n + r.no_evidence, 0);
+  const refused = s.roles.reduce((n, r) => n + r.refused, 0);
+  if (noEv || refused) lines.push(`Left out: ${[noEv ? `${noEv} ended task(s) with no evidence (missing or unreadable)` : "", refused ? `${refused} whose every check the machine refused` : ""].filter(Boolean).join(", ")}.`);
   return lines;
 }
 
-export function statsText(s: StatsReport): string {
+/** `listChanges`: name each Change in the footer (--change or --role given); otherwise only up to MAX_LISTED_CHANGES. */
+export function statsText(s: StatsReport, listChanges = false): string {
   const out: string[] = [];
   if (!s.roles.length) out.push("No tasks to count.");
   else {
@@ -451,7 +512,18 @@ export function statsText(s: StatsReport): string {
       if (r.rule_ids.length) out.push(`  rule ids of ${r.role} cited: ${r.rule_ids.map((x) => `${x.id} x${x.count}`).join(", ")}`);
     }
     for (const t of s.tasks) {
-      const fa = t.first_attempt === null ? (t.origin && ADDED_ORIGINS.includes(t.origin) ? `added (${t.origin})` : "not ended") : t.first_attempt ? "first attempt" : "not first attempt";
+      const fa =
+        t.first_attempt === null
+          ? t.origin && ADDED_ORIGINS.includes(t.origin)
+            ? `added (${t.origin})`
+            : t.excluded === "no evidence"
+              ? "left out: no evidence"
+              : t.excluded === "refused"
+                ? "left out: the machine refused every check"
+                : "not ended"
+          : t.first_attempt
+            ? "first attempt"
+            : "not first attempt";
       out.push(`  ${t.change}/${t.task}  ${t.status}  runs ${t.runs}  ${fa}`);
       if (t.agents.length && t.agents.some((a) => a !== `aidw:${t.role}`)) out.push(`    built by: ${t.agents.join(", ")}`);
       if (t.rules.length) out.push(`    rules: ${t.rules.map((x) => (x.owner === t.role ? x.id : `${x.id} (${x.owner})`)).join(", ")}`);
@@ -463,6 +535,6 @@ export function statsText(s: StatsReport): string {
       if (t.not_built) out.push(`    not built (${t.not_built.cause}): ${t.not_built.reason.split("\n")[0]?.slice(0, 200) ?? ""}`);
     }
   }
-  out.push("", ...footer(s));
+  out.push("", ...footer(s, listChanges || s.changes.length <= MAX_LISTED_CHANGES));
   return `${out.join("\n")}\n`;
 }

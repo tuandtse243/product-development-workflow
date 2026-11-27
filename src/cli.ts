@@ -383,7 +383,7 @@ Hooks:
   stop-failure                           StopFailure hook: pauses running changes
   session-start                          SessionStart hook: appends the plugin bin/ to PATH via CLAUDE_ENV_FILE
   cost [--session <id prefix>] [--last N]  where the tokens of this project's Claude Code sessions went (orchestrator vs subagents)
-  stats [--role R] [--change ID] [--since YYYY-MM-DD]
+  stats [--role R] [--change ID] [--since YYYY-MM-DD (UTC)]
                                          per Role, from every Change (active and archived): tasks, first-attempt passes
                                          (a rate from 5 ended tasks up), rule ids cited by fix reviews, Triage causes;
                                          --role lists that Role's tasks; writes nothing
@@ -1090,7 +1090,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         if (since !== undefined && !validSince(since)) throw new UsageError("--since must be a date: YYYY-MM-DD");
         const opts = { ...(str(args.flags.role) ? { role: str(args.flags.role) as string } : {}), ...(str(args.flags.change) ? { change: str(args.flags.change) as string } : {}), ...(since ? { since } : {}) };
         const s = computeStats(p, pluginRoot(env), opts);
-        emit(s, statsText(s));
+        emit(s, statsText(s, Boolean(opts.role || opts.change)));
         return 0;
       }
 

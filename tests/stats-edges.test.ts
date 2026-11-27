@@ -401,13 +401,13 @@ describe("rule ids from fix reviews", () => {
     ]);
   });
 
-  it("BUG: an id cited only in the Non-blocking part of a fix review is not a broken rule and is not counted", () => {
+  it("an id cited only in the Non-blocking part of a fix review is not a broken rule and is not counted", () => {
     // code-reviewer.md: `1. <file>: <blocking problem>` ... `Non-blocking:` `- <optional remarks>`; T19: count broken rules
     const notes = "VERDICT: fix\n1. src/a.ts: the list has no limit -> add one\nNon-blocking:\n- B15 could be tighter here";
     expect(reviewed([notes]).tasks![0]!.rules).toEqual([]);
   });
 
-  it("BUG: a fix review whose only rule id is in the Non-blocking part still warns", () => {
+  it("a fix review whose only rule id is in the Non-blocking part still warns", () => {
     const notes = "VERDICT: fix\n1. src/a.ts: the list has no limit -> add one\nNon-blocking:\n- B15 could be tighter here";
     expect(ruleIdWarning(HOME, "backend", notes)).toMatch(/cites no rule id/);
   });
@@ -450,7 +450,7 @@ describe("--since and --change", () => {
     for (const bad of ["2026-11-5", "26-11-25", "2026/11/25", "2026-13-01", ""]) expect(cli(dated(), "stats", "--since", bad).code, bad).toBe(2);
   });
 
-  it("BUG: rejects a day that does not exist (2026-02-30)", () => {
+  it("rejects a day that does not exist (2026-02-30)", () => {
     expect(cli(dated(), "stats", "--since", "2026-02-30").code).toBe(2);
   });
 
@@ -542,10 +542,10 @@ describe("damaged and old files never crash aidw stats", () => {
     ["odd field types in tasks.yaml", (r) => change(r, "changes", "2026-11-21-x", [t("X1", "backend", "done", { runs: "one", started_at: 5, role: 7, upstream: { round: "x" }, triage: "plan", not_built: { cause: 3, reason: 4 } })], { X1: clean("X1") })],
     ["a checkpoint whose verify is not a list", (r) => change(r, "changes", "2026-11-21-x", [t("X1", "backend", "done", { started_at: AT })], { X1: { checkpoints: [{ ok: false, verify: "npm test" }], reviews: [] } })],
     ["old records: no run, no agent, no triage list, no runs counter", (r) => change(r, "archive", "2026-09-01-old", [t("O1", "backend", "done", { started_at: "2026-09-01T10:00:00Z", attempts: 2, triage: { cause: "implementation", at: AT } })], { O1: { checkpoints: [cp(AT, false), cp(AT, true)], reviews: [rv(AT, "pass")] } })],
-    ["BUG: a null checkpoint entry", (r) => change(r, "changes", "2026-11-21-x", [t("X1", "backend", "done", { runs: 1, started_at: AT })], { X1: { checkpoints: [null], reviews: [] } })],
-    ["BUG: a null review entry", (r) => change(r, "changes", "2026-11-21-x", [t("X1", "backend", "done", { runs: 1, started_at: AT })], { X1: { checkpoints: [], reviews: [null] } })],
-    ["BUG: a null triage entry", (r) => change(r, "changes", "2026-11-21-x", [t("X1", "backend", "done", { runs: 1, started_at: AT })], { X1: { checkpoints: [], reviews: [], triage: [null] } })],
-    ["BUG: a null verify entry in a failed checkpoint", (r) => change(r, "changes", "2026-11-21-x", [t("X1", "backend", "done", { runs: 1, started_at: AT })], { X1: { checkpoints: [{ ok: false, verify: [null] }], reviews: [] } })],
+    ["a null checkpoint entry", (r) => change(r, "changes", "2026-11-21-x", [t("X1", "backend", "done", { runs: 1, started_at: AT })], { X1: { checkpoints: [null], reviews: [] } })],
+    ["a null review entry", (r) => change(r, "changes", "2026-11-21-x", [t("X1", "backend", "done", { runs: 1, started_at: AT })], { X1: { checkpoints: [], reviews: [null] } })],
+    ["a null triage entry", (r) => change(r, "changes", "2026-11-21-x", [t("X1", "backend", "done", { runs: 1, started_at: AT })], { X1: { checkpoints: [], reviews: [], triage: [null] } })],
+    ["a null verify entry in a failed checkpoint", (r) => change(r, "changes", "2026-11-21-x", [t("X1", "backend", "done", { runs: 1, started_at: AT })], { X1: { checkpoints: [{ ok: false, verify: [null] }], reviews: [] } })],
   ];
 
   it.each(damaged)("%s", (_name, damage) => {
@@ -600,7 +600,9 @@ describe("the aidw verdict warning", () => {
     ["backend", "VERDICT: fix\n1. B99: not a rule\n", true],
     ["backend", "VERDICT: fix\n1. b7: lower case\n", true],
     ["backend", "VERDICT: fix\n1. src/a.ts: two writes break B7 here\n", false],
-    ["fullstack", "VERDICT: fix\n1. src/a.ts: no limit\n", true],
+    // L1: fullstack only follows backend's table: a fix review about something else owes no backend id
+    ["fullstack", "VERDICT: fix\n1. src/a.ts: no limit\n", false],
+    ["fullstack-engineer", "VERDICT: fix\n1. src/a.ts: no limit\n", false],
     ["fullstack", "VERDICT: fix\n1. B2: src/a.ts: no test\n", false],
     ["frontend", "VERDICT: fix\n1. src/a.tsx: wrong\n", false],
     ["devops", "VERDICT: fix\n1. Dockerfile: root user\n", false],
@@ -651,7 +653,7 @@ describe("the JSON output and that stats writes nothing", () => {
   it("has a stable shape: report, Role row and task row keys", () => {
     const all = cli(sample(), "stats", "--json").json();
     expect(Object.keys(all).sort()).toEqual(["changes", "partial", "roles"]);
-    expect(Object.keys(all.roles[0]).sort()).toEqual(["added", "ended", "first_attempt", "not_built", "rate", "role", "rule_ids", "tasks", "triage", "upstream_rounds"]);
+    expect(Object.keys(all.roles[0]).sort()).toEqual(["added", "ended", "first_attempt", "no_evidence", "not_built", "rate", "refused", "role", "rule_ids", "tasks", "triage", "upstream_rounds"]);
     expect(Object.keys(all.changes[0]).sort()).toEqual(["archived", "id", "predates"]);
     const detail = cli(sample(), "stats", "--role", "backend", "--json").json();
     expect(Object.keys(detail).sort()).toEqual(["changes", "partial", "roles", "tasks"]);

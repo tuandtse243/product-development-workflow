@@ -221,6 +221,109 @@ describe("rule ids", () => {
   });
 });
 
+describe("review findings (lead's decisions)", () => {
+  const D = "2026-11-21T10:00:00.000Z";
+  const blank = () => {
+    const root = tempProject();
+    write(root, ".aidw/project.yaml", "name: demo\n");
+    return root;
+  };
+  const clean = (run = 1) => ({ checkpoints: [cp(D, true, { run })], reviews: [rv(D, "pass", "VERDICT: pass", { run })] });
+
+  it("M1: a task whose every check the machine refused is left out of the first-attempt base", () => {
+    const root = blank();
+    change(
+      root,
+      "changes",
+      "2026-11-21-env",
+      [
+        t("E1", "backend", "not_built", { runs: 1, started_at: D, not_built: { cause: "environment", reason: "the machine refused a check twice" } }),
+        t("E2", "backend", "not_built", { runs: 1, started_at: D, not_built: { cause: "environment", reason: "triage: environment. No key." } }),
+        t("E3", "backend", "done", { runs: 1, started_at: D }),
+      ],
+      { E1: { checkpoints: [blockedCp(D, { run: 1, blocked: true }), blockedCp(D, { run: 1, blocked: true })] }, E3: clean() },
+    );
+    const s = computeStats(pathsFor(root), HOME, { role: "backend" });
+    expect(s.roles[0]).toMatchObject({ tasks: 3, ended: 1, first_attempt: 1, refused: 2 });
+    expect(s.tasks!.map((x) => [x.task, x.first_attempt, x.excluded])).toEqual([
+      ["E1", null, "refused"],
+      ["E2", null, "refused"],
+      ["E3", true, undefined],
+    ]);
+    expect(cli(root, "stats", "--role", "backend").out).toMatch(/E1  not_built  runs 1  left out: the machine refused every check/);
+  });
+
+  it("M1: a task revived after an outage keeps its first-attempt chance: runs count from the first check not refused", () => {
+    const root = blank();
+    change(root, "changes", "2026-11-21-env", [t("R1", "backend", "done", { runs: 2, started_at: D }), t("R2", "backend", "done", { runs: 3, started_at: D })], {
+      R1: { checkpoints: [blockedCp(D, { run: 1, blocked: true }), blockedCp(D, { run: 1, blocked: true }), cp(D, true, { run: 2 })], reviews: [rv(D, "pass", "VERDICT: pass", { run: 2 })] },
+      R2: {
+        checkpoints: [blockedCp(D, { run: 1, blocked: true }), cp(D, true, { run: 2 }), cp(D, true, { run: 3 })],
+        reviews: [rv(D, "fix", "VERDICT: fix\n1. B7: x", { run: 2 }), rv(D, "pass", "VERDICT: pass", { run: 3 })],
+      },
+    });
+    const s = computeStats(pathsFor(root), HOME, { role: "backend" });
+    expect(s.tasks!.map((x) => [x.task, x.runs, x.first_attempt])).toEqual([
+      ["R1", 1, true],
+      ["R2", 2, false],
+    ]);
+  });
+
+  it("nit: an ended task whose evidence is missing or unreadable is counted as no evidence, not in the base", () => {
+    const root = blank();
+    change(root, "changes", "2026-11-21-x", [t("N1", "backend", "done", { runs: 1, started_at: D }), t("N2", "backend", "done", { runs: 1, started_at: D }), t("N3", "backend", "done", { runs: 1, started_at: D })], { N3: clean() });
+    write(root, ".aidw/changes/2026-11-21-x/evidence/N2.json", "{ not json");
+    const s = computeStats(pathsFor(root), HOME, { role: "backend" });
+    expect(s.roles[0]).toMatchObject({ tasks: 3, ended: 1, first_attempt: 1, no_evidence: 2 });
+    const out = cli(root, "stats").out;
+    expect(out).toMatch(/Left out: 2 ended task\(s\) with no evidence/);
+  });
+
+  it("L2: rule ids of a merge review are not counted", () => {
+    const root = blank();
+    change(root, "changes", "2026-11-21-m", [t("M1", "backend", "done", { runs: 1, started_at: D })], {
+      M1: { checkpoints: [cp(D, true, { run: 1 })], reviews: [rv(D, "pass", "VERDICT: pass", { run: 1 }), rv(D, "fix", "VERDICT: fix\n1. B7: the merge lost a transaction", { run: 1, merge: true })] },
+    });
+    const s = computeStats(pathsFor(root), HOME, { role: "backend" });
+    expect(s.tasks![0]!.rules).toEqual([]);
+    expect(s.roles[0]!.rule_ids).toEqual([]);
+  });
+
+  it("L1: the warning fires only for a Role that owns a table, or whose builder does", () => {
+    expect(ruleIdWarning(HOME, "fullstack", "VERDICT: fix\n1. src/page.tsx: the button has no label")).toBeNull();
+    expect(ruleIdWarning(HOME, undefined, "VERDICT: fix\n1. x")).toBeNull();
+    expect(ruleIdWarning(HOME, "no-such-role", "VERDICT: fix\n1. x")).toBeNull();
+    expect(ruleIdWarning(HOME, "backend", "VERDICT: fix\n1. x")).toMatch(/cites no rule id of backend/);
+  });
+
+  it("L4: the footer names the Changes only up to 10, or when --change or --role narrows the report", () => {
+    const root = blank();
+    for (let i = 10; i < 21; i++) change(root, "changes", `2026-11-${i}-c`, [t("T1", "backend", "done", { runs: 1, started_at: D })], { T1: clean() });
+    const all = cli(root, "stats").out;
+    expect(all).toMatch(/^Changes counted: 11 \(11 active, 0 archived\)$/m);
+    expect(cli(root, "stats", "--role", "backend").out).toMatch(/Changes counted: 11 \(11 active, 0 archived\): 2026-11-10-c, /);
+    expect(cli(root, "stats", "--change", "2026-11-12-c").out).toMatch(/Changes counted: 1 \(1 active, 0 archived\): 2026-11-12-c/);
+  });
+
+  it("M2: about 300 Changes and 7,500 tasks are counted in a few seconds at most", () => {
+    const root = blank();
+    const ev = JSON.stringify({ task: "T", title: "T", ...clean() });
+    for (let c = 0; c < 300; c++) {
+      const dir = `.aidw/changes/2026-11-01-c${c}`;
+      write(root, `${dir}/change.yaml`, `id: 2026-11-01-c${c}\nstate: executing\n`);
+      const tasks = Array.from({ length: 25 }, (_, i) => t(`T${i}`, ["backend", "fullstack", "frontend"][i % 3] as string, "done", { runs: 1, started_at: D }));
+      write(root, `${dir}/tasks.yaml`, YAML.stringify({ tasks }));
+      for (let i = 0; i < 25; i++) write(root, `${dir}/evidence/T${i}.json`, ev);
+    }
+    const started = Date.now();
+    const s = computeStats(pathsFor(root), HOME);
+    const ms = Date.now() - started;
+    console.log(`aidw stats on 300 Changes / 7500 tasks: ${ms} ms`);
+    expect(s.roles.reduce((n, r) => n + r.tasks, 0)).toBe(7500);
+    expect(ms).toBeLessThan(15000);
+  }, 60000);
+});
+
 // ---------------------------------------------------------------- the real CLI paths
 
 const ID = "2026-11-28-teams";
