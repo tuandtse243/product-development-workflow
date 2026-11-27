@@ -94,6 +94,8 @@ date: 2026-11-26
 - A prerelease and a 0.0.x patch share the `<lib>@<major.minor>` file with the rest of their line: writing a brief for
   one overwrites the brief that was there.
 - Answer and Pitfalls stand alone: the brief of a task inlines them, without the Evidence.
+- A blog or forum post is a lead, never Evidence: it gets no row in the table, and its claim is not repeated
+  anywhere in the brief unless an official source states it (then cite that source).
 - Then run `aidw docs-brief` again: it must print `FRESH`.
 
 ## A question from the build gets the same discipline in the answer file

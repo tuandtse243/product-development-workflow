@@ -79,7 +79,8 @@ export async function sendResetMail(to: string, token: string) {
 
 - must model the page on example 04 (a walkthrough of a code path) or 14 (a feature explainer) and say which one it took
 - must give each of the four steps its file and line range and show its source in an escaped block (`<` written as `&lt;`), using `<details>` where the example hides source
-- must contain no `<script>`, no event handler attribute, and no `http://`, `https://` or `//` reference: nothing loaded from the network, system fonts only
+- must contain no `<script>` element and no event handler attribute (`onclick=` and the like) in the page it writes
+- must reference nothing on the network in the page it writes: no `http://`, `https://` or `//` URL, system fonts only
 - must not keep the example's content, labels, the "Acme" brand or its clay and ivory colours; it uses the aidw page colours, with a dark-mode block
 - must not open the page; its reply names the file and what it shows in a line or two
-- must not change code, configuration or tests, and must not commit
+- must not change code, configuration or tests, and must not commit (README and `.env.example` are the Role's own documentation files, not configuration)
