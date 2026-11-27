@@ -21130,7 +21130,7 @@ function safe(f) {
   }
 }
 function blockingPart(notes) {
-  const m = /^[ \t>#*_-]*Non-blocking\b/im.exec(notes);
+  const m = /^(?:[ \t>*_-]*Non-blocking[*_]*[ \t]*:|[ \t]*#{1,6}[ \t]*Non-blocking\b)/im.exec(notes);
   return m ? notes.slice(0, m.index) : notes;
 }
 function citedRules(notes, rules) {

@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
 import { pluginRoot } from "../src/plugin.js";
 import { pathsFor } from "../src/project.js";
-import { computeStats, ruleIdWarning } from "../src/stats.js";
+import { blockingPart, computeStats, ruleIdWarning } from "../src/stats.js";
 import { ANALYSIS_MD, MAIN_SPEC, QUALITY_YAML, REQ, TOKENS_YAML, planReviewed, tempProject, write } from "./fixtures.js";
 
 const HOME = pluginRoot({});
@@ -410,6 +410,18 @@ describe("rule ids from fix reviews", () => {
   it("a fix review whose only rule id is in the Non-blocking part still warns", () => {
     const notes = "VERDICT: fix\n1. src/a.ts: the list has no limit -> add one\nNon-blocking:\n- B15 could be tighter here";
     expect(ruleIdWarning(HOME, "backend", notes)).toMatch(/cites no rule id/);
+  });
+
+  it("only a Non-blocking heading ends the blocking part, not a finding line that starts with the word", () => {
+    // a blocking finding wrapped onto a line that starts "Non-blocking I/O ..." stays blocking
+    const wrapped = "VERDICT: fix\n1. src/a.ts: the handler awaits a file read inline;\nNon-blocking I/O in the handler breaks B5 -> stream it";
+    expect(blockingPart(wrapped)).toBe(wrapped);
+    expect(ruleIdWarning(HOME, "backend", wrapped)).toBeNull();
+    for (const heading of ["Non-blocking:", "**Non-blocking:**", "## Non-blocking", "- Non-blocking:"]) {
+      const notes = `VERDICT: fix\n1. src/a.ts: B7 the list has no limit\n${heading}\n- B15 could be tighter`;
+      expect(blockingPart(notes)).not.toContain("B15");
+      expect(blockingPart(notes)).toContain("B7");
+    }
   });
 });
 

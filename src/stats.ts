@@ -64,9 +64,13 @@ function safe<T>(f: () => T): T | null {
   }
 }
 
-/** The blocking part of a review: everything before its `Non-blocking:` heading (code-reviewer's format). */
+/**
+ * The blocking part of a review: everything before its `Non-blocking:` heading (code-reviewer's format), written as
+ * `Non-blocking:`, `**Non-blocking:**` or a Markdown heading. A line that only starts with the word ("Non-blocking I/O
+ * in the handler…") is part of a finding, not the heading.
+ */
 export function blockingPart(notes: string): string {
-  const m = /^[ \t>#*_-]*Non-blocking\b/im.exec(notes);
+  const m = /^(?:[ \t>*_-]*Non-blocking[*_]*[ \t]*:|[ \t]*#{1,6}[ \t]*Non-blocking\b)/im.exec(notes);
   return m ? notes.slice(0, m.index) : notes;
 }
 
@@ -201,7 +205,10 @@ export interface TaskStats {
   origin?: string;
   /** it ran at least once (a task not built only because of a dependency may never have) */
   ran: boolean;
-  /** implementer runs: tasks.yaml `runs`, or the checkpoints that were not refused for records before T19 */
+  /**
+   * effective implementer runs: tasks.yaml `runs` counted from the first checkpoint that was not refused (so runs lost
+   * to a machine outage before it do not count), or the checkpoints that were not refused for records before T19
+   */
   runs: number;
   /** true/false for a planned task that ended; null when it has not ended, was added by the workflow or is `excluded` */
   first_attempt: boolean | null;
