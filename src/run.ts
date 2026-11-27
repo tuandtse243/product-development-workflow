@@ -690,6 +690,12 @@ export interface CheckpointRecord {
   attempt: number;
   at: string;
   ok: boolean;
+  /** T19: the task's Agent-run counter (`runs`) when it was checkpointed; absent in records written before T19 */
+  run?: number;
+  /** T19: the Agent spawned for the attempt (`aidw:<role>`), which can differ from the task's Role (`carried_by`) */
+  agent?: string;
+  /** T19: the machine refused a check (an environment failure): no attempt was used */
+  blocked?: boolean;
   base: string | null;
   scenarios: Record<string, string[]>;
   missing_scenarios: string[];
@@ -761,6 +767,28 @@ export interface ReviewRecord {
   at: string;
   verdict: "pass" | "fix";
   notes: string;
+  /** T19: the task's Agent-run counter (`runs`) when it was reviewed; absent in records written before T19 */
+  run?: number;
+  /** T19: the reviewing Agent (`aidw:code-reviewer`); absent for an auto-passed review */
+  agent?: string;
+  /** T19: passed by the CLI without a reviewer (a converge test-only task, a quality-layer fix) */
+  auto?: boolean;
+  /** T19: the review of a merge the integration Role resolved (T7), not of the implementer's run */
+  merge?: boolean;
+}
+
+/** T19: one Triage of the task, kept for good (tasks.yaml `triage` is cleared on a retry or upstream round). */
+export interface TriageRecord {
+  run?: number;
+  at: string;
+  cause: TriageCause | "unclear";
+  /** the first lines of the diagnosis, at most TRIAGE_SUMMARY_MAX characters */
+  summary: string;
+  files?: string[];
+  outcome?: "retry" | "upstream" | "not_built";
+  /** upstream: the author Role that fixes its Artifact, and the round */
+  role?: string;
+  round?: number;
 }
 
 export interface Evidence {
@@ -768,7 +796,12 @@ export interface Evidence {
   title: string;
   checkpoints: CheckpointRecord[];
   reviews: ReviewRecord[];
+  /** T19: every Triage of the task, append-only (absent in files written before T19) */
+  triage?: TriageRecord[];
 }
+
+/** The task's Agent-run counter, when it has one (ADR-0013). */
+const runsOf = (t: Task): number | undefined => (Number.isInteger(t.runs) ? Number(t.runs) : undefined);
 
 export const evidenceRel = (taskId: string) => `evidence/${taskId}.json`;
 
@@ -897,7 +930,7 @@ export function checkpoint(
   p: Paths,
   id: string,
   taskId: string,
-  opts: { timeoutMs?: number; runner?: CommandRunner } = {},
+  opts: { timeoutMs?: number; runner?: CommandRunner; agent?: string } = {},
 ): CheckpointResult {
   const tf = loadTasks(p, id);
   requireExecuting(p, tf.change);
@@ -938,11 +971,16 @@ export function checkpoint(
   const packages = packageEvidence(dir, base, changed);
   const guardsOk = tamperOk && !config?.locked.length && secrets.length === 0 && !packages?.blocked.length;
   const ok = verifyOk && missing.length === 0 && designOk && regressionOk && guardsOk;
+  const failed = verify.find((v) => v.exit !== 0);
+  const refused = failed && !failed.timedOut ? ENVIRONMENT_FAILURE.exec(failed.tail)?.[0] : undefined;
 
   const record: CheckpointRecord = {
     attempt: attemptsOf(t),
     at: now(),
     ok,
+    ...(runsOf(t) !== undefined ? { run: runsOf(t) } : {}),
+    ...(opts.agent ? { agent: opts.agent } : {}),
+    ...(refused ? { blocked: true } : {}),
     base,
     scenarios,
     missing_scenarios: missing,
@@ -962,7 +1000,6 @@ export function checkpoint(
 
   const problems: string[] = [];
   if (missing.length) problems.push(`no test names scenario ${missing.join(", ")}`);
-  const failed = verify.find((v) => v.exit !== 0);
   if (failed) problems.push(`verify failed: \`${failed.command}\`${failed.timedOut ? " (timed out)" : ` (exit ${failed.exit})`}`);
   if (regression?.status === "not-red") problems.push(`no regression proof: ${regression.reason}`);
   problems.push(...tamperProblems(tamper));
@@ -971,7 +1008,6 @@ export function checkpoint(
   problems.push(...packageProblems(packages));
   if (design?.missing_tokens.length) problems.push(`design tokens not in the code: ${design.missing_tokens.join(", ")}`);
   if (design && design.screenshots.length === 0) problems.push(`no fresh screenshot in ${rel(p, shotsDir(p, id, taskId))}`);
-  const refused = failed && !failed.timedOut ? ENVIRONMENT_FAILURE.exec(failed.tail)?.[0] : undefined;
   if (refused) {
     const why = `environment: \`${failed!.command}\` was refused by the machine (${refused}), not by the code`;
     const evidence = rel(p, join(tf.change.dir, evidenceRel(taskId)));
@@ -1056,7 +1092,7 @@ export function recordReview(
   taskId: string,
   verdict: "pass" | "fix",
   notes: string,
-  opts: { commit?: boolean } = {},
+  opts: { commit?: boolean; agent?: string; auto?: boolean } = {},
 ): ReviewResult {
   const tf = loadTasks(p, id);
   requireExecuting(p, tf.change);
@@ -1067,7 +1103,16 @@ export function recordReview(
   if (statusOf(t) !== "review" && !mergeReview) throw new OpError(`task ${taskId} is "${statusOf(t)}"; only a checkpointed task (review) can be reviewed`);
 
   const ev = readEvidence(tf.change, t);
-  ev.reviews.push({ attempt: attemptsOf(t), at: now(), verdict, notes: notes.trim() });
+  ev.reviews.push({
+    attempt: attemptsOf(t),
+    at: now(),
+    verdict,
+    notes: notes.trim(),
+    ...(runsOf(t) !== undefined ? { run: runsOf(t) } : {}),
+    ...(opts.agent && !opts.auto ? { agent: opts.agent } : {}),
+    ...(opts.auto ? { auto: true } : {}),
+    ...(mergeReview ? { merge: true } : {}),
+  });
   writeEvidence(tf.change, ev);
 
   if (mergeReview) {
@@ -1269,11 +1314,11 @@ export function autoReview(p: Paths, id: string, taskId: string, changed: string
     const text = readText(qualityFile(tf.change));
     const layer = text === null ? undefined : parseQuality(text, "quality.yaml").config?.layers.find((l) => l.name === t.layer);
     if (!layer?.review) return null;
-    return recordReview(p, id, taskId, "pass", `auto-reviewed: a fix for the ${layer.name} layer (checkpoint passed); the ${layer.review} reviewer judges the layer again next.`);
+    return recordReview(p, id, taskId, "pass", `auto-reviewed: a fix for the ${layer.name} layer (checkpoint passed); the ${layer.review} reviewer judges the layer again next.`, { auto: true });
   }
   if (t.origin !== "converge") return null;
   if (!changed.every((f) => TEST_FILE.test(f))) return null;
-  return recordReview(p, id, taskId, "pass", "auto-reviewed: a converge task that changed only test files (checkpoint passed; `aidw converge` re-checks every scenario).");
+  return recordReview(p, id, taskId, "pass", "auto-reviewed: a converge task that changed only test files (checkpoint passed; `aidw converge` re-checks every scenario).", { auto: true });
 }
 
 // ---------------------------------------------------------------- integrate
@@ -1742,6 +1787,32 @@ export interface TriageResult {
   unclear?: boolean;
 }
 
+export const TRIAGE_SUMMARY_MAX = 500;
+
+/** The first lines of a diagnosis, cut at TRIAGE_SUMMARY_MAX characters. */
+export function triageSummary(diagnosis: string): string {
+  const lines = diagnosis.split(/\r?\n/).map((l) => l.trimEnd());
+  let out = "";
+  for (const l of lines) {
+    if (!l.trim() && !out) continue;
+    const next = out ? `${out}\n${l}` : l;
+    if (next.length > TRIAGE_SUMMARY_MAX) {
+      if (!out) out = l.slice(0, TRIAGE_SUMMARY_MAX);
+      break;
+    }
+    out = next;
+  }
+  return out.trim();
+}
+
+/** T19: one Triage appended to the task's evidence, never wiped (unlike tasks.yaml `triage`). */
+function appendTriage(change: Change, t: Task, entry: Omit<TriageRecord, "at" | "run">): void {
+  const ev = readEvidence(change, t);
+  const record: TriageRecord = { ...(runsOf(t) !== undefined ? { run: runsOf(t) } : {}), at: now(), ...entry, summary: triageSummary(entry.summary) };
+  ev.triage = [...(Array.isArray(ev.triage) ? ev.triage : []), record];
+  writeEvidence(change, ev);
+}
+
 /** Records the triage Agent's answer and applies the rule of its cause (ADR-0014). One triage per failure. */
 export function recordTriage(p: Paths, id: string, taskId: string, text: string, opts: { pluginHome?: string; unclear?: boolean } = {}): TriageResult {
   const tf = loadTasks(p, id);
@@ -1752,6 +1823,7 @@ export function recordTriage(p: Paths, id: string, taskId: string, text: string,
   if (statusOf(t) !== "failed" || attemptsOf(t) < maxAttemptsOf(t)) throw new OpError(`task ${taskId} is "${statusOf(t)}" with ${attemptsOf(t)} of ${maxAttemptsOf(t)} attempts: triage is for a failed task that ran out of attempts`);
   if (opts.unclear) {
     // the triage Agent gave no clear cause twice: nobody else guesses one (ADR-0014)
+    appendTriage(tf.change, t, { cause: "unclear", summary: "triage gave no clear cause", outcome: "not_built" });
     setField(tf, i, "triage", { cause: "unclear", at: now() });
     saveTasks(tf);
     const marked = markNotBuilt(p, tf, taskId, `triage gave no clear cause; the task's last note: ${String(t.notes ?? "")}`, "triage");
@@ -1763,12 +1835,15 @@ export function recordTriage(p: Paths, id: string, taskId: string, text: string,
   const gist = diagnosis.split("\n").find((l) => l.trim()) ?? "";
   const full = `(full diagnosis: .aidw/run/triage-${taskId}.md)`;
   setField(tf, i, "triage", { cause, at: now() });
+  const files = parsed.files?.length ? { files: parsed.files } : {};
   if (cause === "implementation") {
+    appendTriage(tf.change, t, { cause, summary: diagnosis, ...files, outcome: "retry" });
     setField(tf, i, "notes", `triage: implementation, one more attempt: ${gist}`.slice(0, 500));
     saveTasks(tf);
     return { task: taskId, cause, outcome: "retry", diagnosis };
   }
   if (cause === "environment") {
+    appendTriage(tf.change, t, { cause, summary: diagnosis, ...files, outcome: "not_built" });
     saveTasks(tf);
     const marked = markNotBuilt(p, tf, taskId, `triage: environment. ${gist} ${full}`, "environment");
     return { task: taskId, cause, outcome: "not_built", diagnosis, not_built: marked };
@@ -1780,14 +1855,16 @@ export function recordTriage(p: Paths, id: string, taskId: string, text: string,
   const fromAidw = (f: string) => relative(p.aidw, join(p.project, f)).split(sep).join("/");
   const owner = named.length && opts.pluginHome ? authorsOf(opts.pluginHome, id, fromAidw(named[0] as string))[0] : undefined;
   const role = owner ?? authorOf(cause, opts.pluginHome);
-  const files = owner && opts.pluginHome ? named.filter((f) => authorsOf(opts.pluginHome as string, id, fromAidw(f)).includes(owner)) : undefined;
+  const ownFiles = owner && opts.pluginHome ? named.filter((f) => authorsOf(opts.pluginHome as string, id, fromAidw(f)).includes(owner)) : undefined;
   if (done >= MAX_UPSTREAM_ROUNDS) {
+    appendTriage(tf.change, t, { cause, summary: diagnosis, ...files, outcome: "not_built", role });
     saveTasks(tf);
     const marked = markNotBuilt(p, tf, taskId, `triage: ${cause} after ${MAX_UPSTREAM_ROUNDS} upstream rounds by ${role}. ${gist} ${full}`, "triage");
     return { task: taskId, cause, outcome: "not_built", diagnosis, role, not_built: marked };
   }
   const round = done + 1;
-  setField(tf, i, "upstream", { cause, role, round, phase: "open", at: now(), ...(files?.length ? { files } : {}) });
+  appendTriage(tf.change, t, { cause, summary: diagnosis, ...files, outcome: "upstream", role, round });
+  setField(tf, i, "upstream", { cause, role, round, phase: "open", at: now(), ...(ownFiles?.length ? { files: ownFiles } : {}) });
   setField(tf, i, "notes", `triage: ${cause}, upstream round ${round} of ${MAX_UPSTREAM_ROUNDS}: ${role} fixes its Artifact. ${gist} ${full}`.slice(0, 500));
   saveTasks(tf);
   return { task: taskId, cause, outcome: "upstream", diagnosis, role, round };
