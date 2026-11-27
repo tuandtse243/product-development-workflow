@@ -9,7 +9,9 @@ It is part of the approved Analysis package: changing it after approval is drift
 - Every input is parsed with a zod schema before it is used (`parse()` in `src/http/validate.ts`).
 - Errors are problem bodies (`HttpError` in `src/http/errors.ts`); the central error handler is the only place that
   writes an error response.
-- Tests go through the HTTP routes with supertest on a fresh in-memory database (`testApp()` in `tests/helpers.ts`).
+- Tests go through the HTTP routes with the in-process `t.http()` client of `testApp()` in `tests/helpers.ts`
+  (chains such as `await t.http().post(url).set(name, value).send(body)`; no port, no socket) on a fresh in-memory
+  database. A test never starts the app with `listen()`.
 
 ## Stack and conventions
 
