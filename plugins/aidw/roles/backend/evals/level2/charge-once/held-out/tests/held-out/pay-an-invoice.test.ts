@@ -242,7 +242,9 @@ describe("held-out: POST /api/invoices/:invoiceId/payments", () => {
       const early = await within(3_000, pay(w.i, w.ana, "pay-13", { amount: 2_500 }));
       expect(early, "the duplicate is answered while the first still waits").not.toBe("no answer");
       expect((early as { status: number }).status).toBe(409);
+      // time passes: the key and the payment it made both look 3 minutes old, whichever one the code measures
       await t.db.query("update idempotency_keys set created_at = now() - interval '3 minutes', updated_at = now() - interval '3 minutes'");
+      await t.db.query("update payments set created_at = now() - interval '3 minutes', updated_at = now() - interval '3 minutes'");
       late = await pay(w.i, w.ana, "pay-13", { amount: 2_500 });
     } finally {
       gw.charge = charge;
