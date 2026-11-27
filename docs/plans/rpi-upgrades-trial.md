@@ -110,8 +110,9 @@ One line each: the Artifact or command, then what happened.
   `aidw run --detach` started without the confirmation the NEXT line announces ("the start asks the user to
   confirm") when run from a non-tty shell.
 - Runner (`aidw run --detach`): one fresh session per task, strictly one after another: T03 and T04, planned as one
-  parallel wave (`T01+T02 -> T03+T04 -> T05`), ran serially, so the plan's waves and the analyze warnings about
-  parallelism had no effect on wall time.
+  parallel wave (`T01+T02 -> T03+T04 -> T05`), ran serially. By design, not a runner defect: T01 and T03 are
+  `risk: high`, and `mustRunAlone` (`src/parallel.ts:45`) runs a high-risk task alone (lead's check). Nothing told the
+  user that the planned waves could not run in parallel.
 - Briefs (`.aidw/run/briefs/.../T01.implement.md`): `## Patterns to Follow` inlines each `patterns:` entry with its
   real snippet, and `## Decisions to honor` is carried; as I3 intends.
 - Build: no implementer consulted Research (`evidence/agent-runs.json` holds only implementer, reviewer and
