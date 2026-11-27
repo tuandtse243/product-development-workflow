@@ -2,7 +2,7 @@
   "format": 2,
   "level": 2,
   "role": "backend",
-  "date": "2026-11-27T06:25:23.010Z",
+  "date": "2026-11-27T06:42:24.219Z",
   "model": null,
   "tier": "deep",
   "runs": 3,
@@ -25,20 +25,17 @@
     },
     {
       "name": "email-after-the-order",
-      "pass": false,
+      "pass": true,
       "runs": {
         "total": 3,
-        "passed": 0,
+        "passed": 3,
         "errors": 0
       },
-      "failed": [
-        "reads: did not read plugin:roles/backend/skills/effects-after-commit.md (3 of 3 runs)",
-        "reads: did not read .aidw/changes/place-an-order/api-contract.md (1 of 3 runs)"
-      ],
+      "failed": [],
       "digest": "sha256:fe5383deaba990b58ce40ed64dc071f0c8df43816ae66eae6e37ee0a40402d73",
       "fixture": "sha256:5921368d0dd27f1c000702f87cbaa741c22458d585365aabb75a28f7a563ecd2",
       "gradingSandbox": "sandbox-exec",
-      "date": "2026-11-27T06:25:23.010Z",
+      "date": "2026-11-27T06:42:24.219Z",
       "model": null
     },
     {

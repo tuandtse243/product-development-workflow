@@ -1,7 +1,7 @@
 {
   "format": 2,
   "role": "backend",
-  "date": "2026-11-27T05:48:46.621Z",
+  "date": "2026-11-27T07:10:26.895Z",
   "model": null,
   "tier": "deep",
   "runs": 3,
@@ -22,17 +22,15 @@
     },
     {
       "name": "contract-has-a-hole",
-      "pass": false,
+      "pass": true,
       "runs": {
         "total": 3,
-        "passed": 2,
+        "passed": 3,
         "errors": 0
       },
-      "failed": [
-        "must write the request in the Consultation format: front matter with `from`, `task` and `to`, one Question with the options, and a Progress note (done so far, next step, files touched)"
-      ],
+      "failed": [],
       "digest": "sha256:fdd4b887b1fb3d85104922f84d4b8c77abea79c593282b7041ad7bb0d13fbae3",
-      "date": "2026-11-27T05:48:46.621Z",
+      "date": "2026-11-27T06:47:55.732Z",
       "model": null
     },
     {
@@ -63,15 +61,15 @@
     },
     {
       "name": "list-that-grows",
-      "pass": false,
+      "pass": true,
       "runs": {
         "total": 3,
-        "passed": 2,
-        "errors": 1
+        "passed": 3,
+        "errors": 0
       },
       "failed": [],
       "digest": "sha256:4f290ab4854da673472c2e519a53aa89575883a1345a80fc253d8521634f8b28",
-      "date": "2026-11-27T05:48:46.621Z",
+      "date": "2026-11-27T06:59:43.414Z",
       "model": null
     },
     {
@@ -89,17 +87,15 @@
     },
     {
       "name": "server-key-stays-on-the-server",
-      "pass": false,
+      "pass": true,
       "runs": {
         "total": 3,
-        "passed": 2,
+        "passed": 3,
         "errors": 0
       },
-      "failed": [
-        "must put the provider behind an interface of its own (for example `Geocoder.lookup(address)`) that the tests replace with a fake, and call the real provider in no test"
-      ],
+      "failed": [],
       "digest": "sha256:a40f2d4f6e3379e1ae8eaf95f7d66fec1bf3ad4c048c0a6890c38f68c64f335b",
-      "date": "2026-11-27T05:48:46.621Z",
+      "date": "2026-11-27T07:10:26.895Z",
       "model": null
     },
     {
