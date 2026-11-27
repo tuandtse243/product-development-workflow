@@ -27,6 +27,12 @@ export interface TestResponse {
 
 type Expectation = (res: TestResponse) => void;
 
+/** One client's server and the streams it is serving now. */
+interface Connections {
+  server: ReturnType<typeof createServer>;
+  served: Set<Duplex>;
+}
+
 /** Two connected in-memory streams: what one end writes, the other reads. */
 function streamPair(): [Duplex, Duplex] {
   const ends: Duplex[] = [];
@@ -59,6 +65,17 @@ function streamPair(): [Duplex, Duplex] {
 }
 
 const isJson = (type: string) => /[/+]json$/i.test(type);
+const isForm = (type: string | undefined) => /^application\/x-www-form-urlencoded\b/i.test(type ?? "");
+const isPlainObject = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Buffer.isBuffer(v) && !Array.isArray(v);
+
+/** A body check: a string must equal the text, a RegExp match it, anything else deeply equal the parsed body. */
+function checkBody(res: TestResponse, want: unknown): void {
+  if (typeof want === "string") {
+    if (res.text !== want) throw new Error(`expected body ${JSON.stringify(want)}, got ${JSON.stringify(res.text)}`);
+  } else if (want instanceof RegExp) {
+    if (!want.test(res.text)) throw new Error(`expected body to match ${want}, got ${JSON.stringify(res.text)}`);
+  } else deepStrictEqual(res.body, want);
+}
 
 export class TestRequest implements PromiseLike<TestResponse> {
   private headers: Record<string, string> = {};
@@ -68,7 +85,7 @@ export class TestRequest implements PromiseLike<TestResponse> {
   private running: Promise<TestResponse> | null = null;
 
   constructor(
-    private readonly server: ReturnType<typeof createServer>,
+    private readonly conn: Connections,
     private readonly method: string,
     private readonly url: string,
   ) {}
@@ -94,14 +111,16 @@ export class TestRequest implements PromiseLike<TestResponse> {
   }
 
   /**
-   * The body. An object is sent as JSON (objects of several calls are merged); a string is sent as it is, as
-   * `application/x-www-form-urlencoded` unless a Content-Type is set (as supertest does).
+   * The body, as supertest sends it. An object is sent as JSON (objects of several calls are merged), or form-encoded
+   * when the Content-Type is a form; a string is sent as it is and makes the Content-Type a form unless one is set;
+   * `null` sends an empty body.
    */
   send(data: unknown): this {
-    if (data !== null && typeof data === "object" && !Buffer.isBuffer(data) && !Array.isArray(data) && this.body && typeof this.body === "object" && !Buffer.isBuffer(this.body)) {
-      this.body = { ...(this.body as object), ...(data as object) };
-    } else if (typeof data === "string" && typeof this.body === "string") {
-      this.body += data;
+    if (typeof data === "string") {
+      this.headers["content-type"] ??= "application/x-www-form-urlencoded";
+      this.body = typeof this.body === "string" ? this.body + data : data;
+    } else if (isPlainObject(data) && isPlainObject(this.body)) {
+      this.body = { ...this.body, ...data };
     } else {
       this.body = data;
     }
@@ -109,21 +128,19 @@ export class TestRequest implements PromiseLike<TestResponse> {
   }
 
   /**
-   * Checks of the response, run when it is awaited: `.expect(201)`, `.expect(201, body)`,
+   * Checks of the response, run when it is awaited, as supertest's: `.expect(201)`, `.expect(201, body)`,
+   * `.expect(body)` (a string or RegExp against the text, anything else against the parsed body),
    * `.expect("content-type", /json/)`, `.expect((res) => ...)`.
    */
-  expect(a: number | string | Expectation, b?: unknown): this {
-    if (typeof a === "function") this.expectations.push(a);
+  expect(a: number | string | RegExp | object | Expectation, b?: unknown): this {
+    if (typeof a === "function") this.expectations.push(a as Expectation);
     else if (typeof a === "number") {
       this.expectations.push((res) => {
         if (res.status !== a) throw new Error(`expected ${a}, got ${res.status}: ${res.text.slice(0, 500)}`);
-        if (b === undefined) return;
-        if (typeof b === "string") {
-          if (res.text !== b) throw new Error(`expected body ${JSON.stringify(b)}, got ${JSON.stringify(res.text)}`);
-        } else if (b instanceof RegExp) {
-          if (!b.test(res.text)) throw new Error(`expected body to match ${b}, got ${JSON.stringify(res.text)}`);
-        } else deepStrictEqual(res.body, b);
+        if (b !== undefined) checkBody(res, b);
       });
+    } else if (typeof a !== "string" || b === undefined) {
+      this.expectations.push((res) => checkBody(res, a));
     } else {
       const name = a.toLowerCase();
       this.expectations.push((res) => {
@@ -152,11 +169,10 @@ export class TestRequest implements PromiseLike<TestResponse> {
   private payload(): Buffer | null {
     const b = this.body;
     if (b === undefined) return null;
+    if (b === null) return Buffer.alloc(0);
     if (Buffer.isBuffer(b)) return b;
-    if (typeof b === "string") {
-      this.headers["content-type"] ??= "application/x-www-form-urlencoded";
-      return Buffer.from(b);
-    }
+    if (typeof b === "string") return Buffer.from(b);
+    if (isPlainObject(b) && isForm(this.headers["content-type"])) return Buffer.from(new URLSearchParams(Object.entries(b).map(([k, v]) => [k, String(v)])).toString());
     this.headers["content-type"] ??= "application/json";
     return Buffer.from(JSON.stringify(b));
   }
@@ -166,14 +182,29 @@ export class TestRequest implements PromiseLike<TestResponse> {
     const qs = this.search.toString();
     const path = qs ? `${this.url}${this.url.includes("?") ? "&" : "?"}${qs}` : this.url;
     const [client, served] = streamPair();
-    this.server.emit("connection", served);
-    const res = await new Promise<TestResponse>((resolve, reject) => {
+    // As a request from 127.0.0.1 looks to the app (req.ip, req.socket.remoteAddress).
+    Object.assign(served, { remoteAddress: "127.0.0.1", remoteFamily: "IPv4", remotePort: 50000, localAddress: "127.0.0.1", localPort: 80 });
+    this.conn.served.add(served);
+    try {
+      this.conn.server.emit("connection", served);
+      const res = await this.exchange(client, path, data);
+      for (const check of this.expectations) check(res);
+      return res;
+    } finally {
+      client.destroy();
+      served.destroy();
+      this.conn.served.delete(served);
+    }
+  }
+
+  private exchange(client: Duplex, path: string, data: Buffer | null): Promise<TestResponse> {
+    return new Promise<TestResponse>((resolve, reject) => {
       const req = httpRequest(
         {
           method: this.method,
           path,
-          host: "test.invalid",
-          headers: { ...this.headers, connection: "close", ...(data ? { "content-length": String(data.length) } : {}) },
+          host: "127.0.0.1",
+          headers: { host: "127.0.0.1", ...this.headers, connection: "close", ...(data ? { "content-length": String(data.length) } : {}) },
           createConnection: () => client as never,
         },
         (r) => {
@@ -200,17 +231,14 @@ export class TestRequest implements PromiseLike<TestResponse> {
       req.on("error", reject);
       req.end(data ?? undefined);
     });
-    client.destroy();
-    served.destroy();
-    for (const check of this.expectations) check(res);
-    return res;
   }
 }
 
 /** A client for one app: `client.get(url)`, `.post(url)`, ... Each request is served in-process. */
 export function http(handler: RequestListener) {
-  const server = createServer(handler);
-  const open = (method: string) => (url: string) => new TestRequest(server, method, url);
+  // The server never listens, so it does not track the streams fed to it: closeAllConnections() cannot end them.
+  const conn: Connections = { server: createServer(handler), served: new Set() };
+  const open = (method: string) => (url: string) => new TestRequest(conn, method, url);
   return {
     get: open("GET"),
     post: open("POST"),
@@ -220,7 +248,10 @@ export function http(handler: RequestListener) {
     del: open("DELETE"),
     head: open("HEAD"),
     options: open("OPTIONS"),
-    /** Ends any request still being served. */
-    close: () => server.closeAllConnections(),
+    /** Ends any request still being served: its awaited request rejects. */
+    close: () => {
+      for (const s of conn.served) s.destroy();
+      conn.served.clear();
+    },
   };
 }

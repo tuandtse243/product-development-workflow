@@ -153,6 +153,21 @@ describe("the in-process client: requests", () => {
     expect(res.body.headers["content-type"]).toBeUndefined();
   });
 
+  it(".send(null) sends an empty body; an object after a string is form-encoded under the string's type, as supertest does", async () => {
+    const none = await http(echo).post("/").send(null);
+    expect(none.body.bytes).toBe(0);
+    expect(none.body.headers["content-length"]).toBe("0");
+    expect(none.body.headers["content-type"]).toBeUndefined();
+    const mixed = await http(echo).post("/").send("a=1").send({ b: 2, c: "x y" });
+    expect(mixed.body.headers["content-type"]).toBe("application/x-www-form-urlencoded");
+    expect(mixed.body.body).toBe("b=2&c=x+y");
+  });
+
+  it("looks to the app like a request from 127.0.0.1 with Host 127.0.0.1", async () => {
+    const res = await http((q, r) => r.end(JSON.stringify({ ra: q.socket.remoteAddress, fam: q.socket.remoteFamily, host: q.headers.host }))).get("/");
+    expect(JSON.parse(res.text)).toEqual({ ra: "127.0.0.1", fam: "IPv4", host: "127.0.0.1" });
+  });
+
   it(".query takes an object or a string, adds to a query in the URL, and encodes values", async () => {
     const res = await http(echo).get("/list?x=1").query({ y: 2, ok: true }).query("z=3&z=4").query({ q: "a b&c=d/é" });
     const u = new URL(res.body.url, "http://h");
@@ -251,15 +266,15 @@ describe("the in-process client: .expect", () => {
   });
 
   // supertest: .expect(body) with one argument checks the body (a string exactly, a RegExp, an object deeply).
-  it("BUG: .expect with only a body string checks the body, as supertest does (not a header named by the body)", async () => {
+  it(".expect with only a body string checks the body, as supertest does (not a header named by the body)", async () => {
     await expect(http(app).get("/text").expect("hello world")).resolves.toMatchObject({ text: "hello world" });
   });
 
-  it("BUG: .expect with only a RegExp checks the body text, as supertest does", async () => {
+  it(".expect with only a RegExp checks the body text, as supertest does", async () => {
     await expect(Promise.resolve().then(() => http(app).get("/text").expect(/hello/))).resolves.toMatchObject({ status: 200 });
   });
 
-  it("BUG: .expect with only an object checks the JSON body, as supertest does (it throws a TypeError now)", async () => {
+  it(".expect with only an object checks the JSON body, as supertest does", async () => {
     await expect(Promise.resolve().then(() => http(app).get("/json").expect({ id: 7, tags: ["a"] }))).resolves.toMatchObject({ status: 201 });
   });
 });
@@ -394,7 +409,7 @@ describe("the in-process client: responses", () => {
 
   // tests/helpers.ts: close() "Ends any request still being served" and runs in afterEach, so that a test that timed out
   // on a route that never answers does not leave its request pending.
-  it("BUG: close() ends a request still being served: a hanging route's request settles", async () => {
+  it("close() ends a request still being served: a hanging route's request settles", async () => {
     const c = http(() => {});
     const pending = c.get("/hang").then(
       () => "resolved",
@@ -468,6 +483,19 @@ describe.skipIf(!express || !supertest)("the in-process client against supertest
   beforeAll(async () => {
     bindable = await canBind();
   });
+  const listening: { close(): void }[] = [];
+  afterAll(() => listening.forEach((s) => s.close()));
+  /**
+   * supertest on the app served on 127.0.0.1. Given the app itself, supertest listens on every interface and connects
+   * to 127.0.0.1, which now and then reaches another process's server on 127.0.0.1 with the same port (a 404 from
+   * nowhere): the flake an in-process client does not have.
+   */
+  const theirClient = async (a: any) => {
+    const s = a.listen(0, "127.0.0.1");
+    await once(s, "listening");
+    listening.push(s);
+    return supertest!(s);
+  };
   const app = () => {
     const a = express();
     a.use(express.json());
@@ -525,7 +553,7 @@ describe.skipIf(!express || !supertest)("the in-process client against supertest
       if (!bindable) ctx.skip();
       const a = app();
       const ours = (await build(http(a))) as Res;
-      const theirs = (await build(supertest!(a))) as Res;
+      const theirs = (await build(await theirClient(a))) as Res;
       expect(view(ours, head)).toEqual(view(theirs, head));
     });
   }
@@ -554,7 +582,8 @@ describe.skipIf(!express || !supertest)("the in-process client against supertest
       (r) => r.get("/text").expect((res: Res) => expect(res.text).toBe("nope")),
     ];
     const ours = await Promise.all(forms.map((f) => outcome(f(http(a)))));
-    const theirs = await Promise.all(forms.map((f) => outcome(f(supertest!(a)))));
+    const st = await theirClient(a);
+    const theirs = await Promise.all(forms.map((f) => outcome(f(st))));
     expect(ours).toEqual(theirs);
   });
 });
