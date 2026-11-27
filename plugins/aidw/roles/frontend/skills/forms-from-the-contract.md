@@ -41,7 +41,7 @@ A profile form; the contract: `displayName` string 1..80, required; `website` op
 Right: the contract's limits, the server's field error on its field, one request per submit.
 
 ```
-schema: displayName: string().min(1).max(80, "Use 80 characters or fewer"); website: string().url().optional()
+schema (zod 4): displayName: z.string().min(1).max(80, "Use 80 characters or fewer"); website: z.preprocess((v) => (v === "" ? undefined : v), z.url().optional())   // a blank optional field passes
 <label htmlFor="displayName">Display name</label>
 <input id="displayName" autoComplete="name" aria-invalid={!!err.displayName} aria-describedby="displayName-error" />
 <p id="displayName-error">{err.displayName}</p>

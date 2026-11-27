@@ -96,7 +96,9 @@ describe("role profiles", () => {
 
   it("the profile of each existing agent keeps its tools and tier", () => {
     expect(loadRole(plugin, "fullstack")).toMatchObject({ mode: "worker", tier: "deep", access: "write", tools: ["Read", "Write", "Edit", "Glob", "Grep", "Bash"], max_turns: 100 });
-    for (const id of ["code-reviewer", "security", "ui-ux-designer"]) expect(loadRole(plugin, id)).toMatchObject({ tier: "standard", access: "read-only" });
+    for (const id of ["code-reviewer", "security"]) expect(loadRole(plugin, id)).toMatchObject({ tier: "standard", access: "read-only" });
+    // ui-ux-designer reviews and also answers Consultations from frontend, so it may write its answer (artifacts)
+    expect(loadRole(plugin, "ui-ux-designer")).toMatchObject({ tier: "standard", access: "artifacts" });
   });
 });
 
@@ -181,9 +183,9 @@ describe("generated agents", () => {
 describe("the gate reads access from the role profile", () => {
   it("write -> implementer, read-only -> reviewer, unknown -> no subagent rules", () => {
     expect(agentRole("aidw:fullstack")).toBe("implementer");
-    expect(["aidw:code-reviewer", "security", "aidw:ui-ux-designer"].map((a) => agentRole(a))).toEqual(["reviewer", "reviewer", "reviewer"]);
+    expect(["aidw:code-reviewer", "security"].map((a) => agentRole(a))).toEqual(["reviewer", "reviewer"]);
     expect(["aidw:frontend", "backend"].map((a) => agentRole(a))).toEqual(["implementer", "implementer"]);
-    expect(["aidw:product-manager", "software-architect", "aidw:technical-planner"].map((a) => agentRole(a))).toEqual(["author", "author", "author"]);
+    expect(["aidw:product-manager", "software-architect", "aidw:technical-planner", "aidw:ui-ux-designer"].map((a) => agentRole(a))).toEqual(["author", "author", "author", "author"]);
     expect(agentRole("general-purpose")).toBeNull();
     expect(agentRole(undefined)).toBeNull();
   });

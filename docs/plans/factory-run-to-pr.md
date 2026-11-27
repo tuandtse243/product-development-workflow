@@ -299,13 +299,11 @@ Fastify, Hono.
   12. Level 2 screenshots: a case key that drops the screenshot lines from the brief (one small harness change);
       tokens stay in the brief.
   13. Level 2 plan: pilot L1 first (at most 6 sessions), then L2 to L4 (9 sessions plus spares); ask before more.
-  - Open, found while building (2026-11-28): decision 3 cannot hold yet. `ui-ux-designer` is `access: read-only` (its
-    Agent only reviews; the design side still lives in the start skill), and `aidw roster` refuses a read-only Role
-    in `consults:` because it could never write its answer (the gate would also deny the answer file). Until that
-    Role can answer, frontend consults `api-designer` and `software-architect` only, and a hole in the design is
-    built with the nearest token by its **Use** and reported under `Owed` (F2). Restoring decision 3 needs the owner:
-    `ui-ux-designer` with `access: artifacts` and a procedure for answering a Consultation, then one line back in
-    frontend's `consults:` and its Whom to ask.
+  - Built (2026-11-28): decision 3 first could not hold, because `ui-ux-designer` was `access: read-only` and
+    `aidw roster` refuses a read-only Role in `consults:`. The owner then decided to make it answer Consultations:
+    `ui-ux-designer` now has `access: artifacts` and a procedure for answering a Consultation from frontend (its
+    review job is unchanged), and frontend consults `api-designer`, `ui-ux-designer` and `software-architect`. A hole in
+    the design is asked of `ui-ux-designer` and the rest of the task is built meanwhile (F2).
   - Interim: the 2 existing frontend cases carry `covers:` for every rule and skill so roster has 0 errors; the
     level 1 case task removes the ones listed only for coverage (`uses-tokens-and-keeps-secrets-out` says which).
 - The cases of every other active Role have no `covers:` yet; T12 must not fail `aidw roster` for Roles that

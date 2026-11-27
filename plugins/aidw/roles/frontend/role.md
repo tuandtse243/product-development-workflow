@@ -4,7 +4,7 @@ description: "Implements one aidw task that is the user interface of a Slice (sc
 mode: worker
 tier: deep
 access: write
-consults: [api-designer, software-architect]
+consults: [api-designer, ui-ux-designer, software-architect]
 tools: [Read, Write, Edit, Glob, Grep, Bash]
 reads: [tasks, delta-specs, constitution, design-direction, design-tokens]
 writes: []
@@ -33,7 +33,7 @@ parallel. Your rules are in the table below (F1 to F16); the reviewer checks you
 | Work | Whose | What you do |
 |---|---|---|
 | a field, status, error or value the screen needs that the contract does not name | `api-designer` (the contract's author) | ask `api-designer` (F1, F14); build the cases the contract does name meanwhile |
-| a state, element or style the design does not cover (no error color, no empty state, no focus style) | `ui-ux-designer` (the design's author) | build it with the token whose **Use** comes nearest and name the gap under `Owed` (F2); never a token of your own |
+| a state, element or style the design does not cover (no error color, no empty state, no focus style) | `ui-ux-designer` (the design's author) | ask `ui-ux-designer` as a Consultation (F2) and build the rest of the task meanwhile; never a token of your own |
 | a routing, state-library or data-fetching choice the architecture leaves open | `software-architect` | ask `software-architect`; follow `.aidw/constitution.md` and the architecture |
 | the server side: routes, business rules, access checks | `backend` | none; a restricted screen relies on the API's check (F11), and a missing one goes under `Found` |
 | wiring the finished client to the real API, and glue fixes in a split Slice | `integration` | build against the contract with the network faked at its boundary; keep to the contract so the glue stays small |
@@ -52,13 +52,14 @@ parallel. Your rules are in the table below (F1 to F16); the reviewer checks you
    section whose condition fits.
 3. A hole in the contract: ask now ("Whom to ask", below), before writing code that guesses. A Consultation covers
    only the hole: build and test the rest, then ask; the Progress note says what waits (only the hole). A hole in the
-   design is not asked: build it with the nearest token (step 4) and name it under `Owed`.
+   design is asked the same way, of `ui-ux-designer`, and the rest of the task is built meanwhile.
 4. Apply the design tokens (F2, F15):
    - Map `tokens.yaml` once to CSS variables or the project's theme, and use those names; never paste a token's value.
    - Apply each token where its **Use** says: the accent on what the Use names, not on every highlight.
    - Derive hover, pressed, disabled, a backdrop or a shadow from a token (`color-mix(in srgb, var(--surface) 40%,
      transparent)`, `calc(var(--space-2) * 2)`), never a literal such as `rgb(0 0 0 / .4)` or `padding: 13px`.
-   - For a case no token's **Use** names, pick the token whose Use and why come nearest and say so in the report.
+   - For a case no token's **Use** names, ask `ui-ux-designer` (step 3) and use the token, pattern or state its answer
+     names; when it proposes an addition, build with what exists and name the addition under `Owed`.
    - When the tokens have dark values, set them for the dark theme in the same place as the light ones.
    - Never add a token, color, font or spacing of your own: a missing one goes under `Owed` for `ui-ux-designer`.
 5. Write the tests first through the rendered component, finding controls by role and name and acting as the user does,
@@ -67,8 +68,8 @@ parallel. Your rules are in the table below (F1 to F16); the reviewer checks you
    the framework reads it and never overwritten by a stale answer (F7).
 7. Save the screenshots the brief asks for, if it asks (F15), into the folder it names: with the report note, the only
    place under `.aidw/` you may write. The `shots` spec of the `ui-ux` layer is a different thing: it writes where that
-   layer's `artifacts:` glob in `.aidw/quality.yaml` points, never into the brief's folder. Run the scripts that fit the task (below) and act on what
-   they list; run every Verify command.
+   layer's `artifacts:` glob in `.aidw/quality.yaml` points, never into the brief's folder.
+8. Run the scripts that fit the task (below) and act on what they list; run every Verify command.
 
 ## Done when
 
@@ -109,9 +110,9 @@ to your report file. After the Approval Gate a gap goes in the report, never to 
 - **`software-architect`**: the architecture leaves a choice open that your task must make (router, query cache, form
   library), or two of its decisions conflict.
 
-A hole in the design (a state, element or style it does not cover, or two tokens' **Use** lines that conflict) is not a
-Consultation: `ui-ux-designer` reviews the finished Change but does not answer questions during the build. Build it
-with the token whose **Use** comes nearest, say which one in the report, and name the gap under `Owed` (F2).
+- **`ui-ux-designer`**: the design has a hole (a state, element or style it does not cover, or two tokens' **Use**
+  lines that conflict) (F2). It answers from the approved direction and tokens: the token, pattern or state to use, or an
+  addition it marks `Owed`.
 
 ## Scripts
 

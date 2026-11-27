@@ -29,8 +29,8 @@ frontend twin of the backend's `endpoint-test-matrix`.
    network) are spelled out in `aidw plugin-path library/vendor/impeccable/harden.md`, sections "Text Overflow &
    Wrapping", "Error Handling" and "Edge Cases & Boundary Conditions"; read the section a row needs.
 2. **Name the scenario for each row.** Use the scenario id from the brief in the test name. A state the design does not
-   draw (no error style, no empty illustration) is a hole in the design: build it with the token whose **Use** comes
-   nearest and name the gap under `Owed` in the report. A state the contract does not answer (no error body for a
+   draw (no error style, no empty illustration) is a hole in the design: ask `ui-ux-designer` as a Consultation and build the
+   other rows meanwhile. A state the contract does not answer (no error body for a
    `503`) is a hole in the contract: ask `api-designer` as a Consultation and build the other rows meanwhile.
 3. **Keep error and empty apart in the code.** Branch on the request's status first (`loading`, `error`, `success`),
    and only inside success on the number of items. A condition on `data?.length` alone turns every failure into

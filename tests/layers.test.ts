@@ -285,8 +285,9 @@ describe("review layers in parallel (D13)", () => {
 describe("layer reviewers are read-only subagents", () => {
   const hook = (cwd: string, tool_name: string, tool_input: Record<string, unknown>, agent_type: string): HookInput => ({ hook_event_name: "PreToolUse", tool_name, tool_input, cwd, agent_type });
 
-  it("treats the read-only Roles (ui-ux-designer, security) like the task reviewer", () => {
-    expect(["aidw:ui-ux-designer", "security", "aidw:code-reviewer"].map((a) => agentRole(a))).toEqual(["reviewer", "reviewer", "reviewer"]);
+  it("treats the read-only Roles (security) like the task reviewer and ui-ux-designer as an author that never writes project files", () => {
+    expect(["security", "aidw:code-reviewer"].map((a) => agentRole(a))).toEqual(["reviewer", "reviewer"]);
+    expect(agentRole("aidw:ui-ux-designer")).toBe("author");
     expect(agentRole("aidw:fullstack")).toBe("implementer");
     // an environment override must not turn a reviewer into a writer
     expect(agentRole("aidw:code-reviewer", { AIDW_PLUGIN_ROOT: "/nowhere" } as NodeJS.ProcessEnv)).toBe("reviewer");
@@ -295,6 +296,7 @@ describe("layer reviewers are read-only subagents", () => {
     const d = (h: HookInput) => decide(h, {})?.decision ?? "none";
     expect(d(hook(root, "Write", { file_path: join(root, "app/page.tsx") }, "aidw:ui-ux-designer"))).toBe("deny");
     expect(d(hook(root, "Bash", { command: "echo x > app/page.tsx" }, "aidw:security"))).toBe("deny");
+    expect(d(hook(root, "Bash", { command: "echo x > app/page.tsx" }, "aidw:ui-ux-designer"))).toBe("deny");
     expect(d(hook(root, "Bash", { command: "aidw layer-review ui-ux pass" }, "aidw:ui-ux-designer"))).toBe("deny");
     expect(d(hook(root, "Bash", { command: "aidw verify" }, "aidw:security"))).toBe("deny");
     expect(d(hook(root, "Bash", { command: "git diff abc123 --stat" }, "aidw:security"))).toBe("none");

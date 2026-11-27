@@ -26,6 +26,8 @@ end of the Change. Get them right in the task, and leave a test that fails when 
    | modal dialog | the trigger | Tab and Shift+Tab cycle inside; the page behind is inert | Escape, the close button | the trigger |
    | menu button | Enter, Space, Arrow Down on the trigger | Arrow keys move between items, Home and End, Enter picks | Escape, a pick, Tab | the trigger |
    | popover (not modal) | the trigger | Tab leaves it | Escape, a click outside | the trigger on Escape |
+   | combobox | typing in the input; Arrow Down opens the list | focus stays in the input and `aria-activedescendant` names the active option; Arrow Up and Down move it, Home and End go to the ends | Enter selects the active option; Escape closes the list, a second Escape clears the input | the input |
+   | listbox | Tab onto it (or Arrow keys on its trigger) | Arrow Up and Down move the active option (`aria-activedescendant` or roving focus), Home and End jump, typing a letter jumps to a match | Enter or Space selects; Escape closes a popup listbox | the trigger |
    | tabs | - | Arrow keys move between tabs, Tab goes into the panel | - | - |
    | disclosure | Enter, Space | - | Enter, Space | stays on the trigger, `aria-expanded` changes |
 
@@ -39,7 +41,7 @@ end of the Change. Get them right in the task, and leave a test that fails when 
 6. **A shared primitive that breaks a row of the table** (a Popover that does not return focus): fix it when its file is
    in Touches; otherwise wrap it in your component so your screen is right, and name the primitive under `Found` in the
    report. Do not copy its defect into new code. When the design leaves a control's look open (no focus style, no
-   pressed state), build it from the nearest token by its **Use** and name the gap under `Owed`.
+   pressed state), ask `ui-ux-designer` as a Consultation and build the rest meanwhile.
 
 The vendored Web Interface Guidelines list more checks (sections "Accessibility", "Focus States", "Touch &
 Interaction"): `aidw plugin-path library/vendor/vercel/command.md`.

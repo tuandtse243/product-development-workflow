@@ -41,11 +41,9 @@ describe("frontend rules.md (T20)", () => {
 
   it("every Role a rule says to ask is one frontend may consult", () => {
     const consults = loadRole(plugin, "frontend")!.consults;
-    // ui-ux-designer's Agent is read-only (it reviews), so roster refuses it as a Consultation's answerer: a hole in
-    // the design is built with the nearest token and reported under Owed (F2) until that Role can answer.
-    expect(consults).toEqual(["api-designer", "software-architect"]);
+    expect(consults).toEqual(["api-designer", "ui-ux-designer", "software-architect"]);
     const asked = rules.flatMap((r) => [...r.rule.matchAll(/ask `([a-z-]+)`/g)].map((m) => m[1]!));
-    expect(new Set(asked)).toEqual(new Set(["api-designer"]));
+    expect(new Set(asked)).toEqual(new Set(["api-designer", "ui-ux-designer"]));
     for (const a of asked) expect(consults, a).toContain(a);
   });
 });
@@ -68,10 +66,11 @@ describe("frontend role.md (T20)", () => {
     expect(role.body).toMatch(/^Found: /m);
   });
 
-  it("builds a hole in the design with the nearest token and names it under Owed", () => {
+  it("asks ui-ux-designer about a hole in the design and builds the rest meanwhile", () => {
     const ask = /## Whom to ask[\s\S]*?(?=\n## )/.exec(role.body)![0];
-    expect(ask).toMatch(/A hole in the design[\s\S]*nearest[\s\S]*under `Owed` \(F2\)/);
-    expect(loadRuleTable(plugin, "frontend")!.find((r) => r.id === "F2")!.rule).toMatch(/nearest and name the gap under `Owed`/);
+    expect(ask).toMatch(/\*\*`ui-ux-designer`\*\*: the design has a hole/);
+    expect(role.body).toMatch(/ask `ui-ux-designer` as a Consultation \(F2\) and build the rest of the task meanwhile/);
+    expect(loadRuleTable(plugin, "frontend")!.find((r) => r.id === "F2")!.rule).toMatch(/ask `ui-ux-designer` as a Consultation and build the rest of the task meanwhile/);
   });
 
   it("carries the tokens in six lines of its Procedure", () => {
