@@ -222,12 +222,12 @@ describe("selectSkills: anthropic/frontend-design and approved tokens", () => {
     expect(ids(task({ role: "frontend", touches: [] }))).toContain(FD); // frontend implies UI
   });
 
-  it("tokens never take frontend-design away from a Role-less task or integration; fullstack follows frontend", () => {
-    for (const role of [undefined, "integration"]) {
-      expect(ids(task({ role, touches: ["src/x.tsx"] }), "implement", { designTokens: true }), String(role)).toContain(FD);
+  it("tokens never take frontend-design away from integration; fullstack and a Role-less task (run as fullstack) follow frontend", () => {
+    expect(ids(task({ role: "integration", touches: ["src/x.tsx"] }), "implement", { designTokens: true })).toContain(FD);
+    for (const role of ["fullstack", undefined]) {
+      expect(ids(task({ role, touches: ["src/x.tsx"] }), "implement", { designTokens: true }), String(role)).not.toContain(FD);
+      expect(ids(task({ role, touches: ["src/x.tsx"] }), "implement", { designTokens: false }), String(role)).toContain(FD);
     }
-    expect(ids(task({ role: "fullstack", touches: ["src/x.tsx"] }), "implement", { designTokens: true })).not.toContain(FD);
-    expect(ids(task({ role: "fullstack", touches: ["src/x.tsx"] }), "implement", { designTokens: false })).toContain(FD);
   });
 
   it("the other UI skills are untouched by tokens", () => {

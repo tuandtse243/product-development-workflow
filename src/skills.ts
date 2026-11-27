@@ -147,7 +147,7 @@ export function selectSkills(t: Task, kind: BriefKind, opts: { retry?: boolean; 
   const api = role !== "frontend" && (touches.some((g) => API_TOUCH.test(g)) || role === "backend");
   const data = touches.some((g) => (role === "frontend" ? CLIENT_DATA_TOUCH : DATA_TOUCH).test(g)) || role === "database";
   if (ui) add("frontend-ui-engineering", "touches UI files");
-  if (ui && !((role === "frontend" || role === "fullstack") && opts.designTokens)) add("anthropic/frontend-design", "touches UI files: an interface with a point of view (a frontend task with approved design tokens follows them instead, so it does not load this)");
+  if (ui && !((!role || role === "frontend" || role === "fullstack") && opts.designTokens)) add("anthropic/frontend-design", "touches UI files: an interface with a point of view (a frontend or fullstack task with approved design tokens follows them instead, so it does not load this)");
   if (ui && MOTION_HINT.test([t.title ?? "", ...list(t.scenarios)].join(" ").replace(/[/_.-]/g, " "))) add("emil/animate", "the task is about motion");
   if (api) add("api-and-interface-design", "touches API or server code");
   if (api) add("aidw/api-design-rules", "touches API or server code: the concrete rules (errors, lists, repeated writes)");
