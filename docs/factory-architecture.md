@@ -177,15 +177,23 @@ generated agent files are up to date.
   test imports) and `leak-and-timeout-scan` (outbound calls with no timeout, log calls carrying secrets or whole
   objects). `route-inventory`, `env-names`, `error-shape-probe` (its static probe) and `leak-and-timeout-scan` take
   `--base <ref>` to look only at what a diff adds; `query-count` reads logs and takes no `--base`. The frontend Role
-  has three, all with `--base`: `token-literals` (style literals that are not a design token, by kind: color,
+  has five, all with `--base`: `token-literals` (style literals that are not a design token, by kind: color,
   length, font, shadow, radius, z-index, with the nearest token; it reads the Change's `.aidw/design/tokens.yaml`
   as the CLI's design check does, and CSS, style objects, styled templates and Tailwind arbitrary values such as
   `p-[13px]`; rule F2), `a11y-names` (clickable non-controls, controls with no accessible name, fields with no
   label, images with no `alt`, positive `tabIndex`, focus outlines removed with no `:focus-visible`, raw-HTML sinks;
-  F4, F5, F16) and `public-env-scan` (environment names read in client files with whether each has the framework's
-  public prefix, secret-looking public names, server-only modules imported into client files; F10). They read JSX
-  and TSX; `.vue` and `.svelte` templates come later, and so do `fetch-waterfalls` and `route-guard-inventory`,
-  which wait for the frontend level 2 fixture to be tuned on. Their own helpers (JSX elements, CSS rules) are in
+  F4, F5, F16), `public-env-scan` (environment names read in client files with whether each has the framework's
+  public prefix, secret-looking public names, server-only modules imported into client files; F10),
+  `fetch-waterfalls` (effects that fetch with no abort, ignore flag or cancelling cleanup, naming the custom hook
+  that holds the effect; effects that only copy props or state into state; independent awaits in a row; F7, F8)
+  and `route-guard-inventory` (React Router object and JSX routes and Next.js app router pages with the guard each
+  has: wrapper element, redirecting loader, guard layout, middleware match, server-side redirect; `--routes
+  /billing,/admin` lists the paths that must be guarded and reports each with no guard or no route; F11). The last
+  two are heuristic by names; they were checked against the `frontend-web` fixture and synthetic trees, and real level 2
+  and level 4 shapes are not yet tested. `route-guard-inventory` spells `guard` as a string (`wrapper:RequireAuth`,
+  `loader:requireSession`, `middleware`, `layout:...`) or null plus a `guardKind` (`client` or `server`), unlike the
+  `server` / `client` / `none` of §5 of the research report, and does not implement that report's `reads` field. They read JSX
+  and TSX; `.vue` and `.svelte` templates come later. Their own helpers (JSX elements, CSS rules) are in
   `roles/frontend/scripts/_markup.mjs`. Every JSON output
   starts with `tool` and `schemaVersion: 1`; a directory scan lists under `skipped` what it did not read (`public/`
   and `static/` output, minified or bundled files, files over 512 KB, unreadable files). `query-count --run`
