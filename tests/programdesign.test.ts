@@ -159,7 +159,7 @@ describe("the system design round (D3, Q1, Q7, M9)", () => {
 describe("aidw stages: the round and the Program Design stages", () => {
   const toArchitecture = () => {
     for (const s of ["intake", "analyzing"]) expect(cli("transition", ID, s).code).toBe(0);
-    for (const s of ["assessment", "discovery", "research", "user-research", "requirements", "design", "architecture"]) {
+    for (const s of ["assessment", "discovery", "research", "user-research", "requirements", "design", "architecture", "contracts"]) {
       const r = cli("stages", "--done", s, "--change", ID);
       expect(r.code, `${s}: ${r.err}`).toBe(0);
     }
@@ -182,6 +182,17 @@ describe("aidw stages: the round and the Program Design stages", () => {
     expect(cli("stages", "--done", "system-design-round", "--change", ID).code).toBe(0);
   });
 
+  it("with nothing open, tells the summary to name the data model and the API contract the Change has (F5)", () => {
+    analysis(ANALYSIS_MD.replace(ROUND, ""));
+    for (const s of ["intake", "analyzing"]) expect(cli("transition", ID, s).code).toBe(0);
+    expect(cli("decide", "data-model-needed", "design", "--reason", "a booking slot is unique", "--change", ID).code).toBe(0);
+    expect(cli("decide", "api-contract-needed", "openapi", "--reason", "the mobile app calls it", "--change", ID).code).toBe(0);
+    for (const s of ["assessment", "discovery", "research", "user-research", "requirements", "design", "architecture", "contracts"]) {
+      expect(cli("stages", "--done", s, "--change", ID).code, s).toBe(0);
+    }
+    expect(cli("stages", ID).out).toMatch(/; name the data model and the API contract in the summary/);
+  });
+
   it("refuses more than 5 open questions", () => {
     const open = Array.from({ length: 6 }, (_, i) => `- DQ${i + 1}: Q${i + 1}?\n  Open: a | b`).join("\n");
     analysis(withQuestions(`### Design Questions\n\n${open}\n\n`).replace(ROUND, ""));
@@ -200,7 +211,6 @@ describe("aidw stages: the round and the Program Design stages", () => {
   it("refuses the Program Design stage until its required parts are written", () => {
     toArchitecture();
     expect(cli("stages", "--done", "system-design-round", "--change", ID).code).toBe(0);
-    expect(cli("stages", "--done", "contracts", "--change", ID).code).toBe(0);
     programDesign("# Program Design\n\n## File tree\n\n```text\n+ lib/x.ts\n```\n");
     expect(cli("stages", "--done", "program-design", "--change", ID).err).toMatch(/stage "program-design" is done when the Program Design has its required parts: missing "## Signatures and contracts"/);
     programDesign(PROGRAM_DESIGN_MD);
@@ -220,7 +230,7 @@ describe("program-design.md (I5, Q2, Q3)", () => {
   it("refuses a missing file, and a file without its required parts", () => {
     rmSync(join(root, C, "program-design.md"));
     expect(cli("analyze", ID, "--json").messages()).toContain(
-      'program-design.md is missing: the Software Architect writes the Program Design ("## File tree" and "## Signatures and contracts") after the system design round (/aidw:start step 6)',
+      'program-design.md is missing: the Software Architect writes the Program Design ("## File tree" and "## Signatures and contracts") after the system design round (/aidw:start step 6c)',
     );
     programDesign("# Program Design\n\n## File tree\n\nWe add a route.\n\n## Signatures and contracts\n\nA PATCH handler.\n\n## Call trees\n\nTODO(aidw)\n");
     const m = cli("analyze", ID, "--json").messages();

@@ -35,12 +35,16 @@ export function runnerCommand(id: string, aidw: string, pluginDir?: string): str
 /**
  * The route for a Change with `tasks` tasks left; `aidw` is the CLI as the orchestrator should type it, `pluginDir` the
  * plugin directory when aidw is loaded from a folder rather than installed. Only the start of an installed plugin is
- * allowed by the gate without asking; from a folder the user confirms it at a prompt.
+ * allowed by the gate without asking; from a folder the user confirms it at a prompt, where a session can show prompts.
  */
 export function buildRoute(id: string, tasks: number, aidw = "aidw", pluginDir?: string): BuildRoute {
   if (tasks > RUNNER_THRESHOLD) {
     const command = runnerCommand(id, aidw, pluginDir);
-    const asks = pluginDir ? "; the start asks the user to confirm, because aidw is loaded from a folder" : "";
+    // The confirmation is Claude Code's permission prompt (the gate answers "ask"). A session that cannot show prompts
+    // (claude -p) starts the runner without asking, so the line says both (B-D2); the command is the same either way.
+    const asks = pluginDir
+      ? "; the start asks the user to confirm at Claude Code's permission prompt, because aidw is loaded from a folder (a session that cannot show prompts, such as claude -p, starts it without asking)"
+      : "";
     return {
       mode: "runner",
       tasks,

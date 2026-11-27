@@ -238,6 +238,16 @@ describe("aidw brief inlines patterns and Docs Briefs", () => {
 });
 
 describe("the gate's plan section (layout plan)", () => {
+  it("shows an INFO line for tasks that run one after the other", () => {
+    const tasks = [
+      { id: "T01", title: "A", touches: ["a/**"], risk: "high" },
+      { id: "T02", title: "B", touches: ["b/**"] },
+    ] as never;
+    const s = planGateSection(pathsFor(root), tasks, join(root, ".aidw/run/pages"), 3);
+    expect(s.points).toContain("T01 is risk high: it runs alone, so T01 and T02 run one after the other");
+    expect(planGateSection(pathsFor(root), tasks, join(root, ".aidw/run/pages")).points).toEqual([]);
+  });
+
   it("lists each task's patterns, Docs Briefs (with links) and checks for the user", () => {
     setTasks(tasksWith('    patterns: [{ path: "lib/store.ts:1-20", why: the store shape }]\n    docs: ["zod@3.23.8 parsing"]\n    manual: ["the email reads well on a phone"]\n'));
     write(root, ".aidw/research/docs/zod@3.23-parsing.md", BRIEF("zod", "3.23.8", "parsing"));

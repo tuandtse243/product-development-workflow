@@ -12,6 +12,7 @@
  * unchanged; a changed plan starts a new cycle of rounds with its own cap. `aidw transition <id> awaiting_approval` is
  * refused until then (planReviewBlocker).
  */
+import { gateLabels } from "./labels.js";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -380,13 +381,13 @@ export function buildPlanReviewBrief(p: Paths, id: string, pluginRoot: string): 
 }
 
 /** The section the CLI puts at the top of the gate Decision Page when findings were carried; null otherwise. */
-export function openFindingsSection(p: Paths, change: Change, w: Workflow): PageSection | null {
+export function openFindingsSection(p: Paths, change: Change, w: Workflow, lang?: string): PageSection | null {
   if (!reviewStage(w)) return null;
   const open = carriedFindings(p, change);
   if (!open.length) return null;
   return {
     id: "open-findings",
-    title: "Open findings of the independent review",
+    title: gateLabels(lang).openFindings,
     body: `The code-reviewer graded the architecture and the plan against a fixed list; after ${MAX_FIX_ROUNDS} rounds of fixes these are still open. Approve with them, or mark this section for a change.`,
     points: open.map((f) => `**item ${f.item}** (${CHECKLIST[f.item - 1] ?? "?"}) \`${f.target}\`: ${f.text}`),
     html: "",

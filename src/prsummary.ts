@@ -149,8 +149,10 @@ export function unknownPaths(paths: string[], known: Set<string>): string[] {
 }
 
 export interface PrSummary {
-  /** the summary as it goes into the body: its H1 dropped (the pull request has its own title) */
+  /** the summary as it goes into the body: its H1 taken out, it is the pull request's title */
   text: string;
+  /** the H1 of the summary: the pull request's title; null when it has none */
+  title: string | null;
   file: string;
   /** the sections of example 17 the summary lacks (`## Why`, `## Notes`, `## Change outline`): warned, not refused */
   warnings: string[];
@@ -191,10 +193,11 @@ export function readPrSummary(p: Paths, change: Change, base: string, head: stri
       `${rel(p, file)} names ${unknown.length === 1 ? "a file" : "files"} absent from the git diff (${base}...${head}) and from the approved Artifacts: ${unknown.map((u) => `\`${u}\``).join(", ")}; name only files the Change Branch changed or the approved package holds, then run \`aidw pr ${change.id}\` again`,
     );
   }
+  const title = /^\s*# ([^\n]*)\n/.exec(raw.replace(/\r\n?/g, "\n"))?.[1]?.trim() || null;
   const text = raw
     .replace(/\r\n?/g, "\n")
     .replace(/^\s*# [^\n]*\n/, "")
     .trim();
   const warnings = unchecked.concat(missingSections(raw).map((m) => `${rel(p, file)} has no "## ${m}" section (Why in one sentence, 1 to 3 Notes, a Change outline of Views)`));
-  return { text, file, warnings };
+  return { text, title, file, warnings };
 }

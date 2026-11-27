@@ -32,6 +32,7 @@ if (s.state) {
 }
 if (s.archive) { fs.mkdirSync(path.join(root, ".aidw/archive"), { recursive: true }); fs.renameSync(dir, path.join(root, ".aidw/archive/2026-11-10-${ID}")); }
 if (s.out) console.log(s.out);
+if (s.json) console.log(JSON.stringify(s.json));
 process.exit(s.exit || 0);
 `;
 
@@ -131,6 +132,29 @@ describe("aidw run preflight", () => {
   });
 });
 
+describe("runner.log keeps the whole final message, the cost and the turns (B3)", () => {
+  it("logs every line of a long final message, each session's cost and turns, and a total", () => {
+    const long = Array.from({ length: 30 }, (_, i) => `line ${i + 1}`).join("\n");
+    const t = setup("executing", [
+      { progress: true, json: { result: long, total_cost_usd: 0.5, num_turns: 12 } },
+      { state: "archived", progress: true, archive: true, json: { result: "done", total_cost_usd: 0.25, num_turns: 3 } },
+    ]);
+    t.go();
+    const log = readFileSync(join(t.root, ".aidw/run/runner.log"), "utf8");
+    expect(log).toMatch(/session 1 ended: exit 0, \$0\.5000, 12 turns\n {2}\| line 1\n/);
+    expect(log).toContain("  | line 30");
+    expect(log).toMatch(/session 2 ended: exit 0, \$0\.2500, 3 turns\n {2}\| done/);
+    expect(log).toMatch(/total: 2 sessions, \$0\.7500, 15 turns\n.*stop: archived/);
+  });
+  it("says the cost was not reported when the output is plain text, and keeps the whole text", () => {
+    const t = setup("executing", [{ state: "archived", progress: true, archive: true, out: "first\nsecond" }]);
+    t.go();
+    const log = readFileSync(join(t.root, ".aidw/run/runner.log"), "utf8");
+    expect(log).toMatch(/session 1 ended: exit 0\n {2}\| first\n {2}\| second/);
+    expect(log).toMatch(/total: 1 session, cost not reported/);
+  });
+});
+
 describe("aidw run", () => {
   it("waits out a pause, resumes headless with the permission mode and extra args, and stops on escalation", () => {
     const t = setup("paused", [{ state: "paused", paused: "rate_limit", progress: true }, { state: "escalated", progress: true }], "rate_limit: retry after 30 seconds");
@@ -138,8 +162,8 @@ describe("aidw run", () => {
     expect(r).toMatchObject({ outcome: "escalated", runs: 2, waits: 2, state: "escalated" });
     expect(t.sleeps).toEqual([90_000, 600_000]); // stated 30 s + margin, then backoff (second attempt: 10 min)
     expect(t.calls()).toEqual([
-      ["-p", `/aidw:resume ${ID}`, "--permission-mode", "auto", "--strict-mcp-config", "--plugin-dir", "/x/aidw"],
-      ["-p", `/aidw:resume ${ID}`, "--permission-mode", "auto", "--strict-mcp-config", "--plugin-dir", "/x/aidw"],
+      ["-p", `/aidw:resume ${ID}`, "--permission-mode", "auto", "--output-format", "json", "--strict-mcp-config", "--plugin-dir", "/x/aidw"],
+      ["-p", `/aidw:resume ${ID}`, "--permission-mode", "auto", "--output-format", "json", "--strict-mcp-config", "--plugin-dir", "/x/aidw"],
     ]);
     const log = readFileSync(join(t.root, ".aidw/run/runner.log"), "utf8");
     expect(log).toMatch(/paused \(rate_limit: retry after 30 seconds\): waiting 2 min, the error says retry after 30 seconds/);
@@ -185,7 +209,7 @@ describe("aidw run", () => {
     const code = run(["run", ID, "--root", t.root, "--claude", join(t.root, "fake-claude"), "--", "--plugin-dir", "/p", "--model", "opus"], {}, t.root, { out: (s) => (out += s), err: (s) => (e2 += s) });
     expect([code, e2, out.slice(-300)]).toEqual([0, "", expect.any(String)]);
     expect(out).toMatch(/DONE \(archived\) after 1 session\(s\), 0 wait\(s\)/);
-    expect(t.calls()[0]).toEqual(["-p", `/aidw:resume ${ID}`, "--permission-mode", "auto", "--strict-mcp-config", "--plugin-dir", "/p", "--model", "opus"]);
+    expect(t.calls()[0]).toEqual(["-p", `/aidw:resume ${ID}`, "--permission-mode", "auto", "--output-format", "json", "--strict-mcp-config", "--plugin-dir", "/p", "--model", "opus"]);
   });
 });
 

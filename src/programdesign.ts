@@ -21,6 +21,7 @@
  * contracts` are required, call trees, component trees, a dependency map and pseudocode are optional. It is part of
  * the approved package (package version 4): code that differs from it is a Deviation.
  */
+import { gateLabels } from "./labels.js";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { stateOf, type Change } from "./change.js";
@@ -256,7 +257,7 @@ export function checkProgramDesign(p: Paths, change: Change, opts: { small: bool
   const abs = join(change.dir, PROGRAM_DESIGN_FILE);
   const file = rel(p, abs);
   if (!existsSync(abs)) {
-    d.error(file, `${PROGRAM_DESIGN_FILE} is missing: the Software Architect writes the Program Design (${REQUIRED_PARTS.map((x) => `"## ${x}"`).join(" and ")}) after the system design round (/aidw:start step 6)`);
+    d.error(file, `${PROGRAM_DESIGN_FILE} is missing: the Software Architect writes the Program Design (${REQUIRED_PARTS.map((x) => `"## ${x}"`).join(" and ")}) after the system design round (/aidw:start step 6c)`);
     return;
   }
   const text = readFileSync(abs, "utf8");
@@ -313,7 +314,7 @@ function signatureView(f: Fence): PageView {
 }
 
 /** Q4: the gate page's Program Design section, built from program-design.md; null when there is none. */
-export function programDesignSection(text: string | null, changeId: string): PageSection | null {
+export function programDesignSection(text: string | null, changeId: string, lang?: string): PageSection | null {
   if (text === null || !text.trim()) return null;
   const parts = programDesignParts(text);
   const views: PageView[] = [];
@@ -328,8 +329,8 @@ export function programDesignSection(text: string | null, changeId: string): Pag
   if (!views.length) return null;
   return {
     id: "program-design",
-    title: "Program Design",
-    body: `The files this Change adds, changes and removes, and its main signatures and contracts (.aidw/changes/${changeId}/${PROGRAM_DESIGN_FILE}). You approve it with the package: code that differs from it is a Deviation, decided by the Software Architect and listed in the pull request.`,
+    title: gateLabels(lang).programDesign,
+    body: gateLabels(lang).programDesignBody(changeId, PROGRAM_DESIGN_FILE),
     points: [],
     html: "",
     views,

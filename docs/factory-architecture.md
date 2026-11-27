@@ -749,7 +749,7 @@ The Orchestrator proposes the Workflow, the user confirms, and a flag can name i
 `workflows/product.yaml` (greenfield) and `workflows/feature.yaml` (brownfield) describe the flow aidw runs now, not
 the 12 stages above: `product` has 19 stages and `feature` 20 (it adds the assessment, which writes the Existing
 System Report), each tied to Change states, with one approval gate. Added since: the `plan-review` before the gate,
-and `system-design-round` (after `architecture`) and `program-design` (after `contracts`, before `plan`) from the rpi
+and `contracts` and `system-design-round` (in that order, after `architecture`) and `program-design` (after the round, before `plan`) from the rpi
 upgrades (section 7); the `plan` stage now has `research` beside the planner, for the Docs Briefs. The scope of `product` is a round of its discovery stage (`scope_round: true`):
 the user answers the `scope` Decision Page, the answer is recorded under `### Scope round` in the discovery appendix of
 `analysis.md`, and `aidw analyze` refuses the package without it. A Change created under that Workflow (named or by

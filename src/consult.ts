@@ -14,6 +14,7 @@
  * Every step is in files, so a fresh session (the runner's `claude -p /aidw:resume`) picks up where the last one
  * stopped: `aidw next` and `aidw stages` surface an open or answered Consultation before anything else.
  */
+import { gateLabels } from "./labels.js";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import YAML from "yaml";
@@ -649,7 +650,7 @@ export const stageConsultationsInFlight = (change: Change, stage?: string): Cons
   loadConsultations(change).filter((c) => c.stage && c.status !== "resumed" && (!stage || c.stage === stage));
 
 /** The questions no consulted Role could answer before the gate: shown on the gate's Decision Page beside the open findings. */
-export function unansweredSection(change: Change): PageSection | null {
+export function unansweredSection(change: Change, lang?: string): PageSection | null {
   const list = loadConsultations(change).filter((c) => !c.after_gate && c.outcome === "cannot-answer");
   if (!list.length) return null;
   const question = (c: Consultation) => {
@@ -661,7 +662,7 @@ export function unansweredSection(change: Change): PageSection | null {
   };
   return {
     id: "unanswered-consultations",
-    title: "Questions no Role could answer",
+    title: gateLabels(lang).unanswered,
     body: "An Agent asked another Role these questions while drafting the package and got no answer. Each is recorded as an open question in the asker's Artifact. Approve with them, or mark this section for a change.",
     points: list.map((c) => `**${c.id}** ${c.from} asked ${c.to} (stage \`${c.stage}\`): ${question(c)}`),
     html: "",
