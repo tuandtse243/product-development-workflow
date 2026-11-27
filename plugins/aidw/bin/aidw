@@ -8479,6 +8479,15 @@ function isDefaultBranch(cwd, name) {
   if (origin.ok && origin.out) return origin.out.replace(/^origin\//, "") === name;
   return ["main", "master", "trunk", "develop"].includes(name);
 }
+function defaultBranch(cwd, startedFrom) {
+  const has = (b) => git(cwd, ["rev-parse", "--verify", "-q", `refs/heads/${b}`]).ok;
+  const origin = git(cwd, ["symbolic-ref", "-q", "--short", "refs/remotes/origin/HEAD"]);
+  if (origin.ok && origin.out) return origin.out.replace(/^origin\//, "");
+  const init = git(cwd, ["config", "--get", "init.defaultBranch"]);
+  if (init.ok && init.out && has(init.out)) return init.out;
+  for (const b of ["main", "master"]) if (has(b)) return b;
+  return startedFrom || null;
+}
 function isGitRepo(cwd) {
   return git(cwd, ["rev-parse", "--is-inside-work-tree"]).out === "true";
 }
@@ -14384,7 +14393,9 @@ function deliver(p, id, opts = {}) {
     }
     write("README.md", readmeMd(p, change, tasks));
   }
-  return { dir: rel(p, dir), written, created_handoff: createdHandoff, screenshots: screenshots(change).length, diags: checkDelivery(p, id) };
+  const diags = checkDelivery(p, id);
+  const shipped = opts.check || diags.errors.length ? { commit: null, left: [] } : commitDelivery(p, id, dir, loadTasks(p, id).tasks.flatMap((t) => Array.isArray(t.start_dirty) ? t.start_dirty.map(String) : []));
+  return { dir: rel(p, dir), written, created_handoff: createdHandoff, screenshots: screenshots(change).length, diags, ...shipped };
 }
 function readmeMd(p, change, tasks) {
   const deploy2 = lastDeploy(change);
@@ -15477,9 +15488,10 @@ function useChangeBranch(p, change, id) {
   change.doc.setIn(["run", "base_branch"], current || null);
   return `task commits go to the new branch ${want} (from ${current || "a detached commit"})`;
 }
+var DELIVERY_FILES = ["README.md", ".env.example", ".gitignore"];
 function commitAidw(p, message, opts = {}) {
   if (!isGitRepo(p.project)) return null;
-  const paths = [".aidw", ...opts.delivery ? ["README.md", ".env.example", ".gitignore"].filter((f) => (0, import_node_fs32.existsSync)((0, import_node_path37.join)(p.project, f))) : []];
+  const paths = [".aidw", ...opts.delivery ? DELIVERY_FILES.filter((f) => (0, import_node_fs32.existsSync)((0, import_node_path37.join)(p.project, f))) : []];
   if (!git(p.project, ["add", "--", ...paths]).ok) return null;
   if (opts.guard) {
     const junk = stagedJunk(p.project, paths);
@@ -15627,6 +15639,34 @@ function projectStatus(p, only) {
 }
 function assertProject(p) {
   if (!isDir(p.aidw)) throw new OpError(`no .aidw/ in ${p.project}; run \`aidw init\``);
+}
+function commitDelivery(p, id, dir, startDirty) {
+  if (!isGitRepo(p.project)) return { commit: null, left: [] };
+  const mine = new Set(startDirty);
+  const files = DELIVERY_FILES.filter((f) => (0, import_node_fs32.existsSync)((0, import_node_path37.join)(p.project, f)));
+  const left = files.filter((f) => mine.has(f) && git(p.project, ["status", "--porcelain", "--", f]).out !== "");
+  const paths = [rel(p, dir), ...files.filter((f) => !left.includes(f))];
+  const undo = () => git(p.project, ["reset", "-q", "--", ...paths]);
+  const add = git(p.project, ["add", "--", ...paths]);
+  if (!add.ok) {
+    undo();
+    return { commit: null, left, warning: `the delivery commit was not made: git add failed (${add.err.split("\n")[0]})` };
+  }
+  const junk = stagedJunk(p.project, paths);
+  const secrets = stagedSecrets(p.project, paths);
+  if (junk.length || secrets.length) {
+    undo();
+    return { commit: null, left, warning: `the delivery commit was not made: ${junk.length ? junkMessage(junk) : secretsMessage(secrets)}` };
+  }
+  if (git(p.project, ["diff", "--cached", "--quiet", "--", ...paths]).ok) return { commit: null, left };
+  const msg = aidwCommitMessage(`${id} delivery package`, `Change: ${id}
+Evidence: ${rel(p, dir)}/`);
+  const c = git(p.project, ["commit", "-q", "-m", msg, "--", ...paths]);
+  if (!c.ok) {
+    undo();
+    return { commit: null, left, warning: `the delivery commit was not made: git commit failed (${(c.err || c.out).split("\n")[0]})` };
+  }
+  return { commit: headCommit(p.project), left };
 }
 
 // src/touches.ts
@@ -20772,9 +20812,10 @@ function readPrSummary(p, change, base2, head) {
       `${rel(p, file)} names ${unknown.length === 1 ? "a file" : "files"} absent from the git diff (${base2}...${head}) and from the approved Artifacts: ${unknown.map((u) => `\`${u}\``).join(", ")}; name only files the Change Branch changed or the approved package holds, then run \`aidw pr ${change.id}\` again`
     );
   }
+  const title = /^\s*# ([^\n]*)\n/.exec(raw.replace(/\r\n?/g, "\n"))?.[1]?.trim() || null;
   const text2 = raw.replace(/\r\n?/g, "\n").replace(/^\s*# [^\n]*\n/, "").trim();
   const warnings = unchecked.concat(missingSections(raw).map((m) => `${rel(p, file)} has no "## ${m}" section (Why in one sentence, 1 to 3 Notes, a Change outline of Views)`));
-  return { text: text2, file, warnings };
+  return { text: text2, title, file, warnings };
 }
 
 // src/pr.ts
@@ -20783,6 +20824,10 @@ var DEP_FILES = /(^|\/)(package\.json|pnpm-lock\.yaml|package-lock\.json|yarn\.l
 function mergeDanger(p, id, tasks, base2, head) {
   const out = [];
   for (const t of tasks.filter((x) => x.breaking === true)) out.push(`Breaking change: ${t.id} ${String(t.title ?? "")}`);
+  const def = defaultBranch(p.project, base2);
+  if (def && base2 !== def && git(p.project, ["rev-parse", "--verify", "-q", `refs/heads/${base2}`]).ok && !git(p.project, ["merge-base", "--is-ancestor", base2, def]).ok) {
+    out.push(`Base branch ${base2} is not merged into ${def}: this pull request also carries its commits.`);
+  }
   const files = git(p.project, ["diff", "--name-only", `${base2}...${head}`, "--", ".", ":(exclude).aidw"]);
   const changed = files.ok && files.out ? files.out.split("\n") : [];
   const mig = changed.filter((f) => MIGRATION2.test(f));
@@ -20823,7 +20868,7 @@ function planPr(p, id, opts = {}) {
   const bound = boundPush(p, change);
   const grant = readGrants(change).push;
   const head = bound?.branch ?? run2.branch ?? `aidw/${id}`;
-  const base2 = opts.base ?? bound?.base ?? grant?.base ?? run2.base_branch ?? "main";
+  const base2 = opts.base ?? bound?.base ?? grant?.base ?? run2.base_branch ?? defaultBranch(p.project, run2.base_branch) ?? "main";
   const remote = bound?.remote ?? grant?.remote ?? "origin";
   const url = git(p.project, ["remote", "get-url", remote]);
   const repo = url.ok ? githubSlug(url.out) : null;
@@ -20831,21 +20876,23 @@ function planPr(p, id, opts = {}) {
   const planned2 = tasks.filter((t) => !t.origin);
   const allFix = planned2.length > 0 && planned2.every((t) => t.type === "fix");
   const first = planned2[0];
-  const title = header(allFix ? "fix" : "feat", first ? scopeOf(first) : "config", String(change.data.title ?? id));
   const readiness = prReadiness(p, change, tasks);
   const analysis = readText((0, import_node_path54.join)(change.dir, "analysis.md"));
   const summary = analysis ? sections(analysis).find((s) => s.name.toLowerCase() === "summary")?.body ?? "" : "";
   const layers = Object.entries(readSummary(change).layers).map(([n, r]) => `- ${n}: ${r.status}${r.review ? ` (review: ${r.review.verdict})` : ""}`);
   const deploy2 = lastDeploy(change);
   const shots = (0, import_node_path54.join)(change.dir, "delivery", "screenshots");
-  const taskRows = tasks.map((t) => `- ${t.id} ${String(t.title ?? "")} (${String(t.status ?? "pending")})`);
+  const taskRows = tasks.map((t) => `- ${t.id} ${String(t.title ?? "")} (${taskManual(t).length && String(t.status ?? "pending") === "done" ? "manual check open" : String(t.status ?? "pending")})`);
   const danger = mergeDanger(p, id, tasks, base2, head);
   const where = rel(p, change.dir);
   const written = readPrSummary(p, change, base2, head);
+  const title = header(allFix ? "fix" : "feat", first ? scopeOf(first) : "config", written?.title ?? String(change.data.title ?? id));
   const body = [
-    // D12: three fixed sections first, in this order, "Nothing." when empty
+    // the Documentation Role's summary opens the body; its manual-check lines are left to "Needed from the user"
+    ...written ? [withoutChecks(written.text, tasks.flatMap(taskManual)), ""] : [],
+    // D12: three fixed sections, in this order, "Nothing." when empty
     ...withManualChecks(prSections(p, change, tasks), manualChecks(tasks)),
-    ...written ? [written.text, ""] : ["## Summary", "", summary || String(change.data.title ?? id), ""],
+    ...written ? [] : ["## Summary", "", summary || String(change.data.title ?? id), ""],
     "## Tasks",
     "",
     ...taskRows,
@@ -20870,6 +20917,11 @@ function planPr(p, id, opts = {}) {
   ];
   const granted = pushGrantReason(p, `aidw pr ${id} --create`, GRANT_STATES, p.project, opts.env ?? process.env) !== null;
   return { title, body, head, base: base2, remote, repo, bodyFile, commands, ready: readiness.ready, why: readiness.why, warnings: written?.warnings ?? [], granted, record: prRecord(change) };
+}
+function withoutChecks(text2, checks) {
+  const norm2 = (x) => x.toLowerCase().replace(/^\s*(?:[-*]|\d+\.)\s+(?:\[[ xX]\]\s*)?/, "").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  const marks = new Set(checks.map(norm2).filter(Boolean));
+  return text2.split("\n").filter((l) => !/^\s*(?:[-*]|\d+\.)\s/.test(l) || !marks.has(norm2(l))).join("\n");
 }
 function withManualChecks(lines, checks) {
   const h = lines.indexOf(`## ${PR_SECTIONS[2]}`);
@@ -22311,8 +22363,11 @@ ${lines.join("\n")}
         const head = args.flags.check === true ? "" : `${r.dir}: wrote ${r.written.length} file(s)${r.created_handoff ? ", created handoff.md skeleton" : ""}, ${r.screenshots} screenshot(s)
 `;
         emit(
-          { ok, change: id, dir: r.dir, written: r.written, created_handoff: r.created_handoff, screenshots: r.screenshots, ...diagsJson(r.diags) },
-          `${head}${printDiags(r.diags)}${ok ? "delivery package complete" : "INCOMPLETE: fix the items above"}
+          { ok, change: id, dir: r.dir, written: r.written, commit: r.commit, left_uncommitted: r.left, ...r.warning ? { warning: r.warning } : {}, created_handoff: r.created_handoff, screenshots: r.screenshots, ...diagsJson(r.diags) },
+          `${head}${printDiags(r.diags)}${r.commit ? `committed ${r.commit.slice(0, 8)}: the package and the files the delivery wrote
+` : ""}${r.left.map((f) => `left uncommitted (yours): ${f}
+`).join("")}${r.warning ? `WARNING: ${r.warning}
+` : ""}${ok ? "delivery package complete" : "INCOMPLETE: fix the items above"}
 `
         );
         return ok ? 0 : 1;
