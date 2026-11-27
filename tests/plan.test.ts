@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { planAdvice, planShape } from "../src/plan.js";
+import { planAdvice, planInfo, planShape } from "../src/plan.js";
 import type { Task } from "../src/tasks.js";
 
 const t = (id: string, touches: string[], depends_on: string[] = [], extra: Record<string, unknown> = {}): Task =>
@@ -69,5 +69,32 @@ describe("heavy tasks and the summary line", () => {
   it("summarizes stages and the widest one", async () => {
     const { planSummary } = await import("../src/plan.js");
     expect(planSummary([t("T01", ["a/**"]), t("T02", ["b/**"], ["T01"]), t("T03", ["c/**"], ["T01"])])).toBe("3 task(s) in 2 stage(s), widest stage 2: T01 -> T02+T03");
+  });
+});
+
+describe("planInfo (waves the dependency graph allows but a wave cannot run)", () => {
+  const trial = () => [
+    t("T01", ["a/**"], [], { risk: "high" }),
+    t("T02", ["b/**"]),
+    t("T03", ["c/**"], ["T01", "T02"], { risk: "high" }),
+    t("T04", ["d/**"], ["T02"]),
+    t("T05", ["e/**"], ["T03", "T04"]),
+  ];
+
+  it("names the high-risk task that makes ready tasks run one after the other", () => {
+    expect(planInfo(trial(), 3)).toEqual([
+      "T01 is risk high: it runs alone, so T01 and T02 run one after the other",
+      "T03 is risk high: it runs alone, so T03 and T04 run one after the other",
+    ]);
+  });
+
+  it("says nothing without a high-risk task or an overlap, or when parallel.max is 1", () => {
+    const calm = [t("T01", ["a/**"]), t("T02", ["b/**"]), t("T03", ["c/**"], ["T01", "T02"])];
+    expect(planInfo(calm, 3)).toEqual([]);
+    expect(planInfo(trial(), 1)).toEqual([]);
+  });
+
+  it("reports a split by overlapping touches", () => {
+    expect(planInfo([t("T01", ["a/**"]), t("T02", ["a/x/**"])], 3)).toEqual(["T02 and T01 touch the same files, so they run one after the other"]);
   });
 });

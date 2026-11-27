@@ -11,11 +11,11 @@ import { Diags } from "./diag.js";
 import { capabilityOf, projectKind, readText, rel, walkFiles, type Paths } from "./project.js";
 import { applyDelta } from "./spec/merge.js";
 import { parseDelta, parseSpec, sections, slugify } from "./spec/parse.js";
-import { parseQuality } from "./quality.js";
+import { DEFAULT_PARALLEL, parseQuality } from "./quality.js";
 import { loadTokens, tokensFile } from "./design.js";
 import { isDatabasePath, touchesDatabase } from "./dbpaths.js";
 import { touchesApi, touchesUi } from "./skills.js";
-import { planAdvice } from "./plan.js";
+import { planAdvice, planInfo } from "./plan.js";
 import { pluginRoot } from "./plugin.js";
 import { defaultTaskRole, implementerOf } from "./roles.js";
 import { answerOf, checkDecisions, workflowOfChange } from "./decisions.js";
@@ -392,6 +392,7 @@ export function analyzeChange(p: Paths, id: string): Diags {
     if (quality && quality.deploy.target !== "none") d.warn(rel(p, analysisFile), "Size: small does not deploy unless the user asked for it; set the deploy target to none");
   }
   for (const advice of planAdvice(tasks)) d.warn(tf, advice);
+  for (const line of planInfo(tasks, quality?.parallel.max ?? DEFAULT_PARALLEL.max)) d.info(tf, line);
   // I3, R8, OP3: patterns point at code that exists, each docs entry has a fresh Docs Brief, new libraries are researched.
   checkPlanRefs(p, change, tasks, tf, d, { programDesign: due.programDesign ? readText(join(change.dir, PROGRAM_DESIGN_FILE)) : null });
   return d;
