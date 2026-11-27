@@ -37,6 +37,11 @@ Input: `$ARGUMENTS` (an idea, a path to a PRD/JD, pasted client text, or "this c
   text they paste back is checked with `aidw page answers <name>` before you record it. One simple question (a yes or
   no, a name) is still asked in the chat. Set the page's `lang` to the user's language. Every question with options,
   on a page or in the chat, shows a View (ADR-0017; the guide's "Every choice shows a View").
+- **Do not ask what the app already answers.** Before asking the user anything in chat, check whether your
+  recommended answer only copies how the app already behaves (a form, a rule, a label). If it does, do not ask: write
+  `Assumed: <answer> (copies <file:line>)` under `## Risks and assumptions`, which the gate shows the user.
+- Never write an internal note (your reasoning, a tool or file name, a to-do) as a line to the user. Write every
+  line the user reads, in chat and on a page, in the user's language.
 - Talk with the user in their language. Artifact content may be in their language, but keep every section
   heading and the `Source:` / `Mode:` lines exactly as specified: the CLI checks them.
 - Vendored skills are loaded by path (`aidw vendor-path <upstream>/<skill>` prints it; then Read the file).
@@ -178,9 +183,15 @@ records its rounds in `analysis.md` before the next begins. Each round is one De
 with `role:` set to the Role asking): a choice with its options, criteria and your recommendation, an open question with
 your suggested answer. The checked answer goes into the discovery appendix word for word.
 
+**Discovery asks only product questions:** what the user wants, sees or gets. Never put the Size, or a question whose
+options are mechanisms (a version column, a database trigger, an index), on a discovery page. Rewrite such a question
+as the product rule ("what does the second editor see?"), and write the mechanism under `### Deferred to
+architecture` as a `DA<n>` line.
+
 1. **The job (Product Manager).** `$(aidw plugin-path roles/product-manager/role.md)` and its `discovery-frame` skill:
-   the size (`Size: small|normal` in the Summary, which the user confirms at the gate), the job to be done, today's
-   workaround, the measure of done, scope and what is out. A `product` change ends this stage with the scope round
+   the job to be done, today's workaround, the measure of done, scope and what is out. You set the size yourself
+   (`Size: small|normal` in the Summary, with your reason in one line); it is not a question on a discovery page, and
+   the user confirms it at the gate with the rest of the Summary. A `product` change ends this stage with the scope round
    (step 2b), then returns to stage 2 of step 2. A `Size: small` change stops here.
 2. **Rules and edges (Business Analyst).** `$(aidw plugin-path roles/business-analyst/role.md)` and its
    `rule-and-edge-elicitation` skill: for each behavior, the rules behind it, an example of each, and the edge and

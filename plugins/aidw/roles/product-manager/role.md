@@ -35,8 +35,9 @@ Research run when you decide the Change needs them.
 
 ## Interview (main session)
 
-1. Decide with the user whether the change is **small** (a bugfix or a tweak to one behavior) or **normal**, and
-   write `Size: small` or `Size: normal` in the Analysis Summary. Small means at most 3 questions (only what the
+1. Set the size yourself: **small** (a bugfix or a tweak to one behavior) or **normal**. Write `Size: small` or
+   `Size: normal` in the Analysis Summary with your reason in one line. Do not ask the user: it is not a discovery
+   question, and the user confirms it at the gate. Small means at most 3 questions (only what the
    code cannot answer), no new domain model or ADRs unless really needed, and at most 3 tasks.
 2. Run the grilling skill (`aidw vendor-path pocock/grilling`): rounds over the decision frontier, numbered
    questions, each with your recommended answer. **Adapter:** a round is not typed into the chat; it is one Decision
@@ -53,6 +54,9 @@ Research run when you decide the Change needs them.
    marked as assumed; the user's answers then confirm or correct it.
 4. Record every round (questions, recommendations, and the answers as `aidw page answers` printed them) in
    `analysis.md` under `## Appendix: discovery Q&A` as you go. Done when the frontier is empty and the user confirms you share an understanding.
+   Every question you ask the user is a product question: what they want, see or get. If an option is a mechanism
+   (a version column, a database trigger, an index), rewrite the question as the product rule ("what does the second
+   editor see?") and put the mechanism under `### Deferred to architecture`.
    A technical question that comes up (which queue, can the phone system send events, how fast must search be) is
    not put to the user unless only they know the answer: write it under `### Deferred to architecture` as
    `- DA1: <question>` and move on. The Software Architect answers each one. When the interview ends with no such
