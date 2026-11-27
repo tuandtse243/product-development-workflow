@@ -251,7 +251,9 @@ describe("the result file of a Role's cases (C6)", () => {
     // the table Role's missing results.json, and the missing results of a Role that has cases and no committed run
     // (backend's level 2 results are committed, so it is not among them)
     const warns = strict.out.split("\n").filter((l) => l.startsWith("WARN"));
-    const allowed = [/roles\/backend\/evals\/results\.json\s+missing/, /roles\/frontend\/evals\/level2\/results\.json\s+missing/, /roles\/frontend\/evals\/results\.json\s+missing/];
+    // any warning about a result file (missing, older, a case not passing or run from another version of its folder) is
+    // the state of the evals, not a defect of the roster: only a warning of another kind would be unexpected
+    const allowed = [/roles\/backend\/evals\/results\.json\s+missing/, /roles\/frontend\/evals\/(level2\/)?results\.json\s+/];
     expect(warns.filter((w) => !allowed.some((a) => a.test(w)))).toEqual([]);
     expect(warns.some((w) => allowed[0]!.test(w))).toBe(true);
     expect(strict.out).toContain(`FAILED: 0 error(s), ${warns.length} warning(s) (strict)`);

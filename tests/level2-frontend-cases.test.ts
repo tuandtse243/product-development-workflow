@@ -523,12 +523,12 @@ suite(
       [/a member sees that the page/, "members-see-an-owners-only-page"],
       [/Stripe test key sees Test mode/, "test-mode-badge"],
     ],
-    scripts: ["public-env-scan", "route-guard-inventory", "token-literals"],
+    scripts: ["public-env-scan", "token-literals"],
     reference: "billing-page-guard",
     reworded: "billing-page-guard-reworded",
     wrong: [
       // hides the link in the nav (Layout does) and guards nothing: the route shows the page to anyone
-      { overlay: "billing-page-guard-nav-only", fails: [/the session answer has not arrived/, /signed out, the visitor/, /a member sees that the page/], passes: [/an owner sees the plan/, /Test mode/], check: /route-guard-inventory/, script: "route-guard-inventory" },
+      { overlay: "billing-page-guard-nav-only", fails: [/the session answer has not arrived/, /signed out, the visitor/, /a member sees that the page/], passes: [/an owner sees the plan/, /Test mode/] },
       // decides from localStorage.role, as the nav does
       { overlay: "billing-page-guard-local-storage", fails: [/a member sees that the page/, /an owner is an owner whatever/], passes: [/signed out, the visitor/] },
       // the page requests the billing beside the check and only hides it
@@ -551,11 +551,6 @@ suite(
         expect(t.status, t.out).toBe(0);
         expect(t.out).toMatch(/6 passed/);
       }, 600_000);
-      it.skipIf(scriptMissing("route-guard-inventory"))(`the route-guard-inventory check passes billing-page-guard-${v}`, () => {
-        const g = graded(c(), "billing-page-guard", `billing-page-guard-${v}`);
-        const r = g.check(/route-guard-inventory/);
-        expect(r.pass, `${v}: ${r.why}`).toBe(true);
-      }, 300_000);
     }
 
     it("a nav with a Sign out navigate('/') and no guard on /billing fails the member, signed-out and checking tests", () => {
@@ -565,14 +560,9 @@ suite(
       const failed = failedTests(t.out).join("\n");
       for (const f of [/a member sees that the page/, /signed out, the visitor/, /the session answer has not arrived/]) expect(failed, t.out).toMatch(f);
     }, 600_000);
-    it.skipIf(scriptMissing("route-guard-inventory"))("the route-guard-inventory check fails billing-page-guard-signout-nav-only", () => {
-      const g = graded(c(), "billing-page-guard", "billing-page-guard-signout-nav-only");
-      expect(g.check(/route-guard-inventory/)).toMatchObject({ pass: false, why: expect.stringMatching(/unguarded-route/) });
-    }, 300_000);
-
-    it("the guard check finds the guarded /billing route of the correct solution only (route-guard-inventory)", () => {
+    it("no route-guard-inventory check gates the case: it failed a correct session whose loader asks the session and whose page decides", () => {
       const names = c().checks.map((ch) => ch.name).join("\n");
-      expect(names).toMatch(/route-guard-inventory/);
+      expect(names).not.toMatch(/route-guard-inventory/);
       expect(names).toMatch(/public-env-scan/);
     });
 

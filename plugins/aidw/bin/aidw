@@ -19306,6 +19306,10 @@ function wasRead(calls, ref, ctx) {
       const cmd2 = c.input.command;
       const segs = cmd2.split(/;|&&|\|\||\||&|\n/);
       let cwd = ctx.project;
+      const names_in = (seg) => {
+        const here = norm2(cwd) === norm2(ctx.project) ? [] : [(0, import_node_path47.relative)(cwd, abs), (0, import_node_path47.relative)(norm2(cwd), abs)].filter((r) => r && !r.startsWith(".."));
+        return [...names2, ...here].some((n) => seg.includes(n));
+      };
       for (const seg of segs) {
         const cd = /^\s*cd\s+(?:"([^"]+)"|'([^']+)'|(\S+))\s*$/.exec(seg);
         if (cd) {
@@ -19313,10 +19317,10 @@ function wasRead(calls, ref, ctx) {
           continue;
         }
         if (!READ_VERB.test(seg)) continue;
-        const here = norm2(cwd) === norm2(ctx.project) ? [] : [(0, import_node_path47.relative)(cwd, abs), (0, import_node_path47.relative)(norm2(cwd), abs)].filter((r) => r && !r.startsWith(".."));
-        if ([...names2, ...here].some((n) => seg.includes(n))) return true;
+        if (names_in(seg)) return true;
       }
       if (loopReads(cmd2).some((list9) => names2.some((n) => list9.includes(n)))) return true;
+      if (expandedLoopParts(cmd2).some((seg) => READ_VERB.test(seg) && names_in(seg))) return true;
       if (plugin && READ_VERB.test(cmd2) && !(0, import_node_path47.isAbsolute)(rel2)) {
         const esc2 = rel2.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         if (new RegExp(`plugin-path\\s+["']?${esc2}["']?(?=[\\s)"';&|]|$)`).test(cmd2)) return true;
@@ -19336,6 +19340,20 @@ function loopReads(cmd2, viaPluginPath = false) {
     if (reads) lists.push(` ${(list9 ?? "").trim().split(/\s+/).join(" ")} `);
   }
   return lists;
+}
+function expandedLoopParts(cmd2) {
+  const parts = [];
+  for (const m of cmd2.matchAll(/\bfor\s+([A-Za-z_]\w*)\s+in\s+([^;\n]*)[;\n]\s*do\b([\s\S]*?)\bdone\b/g)) {
+    const [, v, list9, body] = m;
+    const usesVar = new RegExp(`\\$(?:${v}\\b|\\{${v}\\})`, "g");
+    const words = (list9 ?? "").trim().split(/\s+/).filter(Boolean).map((w) => w.replace(/^["']|["']$/g, ""));
+    for (const seg of (body ?? "").split(/;|&&|\|\||\||&|\n/)) {
+      if (!usesVar.test(seg)) continue;
+      usesVar.lastIndex = 0;
+      for (const w of words) parts.push(seg.replace(usesVar, w));
+    }
+  }
+  return parts;
 }
 function mentions(calls, path) {
   const forms = [.../* @__PURE__ */ new Set([(0, import_node_path47.resolve)(path), norm2(path), `/private${norm2(path)}`])];

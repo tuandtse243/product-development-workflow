@@ -35,8 +35,7 @@ balance due as money and the date, also when `localStorage.role` says `member`; 
 `/login` with `next=/billing` and no billing request is sent; a member sees "Owners only", whatever `localStorage.role`
 holds, and no billing request is sent; with `VITE_STRIPE_PUBLISHABLE_KEY` set to a test key (before the app loads) an owner
 sees "Test mode". The checks run the Role's `public-env-scan` (no secret-looking public name, no unprefixed read and no
-server import in the added code), `route-guard-inventory` (`/billing` is not reported as `unguarded-route` or
-`route-not-found`), `token-literals` (the tokens file is restored before grading), that every scenario id names a test, the
+server import in the added code), `token-literals` (the tokens file is restored before grading), that every scenario id names a test, the
 whole suite, the typecheck, and that nothing outside Touches changed (only `src/billing/`, `tests/billing/`,
 `src/routes.tsx` and the run and change folders of `.aidw/`). A model grades only what the Agent says about the nav.
 Known limits: the held-out tests set the test key once for the whole file, so no test proves that a live key shows no

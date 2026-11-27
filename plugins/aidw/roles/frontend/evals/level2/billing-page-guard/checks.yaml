@@ -12,12 +12,11 @@ checks:
     run: >-
       node "$(aidw plugin-path roles/frontend/scripts/public-env-scan.mjs)" --base "$AIDW_BASE" . |
       node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>{const j=JSON.parse(s);const bad=[...j.secretLooking,...j.reads.filter((r)=>r.public===false||/SECRET/.test(r.name)),...j.serverImportsInClient];if(bad.length){console.log(JSON.stringify(bad));process.exit(1)}})'
-  - name: /billing is not reported as unguarded or missing in the route inventory (F11, route-guard-inventory)
-    # --routes /billing: only that route. The held-out tests stay the primary grader; this reads the findings only, never
-    # routes[].guard (a string or null whose values the script may change).
-    run: >-
-      node "$(aidw plugin-path roles/frontend/scripts/route-guard-inventory.mjs)" --routes /billing . |
-      node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>{const j=JSON.parse(s);const bad=j.findings.filter((f)=>f.kind==="unguarded-route"||f.kind==="route-not-found");if(bad.length){console.log(JSON.stringify(bad));process.exit(1)}})'
+  # There is no route-guard-inventory check here, on purpose. The first run showed it fails a correct session: the
+  # `/billing` loader asks the session and the page shows the owners-only view from the answer, with no `redirect()` in
+  # the loader, so the script reports the route as unguarded. The scenarios ask for what the visitor sees (a redirect, an
+  # owners-only page, no billing request), which the held-out tests grade; whether a route "has a guard" is not
+  # something a script can tell from a page that decides for itself. The script stays an advisory tool of the Role.
   - name: no literal that is not a token in the added styles (F2, token-literals)
     run: >-
       node "$(aidw plugin-path roles/frontend/scripts/token-literals.mjs)" --base "$AIDW_BASE" . |

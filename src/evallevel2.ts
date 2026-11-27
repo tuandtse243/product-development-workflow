@@ -935,6 +935,10 @@ export function wasRead(calls: ToolCall[], ref: string, ctx: { project: string; 
       const segs = cmd.split(/;|&&|\|\||\||&|\n/);
       // A path relative to a folder the command went to first (`cd .aidw && cat changes/x/api-contract.md`).
       let cwd = ctx.project;
+      const names_in = (seg: string) => {
+        const here = norm(cwd) === norm(ctx.project) ? [] : [relative(cwd, abs), relative(norm(cwd), abs)].filter((r) => r && !r.startsWith(".."));
+        return [...names, ...here].some((n) => seg.includes(n));
+      };
       for (const seg of segs) {
         const cd = /^\s*cd\s+(?:"([^"]+)"|'([^']+)'|(\S+))\s*$/.exec(seg);
         if (cd) {
@@ -942,10 +946,12 @@ export function wasRead(calls: ToolCall[], ref: string, ctx: { project: string; 
           continue;
         }
         if (!READ_VERB.test(seg)) continue;
-        const here = norm(cwd) === norm(ctx.project) ? [] : [relative(cwd, abs), relative(norm(cwd), abs)].filter((r) => r && !r.startsWith(".."));
-        if ([...names, ...here].some((n) => seg.includes(n))) return true;
+        if (names_in(seg)) return true;
       }
       if (loopReads(cmd).some((list) => names.some((n) => list.includes(n)))) return true;
+      // A loop whose body builds the path from the variable (`for s in a b; do cat roles/x/skills/$s.md; done`): each
+      // word of the list is put in the body, and the result is read like any other part of the command.
+      if (expandedLoopParts(cmd).some((seg) => READ_VERB.test(seg) && names_in(seg))) return true;
       // A plugin file found through `aidw plugin-path` and read in the same command: `cat "$(aidw plugin-path R)"`,
       // `P=$(aidw plugin-path R) && cat "$P"`, or a loop over Role paths whose body reads `$(aidw plugin-path $s)`.
       if (plugin && READ_VERB.test(cmd) && !isAbsolute(rel)) {
@@ -975,6 +981,25 @@ function loopReads(cmd: string, viaPluginPath = false): string[] {
     if (reads) lists.push(` ${(list ?? "").trim().split(/\s+/).join(" ")} `);
   }
   return lists;
+}
+
+/**
+ * The parts of the bodies of `for VAR in LIST; do BODY; done` loops with `$VAR` replaced by each word of LIST, so a body
+ * that builds a path from the variable (`cat roles/frontend/skills/$s.md`) names each file it reads.
+ */
+function expandedLoopParts(cmd: string): string[] {
+  const parts: string[] = [];
+  for (const m of cmd.matchAll(/\bfor\s+([A-Za-z_]\w*)\s+in\s+([^;\n]*)[;\n]\s*do\b([\s\S]*?)\bdone\b/g)) {
+    const [, v, list, body] = m;
+    const usesVar = new RegExp(`\\$(?:${v}\\b|\\{${v}\\})`, "g");
+    const words = (list ?? "").trim().split(/\s+/).filter(Boolean).map((w) => w.replace(/^["']|["']$/g, ""));
+    for (const seg of (body ?? "").split(/;|&&|\|\||\||&|\n/)) {
+      if (!usesVar.test(seg)) continue;
+      usesVar.lastIndex = 0;
+      for (const w of words) parts.push(seg.replace(usesVar, w));
+    }
+  }
+  return parts;
 }
 
 /** Whether any tool call names `path` anywhere in its input (a command, a file path, a pattern): for places the session has no business in at all. */
