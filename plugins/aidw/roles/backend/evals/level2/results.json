@@ -1,0 +1,72 @@
+{
+  "format": 2,
+  "level": 2,
+  "role": "backend",
+  "date": "2026-11-27T06:42:24.219Z",
+  "model": null,
+  "tier": "deep",
+  "runs": 3,
+  "digest": "sha256:c732a52f112b7059e16027421be3b0d458e0857ab96edc2f624ac7fd7bc00f88",
+  "cases": [
+    {
+      "name": "charge-once",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": [],
+      "digest": "sha256:615e7fe1495dae3b75db83573498c57f6bf705676377fb649638031e00c4f9d1",
+      "fixture": "sha256:5921368d0dd27f1c000702f87cbaa741c22458d585365aabb75a28f7a563ecd2",
+      "gradingSandbox": "sandbox-exec",
+      "date": "2026-11-27T06:25:23.010Z",
+      "model": null
+    },
+    {
+      "name": "email-after-the-order",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": [],
+      "digest": "sha256:fe5383deaba990b58ce40ed64dc071f0c8df43816ae66eae6e37ee0a40402d73",
+      "fixture": "sha256:5921368d0dd27f1c000702f87cbaa741c22458d585365aabb75a28f7a563ecd2",
+      "gradingSandbox": "sandbox-exec",
+      "date": "2026-11-27T06:42:24.219Z",
+      "model": null
+    },
+    {
+      "name": "team-comes-from-the-session",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": [],
+      "digest": "sha256:67dc15ed39e9154becce492d2ee068449c1e9ffc98d392f18628b94e653d786d",
+      "fixture": "sha256:5921368d0dd27f1c000702f87cbaa741c22458d585365aabb75a28f7a563ecd2",
+      "gradingSandbox": "sandbox-exec",
+      "date": "2026-11-27T06:25:23.010Z",
+      "model": null
+    },
+    {
+      "name": "two-requests-one-slot",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": [],
+      "digest": "sha256:90a6b35ccc72e21e3dde2c27e0234f86be84d25f8cd4c0f0883d620ab7d2e2c5",
+      "fixture": "sha256:5921368d0dd27f1c000702f87cbaa741c22458d585365aabb75a28f7a563ecd2",
+      "gradingSandbox": "sandbox-exec",
+      "date": "2026-11-27T06:25:23.010Z",
+      "model": null
+    }
+  ]
+}

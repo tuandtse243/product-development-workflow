@@ -213,20 +213,70 @@ function routeHits(route, content) {
     const tail = segsOfFile.slice(segsOfFile.indexOf("app") + 1).join("/").replace(/\.[cm]?[jt]sx?$/, "");
     if (content.includes(tail)) hits.push(-1); // the test imports the handler: the whole file is its test
   }
+  // A hit inside a helper (`const post = (id) => http.post(`/x/${id}`)`, `function post(id) { … }`, or a block body
+  // of a few lines under such a declaration): each call of that helper is a call of the route too.
+  const DECL = /^\s*(?:export\s+)?(?:(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*(?::[^=]*)?=>|(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\()/;
+  const lines = content.split("\n");
+  const lineOf = lineIndex(content);
+  const helperOf = (h) => {
+    const start = content.lastIndexOf("\n", h) + 1;
+    const m = DECL.exec(content.slice(start, h));
+    if (m) return m[1] ?? m[2];
+    // Inside a block body: walk up, within 10 lines, to the first line that is not indented. If that line declares a
+    // helper and opens a block, the hit belongs to it.
+    const n = lineOf(h) - 1;
+    for (let i = n - 1; i >= Math.max(0, n - 10); i--) {
+      const l = lines[i] ?? "";
+      if (!l.trim() || /^\s/.test(l)) continue;
+      const d = DECL.exec(l);
+      return d && /\{\s*$/.test(l) ? d[1] ?? d[2] : null;
+    }
+    return null;
+  };
+  // Helpers can wrap helpers (`url(id)` used by `pay(…)`): follow them up to three levels.
+  const seen = new Set();
+  let frontier = hits.filter((h) => h >= 0);
+  for (let level = 0; level < 3 && frontier.length; level++) {
+    const found = new Set(frontier.map(helperOf).filter((n) => n && !seen.has(n)));
+    frontier = [];
+    for (const name of found) {
+      seen.add(name);
+      const esc2 = name.replace(/[$]/g, "\\$");
+      for (const m of content.matchAll(new RegExp(`(?<![\\w$.])${esc2}\\(`, "g"))) {
+        hits.push(m.index);
+        frontier.push(m.index);
+      }
+    }
+  }
   return hits;
 }
 
 const STATUS_ASSERTION = /(?:\bexpect\(\s*|\b(?:toBe|toEqual|toStrictEqual|toHaveStatus|toHaveHTTPStatus|toHaveStatusCode)\(\s*|\bstatus(?:_code|Code)?\s*(?:===?|:)\s*|\bHTTP_)(\d{3})(?!\d)/g;
 const NEAR = 15;
+// A test helper named expect…/assert… that takes the response and then a status: `expectProblem(res, 401, …)`,
+// a call that builds one: `expectProblem(res, problem(401, …))`, or a constant that holds one: `expectProblem(res, UNAUTH)`.
+const HELPER_ASSERTION = /\b(?:expect|assert)[A-Z_]\w*\(\s*[\w.$[\]]+\s*,\s*(?:[\w$.]+\(\s*(?:\{\s*status\s*:\s*)?)?(?:(\d{3})(?!\d)|([A-Za-z_$][\w$]*)\b(?!\s*\())/g;
+// A constant whose value starts with a status: `const UNAUTH = problem(401, …)`, `= { status: 404, … }`, `= 403`.
+const STATUS_CONST = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:[\w$.]+\(\s*|\{\s*status\s*:\s*)?(\d{3})(?!\d)/g;
+
+const isStatus = (n) => n >= 100 && n <= 599;
 
 /** The status codes asserted within NEAR lines of any hit (the whole file for a hit of -1). */
 function assertedNear(content, hits) {
   const line = lineIndex(content);
   const at = hits.map((h) => (h < 0 ? -1 : line(h)));
+  const near = (index) => {
+    const n = line(index);
+    return at.some((h) => h < 0 || Math.abs(h - n) <= NEAR);
+  };
   const codes = new Set();
-  for (const m of content.matchAll(STATUS_ASSERTION)) {
-    const n = line(m.index);
-    if (at.some((h) => h < 0 || Math.abs(h - n) <= NEAR)) codes.add(Number(m[1]));
+  for (const m of content.matchAll(STATUS_ASSERTION)) if (near(m.index)) codes.add(Number(m[1]));
+  const consts = new Map();
+  for (const m of content.matchAll(STATUS_CONST)) if (isStatus(Number(m[2]))) consts.set(m[1], Number(m[2]));
+  for (const m of content.matchAll(HELPER_ASSERTION)) {
+    if (!near(m.index)) continue;
+    const code = m[1] ? Number(m[1]) : consts.get(m[2]);
+    if (code !== undefined && isStatus(code)) codes.add(code);
   }
   return codes;
 }

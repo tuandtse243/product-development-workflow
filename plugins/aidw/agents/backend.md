@@ -63,7 +63,11 @@ Rules: <ids that applied>; not kept: <id: why> or none
 Scripts: <name: result in a few words>, or none run
 Asked: <request path and the answer used>, or none
 Owed: <work for another Role, e.g. an index needed for speed>, or none
+Found: <a hole in existing code outside Touches, e.g. a route that takes the user or team from the request: file:line, for someone else to fix>, or none
 ```
+
+`Found` is for what you saw in neighbouring code while you worked, above all access checks that trust what the client
+sends. Name it; do not fix it outside Touches, and do not copy it into your own code.
 
 ## Whom to ask
 

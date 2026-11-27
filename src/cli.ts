@@ -28,6 +28,7 @@ import { defaultWorkflowId, machineOf } from "./machine.js";
 import { packsFor } from "./stackpacks.js";
 import { git } from "./git.js";
 import { checkEvals, loadEvalCases } from "./evals.js";
+import { checkLevel2, claudeAgentRunner, mergeLevel2Results, printLevel2, runLevel2, takeLevel2Digests, writeLevel2Results, type AgentRunner, type Installer, type Level2Result } from "./evallevel2.js";
 import { claudeExec, mergeResults, printResults, runCases, takeDigests, writeResults, type CaseResult, type Exec, type RunDigests } from "./evalrun.js";
 import { checkWorkflows, loadWorkflow, workflowIds } from "./workflow.js";
 import { agentForTask, AGENTS, checkRoster, loadRoster, rosterTable, tierModel, writeAgents } from "./roles.js";
@@ -325,6 +326,16 @@ Usage: aidw <command> [args] [--json] [--root <dir>]
                                          refused for a tier that uses the session's model. --case updates only that
                                          case's entry, and needs an existing format-2 file from a full run, the same
                                          shared content (all of the Role but its case files) and the same model
+  eval <role> --level 2 [--case <name>] [--runs <n>] [--bare] [--model <m>]
+                                         level 2: each case of roles/<id>/evals/level2/ is a real task with tools. A run
+                                         copies the case's fixture (evals/fixtures/<name>, packages installed once into a
+                                         cache) to a temp dir, starts the task, and runs one claude -p session as the Role's
+                                         agent on a plugin copy without the Roles' cases (sandboxed, no network, 25
+                                         minutes, 60 turns). Graded in order: held-out tests, the case's checks, the files
+                                         the session read, a model for the rest. Each run's folder (copy, log, diff) is
+                                         printed and kept. --bare runs it once with no Role: each case must fail the tests
+                                         or the checks. Writes roles/<id>/evals/level2/results.json as level 1 writes its
+                                         file. Run it outside Claude Code's sandbox
   roster [--write] [--strict]            the factory's Roles; checks roster.yaml, role profiles, rules.md tables, artifacts.yaml
                                          (one owner per artifact, reads/writes of each Role), workflows/*.yaml, the cases (a Role
                                          whose rules.md is a table covers every rule and skill), and the generated agent files;
@@ -388,7 +399,7 @@ interface Args {
   flags: Record<string, string | true>;
 }
 
-const VALUE_FLAGS = new Set(["role", "files", "consultation", "remove-reason", "scope-reason", "summary", "cause", "task", "session", "last", "root", "title", "input-type", "workflow", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude", "model", "case", "runs", "without", "text", "lang", "weights", "to", "done", "cannot", "raise", "base"]);
+const VALUE_FLAGS = new Set(["role", "files", "consultation", "remove-reason", "scope-reason", "summary", "cause", "task", "session", "last", "root", "title", "input-type", "workflow", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude", "model", "case", "runs", "without", "text", "lang", "weights", "to", "done", "cannot", "raise", "base", "level"]);
 
 export function parseArgs(argv: string[]): Args {
   const pos: string[] = [];
@@ -420,6 +431,9 @@ interface Io {
   stdin?: () => string;
   /** Test seam: the model calls of the case runner. */
   modelExec?: (model?: string) => Exec;
+  /** Test seams of level 2: the Agent session and the package install. */
+  agentRunner?: AgentRunner;
+  installer?: Installer;
 }
 
 export { pluginRoot };
@@ -507,6 +521,72 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
   const need = (v: string | undefined, what: string): string => {
     if (!v) throw new UsageError(`missing ${what}`);
     return v;
+  };
+
+  /** `aidw eval <role> --level 2` (plan C4, src/evallevel2.ts). */
+  const runLevel2Cmd = (root: string): number => {
+    const id = rest[0];
+    if (!id) throw new OpError("--level 2 needs a Role: its cases are real tasks, run one Role at a time");
+    if (args.flags.without !== undefined) throw new OpError("--without is level 1 only: a level 2 run with no Role is --bare");
+    const bare = args.flags.bare === true;
+    // A bare run is a baseline: one run says whether the task can be done with no Role (any run passing is enough).
+    const runs = args.flags.runs === undefined ? (bare ? 1 : 3) : Number(args.flags.runs);
+    if (!Number.isInteger(runs) || runs < 1 || runs > 10) throw new OpError("--runs takes a whole number from 1 to 10");
+    const caseName = str(args.flags.case);
+    const asked = str(args.flags.model);
+    const roster = loadRoster(root);
+    if (!roster.roles[id]) throw new OpError(`"${id}" is not a Role in roster.yaml`);
+    const tm = tierModel(root, id);
+    const model = asked ?? tm;
+    const digests = takeLevel2Digests(root, id, env);
+    let results: Level2Result[];
+    try {
+      results = runLevel2(
+        {
+          root,
+          role: id,
+          runs,
+          bare,
+          ...(model ? { model } : {}),
+          agent: io.agentRunner ?? claudeAgentRunner(),
+          exec: (io.modelExec ?? claudeExec)(model),
+          ...(io.installer ? { install: io.installer } : {}),
+          env,
+          onRun: (c, n, r) => io.err(`  ... ${id}/${c.name} run ${n}: ${r.error ? "ERROR" : r.pass ? "pass" : "fail"} (${r.dir})\n`),
+        },
+        caseName,
+      );
+    } catch (e) {
+      throw new OpError((e as Error).message);
+    }
+    if (bare) {
+      // C3 at level 2: with no Role, each case must fail its held-out tests or its checks.
+      const still = results.filter((r) => r.pass);
+      const text =
+        `bare (no Role instructions): ${results.length - still.length}/${results.length} case(s) failed the tests or the checks, as they should\n` +
+        still.map((r) => `  PASSES BARE ${r.role}/${r.name}: the task is done right with no Role; rewrite or drop it (C3)\n`).join("") +
+        "  no result file written: a run --bare is not the Role\n";
+      emit({ ok: still.length === 0, bare, results }, printLevel2(results) + text);
+      return still.length === 0 ? 0 : 1;
+    }
+    const ok = results.every((r) => r.pass);
+    const written: string[] = [];
+    const inGit = spawnSync("git", ["rev-parse", "--is-inside-work-tree"], { cwd: root, encoding: "utf8" }).stdout?.trim() === "true";
+    const meta = { ...(model ? { model } : {}), digests, env };
+    if (!inGit) io.err(`  no result file written: ${root} is not a source checkout\n`);
+    else if (asked && !tm) io.err(`  no result file written for ${id}: its tier uses the session's model; run without --model\n`);
+    else if (asked && asked !== tm) io.err(`  no result file written for ${id}: --model ${asked} is not its tier's model (${tm})\n`);
+    else if (results.every((r) => r.runs.errors === r.runs.total)) io.err(`  no result file written for ${id}: no case was graded\n`);
+    // A record of grading that ran the session's code with no sandbox is kept only when that was asked for.
+    else if (results.some((r) => r.gradingSandbox === "none") && env.AIDW_GRADE_SANDBOX !== "off")
+      io.err(`  no result file written for ${id}: the grading commands ran with no sandbox (sandbox-exec or bwrap was not available); run it where one works, or set AIDW_GRADE_SANDBOX=off to record it anyway\n`);
+    else {
+      const m = caseName ? mergeLevel2Results(root, id, results, meta) : writeLevel2Results(root, id, results, meta);
+      if ("refused" in m) io.err(`  no result file written for ${id}: ${m.refused}\n`);
+      else written.push(relative(root, m.file));
+    }
+    emit({ ok, results, written }, printLevel2(results) + written.map((f) => `wrote ${f}\n`).join(""));
+    return ok ? 0 : 1;
   };
 
   try {
@@ -1070,6 +1150,10 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
 
       case "eval": {
         const root = pluginRoot(env);
+        if (args.flags.level !== undefined && args.flags.level !== "1") {
+          if (args.flags.level !== "2") throw new OpError("--level takes 1 or 2");
+          return runLevel2Cmd(root);
+        }
         // Level 1 (plan C2): a case passes only when it passes 3 runs of 3; a FLAKY case is not passed.
         const runs = args.flags.runs === undefined ? 3 : Number(args.flags.runs);
         if (!Number.isInteger(runs) || runs < 1 || runs > 10) throw new OpError("--runs takes a whole number from 1 to 10");
@@ -1145,6 +1229,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         d.add(checkArtifacts(root));
         d.add(checkWorkflows(root));
         d.add(checkEvals(root));
+        for (const [id] of Object.entries(loadRoster(root).roles)) if (existsSync(join(root, "roles", id, "role.md"))) checkLevel2(root, id, tierModel(root, id) ?? null, d, env);
         const table = d.errors.length ? "" : rosterTable(root);
         const strict = args.flags.strict === true;
         const failed = d.failed(strict);

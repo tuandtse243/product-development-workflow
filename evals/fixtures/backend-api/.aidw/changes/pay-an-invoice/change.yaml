@@ -1,0 +1,17 @@
+schema: 1
+id: pay-an-invoice
+title: "Pay an invoice"
+input_type: client_request
+state: executing
+created_at: 2026-11-27T00:35:04.967Z
+skip_specs: false
+approval:
+  hash: sha256:37e058918dec43d8b3a8d5f7729a81c3bd7c7c21854b16ca9e6d48400fc19763
+  at: 2026-11-27T00:58:35.810Z
+  by: user
+  package: 3
+  agent_run_cap: 6
+run:
+  paused: null
+  branch: aidw/pay-an-invoice
+  base_branch: main
