@@ -6,7 +6,7 @@
   "model": null,
   "tier": "deep",
   "runs": 3,
-  "digest": "sha256:c732a52f112b7059e16027421be3b0d458e0857ab96edc2f624ac7fd7bc00f88",
+  "digest": "sha256:7b4218d4035558137d3958d4b7eb128662c8d5a6e7cf037e0201aeef46ba6c69",
   "cases": [
     {
       "name": "charge-once",
