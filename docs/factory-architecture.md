@@ -873,6 +873,25 @@ In the user's project, `.aidw/` keeps its current shape and gains `roles/<id>/` 
   the repository elsewhere on the disk) is not caught.
 - **End to end:** the existing fixtures (`evals/fixtures/brownfield-app`, `greenfield-jd`) and `aidw cost`,
   which already reports cost per agent type, catch coordination problems and cost regressions.
+- **Statistics from real Changes (level 4, plan C5, T19).** `aidw stats [--role R] [--change ID] [--since
+  YYYY-MM-DD] [--json]` reads every Change of the project, active and archived, and writes nothing. Per Role of the
+  task it prints: the tasks that ran; how many ended done on the first attempt, as a count, with a rate only from 5
+  ended tasks up; the rule ids its fix reviews cite; and the Triage causes (implementation, environment, plan, spec,
+  architecture, unclear). `--role` lists each task: its runs, whether it was a first attempt, its rule ids, its Triage
+  causes, its upstream rounds (which Role fixed what) and why it was not built (`src/stats.ts`).
+  - *First attempt*: the task ended done after one implementer run (`runs` is 1), that run's checkpoint passed and its
+    review passed, with no Triage and no upstream round. A checkpoint the machine refused is not a run. Tasks the
+    workflow adds (converge, quality, integration) and their auto-passed reviews are left out.
+  - *Rule ids*: the ids a fix review cites are checked against the rule tables that bind the task (its Role, the Role
+    that builds it, and the Roles they follow, `follows_rules`). Each is credited to the Role that owns the table, so a
+    fullstack review citing B7 counts for backend. Ids no table has are ignored. `aidw verdict` warns, and never
+    fails, when a fix review of a task bound by a rule table cites no id.
+  - *Records*: the CLI appends what the figures need. `evidence/<task>.json` gets `triage: [{run, at, cause, summary,
+    files?, outcome, role?, round?}]` (the first 500 characters of the diagnosis, never cleared). Each checkpoint and
+    review gets the `run` and the `agent` spawned for it; a refused checkpoint is marked `blocked`, an auto-passed review
+    `auto` and a merge review `merge`. Entries in `evidence/agent-runs.json` get `role` and `agent`. Every field is
+    optional. For Changes before T19 the Triage figures fall back to tasks.yaml (the last `triage`, `upstream` and
+    `not_built`), and the footer says they are partial.
 
 ## 12. Proposed here, not decided in the interview
 
