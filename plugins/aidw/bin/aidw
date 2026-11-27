@@ -7400,7 +7400,7 @@ function gateLabels(lang) {
 var import_node_path57 = require("node:path");
 var import_node_child_process14 = require("node:child_process");
 var import_node_url = require("node:url");
-var import_yaml26 = __toESM(require_dist(), 1);
+var import_yaml27 = __toESM(require_dist(), 1);
 
 // src/page.ts
 var import_node_crypto = require("node:crypto");
@@ -8682,7 +8682,7 @@ function coverageReport(c, min) {
 var import_node_child_process6 = require("node:child_process");
 var import_node_fs41 = require("node:fs");
 var import_node_path46 = require("node:path");
-var import_yaml22 = __toESM(require_dist(), 1);
+var import_yaml23 = __toESM(require_dist(), 1);
 
 // src/analyze.ts
 var import_node_fs38 = require("node:fs");
@@ -8833,7 +8833,7 @@ var import_node_path40 = require("node:path");
 
 // src/tasks.ts
 var import_node_crypto4 = require("node:crypto");
-var import_yaml18 = __toESM(require_dist(), 1);
+var import_yaml19 = __toESM(require_dist(), 1);
 
 // src/commit.ts
 var COMMIT_TYPES = ["feat", "fix", "docs", "style", "refactor", "perf", "test", "build", "ci", "chore", "revert"];
@@ -9574,7 +9574,7 @@ function rosterTable(root) {
 var import_node_child_process5 = require("node:child_process");
 var import_node_fs33 = require("node:fs");
 var import_node_path38 = require("node:path");
-var import_yaml17 = __toESM(require_dist(), 1);
+var import_yaml18 = __toESM(require_dist(), 1);
 
 // src/secrets.ts
 var RULES = [
@@ -10452,7 +10452,7 @@ function runnerCommand(id, aidw, pluginDir) {
 function buildRoute(id, tasks, aidw = "aidw", pluginDir) {
   if (tasks > RUNNER_THRESHOLD) {
     const command = runnerCommand(id, aidw, pluginDir);
-    const asks = pluginDir ? "; the start asks the user to confirm, because aidw is loaded from a folder" : "";
+    const asks = pluginDir ? "; the start asks the user to confirm at Claude Code's permission prompt, because aidw is loaded from a folder (a session that cannot show prompts, such as claude -p, starts it without asking)" : "";
     return {
       mode: "runner",
       tasks,
@@ -14704,6 +14704,7 @@ var VERSION = "0.1.0";
 // src/detect.ts
 var import_node_fs31 = require("node:fs");
 var import_node_path36 = require("node:path");
+var import_yaml16 = __toESM(require_dist(), 1);
 
 // src/pydetect.ts
 var import_node_fs30 = require("node:fs");
@@ -14943,12 +14944,23 @@ function pmCommands(pm) {
 var JUNK_DIRS = ["node_modules", ".next", ".nuxt", ".svelte-kit", ".turbo", ".venv", ".pytest_cache", ".mypy_cache", ".ruff_cache"];
 var JUNK_FILES = ["tsconfig.tsbuildinfo", "next-env.d.ts", ".DS_Store"];
 var WORKSPACE_FILES = ["pnpm-workspace.yaml", "turbo.json", "nx.json", "lerna.json", "rush.json"];
+var nonEmpty = (v) => Array.isArray(v) ? v.length > 0 : !!v;
+function pnpmWorkspaceHasPackages(file) {
+  try {
+    const doc = import_yaml16.default.parse((0, import_node_fs31.readFileSync)(file, "utf8"));
+    return nonEmpty(doc?.packages);
+  } catch {
+    return false;
+  }
+}
 function monorepoSignal(dir) {
-  const file = WORKSPACE_FILES.find((f) => (0, import_node_fs31.existsSync)((0, import_node_path36.join)(dir, f)));
+  const file = WORKSPACE_FILES.find((f) => (0, import_node_fs31.existsSync)((0, import_node_path36.join)(dir, f)) && (f !== "pnpm-workspace.yaml" || pnpmWorkspaceHasPackages((0, import_node_path36.join)(dir, f))));
   if (file) return file;
   try {
     const pkg = JSON.parse((0, import_node_fs31.readFileSync)((0, import_node_path36.join)(dir, "package.json"), "utf8"));
-    if (pkg.workspaces) return "package.json workspaces";
+    const ws = pkg.workspaces;
+    const list9 = ws && typeof ws === "object" && !Array.isArray(ws) ? ws.packages : ws;
+    if (nonEmpty(list9)) return "package.json workspaces";
   } catch {
   }
   return null;
@@ -15057,7 +15069,7 @@ function detectProject(dir) {
 }
 
 // src/ops.ts
-var import_yaml16 = __toESM(require_dist(), 1);
+var import_yaml17 = __toESM(require_dist(), 1);
 var now4 = () => (/* @__PURE__ */ new Date()).toISOString();
 var PROJECT_YAML = (name) => `# aidw project configuration
 schema: 1
@@ -15091,7 +15103,7 @@ function projectYaml(name, det) {
 kind: ${det.kind} # greenfield | brownfield (aidw detect)
 `);
   if (det.kind === "greenfield") return base2;
-  const doc = import_yaml16.default.parseDocument(base2);
+  const doc = import_yaml17.default.parseDocument(base2);
   doc.setIn(["stack", "source"], "client");
   doc.setIn(["stack", "items"], doc.createNode(det.stack));
   doc.setIn(["stack", "reason"], "existing project: aidw keeps the stack it finds and does not migrate it (Q9)");
@@ -15774,14 +15786,14 @@ function readConflicts(change) {
   const text2 = readText(conflictsFile(change));
   if (text2 === null) return [];
   try {
-    const data = import_yaml17.default.parse(text2);
+    const data = import_yaml18.default.parse(text2);
     return Array.isArray(data?.conflicts) ? data.conflicts : [];
   } catch {
     return [];
   }
 }
 function writeConflicts(change, records) {
-  (0, import_node_fs33.writeFileSync)(conflictsFile(change), `${CONFLICTS_HEADER}${import_yaml17.default.stringify({ conflicts: records })}`);
+  (0, import_node_fs33.writeFileSync)(conflictsFile(change), `${CONFLICTS_HEADER}${import_yaml18.default.stringify({ conflicts: records })}`);
 }
 function recordConflict(change, entry) {
   writeConflicts(change, [...readConflicts(change), { at: now5(), ...entry, outcome: "open" }]);
@@ -16526,7 +16538,7 @@ var ADDED_ORIGINS = ["converge", "quality", "integration"];
 function parseTasks(text2) {
   let data;
   try {
-    data = import_yaml18.default.parse(text2);
+    data = import_yaml19.default.parse(text2);
   } catch (e) {
     return { tasks: [], error: `not valid YAML: ${e.message}` };
   }
@@ -17289,7 +17301,7 @@ function uiScenarioAdvice(p, id, tasks, d, tf) {
 // src/stackpacks.ts
 var import_node_fs39 = require("node:fs");
 var import_node_path44 = require("node:path");
-var import_yaml19 = __toESM(require_dist(), 1);
+var import_yaml20 = __toESM(require_dist(), 1);
 function frameworkPacks(root) {
   const dir = (0, import_node_path44.join)(root, "stacks");
   if (!(0, import_node_fs39.existsSync)(dir)) return [];
@@ -17299,7 +17311,7 @@ function frameworkPacks(root) {
     if (!m) continue;
     let head;
     try {
-      head = import_yaml19.default.parse(m[1]);
+      head = import_yaml20.default.parse(m[1]);
     } catch {
       continue;
     }
@@ -17348,10 +17360,10 @@ function configEvidence(dir, baseCommit, changed, taskType) {
 var import_node_crypto6 = require("node:crypto");
 var import_node_fs40 = require("node:fs");
 var import_node_path45 = require("node:path");
-var import_yaml21 = __toESM(require_dist(), 1);
+var import_yaml22 = __toESM(require_dist(), 1);
 
 // src/contractdiff.ts
-var import_yaml20 = __toESM(require_dist(), 1);
+var import_yaml21 = __toESM(require_dist(), 1);
 var isRecord9 = (v) => !!v && typeof v === "object" && !Array.isArray(v);
 var METHODS = ["get", "put", "post", "delete", "patch", "options", "head", "trace"];
 var Collector = class {
@@ -17371,7 +17383,7 @@ var Collector = class {
 function parseYaml2(text2) {
   if (text2 === null) return null;
   try {
-    return import_yaml20.default.parse(text2);
+    return import_yaml21.default.parse(text2);
   } catch {
     return void 0;
   }
@@ -17642,7 +17654,7 @@ function specIndex(p, id) {
 var planned = (text2) => text2 === null ? [] : parseTasks(text2).tasks.filter((t) => t && !ADDED_ORIGINS.includes(String(t.origin)));
 function grantsOf(text2) {
   try {
-    const data = text2 === null ? null : import_yaml21.default.parse(text2);
+    const data = text2 === null ? null : import_yaml22.default.parse(text2);
     const layers = Array.isArray(data?.layers) ? data.layers.map((l) => l && typeof l === "object" ? { name: l.name ?? null, run: l.run ?? null, setup: l.setup ?? null } : l) : null;
     return JSON.stringify({ grants: data?.grants ?? null, permissions: data?.permissions ?? null, layers });
   } catch {
@@ -17809,7 +17821,7 @@ function contractProblem(name, text2) {
   if (text2 === null) return null;
   if (name === "openapi.yaml") {
     try {
-      import_yaml21.default.parse(text2);
+      import_yaml22.default.parse(text2);
       return null;
     } catch (e) {
       return `not valid YAML (${e.message.split("\n")[0]})`;
@@ -18022,12 +18034,12 @@ function restorePlanned(approvedText2, currentText) {
   for (const t of current) if (t && !ids.has(t.id) && ADDED_ORIGINS.includes(String(t.origin))) out.push(t);
   let top = {};
   try {
-    const data = import_yaml21.default.parse(currentText ?? approvedText2);
+    const data = import_yaml22.default.parse(currentText ?? approvedText2);
     if (data && typeof data === "object" && !Array.isArray(data)) top = data;
   } catch {
     top = {};
   }
-  return import_yaml21.default.stringify({ ...top, tasks: out });
+  return import_yaml22.default.stringify({ ...top, tasks: out });
 }
 
 // src/run.ts
@@ -18040,7 +18052,7 @@ function loadTasks(p, id) {
   if (text2 === null) throw new OpError(`change "${id}" has no tasks.yaml`);
   const d = validateTasksText(text2, rel(p, file));
   if (d.errors.length) throw new OpError(`tasks.yaml of "${id}" is invalid`, d);
-  return { change, file, doc: import_yaml22.default.parseDocument(text2), tasks: parseTasks(text2).tasks };
+  return { change, file, doc: import_yaml23.default.parseDocument(text2), tasks: parseTasks(text2).tasks };
 }
 function saveTasksDoc(tf) {
   saveTasks(tf);
@@ -19795,7 +19807,7 @@ async function runShotsWorker(req) {
 var import_node_crypto8 = require("node:crypto");
 var import_node_fs44 = require("node:fs");
 var import_node_path49 = require("node:path");
-var import_yaml23 = __toESM(require_dist(), 1);
+var import_yaml24 = __toESM(require_dist(), 1);
 var CASE_KEYS = ["case", "covers", "expect"];
 function caseSection(text2, title) {
   const lines = text2.split("\n");
@@ -19825,7 +19837,7 @@ function loadEvalCases(root, id) {
     const fm = /^---\n([\s\S]*?)\n---\n/.exec(text2);
     let head = null;
     try {
-      const v = fm ? import_yaml23.default.parse(fm[1] ?? "") : null;
+      const v = fm ? import_yaml24.default.parse(fm[1] ?? "") : null;
       head = v && typeof v === "object" && !Array.isArray(v) ? v : null;
     } catch {
       head = null;
@@ -20640,7 +20652,7 @@ ${bad ? `${bad} problem(s) to fix before the run` : warn ? `no blocking problem,
 var import_node_child_process11 = require("node:child_process");
 var import_node_fs49 = require("node:fs");
 var import_node_path54 = require("node:path");
-var import_yaml24 = __toESM(require_dist(), 1);
+var import_yaml25 = __toESM(require_dist(), 1);
 
 // src/prsummary.ts
 var import_node_fs48 = require("node:fs");
@@ -20792,7 +20804,7 @@ function loadAny(p, id) {
     const dir = (0, import_node_path54.join)(p.archive, id);
     const file = (0, import_node_path54.join)(dir, "change.yaml");
     if (!(e instanceof ChangeError) || !(0, import_node_fs49.existsSync)(file)) throw e;
-    const doc = import_yaml24.default.parseDocument((0, import_node_fs49.readFileSync)(file, "utf8"));
+    const doc = import_yaml25.default.parseDocument((0, import_node_fs49.readFileSync)(file, "utf8"));
     return { id, dir, file, doc, data: doc.toJS() ?? {} };
   }
 }
@@ -20977,7 +20989,7 @@ var import_node_child_process12 = require("node:child_process");
 var import_node_crypto9 = require("node:crypto");
 var import_node_fs50 = require("node:fs");
 var import_node_path55 = require("node:path");
-var import_yaml25 = __toESM(require_dist(), 1);
+var import_yaml26 = __toESM(require_dist(), 1);
 var MINUTE = 6e4;
 var BACKOFF_MINUTES = [5, 10, 20, 40, 60];
 var LIMIT_TEXT = /rate[ _-]?limit|usage limit|quota|overloaded|\b429\b|\b529\b|limit (?:will )?reset/i;
@@ -21025,7 +21037,7 @@ function prOf(p, id) {
     const file = (0, import_node_path55.join)(dir, "change.yaml");
     if (!(0, import_node_fs50.existsSync)(file)) continue;
     try {
-      const pr = import_yaml25.default.parse((0, import_node_fs50.readFileSync)(file, "utf8"))?.run?.pr;
+      const pr = import_yaml26.default.parse((0, import_node_fs50.readFileSync)(file, "utf8"))?.run?.pr;
       return pr && typeof pr === "object" ? { url: typeof pr.url === "string" && pr.url ? pr.url : null, draft: pr.draft === true } : null;
     } catch {
       return null;
@@ -21092,7 +21104,11 @@ function runLoop(p, id, opts = {}) {
   let idle = 0;
   let last = fingerprint(p, id);
   let checked = false;
+  let costUsd = 0;
+  let costSessions = 0;
+  let turns = 0;
   const result = (outcome, state, message) => {
+    if (runs > 0) record2(`total: ${runs} session${runs === 1 ? "" : "s"}${costSessions ? `, ${money(costUsd)}${costSessions < runs ? ` (${costSessions} of ${runs} reported)` : ""}, ${turns} turns` : ", cost not reported"}`);
     if (env.AIDW_RUN_DETACHED === "1") (0, import_node_fs50.rmSync)(pidFile(p), { force: true });
     record2(`stop: ${outcome}: ${message}`);
     try {
@@ -21137,7 +21153,9 @@ function runLoop(p, id, opts = {}) {
     }
     if (runs >= maxRuns) return result("max_runs", state, `${runs} sessions ran; raise --max-runs to continue`);
     const prompt = state === "delivered" && (!pr || ready) ? `/aidw:deliver ${id}` : `/aidw:resume ${id}`;
-    const args = ["-p", prompt, "--permission-mode", mode, ...opts.keepMcp ? [] : ["--strict-mcp-config"], ...opts.extraArgs ?? []];
+    const extra = opts.extraArgs ?? [];
+    const format = extra.some((x) => x === "--output-format" || x.startsWith("--output-format=")) ? [] : ["--output-format", "json"];
+    const args = ["-p", prompt, "--permission-mode", mode, ...format, ...opts.keepMcp ? [] : ["--strict-mcp-config"], ...extra];
     record2(`session ${runs + 1}: ${claude} ${args.map((a) => /\s/.test(a) ? JSON.stringify(a) : a).join(" ")}`);
     const r = (0, import_node_child_process12.spawnSync)(claude, args, {
       cwd: p.project,
@@ -21147,10 +21165,18 @@ function runLoop(p, id, opts = {}) {
       maxBuffer: 64 * 1024 * 1024
     });
     runs++;
-    const output = `${r.stdout ?? ""}
+    const parsed = parseSessionJson(r.stdout ?? "");
+    const said = parsed?.text ? parsed.text : r.stdout ?? "";
+    const output = `${said}
 ${r.stderr ?? ""}`.trim();
-    const tail = output.split("\n").filter((l) => !NOISE.test(l)).slice(-8).join("\n");
-    record2(`session ${runs} ended: exit ${r.status ?? r.error?.message ?? "?"}${tail ? `
+    if (parsed?.cost != null) {
+      costUsd += parsed.cost;
+      costSessions++;
+    }
+    turns += parsed?.turns ?? 0;
+    const tail = output.split("\n").filter((l) => !NOISE.test(l)).join("\n").trim();
+    const figures = [parsed?.cost != null ? money(parsed.cost) : "", parsed?.turns != null ? `${parsed.turns} turns` : ""].filter(Boolean).join(", ");
+    record2(`session ${runs} ended: exit ${r.status ?? r.error?.message ?? "?"}${figures ? `, ${figures}` : ""}${tail ? `
 ${tail.replace(/^/gm, "  | ")}` : ""}`);
     if (r.error && r.error.code === "ENOENT") {
       return result("claude_failed", state, `cannot run "${claude}": install Claude Code or pass --claude <path>`);
@@ -21176,6 +21202,20 @@ ${tail.replace(/^/gm, "  | ")}` : ""}`);
       backoff = 0;
     }
     last = fp;
+  }
+}
+var money = (usd) => `$${usd.toFixed(4)}`;
+function parseSessionJson(stdout) {
+  try {
+    const j = JSON.parse(stdout.trim());
+    if (!j || typeof j !== "object" || Array.isArray(j) || j.result === void 0 && j.total_cost_usd === void 0) return null;
+    return {
+      text: typeof j.result === "string" ? j.result : "",
+      cost: typeof j.total_cost_usd === "number" ? j.total_cost_usd : null,
+      turns: typeof j.num_turns === "number" ? j.num_turns : null
+    };
+  } catch {
+    return null;
   }
 }
 function loadChangeState(p, id) {
@@ -22904,7 +22944,7 @@ Fix the file and render again.`);
         };
         const save2 = (name, data) => {
           (0, import_node_fs52.mkdirSync)(pagesDir(p), { recursive: true });
-          (0, import_node_fs52.writeFileSync)(pageDataFile(p, name), typeof data === "string" ? data : (0, import_yaml26.stringify)(data));
+          (0, import_node_fs52.writeFileSync)(pageDataFile(p, name), typeof data === "string" ? data : (0, import_yaml27.stringify)(data));
         };
         const show = (name) => {
           const page = load2(name);
