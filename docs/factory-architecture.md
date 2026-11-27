@@ -792,8 +792,9 @@ In the user's project, `.aidw/` keeps its current shape and gains `roles/<id>/` 
   in Claude Code's sandbox (`failIfUnavailable`) with no allowed hosts, no local binding and no unsandboxed escape.
   The fixture's tests need no socket: `t.http()` in the backend fixture's `tests/helpers.ts` sends each request to the
   app in-process (`tests/http.ts`, a supertest-style client over an in-memory stream pair, through Node's HTTP parser),
-  so no test binds a port and the session cannot reach a localhost port (`allowLocalBinding` would also open every
-  localhost port on macOS, which a local proxy could carry out). Bash is allowed by a rule as well as for being sandboxed (the pilot's sandboxed loops and
+  so no test needs to bind a port, and by its configuration the session can reach no localhost port
+  (`allowLocalBinding` would also open every localhost port on macOS, which a local proxy could carry out); no real
+  session has run on this fixture yet. Bash is allowed by a rule as well as for being sandboxed (the pilot's sandboxed loops and
   `$(…)` commands still asked for approval, which no one gives); it can run only sandboxed, and where the sandbox
   cannot start neither does the session; WebFetch and WebSearch are
   absent and denied. A watcher starts the session in its own process group, keeps the raw log, and stops the whole group
@@ -828,7 +829,8 @@ In the user's project, `.aidw/` keeps its current shape and gains `roles/<id>/` 
   leaves in the copy are killed, and its report files are read out of the scratch folder. It runs confined: on macOS
   `sandbox-exec` with no network at all (no outbound connection, localhost and Unix sockets included, no bind) and
   writes only in the project, its scratch folder and `/dev`; on Linux `bwrap` with `/` read-only, the same writable
-  places and an empty network namespace of its own, else `unshare -rn` (an empty network namespace, loopback down;
+  places and a network namespace of its own with only its own loopback (the host's localhost is out of reach), else
+  `unshare -rn` (an empty network namespace, loopback down;
   writes not confined). The Linux paths were not tried here. Where none can be applied (inside another sandbox, a container without user
   namespaces) they run unconfined, the run records `none`, and the output says so. `AIDW_GRADE_SANDBOX=off` turns it
   off. A session stopped at a limit fails; one that never ran is an ERROR. A run passes when all four pass; a case
@@ -849,8 +851,10 @@ In the user's project, `.aidw/` keeps its current shape and gains `roles/<id>/` 
 - **Proven by the backend pilot** (6 real sessions, 2026-11-26): `--agent aidw:<role>` with `-p` runs the Role's
   agent as the main session; `--setting-sources project` keeps the user's own `~/.claude/CLAUDE.md` out of the
   session; the sandbox is applied to Bash (it refused a local `listen`, `EPERM`, which the in-process test client
-  now avoids).
-- **Not yet proven by a real run:** that the sandbox keys block outbound network as intended (no session tried it),
+  now avoids). The pilot's 3/3 ran on the fixture's earlier helper (a server on 127.0.0.1 per test) with
+  `allowLocalBinding`; it must be re-run on the in-process fixture before it counts for it.
+- **Not yet proven by a real run:** that the session, now without `allowLocalBinding`, can reach no localhost port
+  (it holds by configuration; no session has run since), that the sandbox keys block outbound network as intended (no session tried it),
   that the `Read(...)` deny rules also stop a sandboxed Bash `cat`, and that the sandbox lets Bash write nowhere but the
   project (if it can write the run folder, the snapshot's digest still turns a changed snapshot into an ERROR).
 - **Residual risks.** Where no grading sandbox can be applied, the held-out tests and checks run code the session wrote

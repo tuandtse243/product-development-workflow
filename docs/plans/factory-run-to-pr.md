@@ -271,8 +271,10 @@ Fastify, Hono.
     macOS, so a local proxy could carry traffic out. The fixture's `t.http()` now calls the app in-process with no
     socket (`tests/http.ts`, same supertest-style API, supertest removed), the session settings drop the setting, and
     the grading sandbox allows no network at all, localhost included.
-  - Not yet proven: that the session sandbox blocks outbound network, and that `Read` deny rules stop a sandboxed
-    `cat`. No run tried either.
+  - Owed: re-run the pilot's 3/3 on the in-process fixture. The 3/3 above ran on the old helper with
+    `allowLocalBinding`.
+  - Not yet proven: that the session sandbox blocks outbound network, that the session can reach no localhost port
+    now (it holds by configuration), and that `Read` deny rules stop a sandboxed `cat`. No run tried any of them.
 - The cases of every other active Role have no `covers:` yet; T12 must not fail `aidw roster` for Roles that
   have not been upgraded (require coverage only once a Role's `rules.md` uses the table format).
 - The owner prefers question rounds as an HTML Decision Page with options, examples and a copy-back summary,

@@ -1024,9 +1024,9 @@ let probed: SandboxKind | null = null;
 /**
  * The confinement of the grading commands (the held-out tests and the checks run code the session wrote):
  *   macOS  `sandbox-exec` with sandboxProfile(scope): no network, writes only in the scope
- *   Linux  `bwrap` with / read-only, the scope writable and its own empty network namespace (the host's localhost
- *          is out of reach); without bwrap, `unshare -rn` (an empty network namespace, its loopback left down:
- *          writes are not confined)
+ *   Linux  `bwrap` with / read-only, the scope writable and a network namespace of its own with only its own
+ *          loopback (the host's localhost is out of reach); without bwrap, `unshare -rn` (an empty network
+ *          namespace, its loopback left down: writes are not confined)
  * Each is probed once; where none works (inside another sandbox, a container without user namespaces) commands run
  * unconfined and the run records `none`. `AIDW_GRADE_SANDBOX=off` turns it off.
  */
