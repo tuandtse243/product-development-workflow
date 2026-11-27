@@ -68,7 +68,7 @@ describe("rules.md as a table (R2)", () => {
     const prose = readFileSync(join(plugin, "roles", "code-reviewer", "rules.md"), "utf8");
     expect(parseRulesTable(prose)).toEqual({ table: false, rules: [], problems: [] });
     expect(loadRuleTable(plugin, "code-reviewer")).toBeNull();
-    expect(loadRuleTable(plugin, "frontend")).toBeNull(); // no rules.md at all
+    expect(loadRuleTable(plugin, "qa")).toBeNull(); // no rules.md at all
   });
 
   it("reports a duplicate id, an empty field, a bad id, an unknown checker and a bad header", () => {

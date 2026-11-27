@@ -136,7 +136,8 @@ describe("consults in role.md (aidw roster)", () => {
     const of = (id: string) => loadRole(plugin, id)?.consults.slice().sort();
     for (const id of ["ux-research", "product-manager", "software-architect"]) expect(of(id), id).toEqual(["research"]);
     expect(of("technical-planner")).toEqual(["software-architect"]);
-    for (const id of ["backend", "frontend", "fullstack"]) expect(of(id), id).toEqual(["api-designer", "database-architect", "software-architect"]);
+    for (const id of ["backend", "fullstack"]) expect(of(id), id).toEqual(["api-designer", "database-architect", "software-architect"]);
+    expect(of("frontend")).toEqual(["api-designer", "software-architect"]); // T20: it never reads the data model
     expect(of("research")).toEqual([]);
     expect(readFileSync(join(plugin, "agents", "backend.md"), "utf8")).toMatch(/## Consultation[\s\S]*`api-designer`/);
   });

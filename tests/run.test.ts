@@ -273,7 +273,7 @@ describe("briefs", () => {
     expect(review).toMatch(/kept when the implementer asked instead of guessing/);
     // a Role that follows another's rules (follows_rules) gets both files in the review of its tasks
     const fsRole = join(pluginCopy, "roles", "fullstack", "role.md");
-    expect(readFileSync(fsRole, "utf8")).toMatch(/^follows_rules: \[backend\]$/m);
+    expect(readFileSync(fsRole, "utf8")).toMatch(/^follows_rules: \[backend, frontend\]$/m);
     writeFileSync(join(pluginCopy, "roles", "fullstack", "rules.md"), "- Keep the slice whole.\n");
     const fsRoot = executingProject();
     cli(fsRoot, "task", "start", "T01");
