@@ -163,14 +163,27 @@ generated agent files are up to date.
   (`.mjs`, built-ins only, Node 20 or later), called by path through `aidw plugin-path roles/<id>/scripts/<name>.mjs`.
   Each documents its usage at the top of the file and prints it with `--help`, writes JSON by default (`--text` for
   a short table) and is advisory: a finding never makes it exit non-zero, only a usage or read error does (exit 2).
-  Pass/fail checks stay in the CLI. A file starting with `_` is a helper the scripts share, not a tool. The tests
-  live under `tests/` (fixture trees in temp dirs, the script run with `node <path>`). The backend Role has five:
+  Pass/fail checks stay in the CLI. The helpers the scripts share (`_common.mjs`: the tree walk, the lines a diff
+  adds, comment masking, the CLI frame) live in `library/scripts/`, one copy for every Role: a script imports
+  `../../../library/scripts/_common.mjs`, which resolves inside the plugin it runs from. A file starting with `_` is
+  a helper, not a tool. The tests live under `tests/` (fixture trees in temp dirs, the script run with
+  `node <path>`). The backend Role has five:
   `route-inventory` (routes, the tests that call each, the B2 access cases those tests assert), `env-names` (names
   read against `.env.example`, never a value), `error-shape-probe` (error bodies against the declared error shape,
   statically and on responses the tests captured), `query-count` (statements for 1 row and N rows; also a module a
   test imports) and `leak-and-timeout-scan` (outbound calls with no timeout, log calls carrying secrets or whole
   objects). `route-inventory`, `env-names`, `error-shape-probe` (its static probe) and `leak-and-timeout-scan` take
-  `--base <ref>` to look only at what a diff adds; `query-count` reads logs and takes no `--base`. Every JSON output
+  `--base <ref>` to look only at what a diff adds; `query-count` reads logs and takes no `--base`. The frontend Role
+  has three, all with `--base`: `token-literals` (style literals that are not a design token, by kind: color,
+  length, font, shadow, radius, z-index, with the nearest token; it reads the Change's `.aidw/design/tokens.yaml`
+  as the CLI's design check does, and CSS, style objects, styled templates and Tailwind arbitrary values such as
+  `p-[13px]`; rule F2), `a11y-names` (clickable non-controls, controls with no accessible name, fields with no
+  label, images with no `alt`, positive `tabIndex`, focus outlines removed with no `:focus-visible`, raw-HTML sinks;
+  F4, F5, F16) and `public-env-scan` (environment names read in client files with whether each has the framework's
+  public prefix, secret-looking public names, server-only modules imported into client files; F10). They read JSX
+  and TSX; `.vue` and `.svelte` templates come later, and so do `fetch-waterfalls` and `route-guard-inventory`,
+  which wait for the frontend level 2 fixture to be tuned on. Their own helpers (JSX elements, CSS rules) are in
+  `roles/frontend/scripts/_markup.mjs`. Every JSON output
   starts with `tool` and `schemaVersion: 1`; a directory scan lists under `skipped` what it did not read (`public/`
   and `static/` output, minified or bundled files, files over 512 KB, unreadable files). `query-count --run`
   executes a command, so a read-only reviewer does not use it.
@@ -685,7 +698,8 @@ plugins/aidw/
   company/             rules for every Role (permissions.md today)
   roles/<id>/          role.md, rules.md, skills/, references/, scripts/, evals/
   workflows/<id>.yaml  product, feature, bugfix, audit
-  library/             shared procedures and skills (implement-a-task.md, author-artifacts.md); vendor/ moves here
+  library/             shared procedures and skills (implement-a-task.md, author-artifacts.md); vendor/ moves here;
+                       scripts/ holds the helpers the Roles' scripts share (_common.mjs)
   stacks/              language packs (node.md) and framework packs; library/code-style.md holds the language-neutral rules
   agents/              GENERATED from roles/
   skills/              user commands: start, approve, run, resume, status, deliver, init
@@ -851,7 +865,8 @@ In the user's project, `.aidw/` keeps its current shape and gains `roles/<id>/` 
   read-only). A copy that cannot be prepared keeps `result.json` only.
 - **Level 2 result file.** `roles/<id>/evals/level2/results.json` (`format: 2`, `level: 2`), written under level 1's
   rules (source checkout, tier's model, `--case` merges, nothing written when content changed during the run). Its
-  shared digest is level 1's with the Role's scripts added (a session runs them); each entry adds the digest of its case folder and of its fixture, and how its grading was
+  shared digest is level 1's with the Role's scripts and the helpers they import (`library/scripts/`) added (a
+  session runs them); each entry adds the digest of its case folder and of its fixture, and how its grading was
   confined (`gradingSandbox`: `sandbox-exec`, `bwrap`, `unshare` or `none`). A run whose grading ran with `none` writes
   nothing unless `AIDW_GRADE_SANDBOX=off` was set. For a Role with level 2 cases, `aidw roster` warns (never fails
   without `--strict`) when the file is missing, made on another model, older than the Role, a case folder or a fixture,

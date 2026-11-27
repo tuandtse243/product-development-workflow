@@ -350,6 +350,22 @@ describe("the per-case result file (format 2)", () => {
     expect(sharedDigest(root, "backend")).not.toBe(shared);
   });
 
+  it("counts the script helpers in library/scripts/ in the working digest of a Role with scripts only", () => {
+    const root = copy();
+    tableRole(root);
+    mkdirSync(join(root, "roles", "backend", "scripts"), { recursive: true });
+    writeFileSync(join(root, "roles", "backend", "scripts", "probe.mjs"), "import '../../../library/scripts/_h.mjs';\n");
+    rmSync(join(root, "roles", "frontend", "scripts"), { recursive: true, force: true });
+    const shared = sharedDigest(root, "backend");
+    const working = workingDigest(root, "backend");
+    const other = workingDigest(root, "frontend");
+    mkdirSync(join(root, "library", "scripts"), { recursive: true });
+    writeFileSync(join(root, "library", "scripts", "_h.mjs"), "export const h = 1;\n");
+    expect(sharedDigest(root, "backend")).toBe(shared);
+    expect(workingDigest(root, "backend")).not.toBe(working);
+    expect(workingDigest(root, "frontend")).toBe(other);
+  });
+
   it("is fresh after a full write, and editing one case file makes only that entry stale", () => {
     const root = fresh();
     const rec = JSON.parse(readFileSync(join(evalsDir(root), "results.json"), "utf8"));

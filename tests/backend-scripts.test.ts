@@ -26,9 +26,11 @@ describe("every backend script", () => {
 
   it("imports only node built-ins and documents its usage at the top", () => {
     const dir = join(__dirname, "..", "plugins", "aidw", "roles", "backend", "scripts");
-    for (const f of readdirSync(dir)) {
-      const src = readFileSync(join(dir, f), "utf8");
-      for (const m of src.matchAll(/^import\s[^;]*?from\s+["']([^"']+)["']/gm)) expect(m[1], `${f}: ${m[1]}`).toMatch(/^(node:|\.\/_)/);
+    const shared = join(__dirname, "..", "plugins", "aidw", "library", "scripts");
+    for (const [d, f] of [...readdirSync(dir).map((f) => [dir, f] as const), ...readdirSync(shared).map((f) => [shared, f] as const)]) {
+      const src = readFileSync(join(d, f), "utf8");
+      // The shared helpers (library/scripts/_*.mjs), imported by a path inside the plugin.
+      for (const m of src.matchAll(/^import\s[^;]*?from\s+["']([^"']+)["']/gm)) expect(m[1], `${f}: ${m[1]}`).toMatch(/^(node:|\.\.\/\.\.\/\.\.\/library\/scripts\/_)/);
       if (!f.startsWith("_")) expect(src.slice(0, 2000), f).toMatch(/Usage:/);
     }
   });

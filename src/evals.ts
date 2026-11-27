@@ -145,8 +145,8 @@ export interface RunRecord {
 /**
  * Plugin-relative files of a Role's content: every file under `roles/<id>/` but the result file, the level 2 cases
  * (`roles/<id>/evals/level2/`, digested on their own) and, with `noCases`, the case files `roles/<id>/evals/*.md`; its
- * generated agent file, the shared procedures its `includes` names, the shared library skills its index lists and
- * `tiers.yaml`. Dotfiles (`.DS_Store`) are left out. The runner's own prompts (the
+ * generated agent file, the shared procedures its `includes` names, the shared library skills its index lists,
+ * `tiers.yaml` and, unless `noScripts`, the script helpers in `library/scripts/` when the Role has scripts. Dotfiles (`.DS_Store`) are left out. The runner's own prompts (the
  * answer and grading prompts in src/evalrun.ts) are not Role content and are not in it.
  */
 function roleFiles(root: string, id: string, noCases: boolean, noScripts = false): string[] {
@@ -166,6 +166,9 @@ function roleFiles(root: string, id: string, noCases: boolean, noScripts = false
     else files.push(rel);
   };
   walk(`roles/${id}`);
+  // The helpers the Role's scripts import (library/scripts/): a helper fix changes what its scripts print, as a fix in
+  // roles/<id>/scripts/ does, so they count wherever the scripts count (the working digest), and only for a Role with scripts.
+  if (!noScripts && existsSync(join(root, "roles", id, "scripts"))) walk("library/scripts");
   walk(`agents/${id}.md`);
   // role.md read with LF line endings, so a CRLF checkout lists the same files.
   const roleMd = join(root, "roles", id, "role.md");
@@ -204,7 +207,7 @@ export function sharedDigest(root: string, id: string): string {
   return digestOf(root, roleFiles(root, id, true, true));
 }
 
-/** sharedDigest with the Role's scripts: what a level 2 session works with (it runs them). */
+/** sharedDigest with the Role's scripts and the helpers they import (`library/scripts/`): what a level 2 session works with (it runs them). */
 export function workingDigest(root: string, id: string): string {
   return digestOf(root, roleFiles(root, id, true));
 }

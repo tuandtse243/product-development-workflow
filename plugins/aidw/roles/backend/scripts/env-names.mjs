@@ -47,7 +47,7 @@ Exit: 0 when the scan ran (whatever it found), 2 on a usage or read error.
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { inStringOf, changedSince, isAdded, isPython, isTestFile, JS_EXTS, lineIndex, maskComments, loadSources, projectRoot, PY_EXTS, runCli, UsageError } from "./_common.mjs";
+import { inStringOf, changedSince, isAdded, isPython, isTestFile, JS_EXTS, lineIndex, maskComments, loadSources, projectRoot, PY_EXTS, runCli, UsageError } from "../../../library/scripts/_common.mjs";
 
 const ALWAYS_IGNORED = ["NODE_ENV", "MODE", "DEV", "PROD", "SSR", "BASE_URL"];
 const NAME = "[A-Za-z_][A-Za-z0-9_]*";

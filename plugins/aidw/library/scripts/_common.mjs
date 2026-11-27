@@ -1,5 +1,5 @@
-// Shared helpers of the backend Role's scripts. Not a tool itself: the five scripts next to it import it.
-// Node built-ins only (Node >= 20).
+// Shared helpers of the Roles' scripts (roles/<id>/scripts/*.mjs). Not a tool itself: a script imports it as
+// "../../../library/scripts/_common.mjs", which resolves next to the plugin it runs from. Node built-ins only (Node >= 20).
 
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
@@ -78,13 +78,19 @@ export function walk(root, exts) {
   return { files: files.sort(), skipped };
 }
 
-/** walk + read: { sources: [{ file, src }], skipped }; a file that cannot be read is skipped with its error code. */
-export function loadSources(root, exts) {
+/**
+ * walk + read: { sources: [{ file, src }], skipped }; a file that cannot be read is skipped with its error code.
+ * With `{ checkTemplates: true }` a JS/TS file whose template literal never closes is skipped too (it would be half-read).
+ */
+export function loadSources(root, exts, { checkTemplates = false } = {}) {
   const { files, skipped } = walk(root, exts);
   const sources = [];
   for (const file of files) {
-    try { sources.push({ file, src: readFileSync(join(root, file), "utf8") }); }
-    catch (e) { skipped.push({ file, reason: `unreadable (${e.code ?? e.message})` }); }
+    try {
+      const src = readFileSync(join(root, file), "utf8");
+      if (checkTemplates && /\.[cm]?[jt]sx?$/.test(file) && hasUnclosedTemplate(src)) { skipped.push({ file, reason: "unclosed template literal: not read" }); continue; }
+      sources.push({ file, src });
+    } catch (e) { skipped.push({ file, reason: `unreadable (${e.code ?? e.message})` }); }
   }
   skipped.sort((a, b) => a.file.localeCompare(b.file));
   return { sources, skipped };
@@ -115,7 +121,7 @@ export function changedSince(root, base) {
   run(["rev-parse", "--verify", "--quiet", `${base}^{commit}`]);
   const changed = new Map();
   let file = null;
-  const diff = ["-c", "core.quotePath=false", "diff", "-U0", "--no-color", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/", "--relative", base, "--"];
+  const diff = ["-c", "core.quotePath=false", "diff", "-M", "-U0", "--no-color", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/", "--relative", base, "--"];
   for (const line of run(diff).split("\n")) {
     if (line.startsWith("+++ ")) {
       const name = unquoteGit(line.slice(4));
@@ -167,6 +173,36 @@ export function lineIndex(src) {
   };
 }
 
+/**
+ * Is the `//` at `i` text rather than a line comment? A URL scheme before it (https://) or JSX text on the same line
+ * (`<p>Docs // here</p>`: an opened tag, plain text, then a later tag) makes it text. A heuristic.
+ */
+function slashesAreText(src, i) {
+  if (src[i - 1] === ":" && /[A-Za-z][A-Za-z0-9+.-]*$/.test(src.slice(Math.max(0, i - 12), i - 1))) return true;
+  const ls = src.lastIndexOf("\n", i - 1) + 1;
+  if (!/<[A-Za-z][^<>]*>[^<>{}]*$/.test(src.slice(ls, i))) return false;
+  const le = src.indexOf("\n", i);
+  return src.slice(i, le < 0 ? src.length : le).includes("<");
+}
+
+/** Does a template literal of a JS/TS source run to the end of the file without closing? (Comments and other strings are skipped.) */
+export function hasUnclosedTemplate(src) {
+  let i = 0;
+  while (i < src.length) {
+    const c = src[i];
+    if (c === "/" && src[i + 1] === "/" && !slashesAreText(src, i)) { const end = src.indexOf("\n", i); if (end < 0) return false; i = end; continue; }
+    if (c === "/" && src[i + 1] === "*") { const end = src.indexOf("*/", i + 2); if (end < 0) return false; i = end + 2; continue; }
+    if (c === '"' || c === "'" || c === "`") {
+      const end = stringEnd(src, i);
+      if (c === "`" && (end >= src.length && src[src.length - 1] !== "`" || end - 1 <= i)) return true;
+      i = end;
+      continue;
+    }
+    i++;
+  }
+  return false;
+}
+
 /** The source with comments blanked (same length, newlines kept); strings are kept unless `strings` is true. */
 export function maskComments(src, python = false, strings = false) {
   const out = src.split("");
@@ -175,7 +211,7 @@ export function maskComments(src, python = false, strings = false) {
   while (i < src.length) {
     const c = src[i];
     if (python && c === "#") { const end = src.indexOf("\n", i); blank(i, end < 0 ? src.length : end); i = end < 0 ? src.length : end; continue; }
-    if (!python && c === "/" && src[i + 1] === "/") { const end = src.indexOf("\n", i); blank(i, end < 0 ? src.length : end); i = end < 0 ? src.length : end; continue; }
+    if (!python && c === "/" && src[i + 1] === "/" && !slashesAreText(src, i)) { const end = src.indexOf("\n", i); blank(i, end < 0 ? src.length : end); i = end < 0 ? src.length : end; continue; }
     if (!python && c === "/" && src[i + 1] === "*") { const end = src.indexOf("*/", i + 2); const stop = end < 0 ? src.length : end + 2; blank(i, stop); i = stop; continue; }
     if (c === '"' || c === "'" || c === "`") {
       const end = stringEnd(src, i, python);
