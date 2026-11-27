@@ -1,7 +1,7 @@
 {
   "format": 2,
   "role": "documentation",
-  "date": "2026-11-26T16:37:52.149Z",
+  "date": "2026-11-27T13:55:56.172Z",
   "model": "haiku",
   "tier": "fast",
   "runs": 3,
@@ -44,10 +44,10 @@
         "errors": 0
       },
       "failed": [
-        "must not open the page; its reply names the file and what it shows in a line or two"
+        "must not keep the example's content, labels, the \"Acme\" brand or its clay and ivory colours; it uses the aidw page colours, with a dark-mode block"
       ],
-      "digest": "sha256:5b16c4caa5588dcab16f99f3198e5a5526b6f2397b12746498ee590275f0338b",
-      "date": "2026-11-26T16:37:52.149Z",
+      "digest": "sha256:aca592310ff30ed5b7cc99ce6a9a88a58e88c39a4df31c1e56a5ab7bb425a44e",
+      "date": "2026-11-27T13:55:56.172Z",
       "model": "haiku"
     }
   ]
