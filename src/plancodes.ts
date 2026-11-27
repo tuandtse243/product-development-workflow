@@ -1,6 +1,6 @@
 /**
  * Stable codes of the plan-level warnings of `aidw analyze` (src/plan.ts), and the check of a task's `accept:` list:
- * `accept: [{ warn: <code>, on?: <task id>, why: <reason> }]` records that the planner saw the warning and states why
+ * `accept: [{ warn: <code>, on?: <task id>, scenarios?: <count>, why: <reason> }]` records that the planner saw the warning and states why
  * the plan keeps what it warns about.
  */
 export const PLAN_WARNING_CODES = ["one-chain", "depends-without-overlap", "narrow-plan", "large-task", "catch-all-touches"] as const;
@@ -10,7 +10,11 @@ export interface Accept {
   warn: string;
   on?: string;
   why: string;
+  /** large-task: the task's scenario count when the warning was accepted */
+  scenarios?: number;
 }
+
+const isCount = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v > 0;
 
 /** The well-formed accept entries of a task (malformed ones are left to `acceptProblems`). */
 export function taskAccepts(t: object): Accept[] {
@@ -20,7 +24,12 @@ export function taskAccepts(t: object): Accept[] {
   for (const e of acc as unknown[]) {
     const r = e as Record<string, unknown> | null;
     if (r && typeof r === "object" && typeof r.warn === "string" && typeof r.why === "string" && r.why.trim()) {
-      out.push({ warn: r.warn, why: r.why.trim(), ...(typeof r.on === "string" ? { on: r.on } : {}) });
+      out.push({
+        warn: r.warn,
+        why: r.why.trim(),
+        ...(typeof r.on === "string" ? { on: r.on } : {}),
+        ...(isCount(r.scenarios) ? { scenarios: r.scenarios } : {}),
+      });
     }
   }
   return out;
@@ -43,6 +52,8 @@ export function acceptProblems(t: object, ids: ReadonlySet<string>): string[] {
     if (r.on !== undefined && !(typeof r.on === "string" && ids.has(r.on))) out.push(`${at} names unknown task "${String(r.on)}" in "on"`);
     // a pair warning accepted without its other task would cover every pair of the task
     if (r.warn === "depends-without-overlap" && r.on === undefined) out.push(`${at} needs "on": the task this depends_on names`);
+    // a large task accepted without its size would stay accepted however much it grew
+    if (r.warn === "large-task" && !isCount(r.scenarios)) out.push(`${at} needs "scenarios": the task's scenario count the reason was written for`);
   });
   return out;
 }

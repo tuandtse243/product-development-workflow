@@ -84,7 +84,10 @@ export interface WarnRef {
 export interface PlanWarning {
   code: PlanWarningCode;
   refs: WarnRef[];
-  text: (refs: WarnRef[]) => string;
+  /** the text for those refs; `accepted` leaves out the advice, which an accepted warning does not follow */
+  text: (refs: WarnRef[], accepted?: boolean) => string;
+  /** large-task: each task's scenario count, which an accept entry pins */
+  scenarios?: Map<string, number>;
 }
 
 /** The plan warnings with their codes; empty when the plan is fine as it is. */
@@ -97,10 +100,12 @@ export function planWarnings(all: Task[]): PlanWarning[] {
     out.push({
       code: "one-chain",
       refs: pairRefs,
-      text: (refs) => {
+      text: (refs, accepted) => {
         const pairs = refs.slice(0, 4).map((p) => `${p.task} after ${p.on}`);
+        const head = `the ${s.tasks} tasks form one dependency chain, so none can run side by side (a wave)`;
+        if (accepted) return pairs.length ? `${head}. Their touches do not overlap for ${pairs.join(", ")}` : head;
         return (
-          `the ${s.tasks} tasks form one dependency chain, so none can run side by side (a wave). ` +
+          `${head}. ` +
           (pairs.length
             ? `Their touches do not overlap for ${pairs.join(", ")}: if the later task does not need the earlier one's output, drop its depends_on. `
             : "") +
@@ -112,15 +117,16 @@ export function planWarnings(all: Task[]): PlanWarning[] {
     out.push({
       code: "depends-without-overlap",
       refs: pairRefs,
-      text: (refs) =>
-        `the plan runs at most ${s.width} task(s) at once; depends_on without overlapping touches: ${refs.slice(0, 4).map((p) => `${p.task} on ${p.on}`).join(", ")}. Drop each one the later task does not truly need.`,
+      text: (refs, accepted) =>
+        `the plan runs at most ${s.width} task(s) at once; depends_on without overlapping touches: ${refs.slice(0, 4).map((p) => `${p.task} on ${p.on}`).join(", ")}` +
+        (accepted ? "" : ". Drop each one the later task does not truly need."),
     });
   }
   if (s.width > 1 && s.width <= 2 && s.tasks >= 6 && !out.length) {
     out.push({
       code: "narrow-plan",
       refs: [],
-      text: () => `the ${s.tasks} tasks run at most ${s.width} at once (stages: ${s.levels.map((l) => l.join("+")).join(" -> ")}). If a stage is a long single-task chain, check whether each depends_on is a real data dependency, and whether tasks share one big file (they then cannot overlap): slice by file ownership.`,
+      text: (_refs, accepted) => `the ${s.tasks} tasks run at most ${s.width} at once (stages: ${s.levels.map((l) => l.join("+")).join(" -> ")})${accepted ? "" : "."}` + (accepted ? "" : ` If a stage is a long single-task chain, check whether each depends_on is a real data dependency, and whether tasks share one big file (they then cannot overlap): slice by file ownership.`),
     });
   }
   // One heavy task is the critical path of its level: in trial-3A T05 had 15 of 48 scenarios and took 454 s while its
@@ -133,14 +139,17 @@ export function planWarnings(all: Task[]): PlanWarning[] {
     out.push({
       code: "large-task",
       refs: heavy.map((c) => ({ task: c.id })),
-      text: (refs) => `task(s) ${heavy.filter((c) => refs.some((r) => r.task === c.id)).map((c) => `${c.id} (${c.n} of ${total} scenarios)`).join(", ")} carry a third of the plan: they set the pace of their wave. Split each into slices that touch different files (for example list, create, edit and delete) so the pieces can run side by side.`,
+      scenarios: new Map(heavy.map((c) => [c.id, c.n])),
+      text: (refs, accepted) =>
+        `task(s) ${heavy.filter((c) => refs.some((r) => r.task === c.id)).map((c) => `${c.id} (${c.n} of ${total} scenarios)`).join(", ")} carry a third of the plan: they set the pace of their wave` +
+        (accepted ? "" : ". Split each into slices that touch different files (for example list, create, edit and delete) so the pieces can run side by side."),
     });
   }
   if (s.catchAll.length) {
     out.push({
       code: "catch-all-touches",
       refs: s.catchAll.map((id) => ({ task: id })),
-      text: (refs) => `task(s) ${refs.map((r) => r.task).join(", ")} touch "**", so they always run alone; list the folders they really change.`,
+      text: (refs, accepted) => `task(s) ${refs.map((r) => r.task).join(", ")} touch "**", so they always run alone` + (accepted ? "" : "; list the folders they really change."),
     });
   }
   return out;
@@ -172,16 +181,24 @@ export function planAdviceAccepted(all: Task[]): PlanAdviceResult {
     if (!w.refs.length) {
       if (mine.length) {
         mine.forEach((e) => used.add(e));
-        res.accepted.push(`accepted: ${w.text([])}: ${mine.map((e) => e.why).join("; ")}`);
+        res.accepted.push(`accepted: ${w.text([], true)}: ${mine.map((e) => e.why).join("; ")}`);
       } else res.warnings.push(w.text([]));
       continue;
     }
     const rest: WarnRef[] = [];
     const accepted: WarnRef[] = [];
     const whys: string[] = [];
+    const grew: string[] = [];
     for (const r of w.refs) {
       const hit = mine.filter((e) => covers(e, r));
-      if (!hit.length) rest.push(r);
+      const now = w.scenarios?.get(r.task);
+      // an accept pins the size it was written for: a task that grew since is a warning again
+      const outgrown = now !== undefined ? hit.filter((e) => e.scenarios !== undefined && now > e.scenarios) : [];
+      if (outgrown.length) {
+        hit.forEach((e) => used.add(e));
+        rest.push(r);
+        grew.push(`${r.task} grew from ${Math.max(...outgrown.map((e) => e.scenarios ?? 0))} to ${now} scenarios since it was accepted; update the accept only if its reason still holds`);
+      } else if (!hit.length) rest.push(r);
       else {
         accepted.push(r);
         hit.forEach((e) => {
@@ -190,8 +207,8 @@ export function planAdviceAccepted(all: Task[]): PlanAdviceResult {
         });
       }
     }
-    if (accepted.length) res.accepted.push(`accepted: ${w.text(accepted)}: ${whys.join("; ")}`);
-    if (rest.length) res.warnings.push(w.text(rest));
+    if (accepted.length) res.accepted.push(`accepted: ${w.text(accepted, true)}: ${whys.join("; ")}`);
+    if (rest.length) res.warnings.push(w.text(rest) + (grew.length ? ` (${grew.join("; ")})` : ""));
   }
   for (const e of entries) {
     if (!used.has(e)) res.stale.push(`accept on ${e.task} matches no warning (${e.warn}${e.on ? ` on ${e.on}` : ""}): remove it`);
