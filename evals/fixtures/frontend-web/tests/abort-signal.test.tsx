@@ -32,4 +32,41 @@ describe("AbortSignal in the test environment", () => {
     controller.abort();
     await expect(fetch("/api/ping", { signal: controller.signal })).rejects.toThrow();
   });
+
+  it("takes { signal } on window too", () => {
+    const seen: string[] = [];
+    const controller = new AbortController();
+    window.addEventListener("resize", () => seen.push("r"), { signal: controller.signal });
+    window.dispatchEvent(new Event("resize"));
+    controller.abort();
+    window.dispatchEvent(new Event("resize"));
+    expect(seen).toEqual(["r"]);
+  });
+
+  it("ignores a duplicate add, so the second signal's abort leaves the listener", () => {
+    const first = new AbortController();
+    const second = new AbortController();
+    const fn = () => seen.push("x");
+    const seen: string[] = [];
+    document.addEventListener("keydown", fn, { signal: first.signal });
+    document.addEventListener("keydown", fn, { signal: second.signal });
+    second.abort();
+    document.dispatchEvent(new KeyboardEvent("keydown"));
+    first.abort();
+    document.dispatchEvent(new KeyboardEvent("keydown"));
+    expect(seen).toEqual(["x"]);
+  });
+
+  it("does not let the old signal remove a listener that was removed by hand and added again", () => {
+    const old = new AbortController();
+    const seen: string[] = [];
+    const fn = () => seen.push("x");
+    document.addEventListener("keydown", fn, { signal: old.signal });
+    document.removeEventListener("keydown", fn);
+    document.addEventListener("keydown", fn);
+    old.abort();
+    document.dispatchEvent(new KeyboardEvent("keydown"));
+    expect(seen).toEqual(["x"]);
+    document.removeEventListener("keydown", fn);
+  });
 });
