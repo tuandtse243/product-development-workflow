@@ -248,8 +248,13 @@ describe("the result file of a Role's cases (C6)", () => {
     expect(go(["roster"]).code).toBe(0); // results.json missing: a warning
     const strict = go(["roster", "--strict"]);
     expect(strict.code).toBe(1);
-    // the table Role's missing results.json, and the missing level 2 results of the Roles that have level 2 cases
-    expect(strict.out).toMatch(/FAILED: 0 error\(s\), [1-9]\d* warning\(s\) \(strict\)/);
+    // the table Role's missing results.json, and the missing results of a Role that has cases and no committed run
+    // (backend's level 2 results are committed, so it is not among them)
+    const warns = strict.out.split("\n").filter((l) => l.startsWith("WARN"));
+    const allowed = [/roles\/backend\/evals\/results\.json\s+missing/, /roles\/frontend\/evals\/level2\/results\.json\s+missing/, /roles\/frontend\/evals\/results\.json\s+missing/];
+    expect(warns.filter((w) => !allowed.some((a) => a.test(w)))).toEqual([]);
+    expect(warns.some((w) => allowed[0]!.test(w))).toBe(true);
+    expect(strict.out).toContain(`FAILED: 0 error(s), ${warns.length} warning(s) (strict)`);
   });
 });
 
