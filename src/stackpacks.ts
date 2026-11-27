@@ -22,6 +22,16 @@ export interface FrameworkPack {
    * framework's own conventions win over those of the HTTP library underneath.
    */
   detectedAs: string;
+  /**
+   * More keys of the detected stack the pack needs, each matched as `detected_as` is (`requires: { ui: React }`): the Vite
+   * pack is for Vite with React, not Vite with Vue or Svelte. Empty when absent.
+   */
+  requires: Record<string, string>;
+}
+
+function requiresOf(v: unknown): Record<string, string> {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return {};
+  return Object.fromEntries(Object.entries(v as Record<string, unknown>).filter((e): e is [string, string] => typeof e[1] === "string"));
 }
 
 export function frameworkPacks(root: string): FrameworkPack[] {
@@ -37,10 +47,10 @@ export function frameworkPacks(root: string): FrameworkPack[] {
     } catch {
       continue;
     }
-    const h = head as { framework?: unknown; roles?: unknown; skills?: unknown; review_skills?: unknown; detected_as?: unknown } | null;
+    const h = head as { framework?: unknown; roles?: unknown; skills?: unknown; review_skills?: unknown; detected_as?: unknown; requires?: unknown } | null;
     const strs = (v: unknown) => (Array.isArray(v) ? v.map(String) : []);
     if (typeof h?.framework === "string" && Array.isArray(h.roles)) {
-      out.push({ id: name.slice(0, -3), framework: h.framework, roles: h.roles.map(String), file: join(dir, name), skills: strs(h.skills), reviewSkills: strs(h.review_skills), detectedAs: typeof h.detected_as === "string" ? h.detected_as : "framework" });
+      out.push({ id: name.slice(0, -3), framework: h.framework, roles: h.roles.map(String), file: join(dir, name), skills: strs(h.skills), reviewSkills: strs(h.review_skills), detectedAs: typeof h.detected_as === "string" ? h.detected_as : "framework", requires: requiresOf(h.requires) });
     }
   }
   return out;
@@ -49,7 +59,8 @@ export function frameworkPacks(root: string): FrameworkPack[] {
 /** The packs of the project's framework, whoever reads them: a reviewer takes their review Skills. */
 export function packsOf(root: string, stack: Record<string, string>): FrameworkPack[] {
   const all = frameworkPacks(root);
-  const hit = (p: FrameworkPack) => (stack[p.detectedAs] ?? "").toLowerCase().startsWith(p.framework.toLowerCase());
+  const starts = (key: string, name: string) => (stack[key] ?? "").toLowerCase().startsWith(name.toLowerCase());
+  const hit = (p: FrameworkPack) => starts(p.detectedAs, p.framework) && Object.entries(p.requires).every(([k, n]) => starts(k, n));
   const frameworks = all.filter((p) => p.detectedAs === "framework" && hit(p));
   return frameworks.length ? frameworks : all.filter((p) => p.detectedAs !== "framework" && hit(p));
 }

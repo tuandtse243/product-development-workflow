@@ -15556,6 +15556,10 @@ function uiScenarioAdvice(p, id, tasks, d, tf) {
 var import_node_fs34 = require("node:fs");
 var import_node_path39 = require("node:path");
 var import_yaml18 = __toESM(require_dist(), 1);
+function requiresOf(v) {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return {};
+  return Object.fromEntries(Object.entries(v).filter((e) => typeof e[1] === "string"));
+}
 function frameworkPacks(root) {
   const dir = (0, import_node_path39.join)(root, "stacks");
   if (!(0, import_node_fs34.existsSync)(dir)) return [];
@@ -15572,14 +15576,15 @@ function frameworkPacks(root) {
     const h = head;
     const strs = (v) => Array.isArray(v) ? v.map(String) : [];
     if (typeof h?.framework === "string" && Array.isArray(h.roles)) {
-      out.push({ id: name.slice(0, -3), framework: h.framework, roles: h.roles.map(String), file: (0, import_node_path39.join)(dir, name), skills: strs(h.skills), reviewSkills: strs(h.review_skills), detectedAs: typeof h.detected_as === "string" ? h.detected_as : "framework" });
+      out.push({ id: name.slice(0, -3), framework: h.framework, roles: h.roles.map(String), file: (0, import_node_path39.join)(dir, name), skills: strs(h.skills), reviewSkills: strs(h.review_skills), detectedAs: typeof h.detected_as === "string" ? h.detected_as : "framework", requires: requiresOf(h.requires) });
     }
   }
   return out;
 }
 function packsOf(root, stack) {
   const all2 = frameworkPacks(root);
-  const hit = (p) => (stack[p.detectedAs] ?? "").toLowerCase().startsWith(p.framework.toLowerCase());
+  const starts = (key, name) => (stack[key] ?? "").toLowerCase().startsWith(name.toLowerCase());
+  const hit = (p) => starts(p.detectedAs, p.framework) && Object.entries(p.requires).every(([k, n]) => starts(k, n));
   const frameworks = all2.filter((p) => p.detectedAs === "framework" && hit(p));
   return frameworks.length ? frameworks : all2.filter((p) => p.detectedAs !== "framework" && hit(p));
 }
