@@ -769,7 +769,8 @@ In the user's project, `.aidw/` keeps its current shape and gains `roles/<id>/` 
   PGlite per test file with every table emptied per test, requests served in-process by `tests/http.ts`, files one at a
   time, so its suite holds under parallel load). Every Change's approved package holds the fixture's `constitution.md`,
   `domain/` and `architecture/`: editing one of them is drift for all of its Changes, which are then re-approved with
-  the CLI (escalated, analyzing, plan review, approve, executing). PGlite
+  the CLI (escalated, analyzing, plan review, approve, executing); the plan-review verdicts of these fixture
+  re-approvals are written by hand (they say what changed) and are not a real review. PGlite
   runs one statement at a time, so a held-out test of a race makes it real by delaying each statement outside a
   transaction (requests sent at once then interleave) and, where a read then a write inside one transaction must fail,
   by a BEFORE INSERT trigger that stores the rival row inside the route's own insert. Its files are what git lists in it. Its packages are installed once (`npm ci --ignore-scripts`, needs

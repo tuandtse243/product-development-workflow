@@ -33,7 +33,8 @@ const sha = (s: string) => createHash("sha256").update(s).digest("hex");
  * the payment as requested; (2) the provider is called with no transaction open, with a provider key derived from the
  * caller, the key and the request, so it is the same on every retry; (3) a second transaction stores the result and the
  * first answer. A duplicate finds the key: the same request done gets the stored answer, still running gets 409,
- * another request 422. A key left in progress longer than TAKE_OVER_AFTER (the server died while charging) is taken
+ * another request 422. A key whose request ended with 502 keeps its fingerprint and runs again for the same request. A
+ * key left in progress longer than TAKE_OVER_AFTER (the server died while charging) is taken
  * over by the next request with it, which charges again with the same provider key: the provider returns the charge it
  * made, if any, and never charges twice.
  */
@@ -55,8 +56,10 @@ export async function payInvoice(db: Db, gateway: PaymentGateway, r: { callerId:
       );
       if (k!.fingerprint !== fingerprint) return { kind: "reused" } as const;
       if (k!.state === "done") return { kind: "done", status: k!.response_status!, body: k!.response_body } as const;
-      if (!k!.stale || !k!.resource_id) return { kind: "in-progress" } as const;
-      await tx.query("update idempotency_keys set updated_at = now() where caller_id = $1 and key = $2", [r.callerId, r.key]);
+      // in progress: a request still running, unless the last one ended with 502 (it may run again at once) or died
+      const retry = k!.response_status === 502;
+      if ((!retry && !k!.stale) || !k!.resource_id) return { kind: "in-progress" } as const;
+      await tx.query("update idempotency_keys set response_status = null, updated_at = now() where caller_id = $1 and key = $2", [r.callerId, r.key]);
       return { kind: "charge", paymentId: k!.resource_id } as const;
     }
     const [p] = await tx.query<{ id: string }>(
@@ -79,12 +82,10 @@ export async function payInvoice(db: Db, gateway: PaymentGateway, r: { callerId:
       return { kind: "done", status: 402, body };
     }
     if (err instanceof GatewayError && err.kind === "unavailable") {
-      // No answer: the charge may have happened. Forget the attempt; the same request sent again runs again with the
-      // same provider key, so the provider returns the charge it made instead of making a second one.
-      await db.transaction(async (tx) => {
-        await tx.query("delete from idempotency_keys where caller_id = $1 and key = $2", [r.callerId, r.key]);
-        await tx.query("delete from payments where id = $1 and state = 'requested'", [start.paymentId]);
-      });
+      // No answer: the charge may have happened. The key and its fingerprint stay (another request with it is still
+      // 422) and are marked as ended with 502: the same request sent again runs again on the same payment with the same
+      // provider key, so the provider returns the charge it made instead of making a second one.
+      await db.query("update idempotency_keys set response_status = 502, updated_at = now() where caller_id = $1 and key = $2", [r.callerId, r.key]);
       return { kind: "unavailable" };
     }
     throw err; // unexpected: the key stays in progress and is taken over after TAKE_OVER_AFTER

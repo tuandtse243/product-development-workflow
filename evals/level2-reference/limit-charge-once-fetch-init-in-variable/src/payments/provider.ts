@@ -1,7 +1,7 @@
 import type { Charge, ChargeRequest, PaymentGateway } from "../billing/gateway.ts";
 
 /**
- * GAP: the same adapter as charge-once-fetch-without-timeout, with no timeout and no abort signal, but its fetch options
+ * KNOWN LIMIT: the same adapter as charge-once-fetch-without-timeout, with no timeout and no abort signal, but its fetch options
  * spread shared defaults. leak-and-timeout-scan cannot judge `fetch(url, { ...base, body })` (a documented limit: the
  * spread may carry a signal) and skips it, so no check of the case catches this missing timeout (B12).
  */

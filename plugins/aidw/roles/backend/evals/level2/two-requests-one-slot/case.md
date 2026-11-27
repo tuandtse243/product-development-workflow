@@ -27,7 +27,8 @@ an insert outside a transaction lets several pass the read, and the losers fail 
 inserted by a BEFORE INSERT trigger inside the route's own insert, which is what another instance committing between
 the route's read and its write looks like on Postgres. A route where the database decides (an insert whose unique
 violation becomes 409, or `ON CONFLICT DO NOTHING`) passes both; a read then an insert inside one transaction passes
-the first on PGlite and fails the second.
+the first on PGlite and fails the second. A third trigger makes the insert fail for another reason, which must be a 500,
+not `409 slot-taken`: only the unique violation of the slot's index is mapped.
 
 The checks run the Role's `route-inventory` (the three access tests of B2), the whole suite, the typecheck, that every
 scenario id names a test, and that nothing outside Touches changed (no schema file: B15). A model grades only the

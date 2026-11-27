@@ -16,9 +16,9 @@ async function prices(db: Queryable, ids: string[]): Promise<Map<string, number>
 }
 
 /**
- * GAP: the outbox row is written outside the order's transaction, right after it commits. When that write fails (or the
+ * WRONG on purpose: the outbox row is written outside the order's transaction, right after it commits. When that write fails (or the
  * server stops between the two), the order is stored and its confirmation is never owed: the email is lost. The
- * held-out tests make storing a line fail, never the outbox write, so they pass.
+ * held-out test that makes the outbox write fail catches it.
  */
 export async function placeOrder(db: Db, o: { teamId: string; userId: string; lines: { productId: string; quantity: number }[] }): Promise<PlacedOrder> {
   const placed = await db.transaction(async (tx) => {

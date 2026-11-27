@@ -8,6 +8,5 @@ Author: database-architect. No schema change: the tables and the index exist (`s
 | `team_members` | `team_id`, `user_id` | a row links a user to a team |
 | `bookings` | `id`, `room_id`, `team_id`, `booked_by`, `starts_at`, `status`, `created_at` | `team_id` is the room's team (copied at insert); `booked_by` is the caller; `status` `active` or `cancelled` |
 
-Constraint: `bookings_one_active_per_slot`, a unique index on (`room_id`, `starts_at`) where `status = 'active'`. It is
-the arbiter of "at most one active booking per slot": of two inserts of the same slot, the second fails with a unique
-violation (SQLSTATE `23505`) naming this constraint, whenever it arrives.
+Constraint: `bookings_one_active_per_slot`, a unique index on (`room_id`, `starts_at`) where `status = 'active'`: at
+most one active booking per slot.

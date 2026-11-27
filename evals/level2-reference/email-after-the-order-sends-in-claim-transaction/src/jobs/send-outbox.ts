@@ -27,9 +27,9 @@ function mailOf(row: Row): Mail {
  */
 export const sendOutbox: Job = {
   name: "send-outbox",
-  // GAP: the round locks its rows with FOR UPDATE SKIP LOCKED and sends while that transaction is still open, so each
+  // WRONG on purpose: the round locks its rows with FOR UPDATE SKIP LOCKED and sends while that transaction is still open, so each
   // provider call (up to SEND_TIMEOUT_MS) holds a transaction, a connection and row locks (effects-after-commit step 1:
-  // never call the provider inside a transaction). PGlite runs one transaction at a time, so the held-out tests pass.
+  // never call the provider inside a transaction). The held-out test that sends a statement from inside the provider call catches it.
   async run({ db, mailer }) {
     void CLAIM_SECONDS;
     await db.transaction(async (tx) => {

@@ -14,6 +14,7 @@ beforeEach(async () => {
 afterEach(async () => {
   // a trigger outlives the truncate of the next testApp(): never leave one behind
   await t.db.query("drop trigger if exists held_out_fail on order_lines");
+  await t.db.query("drop trigger if exists held_out_fail_outbox on outbox");
   await t.db.query("drop function if exists held_out_fail()");
   await t.close();
 });
@@ -95,6 +96,36 @@ describe("held-out: POST /api/teams/:teamId/orders", () => {
     await later();
     await jobs();
     expect(mailer().calls, "no mail for an order that was not stored").toEqual([]);
+  });
+
+  it("the owed email is recorded in the order's transaction: when recording it fails, the order is not stored either", async () => {
+    const w = await world();
+    await t.db.query("create function held_out_fail() returns trigger language plpgsql as $$ begin raise exception 'held-out: recording the owed email fails'; end $$");
+    await t.db.query("create trigger held_out_fail_outbox before insert on outbox for each row execute function held_out_fail()");
+    const res = await post(w.alpha.id).set(t.auth(w.ana)).send({ lines: [{ productId: w.storage, quantity: 1 }] });
+    expect(res.status).toBe(500);
+    expect(res.body).toMatchObject({ type: "internal-error", status: 500 });
+    expect(await orders(), "an order stored without the email it owes").toEqual([]);
+    expect(await lines()).toEqual([]);
+  });
+
+  it("the sender holds no transaction open while it calls the provider", async () => {
+    const w = await world();
+    expect((await post(w.alpha.id).set(t.auth(w.ana)).send({ lines: [{ productId: w.storage, quantity: 1 }] })).status).toBe(201);
+    // PGlite runs one transaction at a time and a statement outside it waits for it: a statement sent from inside the
+    // provider call is answered at once unless the sender's own transaction is still open around the call.
+    const seen: string[] = [];
+    const send = t.mailer.send.bind(t.mailer);
+    t.mailer.send = async (mail, opts) => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const late = new Promise<"blocked">((r) => (timer = setTimeout(() => r("blocked"), 1_000)));
+      const r = await Promise.race([t.db.query("select 1 as one"), late]);
+      clearTimeout(timer);
+      seen.push(r === "blocked" ? "a transaction was open during the send" : "free");
+      return send(mail, opts);
+    };
+    await jobs();
+    expect(seen).toEqual(["free"]);
   });
 
   it("mail provider down: the order is placed, and the confirmation is sent once the provider is back, once", async () => {

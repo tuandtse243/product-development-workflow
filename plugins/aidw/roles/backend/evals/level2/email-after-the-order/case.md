@@ -24,7 +24,9 @@ would do.
 
 The held-out tests (`held-out/tests/held-out/place-an-order.test.ts`) go through the route and `runJobsOnce`, with
 `t.mailer` as the provider: the order and the mail on the happy path (with a `timeoutMs`); a BEFORE INSERT trigger
-that makes storing a line fail (no order, no mail ever, and none sent while the transaction was open); the provider
+that makes storing a line fail (no order, no mail ever, and none sent while the transaction was open); one that makes
+recording the owed email fail (500 and no order: the owed row is in the order's transaction); a statement sent from
+inside the provider call, which must be answered within 1 s (the sender holds no transaction open around a send); the provider
 down (201, sent once it is back); two sender rounds one after the other and at the same moment, with every statement
 outside a transaction slowed down so that they interleave (one call to the provider); an answer lost after the
 provider accepted the mail (sent again with the same idempotency key, delivered once); 5 failed attempts and no more;

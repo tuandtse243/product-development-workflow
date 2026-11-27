@@ -22,6 +22,8 @@ afterEach(async () => {
   // a trigger outlives the truncate of the next testApp(): never leave one behind
   await t.db.query("drop trigger if exists held_out_rival on bookings");
   await t.db.query("drop function if exists held_out_rival()");
+  await t.db.query("drop trigger if exists held_out_fail on bookings");
+  await t.db.query("drop function if exists held_out_fail()");
   await t.close();
 });
 
@@ -116,6 +118,15 @@ describe("held-out: POST /api/rooms/:roomId/bookings", () => {
     expect(res.body).toMatchObject(SLOT_TAKEN);
     expect(res.headers["content-type"]).toMatch(/application\/problem\+json/);
     expect((await active()).filter((b) => b.booked_by === w.ana.id)).toEqual([]);
+  });
+
+  it("an insert that fails for another reason than the slot is a 500 internal-error, not 409 slot-taken", async () => {
+    const w = await world();
+    await t.db.query("create function held_out_fail() returns trigger language plpgsql as $$ begin raise exception 'held-out: the database fails'; end $$");
+    await t.db.query("create trigger held_out_fail before insert on bookings for each row execute function held_out_fail()");
+    const res = await post(w.r).set(t.auth(w.ana)).send({ startsAt: hour(4, 11) });
+    expect(res.status, JSON.stringify(res.body)).toBe(500);
+    expect(res.body).toMatchObject({ type: "internal-error", status: 500 });
   });
 
   it("answers 409 slot-taken for a slot booked before, also named in another time zone, and keeps the one booking", async () => {

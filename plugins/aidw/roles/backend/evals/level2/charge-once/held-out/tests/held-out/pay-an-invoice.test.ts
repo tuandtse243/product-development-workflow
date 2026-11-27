@@ -185,6 +185,77 @@ describe("held-out: POST /api/invoices/:invoiceId/payments", () => {
     expect(await charged()).toEqual([expect.objectContaining({ amount: 2_500, provider_ref: "ch_1" })]);
   });
 
+  it("after a 502 the key keeps its request: the same key with another amount gets 422, and the card is charged once in all", async () => {
+    const w = await world();
+    const charge = gw.charge;
+    gw.charge = async (req) => {
+      await charge(req);
+      throw new GatewayError("unavailable", "timeout after the charge");
+    };
+    const first = await pay(w.i, w.ana, "pay-11", { amount: 2_500 });
+    gw.charge = charge;
+    expect(first.status).toBe(502);
+    const other = await pay(w.i, w.ana, "pay-11", { amount: 9_999 });
+    expect(other.status, JSON.stringify(other.body)).toBe(422);
+    expect(other.body).toMatchObject(REUSED);
+    expect(gw.charges.size, "the card was charged once").toBe(1);
+    const same = await pay(w.i, w.ana, "pay-11", { amount: 2_500 });
+    expect(same.status, JSON.stringify(same.body)).toBe(201);
+    expect(gw.charges.size).toBe(1);
+    expect(await charged()).toHaveLength(1);
+  });
+
+  it("the payment is stored as requested before the provider is called", async () => {
+    const w = await world();
+    const release = gw.hold();
+    let first: Promise<{ status: number }> | undefined;
+    try {
+      first = (async () => await pay(w.i, w.ana, "pay-12", { amount: 2_500 }))();
+      for (let n = 0; gw.calls.length === 0 && n < 250; n++) await sleep(20);
+      expect(gw.calls, "the request reached the provider").toHaveLength(1);
+      const rows = await within(3_000, payments());
+      expect(rows, "the payments table can be read while the provider is called").not.toBe("no answer");
+      expect((rows as Awaited<ReturnType<typeof payments>>).map((p) => [p.invoice_id, p.amount, p.state])).toEqual([[w.i, 2_500, "requested"]]);
+    } finally {
+      release();
+    }
+    expect((await first!).status).toBe(201);
+    expect((await payments()).map((p) => p.state)).toEqual(["charged"]);
+  });
+
+  it("a key left in progress for more than 2 minutes (the server stopped while charging) is taken over: one charge, one provider key", async () => {
+    const w = await world();
+    const charge = gw.charge;
+    // The first call charges and does not answer during the test, as when the server stops during the call. At the end
+    // it is ended with an error, so a request still holding a transaction lets go of the database.
+    let stop: ((e: Error) => void) | undefined;
+    gw.charge = async (req) => {
+      await charge(req);
+      return new Promise<never>((_, reject) => (stop = reject));
+    };
+    const first = (async () => await pay(w.i, w.ana, "pay-13", { amount: 2_500 }))().catch(() => "hung up");
+    let late!: { status: number; body: unknown };
+    try {
+      for (let n = 0; gw.calls.length === 0 && n < 250; n++) await sleep(20);
+      expect(gw.calls, "the first request reached the provider").toHaveLength(1);
+      gw.charge = charge;
+      const early = await within(3_000, pay(w.i, w.ana, "pay-13", { amount: 2_500 }));
+      expect(early, "the duplicate is answered while the first still waits").not.toBe("no answer");
+      expect((early as { status: number }).status).toBe(409);
+      await t.db.query("update idempotency_keys set created_at = now() - interval '3 minutes', updated_at = now() - interval '3 minutes'");
+      late = await pay(w.i, w.ana, "pay-13", { amount: 2_500 });
+    } finally {
+      gw.charge = charge;
+      stop?.(new Error("held-out: the stopped request's provider call ends"));
+      await within(3_000, first);
+    }
+    expect(late.status, JSON.stringify(late.body)).toBe(201);
+    expect(late.body).toMatchObject({ invoiceId: w.i, amount: 2_500, state: "charged" });
+    expect(gw.charges.size, "the card was charged once").toBe(1);
+    expect(new Set(gw.calls.map((c) => c.idempotencyKey)).size, "one provider key for the payment").toBe(1);
+    expect(await charged()).toHaveLength(1);
+  });
+
   it("card declined: 402 payment-declined, the payment kept as declined, and the same request again gets the same answer without a call", async () => {
     const w = await world();
     gw.failWith = new GatewayError("declined", "the card was declined");

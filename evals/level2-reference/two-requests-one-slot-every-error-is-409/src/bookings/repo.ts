@@ -3,10 +3,10 @@ import type { Queryable } from "../db/client.ts";
 export class SlotTaken extends Error {}
 
 /**
- * GAP: the database decides, as it should, but every error of the insert becomes SlotTaken (409), not only the unique
+ * WRONG on purpose: the database decides, as it should, but every error of the insert becomes SlotTaken (409), not only the unique
  * violation of bookings_one_active_per_slot: a broken connection, a failed foreign key or any bug is told to the caller
- * as "the slot is already booked" and never reaches the log as a 500. No held-out test makes the insert fail any other
- * way, so the held-out tests pass.
+ * as "the slot is already booked" and never reaches the log as a 500. The held-out test that makes the insert fail
+ * another way catches it.
  */
 export async function insertBooking(
   db: Queryable,
