@@ -878,20 +878,36 @@ In the user's project, `.aidw/` keeps its current shape and gains `roles/<id>/` 
   task it prints: the tasks that ran; how many ended done on the first attempt, as a count, with a rate only from 5
   ended tasks up; the rule ids its fix reviews cite; and the Triage causes (implementation, environment, plan, spec,
   architecture, unclear). `--role` lists each task: its runs, whether it was a first attempt, its rule ids, its Triage
-  causes, its upstream rounds (which Role fixed what) and why it was not built (`src/stats.ts`).
+  causes, its upstream rounds (which Role fixed what) and why it was not built (`src/stats.ts`). `--since` is a day in
+  UTC, compared with the task's first start; a day that does not exist is refused. The footer names the Changes
+  counted when there are 10 or fewer, or when `--change` or `--role` is given; otherwise it gives only the counts.
   - *First attempt*: the task ended done after one implementer run (`runs` is 1), that run's checkpoint passed and its
-    review passed, with no Triage and no upstream round. A checkpoint the machine refused is not a run. Tasks the
-    workflow adds (converge, quality, integration) and their auto-passed reviews are left out.
-  - *Rule ids*: the ids a fix review cites are checked against the rule tables that bind the task (its Role, the Role
-    that builds it, and the Roles they follow, `follows_rules`). Each is credited to the Role that owns the table, so a
-    fullstack review citing B7 counts for backend. Ids no table has are ignored. `aidw verdict` warns, and never
-    fails, when a fix review of a task bound by a rule table cites no id.
+    review passed, with no Triage and no upstream round. Tasks the workflow adds (converge, quality, integration) and
+    their auto-passed reviews are left out.
+  - *The machine refused*: a checkpoint the machine refused is not a run. A task whose every checkpoint was refused,
+    or that was not built for an environment cause with no checkpoint that was not refused, is left out of the
+    first-attempt base and counted as refused. A task brought back after such an outage keeps its chance: its runs
+    count from its first checkpoint that was not refused.
+  - *No evidence*: an ended task whose evidence file is missing or unreadable is left out of the base and counted as
+    "no evidence". Entries in an evidence list that are not records are skipped.
+  - *Resets count*: a done task reopened after re-approval or a Deviation, and a wave task dropped to sequential after
+    a merge conflict, start a new implementer run, so they are not first attempts (decision A: one implementer run).
+  - *Rule ids*: the ids in the blocking part of a fix review (before `Non-blocking:`) are checked against the rule
+    tables that bind the task (its Role, the Role that builds it, and the Roles they follow, `follows_rules`). Each is
+    credited to the Role that owns the table, so a fullstack review citing B7 counts for backend. Ids no table has, ids
+    only under `Non-blocking:` and ids of merge reviews are not counted. Rule ids of old Changes are checked against
+    today's tables, so an id that was renumbered or removed since is ignored or credited to today's rule.
+  - *The verdict warning*: `aidw verdict` warns, and never fails, when a fix review cites no known id in its blocking
+    part and the task's Role, or the Role that builds it, owns a rule table itself. A table followed through
+    `follows_rules` does not trigger it (a fullstack review about UI owes no backend id), and neither does a task with
+    no Role or an unknown one.
   - *Records*: the CLI appends what the figures need. `evidence/<task>.json` gets `triage: [{run, at, cause, summary,
-    files?, outcome, role?, round?}]` (the first 500 characters of the diagnosis, never cleared). Each checkpoint and
-    review gets the `run` and the `agent` spawned for it; a refused checkpoint is marked `blocked`, an auto-passed review
-    `auto` and a merge review `merge`. Entries in `evidence/agent-runs.json` get `role` and `agent`. Every field is
-    optional. For Changes before T19 the Triage figures fall back to tasks.yaml (the last `triage`, `upstream` and
-    `not_built`), and the footer says they are partial.
+    files?, outcome, role?, round?}]`, never cleared; `summary` is the diagnosis's first whole lines up to 500
+    characters (a first line longer than that is cut). Each checkpoint and review gets the `run` and the `agent`
+    spawned for it; a refused checkpoint is marked `blocked`, an auto-passed review `auto` and a merge review `merge`.
+    Entries in `evidence/agent-runs.json` get `role` and `agent`. Every field is optional. For Changes before T19 the
+    Triage figures fall back to tasks.yaml (the last `triage`, `upstream` and `not_built`), and the footer says they
+    are partial.
 
 ## 12. Proposed here, not decided in the interview
 
