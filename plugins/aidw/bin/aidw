@@ -974,13 +974,13 @@ var require_Collection = __commonJS({
 var require_stringifyComment = __commonJS({
   "node_modules/yaml/dist/stringify/stringifyComment.js"(exports2) {
     "use strict";
-    var stringifyComment = (str2) => str2.replace(/^(?!$)(?: $)?/gm, "#");
+    var stringifyComment = (str3) => str3.replace(/^(?!$)(?: $)?/gm, "#");
     function indentComment(comment, indent) {
       if (/^\n+$/.test(comment))
         return comment.substring(1);
       return indent ? comment.replace(/^(?! *$)/gm, indent) : comment;
     }
-    var lineComment = (str2, indent, comment) => str2.endsWith("\n") ? indentComment(comment, indent) : comment.includes("\n") ? "\n" + indentComment(comment, indent) : (str2.endsWith(" ") ? "" : " ") + comment;
+    var lineComment = (str3, indent, comment) => str3.endsWith("\n") ? indentComment(comment, indent) : comment.includes("\n") ? "\n" + indentComment(comment, indent) : (str3.endsWith(" ") ? "" : " ") + comment;
     exports2.indentComment = indentComment;
     exports2.lineComment = lineComment;
     exports2.stringifyComment = stringifyComment;
@@ -1134,16 +1134,16 @@ var require_stringifyString = __commonJS({
       lineWidth: ctx.options.lineWidth,
       minContentWidth: ctx.options.minContentWidth
     });
-    var containsDocumentMarker = (str2) => /^(%|---|\.\.\.)/m.test(str2);
-    function lineLengthOverLimit(str2, lineWidth, indentLength) {
+    var containsDocumentMarker = (str3) => /^(%|---|\.\.\.)/m.test(str3);
+    function lineLengthOverLimit(str3, lineWidth, indentLength) {
       if (!lineWidth || lineWidth < 0)
         return false;
       const limit = lineWidth - indentLength;
-      const strLen = str2.length;
+      const strLen = str3.length;
       if (strLen <= limit)
         return false;
       for (let i = 0, start = 0; i < strLen; ++i) {
-        if (str2[i] === "\n") {
+        if (str3[i] === "\n") {
           if (i - start > limit)
             return true;
           start = i + 1;
@@ -1160,11 +1160,11 @@ var require_stringifyString = __commonJS({
       const { implicitKey } = ctx;
       const minMultiLineLength = ctx.options.doubleQuotedMinMultiLineLength;
       const indent = ctx.indent || (containsDocumentMarker(value) ? "  " : "");
-      let str2 = "";
+      let str3 = "";
       let start = 0;
       for (let i = 0, ch = json[i]; ch; ch = json[++i]) {
         if (ch === " " && json[i + 1] === "\\" && json[i + 2] === "n") {
-          str2 += json.slice(start, i) + "\\ ";
+          str3 += json.slice(start, i) + "\\ ";
           i += 1;
           start = i;
           ch = "\\";
@@ -1173,38 +1173,38 @@ var require_stringifyString = __commonJS({
           switch (json[i + 1]) {
             case "u":
               {
-                str2 += json.slice(start, i);
+                str3 += json.slice(start, i);
                 const code2 = json.substr(i + 2, 4);
                 switch (code2) {
                   case "0000":
-                    str2 += "\\0";
+                    str3 += "\\0";
                     break;
                   case "0007":
-                    str2 += "\\a";
+                    str3 += "\\a";
                     break;
                   case "000b":
-                    str2 += "\\v";
+                    str3 += "\\v";
                     break;
                   case "001b":
-                    str2 += "\\e";
+                    str3 += "\\e";
                     break;
                   case "0085":
-                    str2 += "\\N";
+                    str3 += "\\N";
                     break;
                   case "00a0":
-                    str2 += "\\_";
+                    str3 += "\\_";
                     break;
                   case "2028":
-                    str2 += "\\L";
+                    str3 += "\\L";
                     break;
                   case "2029":
-                    str2 += "\\P";
+                    str3 += "\\P";
                     break;
                   default:
                     if (code2.substr(0, 2) === "00")
-                      str2 += "\\x" + code2.substr(2);
+                      str3 += "\\x" + code2.substr(2);
                     else
-                      str2 += json.substr(i, 6);
+                      str3 += json.substr(i, 6);
                 }
                 i += 5;
                 start = i + 1;
@@ -1214,14 +1214,14 @@ var require_stringifyString = __commonJS({
               if (implicitKey || json[i + 2] === '"' || json.length < minMultiLineLength) {
                 i += 1;
               } else {
-                str2 += json.slice(start, i) + "\n\n";
+                str3 += json.slice(start, i) + "\n\n";
                 while (json[i + 2] === "\\" && json[i + 3] === "n" && json[i + 4] !== '"') {
-                  str2 += "\n";
+                  str3 += "\n";
                   i += 2;
                 }
-                str2 += indent;
+                str3 += indent;
                 if (json[i + 2] === " ")
-                  str2 += "\\";
+                  str3 += "\\";
                 i += 1;
                 start = i + 1;
               }
@@ -1230,8 +1230,8 @@ var require_stringifyString = __commonJS({
               i += 1;
           }
       }
-      str2 = start ? str2 + json.slice(start) : json;
-      return implicitKey ? str2 : foldFlowLines.foldFlowLines(str2, indent, foldFlowLines.FOLD_QUOTED, getFoldOptions(ctx, false));
+      str3 = start ? str3 + json.slice(start) : json;
+      return implicitKey ? str3 : foldFlowLines.foldFlowLines(str3, indent, foldFlowLines.FOLD_QUOTED, getFoldOptions(ctx, false));
     }
     function singleQuotedString(value, ctx) {
       if (ctx.options.singleQuote === false || ctx.implicitKey && value.includes("\n") || /[ \t]\n|\n[ \t]/.test(value))
@@ -1359,15 +1359,15 @@ ${indent}${start}${value}${end}`;
           return quotedString(value, ctx);
         }
       }
-      const str2 = value.replace(/\n+/g, `$&
+      const str3 = value.replace(/\n+/g, `$&
 ${indent}`);
       if (actualString) {
-        const test = (tag) => tag.default && tag.tag !== "tag:yaml.org,2002:str" && tag.test?.test(str2);
+        const test = (tag) => tag.default && tag.tag !== "tag:yaml.org,2002:str" && tag.test?.test(str3);
         const { compat, tags } = ctx.doc.schema;
         if (tags.some(test) || compat?.some(test))
           return quotedString(value, ctx);
       }
-      return implicitKey ? str2 : foldFlowLines.foldFlowLines(str2, indent, foldFlowLines.FOLD_FLOW, getFoldOptions(ctx, false));
+      return implicitKey ? str3 : foldFlowLines.foldFlowLines(str3, indent, foldFlowLines.FOLD_FLOW, getFoldOptions(ctx, false));
     }
     function stringifyString(item, ctx, onComment, onChompKeep) {
       const { implicitKey, inFlow } = ctx;
@@ -1518,11 +1518,11 @@ var require_stringify = __commonJS({
       const props = stringifyProps(node, tagObj, ctx);
       if (props.length > 0)
         ctx.indentAtStart = (ctx.indentAtStart ?? 0) + props.length + 1;
-      const str2 = typeof tagObj.stringify === "function" ? tagObj.stringify(node, ctx, onComment, onChompKeep) : identity.isScalar(node) ? stringifyString.stringifyString(node, ctx, onComment, onChompKeep) : node.toString(ctx, onComment, onChompKeep);
+      const str3 = typeof tagObj.stringify === "function" ? tagObj.stringify(node, ctx, onComment, onChompKeep) : identity.isScalar(node) ? stringifyString.stringifyString(node, ctx, onComment, onChompKeep) : node.toString(ctx, onComment, onChompKeep);
       if (!props)
-        return str2;
-      return identity.isScalar(node) || str2[0] === "{" || str2[0] === "[" ? `${props} ${str2}` : `${props}
-${ctx.indent}${str2}`;
+        return str3;
+      return identity.isScalar(node) || str3[0] === "{" || str3[0] === "[" ? `${props} ${str3}` : `${props}
+${ctx.indent}${str3}`;
     }
     exports2.createStringifyContext = createStringifyContext;
     exports2.stringify = stringify;
@@ -1557,8 +1557,8 @@ var require_stringifyPair = __commonJS({
       });
       let keyCommentDone = false;
       let chompKeep = false;
-      let str2 = stringify.stringify(key, ctx, () => keyCommentDone = true, () => chompKeep = true);
-      if (!explicitKey && !ctx.inFlow && str2.length > 1024) {
+      let str3 = stringify.stringify(key, ctx, () => keyCommentDone = true, () => chompKeep = true);
+      if (!explicitKey && !ctx.inFlow && str3.length > 1024) {
         if (simpleKeys)
           throw new Error("With simple keys, single line scalar must not span more than 1024 characters");
         explicitKey = true;
@@ -1567,27 +1567,27 @@ var require_stringifyPair = __commonJS({
         if (allNullValues || value == null) {
           if (keyCommentDone && onComment)
             onComment();
-          return str2 === "" ? "?" : explicitKey ? `? ${str2}` : str2;
+          return str3 === "" ? "?" : explicitKey ? `? ${str3}` : str3;
         }
       } else if (allNullValues && !simpleKeys || value == null && explicitKey) {
-        str2 = `? ${str2}`;
+        str3 = `? ${str3}`;
         if (keyComment && !keyCommentDone) {
-          str2 += stringifyComment.lineComment(str2, ctx.indent, commentString(keyComment));
+          str3 += stringifyComment.lineComment(str3, ctx.indent, commentString(keyComment));
         } else if (chompKeep && onChompKeep)
           onChompKeep();
-        return str2;
+        return str3;
       }
       if (keyCommentDone)
         keyComment = null;
       if (explicitKey) {
         if (keyComment)
-          str2 += stringifyComment.lineComment(str2, ctx.indent, commentString(keyComment));
-        str2 = `? ${str2}
+          str3 += stringifyComment.lineComment(str3, ctx.indent, commentString(keyComment));
+        str3 = `? ${str3}
 ${indent}:`;
       } else {
-        str2 = `${str2}:`;
+        str3 = `${str3}:`;
         if (keyComment)
-          str2 += stringifyComment.lineComment(str2, ctx.indent, commentString(keyComment));
+          str3 += stringifyComment.lineComment(str3, ctx.indent, commentString(keyComment));
       }
       let vsb, vcb, valueComment;
       if (identity.isNode(value)) {
@@ -1603,7 +1603,7 @@ ${indent}:`;
       }
       ctx.implicitKey = false;
       if (!explicitKey && !keyComment && identity.isScalar(value))
-        ctx.indentAtStart = str2.length + 1;
+        ctx.indentAtStart = str3.length + 1;
       chompKeep = false;
       if (!indentSeq && indentStep.length >= 2 && !ctx.inFlow && !explicitKey && identity.isSeq(value) && !value.flow && !value.tag && !value.anchor) {
         ctx.indent = ctx.indent.substring(2);
@@ -1647,16 +1647,16 @@ ${ctx.indent}`;
       } else if (valueStr === "" || valueStr[0] === "\n") {
         ws = "";
       }
-      str2 += ws + valueStr;
+      str3 += ws + valueStr;
       if (ctx.inFlow) {
         if (valueCommentDone && onComment)
           onComment();
       } else if (valueComment && !valueCommentDone) {
-        str2 += stringifyComment.lineComment(str2, ctx.indent, commentString(valueComment));
+        str3 += stringifyComment.lineComment(str3, ctx.indent, commentString(valueComment));
       } else if (chompKeep && onChompKeep) {
         onChompKeep();
       }
-      return str2;
+      return str3;
     }
     exports2.stringifyPair = stringifyPair;
   }
@@ -1880,31 +1880,31 @@ var require_stringifyCollection = __commonJS({
           }
         }
         chompKeep = false;
-        let str3 = stringify.stringify(item, itemCtx, () => comment2 = null, () => chompKeep = true);
+        let str4 = stringify.stringify(item, itemCtx, () => comment2 = null, () => chompKeep = true);
         if (comment2)
-          str3 += stringifyComment.lineComment(str3, itemIndent, commentString(comment2));
+          str4 += stringifyComment.lineComment(str4, itemIndent, commentString(comment2));
         if (chompKeep && comment2)
           chompKeep = false;
-        lines.push(blockItemPrefix + str3);
+        lines.push(blockItemPrefix + str4);
       }
-      let str2;
+      let str3;
       if (lines.length === 0) {
-        str2 = flowChars.start + flowChars.end;
+        str3 = flowChars.start + flowChars.end;
       } else {
-        str2 = lines[0];
+        str3 = lines[0];
         for (let i = 1; i < lines.length; ++i) {
           const line = lines[i];
-          str2 += line ? `
+          str3 += line ? `
 ${indent}${line}` : "\n";
         }
       }
       if (comment) {
-        str2 += "\n" + stringifyComment.indentComment(commentString(comment), indent);
+        str3 += "\n" + stringifyComment.indentComment(commentString(comment), indent);
         if (onComment)
           onComment();
       } else if (chompKeep && onChompKeep)
         onChompKeep();
-      return str2;
+      return str3;
     }
     function stringifyFlowCollection({ items }, ctx, { flowChars, itemIndent }) {
       const { indent, indentStep, flowCollectionPadding: fcPadding, options: { commentString } } = ctx;
@@ -1947,14 +1947,14 @@ ${indent}${line}` : "\n";
         }
         if (comment)
           reqNewline = true;
-        let str2 = stringify.stringify(item, itemCtx, () => comment = null);
+        let str3 = stringify.stringify(item, itemCtx, () => comment = null);
         if (i < items.length - 1)
-          str2 += ",";
+          str3 += ",";
         if (comment)
-          str2 += stringifyComment.lineComment(str2, itemIndent, commentString(comment));
-        if (!reqNewline && (lines.length > linesAtValue || str2.includes("\n")))
+          str3 += stringifyComment.lineComment(str3, itemIndent, commentString(comment));
+        if (!reqNewline && (lines.length > linesAtValue || str3.includes("\n")))
           reqNewline = true;
-        lines.push(str2);
+        lines.push(str3);
         linesAtValue = lines.length;
       }
       const { start, end } = flowChars;
@@ -1966,11 +1966,11 @@ ${indent}${line}` : "\n";
           reqNewline = ctx.options.lineWidth > 0 && len > ctx.options.lineWidth;
         }
         if (reqNewline) {
-          let str2 = start;
+          let str3 = start;
           for (const line of lines)
-            str2 += line ? `
+            str3 += line ? `
 ${indentStep}${indent}${line}` : "\n";
-          return `${str2}
+          return `${str3}
 ${indent}${end}`;
         } else {
           return `${start}${fcPadding}${lines.join(" ")}${fcPadding}${end}`;
@@ -2302,7 +2302,7 @@ var require_string = __commonJS({
       identify: (value) => typeof value === "string",
       default: true,
       tag: "tag:yaml.org,2002:str",
-      resolve: (str2) => str2,
+      resolve: (str3) => str3,
       stringify(item, ctx, onComment, onChompKeep) {
         ctx = Object.assign({ actualString: true }, ctx);
         return stringifyString.stringifyString(item, ctx, onComment, onChompKeep);
@@ -2340,7 +2340,7 @@ var require_bool = __commonJS({
       default: true,
       tag: "tag:yaml.org,2002:bool",
       test: /^(?:[Tt]rue|TRUE|[Ff]alse|FALSE)$/,
-      resolve: (str2) => new Scalar.Scalar(str2[0] === "t" || str2[0] === "T"),
+      resolve: (str3) => new Scalar.Scalar(str3[0] === "t" || str3[0] === "T"),
       stringify({ source, value }, ctx) {
         if (source && boolTag.test.test(source)) {
           const sv = source[0] === "t" || source[0] === "T";
@@ -2392,7 +2392,7 @@ var require_float = __commonJS({
       default: true,
       tag: "tag:yaml.org,2002:float",
       test: /^(?:[-+]?\.(?:inf|Inf|INF)|\.nan|\.NaN|\.NAN)$/,
-      resolve: (str2) => str2.slice(-3).toLowerCase() === "nan" ? NaN : str2[0] === "-" ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY,
+      resolve: (str3) => str3.slice(-3).toLowerCase() === "nan" ? NaN : str3[0] === "-" ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY,
       stringify: stringifyNumber.stringifyNumber
     };
     var floatExp = {
@@ -2401,7 +2401,7 @@ var require_float = __commonJS({
       tag: "tag:yaml.org,2002:float",
       format: "EXP",
       test: /^[-+]?(?:\.[0-9]+|[0-9]+(?:\.[0-9]*)?)[eE][-+]?[0-9]+$/,
-      resolve: (str2) => parseFloat(str2),
+      resolve: (str3) => parseFloat(str3),
       stringify(node) {
         const num = Number(node.value);
         return isFinite(num) ? num.toExponential() : stringifyNumber.stringifyNumber(node);
@@ -2412,11 +2412,11 @@ var require_float = __commonJS({
       default: true,
       tag: "tag:yaml.org,2002:float",
       test: /^[-+]?(?:\.[0-9]+|[0-9]+\.[0-9]*)$/,
-      resolve(str2) {
-        const node = new Scalar.Scalar(parseFloat(str2));
-        const dot = str2.indexOf(".");
-        if (dot !== -1 && str2[str2.length - 1] === "0")
-          node.minFractionDigits = str2.length - dot - 1;
+      resolve(str3) {
+        const node = new Scalar.Scalar(parseFloat(str3));
+        const dot = str3.indexOf(".");
+        if (dot !== -1 && str3[str3.length - 1] === "0")
+          node.minFractionDigits = str3.length - dot - 1;
         return node;
       },
       stringify: stringifyNumber.stringifyNumber
@@ -2433,7 +2433,7 @@ var require_int = __commonJS({
     "use strict";
     var stringifyNumber = require_stringifyNumber();
     var intIdentify = (value) => typeof value === "bigint" || Number.isInteger(value);
-    var intResolve = (str2, offset, radix, { intAsBigInt }) => intAsBigInt ? BigInt(str2) : parseInt(str2.substring(offset), radix);
+    var intResolve = (str3, offset, radix, { intAsBigInt }) => intAsBigInt ? BigInt(str3) : parseInt(str3.substring(offset), radix);
     function intStringify(node, radix, prefix) {
       const { value } = node;
       if (intIdentify(value) && value >= 0)
@@ -2446,7 +2446,7 @@ var require_int = __commonJS({
       tag: "tag:yaml.org,2002:int",
       format: "OCT",
       test: /^0o[0-7]+$/,
-      resolve: (str2, _onError, opt) => intResolve(str2, 2, 8, opt),
+      resolve: (str3, _onError, opt) => intResolve(str3, 2, 8, opt),
       stringify: (node) => intStringify(node, 8, "0o")
     };
     var int = {
@@ -2454,7 +2454,7 @@ var require_int = __commonJS({
       default: true,
       tag: "tag:yaml.org,2002:int",
       test: /^[-+]?[0-9]+$/,
-      resolve: (str2, _onError, opt) => intResolve(str2, 0, 10, opt),
+      resolve: (str3, _onError, opt) => intResolve(str3, 0, 10, opt),
       stringify: stringifyNumber.stringifyNumber
     };
     var intHex = {
@@ -2463,7 +2463,7 @@ var require_int = __commonJS({
       tag: "tag:yaml.org,2002:int",
       format: "HEX",
       test: /^0x[0-9a-fA-F]+$/,
-      resolve: (str2, _onError, opt) => intResolve(str2, 2, 16, opt),
+      resolve: (str3, _onError, opt) => intResolve(str3, 2, 16, opt),
       stringify: (node) => intStringify(node, 16, "0x")
     };
     exports2.int = int;
@@ -2516,7 +2516,7 @@ var require_schema2 = __commonJS({
         identify: (value) => typeof value === "string",
         default: true,
         tag: "tag:yaml.org,2002:str",
-        resolve: (str2) => str2,
+        resolve: (str3) => str3,
         stringify: stringifyJSON
       },
       {
@@ -2533,7 +2533,7 @@ var require_schema2 = __commonJS({
         default: true,
         tag: "tag:yaml.org,2002:bool",
         test: /^true$|^false$/,
-        resolve: (str2) => str2 === "true",
+        resolve: (str3) => str3 === "true",
         stringify: stringifyJSON
       },
       {
@@ -2541,7 +2541,7 @@ var require_schema2 = __commonJS({
         default: true,
         tag: "tag:yaml.org,2002:int",
         test: /^-?(?:0|[1-9][0-9]*)$/,
-        resolve: (str2, _onError, { intAsBigInt }) => intAsBigInt ? BigInt(str2) : parseInt(str2, 10),
+        resolve: (str3, _onError, { intAsBigInt }) => intAsBigInt ? BigInt(str3) : parseInt(str3, 10),
         stringify: ({ value }) => intIdentify(value) ? value.toString() : JSON.stringify(value)
       },
       {
@@ -2549,7 +2549,7 @@ var require_schema2 = __commonJS({
         default: true,
         tag: "tag:yaml.org,2002:float",
         test: /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]*)?(?:[eE][-+]?[0-9]+)?$/,
-        resolve: (str2) => parseFloat(str2),
+        resolve: (str3) => parseFloat(str3),
         stringify: stringifyJSON
       }
     ];
@@ -2557,9 +2557,9 @@ var require_schema2 = __commonJS({
       default: true,
       tag: "",
       test: /^/,
-      resolve(str2, onError) {
-        onError(`Unresolved plain scalar ${JSON.stringify(str2)}`);
-        return str2;
+      resolve(str3, onError) {
+        onError(`Unresolved plain scalar ${JSON.stringify(str3)}`);
+        return str3;
       }
     };
     var schema = [map.map, seq.seq].concat(jsonScalars, jsonError);
@@ -2591,10 +2591,10 @@ var require_binary = __commonJS({
         if (typeof node_buffer.Buffer === "function") {
           return node_buffer.Buffer.from(src, "base64");
         } else if (typeof atob === "function") {
-          const str2 = atob(src.replace(/[\n\r]/g, ""));
-          const buffer = new Uint8Array(str2.length);
-          for (let i = 0; i < str2.length; ++i)
-            buffer[i] = str2.charCodeAt(i);
+          const str3 = atob(src.replace(/[\n\r]/g, ""));
+          const buffer = new Uint8Array(str3.length);
+          for (let i = 0; i < str3.length; ++i)
+            buffer[i] = str3.charCodeAt(i);
           return buffer;
         } else {
           onError("This environment does not support reading binary tags; either Buffer or atob is required");
@@ -2605,28 +2605,28 @@ var require_binary = __commonJS({
         if (!value)
           return "";
         const buf = value;
-        let str2;
+        let str3;
         if (typeof node_buffer.Buffer === "function") {
-          str2 = buf instanceof node_buffer.Buffer ? buf.toString("base64") : node_buffer.Buffer.from(buf.buffer).toString("base64");
+          str3 = buf instanceof node_buffer.Buffer ? buf.toString("base64") : node_buffer.Buffer.from(buf.buffer).toString("base64");
         } else if (typeof btoa === "function") {
           let s = "";
           for (let i = 0; i < buf.length; ++i)
             s += String.fromCharCode(buf[i]);
-          str2 = btoa(s);
+          str3 = btoa(s);
         } else {
           throw new Error("This environment does not support writing binary tags; either Buffer or btoa is required");
         }
         type ?? (type = Scalar.Scalar.BLOCK_LITERAL);
         if (type !== Scalar.Scalar.QUOTE_DOUBLE) {
           const lineWidth = Math.max(ctx.options.lineWidth - ctx.indent.length, ctx.options.minContentWidth);
-          const n = Math.ceil(str2.length / lineWidth);
+          const n = Math.ceil(str3.length / lineWidth);
           const lines = new Array(n);
           for (let i = 0, o = 0; i < n; ++i, o += lineWidth) {
-            lines[i] = str2.substr(o, lineWidth);
+            lines[i] = str3.substr(o, lineWidth);
           }
-          str2 = lines.join(type === Scalar.Scalar.BLOCK_LITERAL ? "\n" : " ");
+          str3 = lines.join(type === Scalar.Scalar.BLOCK_LITERAL ? "\n" : " ");
         }
-        return stringifyString.stringifyString({ comment, type, value: str2 }, ctx, onComment, onChompKeep);
+        return stringifyString.stringifyString({ comment, type, value: str3 }, ctx, onComment, onChompKeep);
       }
     };
     exports2.binary = binary;
@@ -2832,7 +2832,7 @@ var require_float2 = __commonJS({
       default: true,
       tag: "tag:yaml.org,2002:float",
       test: /^(?:[-+]?\.(?:inf|Inf|INF)|\.nan|\.NaN|\.NAN)$/,
-      resolve: (str2) => str2.slice(-3).toLowerCase() === "nan" ? NaN : str2[0] === "-" ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY,
+      resolve: (str3) => str3.slice(-3).toLowerCase() === "nan" ? NaN : str3[0] === "-" ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY,
       stringify: stringifyNumber.stringifyNumber
     };
     var floatExp = {
@@ -2841,7 +2841,7 @@ var require_float2 = __commonJS({
       tag: "tag:yaml.org,2002:float",
       format: "EXP",
       test: /^[-+]?(?:[0-9][0-9_]*)?(?:\.[0-9_]*)?[eE][-+]?[0-9]+$/,
-      resolve: (str2) => parseFloat(str2.replace(/_/g, "")),
+      resolve: (str3) => parseFloat(str3.replace(/_/g, "")),
       stringify(node) {
         const num = Number(node.value);
         return isFinite(num) ? num.toExponential() : stringifyNumber.stringifyNumber(node);
@@ -2852,11 +2852,11 @@ var require_float2 = __commonJS({
       default: true,
       tag: "tag:yaml.org,2002:float",
       test: /^[-+]?(?:[0-9][0-9_]*)?\.[0-9_]*$/,
-      resolve(str2) {
-        const node = new Scalar.Scalar(parseFloat(str2.replace(/_/g, "")));
-        const dot = str2.indexOf(".");
+      resolve(str3) {
+        const node = new Scalar.Scalar(parseFloat(str3.replace(/_/g, "")));
+        const dot = str3.indexOf(".");
         if (dot !== -1) {
-          const f = str2.substring(dot + 1).replace(/_/g, "");
+          const f = str3.substring(dot + 1).replace(/_/g, "");
           if (f[f.length - 1] === "0")
             node.minFractionDigits = f.length;
         }
@@ -2876,34 +2876,34 @@ var require_int2 = __commonJS({
     "use strict";
     var stringifyNumber = require_stringifyNumber();
     var intIdentify = (value) => typeof value === "bigint" || Number.isInteger(value);
-    function intResolve(str2, offset, radix, { intAsBigInt }) {
-      const sign = str2[0];
+    function intResolve(str3, offset, radix, { intAsBigInt }) {
+      const sign = str3[0];
       if (sign === "-" || sign === "+")
         offset += 1;
-      str2 = str2.substring(offset).replace(/_/g, "");
+      str3 = str3.substring(offset).replace(/_/g, "");
       if (intAsBigInt) {
         switch (radix) {
           case 2:
-            str2 = `0b${str2}`;
+            str3 = `0b${str3}`;
             break;
           case 8:
-            str2 = `0o${str2}`;
+            str3 = `0o${str3}`;
             break;
           case 16:
-            str2 = `0x${str2}`;
+            str3 = `0x${str3}`;
             break;
         }
-        const n2 = BigInt(str2);
+        const n2 = BigInt(str3);
         return sign === "-" ? BigInt(-1) * n2 : n2;
       }
-      const n = parseInt(str2, radix);
+      const n = parseInt(str3, radix);
       return sign === "-" ? -1 * n : n;
     }
     function intStringify(node, radix, prefix) {
       const { value } = node;
       if (intIdentify(value)) {
-        const str2 = value.toString(radix);
-        return value < 0 ? "-" + prefix + str2.substr(1) : prefix + str2;
+        const str3 = value.toString(radix);
+        return value < 0 ? "-" + prefix + str3.substr(1) : prefix + str3;
       }
       return stringifyNumber.stringifyNumber(node);
     }
@@ -2913,7 +2913,7 @@ var require_int2 = __commonJS({
       tag: "tag:yaml.org,2002:int",
       format: "BIN",
       test: /^[-+]?0b[0-1_]+$/,
-      resolve: (str2, _onError, opt) => intResolve(str2, 2, 2, opt),
+      resolve: (str3, _onError, opt) => intResolve(str3, 2, 2, opt),
       stringify: (node) => intStringify(node, 2, "0b")
     };
     var intOct = {
@@ -2922,7 +2922,7 @@ var require_int2 = __commonJS({
       tag: "tag:yaml.org,2002:int",
       format: "OCT",
       test: /^[-+]?0[0-7_]+$/,
-      resolve: (str2, _onError, opt) => intResolve(str2, 1, 8, opt),
+      resolve: (str3, _onError, opt) => intResolve(str3, 1, 8, opt),
       stringify: (node) => intStringify(node, 8, "0")
     };
     var int = {
@@ -2930,7 +2930,7 @@ var require_int2 = __commonJS({
       default: true,
       tag: "tag:yaml.org,2002:int",
       test: /^[-+]?[0-9][0-9_]*$/,
-      resolve: (str2, _onError, opt) => intResolve(str2, 0, 10, opt),
+      resolve: (str3, _onError, opt) => intResolve(str3, 0, 10, opt),
       stringify: stringifyNumber.stringifyNumber
     };
     var intHex = {
@@ -2939,7 +2939,7 @@ var require_int2 = __commonJS({
       tag: "tag:yaml.org,2002:int",
       format: "HEX",
       test: /^[-+]?0x[0-9a-fA-F_]+$/,
-      resolve: (str2, _onError, opt) => intResolve(str2, 2, 16, opt),
+      resolve: (str3, _onError, opt) => intResolve(str3, 2, 16, opt),
       stringify: (node) => intStringify(node, 16, "0x")
     };
     exports2.int = int;
@@ -3043,9 +3043,9 @@ var require_timestamp = __commonJS({
   "node_modules/yaml/dist/schema/yaml-1.1/timestamp.js"(exports2) {
     "use strict";
     var stringifyNumber = require_stringifyNumber();
-    function parseSexagesimal(str2, asBigInt) {
-      const sign = str2[0];
-      const parts = sign === "-" || sign === "+" ? str2.substring(1) : str2;
+    function parseSexagesimal(str3, asBigInt) {
+      const sign = str3[0];
+      const parts = sign === "-" || sign === "+" ? str3.substring(1) : str3;
       const num = (n) => asBigInt ? BigInt(n) : Number(n);
       const res = parts.replace(/_/g, "").split(":").reduce((res2, p) => res2 * num(60) + num(p), num(0));
       return sign === "-" ? num(-1) * res : res;
@@ -3082,7 +3082,7 @@ var require_timestamp = __commonJS({
       tag: "tag:yaml.org,2002:int",
       format: "TIME",
       test: /^[-+]?[0-9][0-9_]*(?::[0-5]?[0-9])+$/,
-      resolve: (str2, _onError, { intAsBigInt }) => parseSexagesimal(str2, intAsBigInt),
+      resolve: (str3, _onError, { intAsBigInt }) => parseSexagesimal(str3, intAsBigInt),
       stringify: stringifySexagesimal
     };
     var floatTime = {
@@ -3091,7 +3091,7 @@ var require_timestamp = __commonJS({
       tag: "tag:yaml.org,2002:float",
       format: "TIME",
       test: /^[-+]?[0-9][0-9_]*(?::[0-5]?[0-9])+\.[0-9_]*$/,
-      resolve: (str2) => parseSexagesimal(str2, false),
+      resolve: (str3) => parseSexagesimal(str3, false),
       stringify: stringifySexagesimal
     };
     var timestamp = {
@@ -3102,8 +3102,8 @@ var require_timestamp = __commonJS({
       // may be omitted altogether, resulting in a date format. In such a case, the time part is
       // assumed to be 00:00:00Z (start of day, UTC).
       test: RegExp("^([0-9]{4})-([0-9]{1,2})-([0-9]{1,2})(?:(?:t|T|[ \\t]+)([0-9]{1,2}):([0-9]{1,2}):([0-9]{1,2}(\\.[0-9]+)?)(?:[ \\t]*(Z|[-+][012]?[0-9](?::[0-9]{2})?))?)?$"),
-      resolve(str2) {
-        const match = str2.match(timestamp.test);
+      resolve(str3) {
+        const match = str3.match(timestamp.test);
         if (!match)
           throw new Error("!!timestamp expects a date, starting with yyyy-mm-dd");
         const [, year, month, day, hour, minute, second] = match.map(Number);
@@ -7329,11 +7329,11 @@ __export(cli_exports, {
   run: () => run
 });
 module.exports = __toCommonJS(cli_exports);
-var import_node_fs48 = require("node:fs");
-var import_node_path53 = require("node:path");
+var import_node_fs49 = require("node:fs");
+var import_node_path54 = require("node:path");
 var import_node_child_process15 = require("node:child_process");
 var import_node_url = require("node:url");
-var import_yaml26 = __toESM(require_dist(), 1);
+var import_yaml27 = __toESM(require_dist(), 1);
 
 // src/page.ts
 var import_node_crypto = require("node:crypto");
@@ -8560,10 +8560,10 @@ ${why ? `${why}
 Task: ${t.id}
 Evidence: ${evidence}`;
 }
-function aidwCommitMessage(subject, footer) {
+function aidwCommitMessage(subject, footer2) {
   return `${header("chore", "aidw", subject)}
 
-${footer}`;
+${footer2}`;
 }
 var HEADER_RE = new RegExp(`^(${COMMIT_TYPES.join("|")})(\\([a-z0-9]+(?:-[a-z0-9]+)*\\))?!?: \\S.*$`);
 
@@ -10066,8 +10066,8 @@ function requestOf(cmd2, env) {
       { "--draft": "draft", "-d": "draft", "--fill": "fill", "-f": "fill" }
     );
     if (!o || o.args.length || typeof o.flags.base !== "string" || typeof o.flags.head !== "string") return null;
-    const str2 = (v) => typeof v === "string" ? v : null;
-    return { kind: "pr", base: o.flags.base, head: o.flags.head, repo: str2(o.flags.repo), bodyFile: str2(o.flags.bodyFile) };
+    const str3 = (v) => typeof v === "string" ? v : null;
+    return { kind: "pr", base: o.flags.base, head: o.flags.head, repo: str3(o.flags.repo), bodyFile: str3(o.flags.bodyFile) };
   }
   if (w[0] && aidwBinPaths(env).includes(w[0]) && w[1] === "pr") {
     const o = splitFlags(w.slice(2), { "--change": "change", "--base": "base" }, { "--create": "create", "--draft": "draft", "--json": "json" });
@@ -10680,13 +10680,13 @@ function agentRunStatus(_p, change) {
   if (runs === null) return { used: cap, cap, reached: true, unreadable: true };
   return { used: runs.length, cap, reached: runs.length >= cap };
 }
-function countAgentRun(change, kind, key, task) {
+function countAgentRun(change, kind, key, task, who2 = {}) {
   if (!BUILD_STATES.has(String(stateOf(change)))) return false;
   const runs = agentRuns(change);
   if (runs === null) return false;
   const full = `${kind}:${key}`;
   if (runs.some((r) => r.key === full)) return false;
-  runs.push({ key: full, kind, at: (/* @__PURE__ */ new Date()).toISOString(), ...task ? { task } : {} });
+  runs.push({ key: full, kind, at: (/* @__PURE__ */ new Date()).toISOString(), ...task ? { task } : {}, ...who2.role ? { role: who2.role } : {}, ...who2.agent ? { agent: who2.agent } : {} });
   (0, import_node_fs15.mkdirSync)((0, import_node_path18.join)(change.dir, "evidence"), { recursive: true });
   (0, import_node_fs15.writeFileSync)(runsFile(change), `${JSON.stringify({ runs }, null, 2)}
 `);
@@ -15761,16 +15761,16 @@ function parseDbml(text2) {
   const tables = /* @__PURE__ */ new Map();
   const enums = /* @__PURE__ */ new Map();
   const lines = text2.replace(/\/\*[\s\S]*?\*\//g, "").split(/\r?\n/).map((l) => l.replace(/\/\/.*$/, "").trim());
-  let table = null;
+  let table2 = null;
   let en = null;
   let nested = 0;
   const unquote = (s) => s.replace(/^["'`]|["'`]$/g, "");
   for (const l of lines) {
     if (!l) continue;
-    if (!table && !en) {
+    if (!table2 && !en) {
       const t = /^table\s+("[^"]+"|[\w.]+)(?:\s+as\s+\w+)?\s*(?:\[[^\]]*\])?\s*\{$/i.exec(l);
       const e = /^enum\s+("[^"]+"|[\w.]+)\s*\{$/i.exec(l);
-      if (t) tables.set(unquote(t[1]).toLowerCase(), table = /* @__PURE__ */ new Map());
+      if (t) tables.set(unquote(t[1]).toLowerCase(), table2 = /* @__PURE__ */ new Map());
       else if (e) enums.set(unquote(e[1]).toLowerCase(), en = /* @__PURE__ */ new Set());
       continue;
     }
@@ -15780,7 +15780,7 @@ function parseDbml(text2) {
       continue;
     }
     if (l.startsWith("}")) {
-      table = null;
+      table2 = null;
       en = null;
       continue;
     }
@@ -15795,7 +15795,7 @@ function parseDbml(text2) {
       continue;
     }
     const col = /^("[^"]+"|[\w]+)\s+("[^"]+"|[\w.()," ]+?)\s*(\[.*\])?$/.exec(l);
-    if (col && table) table.set(unquote(col[1]).toLowerCase(), { type: col[2].replace(/\s+/g, "").toLowerCase(), settings: (col[3] ?? "").toLowerCase() });
+    if (col && table2) table2.set(unquote(col[1]).toLowerCase(), { type: col[2].replace(/\s+/g, "").toLowerCase(), settings: (col[3] ?? "").toLowerCase() });
   }
   return { tables, enums };
 }
@@ -16865,6 +16865,7 @@ function designEvidence(p, id, t, changed, since) {
     screenshots: taskShots(p, id, t.id, since)
   };
 }
+var runsOf = (t) => Number.isInteger(t.runs) ? Number(t.runs) : void 0;
 var evidenceRel = (taskId) => `evidence/${taskId}.json`;
 function readEvidence2(change, t) {
   const file = (0, import_node_path42.join)(change.dir, evidenceRel(t.id));
@@ -16984,10 +16985,15 @@ function checkpoint(p, id, taskId, opts = {}) {
   const packages = packageEvidence(dir, base2, changed);
   const guardsOk = tamperOk && !config?.locked.length && secrets.length === 0 && !packages?.blocked.length;
   const ok = verifyOk && missing.length === 0 && designOk && regressionOk && guardsOk;
+  const failed = verify2.find((v) => v.exit !== 0);
+  const refused = failed && !failed.timedOut ? ENVIRONMENT_FAILURE.exec(failed.tail)?.[0] : void 0;
   const record2 = {
     attempt: attemptsOf(t),
     at: now7(),
     ok,
+    ...runsOf(t) !== void 0 ? { run: runsOf(t) } : {},
+    ...opts.agent ? { agent: opts.agent } : {},
+    ...refused ? { blocked: true } : {},
     base: base2,
     scenarios,
     missing_scenarios: missing,
@@ -17006,7 +17012,6 @@ function checkpoint(p, id, taskId, opts = {}) {
   writeEvidence(tf.change, ev);
   const problems = [];
   if (missing.length) problems.push(`no test names scenario ${missing.join(", ")}`);
-  const failed = verify2.find((v) => v.exit !== 0);
   if (failed) problems.push(`verify failed: \`${failed.command}\`${failed.timedOut ? " (timed out)" : ` (exit ${failed.exit})`}`);
   if (regression?.status === "not-red") problems.push(`no regression proof: ${regression.reason}`);
   problems.push(...tamperProblems(tamper));
@@ -17015,7 +17020,6 @@ function checkpoint(p, id, taskId, opts = {}) {
   problems.push(...packageProblems(packages));
   if (design?.missing_tokens.length) problems.push(`design tokens not in the code: ${design.missing_tokens.join(", ")}`);
   if (design && design.screenshots.length === 0) problems.push(`no fresh screenshot in ${rel(p, shotsDir(p, id, taskId))}`);
-  const refused = failed && !failed.timedOut ? ENVIRONMENT_FAILURE.exec(failed.tail)?.[0] : void 0;
   if (refused) {
     const why = `environment: \`${failed.command}\` was refused by the machine (${refused}), not by the code`;
     const evidence = rel(p, (0, import_node_path42.join)(tf.change.dir, evidenceRel(taskId)));
@@ -17074,7 +17078,16 @@ function recordReview(p, id, taskId, verdict, notes, opts = {}) {
   const mergeReview = statusOf5(t) === "conflict" && isRecord9(t.conflict) && t.conflict.phase === "review";
   if (statusOf5(t) !== "review" && !mergeReview) throw new OpError(`task ${taskId} is "${statusOf5(t)}"; only a checkpointed task (review) can be reviewed`);
   const ev = readEvidence2(tf.change, t);
-  ev.reviews.push({ attempt: attemptsOf(t), at: now7(), verdict, notes: notes.trim() });
+  ev.reviews.push({
+    attempt: attemptsOf(t),
+    at: now7(),
+    verdict,
+    notes: notes.trim(),
+    ...runsOf(t) !== void 0 ? { run: runsOf(t) } : {},
+    ...opts.agent && !opts.auto ? { agent: opts.agent } : {},
+    ...opts.auto ? { auto: true } : {},
+    ...mergeReview ? { merge: true } : {}
+  });
   writeEvidence(tf.change, ev);
   if (mergeReview) {
     if (verdict === "fix") {
@@ -17239,11 +17252,11 @@ function autoReview(p, id, taskId, changed) {
     const text2 = readText(qualityFile(tf.change));
     const layer = text2 === null ? void 0 : parseQuality(text2, "quality.yaml").config?.layers.find((l) => l.name === t.layer);
     if (!layer?.review) return null;
-    return recordReview(p, id, taskId, "pass", `auto-reviewed: a fix for the ${layer.name} layer (checkpoint passed); the ${layer.review} reviewer judges the layer again next.`);
+    return recordReview(p, id, taskId, "pass", `auto-reviewed: a fix for the ${layer.name} layer (checkpoint passed); the ${layer.review} reviewer judges the layer again next.`, { auto: true });
   }
   if (t.origin !== "converge") return null;
   if (!changed.every((f) => TEST_FILE.test(f))) return null;
-  return recordReview(p, id, taskId, "pass", "auto-reviewed: a converge task that changed only test files (checkpoint passed; `aidw converge` re-checks every scenario).");
+  return recordReview(p, id, taskId, "pass", "auto-reviewed: a converge task that changed only test files (checkpoint passed; `aidw converge` re-checks every scenario).", { auto: true });
 }
 function integrateChange(p, id, opts = {}) {
   const tf = loadTasks(p, id);
@@ -17593,6 +17606,28 @@ ${r.notes.trim()}`);
   (0, import_node_fs37.writeFileSync)(path, text2);
   return { path, text: text2 };
 }
+var TRIAGE_SUMMARY_MAX = 500;
+function triageSummary(diagnosis) {
+  const lines = diagnosis.split(/\r?\n/).map((l) => l.trimEnd());
+  let out = "";
+  for (const l of lines) {
+    if (!l.trim() && !out) continue;
+    const next = out ? `${out}
+${l}` : l;
+    if (next.length > TRIAGE_SUMMARY_MAX) {
+      if (!out) out = l.slice(0, TRIAGE_SUMMARY_MAX);
+      break;
+    }
+    out = next;
+  }
+  return out.trim();
+}
+function appendTriage(change, t, entry) {
+  const ev = readEvidence2(change, t);
+  const record2 = { ...runsOf(t) !== void 0 ? { run: runsOf(t) } : {}, at: now7(), ...entry, summary: triageSummary(entry.summary) };
+  ev.triage = [...Array.isArray(ev.triage) ? ev.triage : [], record2];
+  writeEvidence(change, ev);
+}
 function recordTriage(p, id, taskId, text2, opts = {}) {
   const tf = loadTasks(p, id);
   requireExecuting(p, tf.change);
@@ -17601,6 +17636,7 @@ function recordTriage(p, id, taskId, text2, opts = {}) {
   if (t.triage !== void 0) throw new OpError(`task ${taskId} was already triaged: one triage per failure`);
   if (statusOf5(t) !== "failed" || attemptsOf(t) < maxAttemptsOf(t)) throw new OpError(`task ${taskId} is "${statusOf5(t)}" with ${attemptsOf(t)} of ${maxAttemptsOf(t)} attempts: triage is for a failed task that ran out of attempts`);
   if (opts.unclear) {
+    appendTriage(tf.change, t, { cause: "unclear", summary: "triage gave no clear cause", outcome: "not_built" });
     setField2(tf, i, "triage", { cause: "unclear", at: now7() });
     saveTasks(tf);
     const marked = markNotBuilt(p, tf, taskId, `triage gave no clear cause; the task's last note: ${String(t.notes ?? "")}`, "triage");
@@ -17612,12 +17648,15 @@ function recordTriage(p, id, taskId, text2, opts = {}) {
   const gist = diagnosis.split("\n").find((l) => l.trim()) ?? "";
   const full = `(full diagnosis: .aidw/run/triage-${taskId}.md)`;
   setField2(tf, i, "triage", { cause, at: now7() });
+  const files = parsed.files?.length ? { files: parsed.files } : {};
   if (cause === "implementation") {
+    appendTriage(tf.change, t, { cause, summary: diagnosis, ...files, outcome: "retry" });
     setField2(tf, i, "notes", `triage: implementation, one more attempt: ${gist}`.slice(0, 500));
     saveTasks(tf);
     return { task: taskId, cause, outcome: "retry", diagnosis };
   }
   if (cause === "environment") {
+    appendTriage(tf.change, t, { cause, summary: diagnosis, ...files, outcome: "not_built" });
     saveTasks(tf);
     const marked = markNotBuilt(p, tf, taskId, `triage: environment. ${gist} ${full}`, "environment");
     return { task: taskId, cause, outcome: "not_built", diagnosis, not_built: marked };
@@ -17627,14 +17666,16 @@ function recordTriage(p, id, taskId, text2, opts = {}) {
   const fromAidw = (f) => (0, import_node_path42.relative)(p.aidw, (0, import_node_path42.join)(p.project, f)).split(import_node_path42.sep).join("/");
   const owner = named.length && opts.pluginHome ? authorsOf(opts.pluginHome, id, fromAidw(named[0]))[0] : void 0;
   const role = owner ?? authorOf(cause, opts.pluginHome);
-  const files = owner && opts.pluginHome ? named.filter((f) => authorsOf(opts.pluginHome, id, fromAidw(f)).includes(owner)) : void 0;
+  const ownFiles = owner && opts.pluginHome ? named.filter((f) => authorsOf(opts.pluginHome, id, fromAidw(f)).includes(owner)) : void 0;
   if (done >= MAX_UPSTREAM_ROUNDS) {
+    appendTriage(tf.change, t, { cause, summary: diagnosis, ...files, outcome: "not_built", role });
     saveTasks(tf);
     const marked = markNotBuilt(p, tf, taskId, `triage: ${cause} after ${MAX_UPSTREAM_ROUNDS} upstream rounds by ${role}. ${gist} ${full}`, "triage");
     return { task: taskId, cause, outcome: "not_built", diagnosis, role, not_built: marked };
   }
   const round = done + 1;
-  setField2(tf, i, "upstream", { cause, role, round, phase: "open", at: now7(), ...files?.length ? { files } : {} });
+  appendTriage(tf.change, t, { cause, summary: diagnosis, ...files, outcome: "upstream", role, round });
+  setField2(tf, i, "upstream", { cause, role, round, phase: "open", at: now7(), ...ownFiles?.length ? { files: ownFiles } : {} });
   setField2(tf, i, "notes", `triage: ${cause}, upstream round ${round} of ${MAX_UPSTREAM_ROUNDS}: ${role} fixes its Artifact. ${gist} ${full}`.slice(0, 500));
   saveTasks(tf);
   return { task: taskId, cause, outcome: "upstream", diagnosis, role, round };
@@ -18289,13 +18330,13 @@ function caseDigest(root, caseFile) {
   return digestOf2(root, (0, import_node_fs40.existsSync)((0, import_node_path45.join)(root, caseFile)) ? [caseFile] : []);
 }
 function checkCoverage(root, id, cases, d) {
-  const table = loadRuleTable(root, id);
+  const table2 = loadRuleTable(root, id);
   const skills = (loadRole(root, id)?.skills ?? []).map((s) => s.name);
-  const known = /* @__PURE__ */ new Set([...(table ?? []).map((r) => r.id), ...skills]);
+  const known = /* @__PURE__ */ new Set([...(table2 ?? []).map((r) => r.id), ...skills]);
   for (const c of cases) for (const x of c.covers) if (!known.has(x)) d.error(c.file, `covers "${x}" is not a rule id or a skill of ${id}`);
-  if (!table) return;
+  if (!table2) return;
   const covered = new Set(cases.flatMap((c) => c.covers));
-  for (const r of table) if (!covered.has(r.id)) d.error(`roles/${id}/evals`, `rule ${r.id} has no case (add it to a case's covers:)`);
+  for (const r of table2) if (!covered.has(r.id)) d.error(`roles/${id}/evals`, `rule ${r.id} has no case (add it to a case's covers:)`);
   for (const s of skills) if (!covered.has(s)) d.error(`roles/${id}/evals`, `skill ${s} has no case (add it to a case's covers:)`);
   const rf = `roles/${id}/evals/results.json`;
   const file = resultsFile(root, id);
@@ -19659,7 +19700,7 @@ function runLevel2Once(c, n, o, nodeModules) {
       } catch {
         rep = {};
       }
-      const ran = Number(rep.numPassedTests ?? 0) + Number(rep.numFailedTests ?? 0);
+      const ran2 = Number(rep.numPassedTests ?? 0) + Number(rep.numFailedTests ?? 0);
       const l = grade(`node_modules/.bin/vitest list --config ${q(config)} --json="$TMPDIR/held-out-list.json" ${testFiles2.map(q).join(" ")}`, () => ({}), ["held-out-list.json"]);
       let listed = null;
       try {
@@ -19673,7 +19714,7 @@ function runLevel2Once(c, n, o, nodeModules) {
         listed = null;
       }
       const declared = listed ?? testFiles2.reduce((k, f) => k + countDeclaredTests((0, import_node_fs42.readFileSync)((0, import_node_path47.join)(caseDir, f), "utf8")), 0);
-      if (ran < declared) failed.push(`ran ${ran} of the ${declared} held-out tests`);
+      if (ran2 < declared) failed.push(`ran ${ran2} of the ${declared} held-out tests`);
       const named = (rep.testResults ?? []).flatMap((x) => x.assertionResults ?? []).filter((a) => a.status === "failed" && a.fullName).map((a) => a.fullName);
       if (named.length) failedTests = named;
     }
@@ -21053,6 +21094,299 @@ function buildMergeReviewBrief(p, id, taskId) {
   return { path: writeBrief2(p, id, `${taskId}.merge-review.md`, text2), text: text2 };
 }
 
+// src/stats.ts
+var import_node_fs48 = require("node:fs");
+var import_node_path53 = require("node:path");
+var import_yaml26 = __toESM(require_dist(), 1);
+var MIN_TASKS_FOR_RATE = 5;
+var isRecord10 = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+var RULE_TOKEN = /\b[A-Z]+[1-9][0-9]*\b/g;
+function boundRules(pluginHome, role) {
+  const ids = /* @__PURE__ */ new Map();
+  let builder;
+  try {
+    builder = implementerOf(pluginHome, role) ?? defaultTaskRole();
+  } catch {
+    builder = role ?? "";
+  }
+  const seen = /* @__PURE__ */ new Set();
+  const add = (r) => {
+    if (!r || seen.has(r)) return;
+    seen.add(r);
+    for (const rule of safe(() => loadRuleTable(pluginHome, r)) ?? []) if (!ids.has(rule.id)) ids.set(rule.id, r);
+  };
+  for (const r of [role, builder]) {
+    if (!r) continue;
+    add(r);
+    for (const f of safe(() => loadRole(pluginHome, r))?.follows_rules ?? []) add(f);
+  }
+  return ids;
+}
+function safe(f) {
+  try {
+    return f();
+  } catch {
+    return null;
+  }
+}
+function citedRules(notes, rules) {
+  const out = [];
+  for (const m of notes.matchAll(RULE_TOKEN)) {
+    const owner = rules.get(m[0]);
+    if (owner && !out.some((x) => x.id === m[0])) out.push({ id: m[0], owner });
+  }
+  return out;
+}
+function ruleIdWarning(pluginHome, role, notes) {
+  const rules = safe(() => boundRules(pluginHome, role));
+  if (!rules || rules.size === 0) return null;
+  if (citedRules(notes, rules).length) return null;
+  const owners = [...new Set(rules.values())];
+  return `the fix review cites no rule id of ${owners.join(", ")} (for example \`1. ${[...rules.keys()][0]}: <file>: <problem>\`); \`aidw stats\` counts broken rules from these ids`;
+}
+function readEvidenceFile(dir, taskId) {
+  const file = (0, import_node_path53.join)(dir, "evidence", `${taskId}.json`);
+  if (!(0, import_node_fs48.existsSync)(file)) return null;
+  try {
+    const ev = JSON.parse((0, import_node_fs48.readFileSync)(file, "utf8"));
+    return {
+      ...ev,
+      checkpoints: Array.isArray(ev.checkpoints) ? ev.checkpoints : [],
+      reviews: Array.isArray(ev.reviews) ? ev.reviews : [],
+      ...Array.isArray(ev.triage) ? { triage: ev.triage } : {}
+    };
+  } catch {
+    return null;
+  }
+}
+function changeIdOf(dir, fallback) {
+  const text2 = readText((0, import_node_path53.join)(dir, "change.yaml"));
+  if (text2 === null) return fallback;
+  try {
+    const data = import_yaml26.default.parse(text2);
+    return isRecord10(data) && typeof data.id === "string" && data.id ? data.id : fallback;
+  } catch {
+    return fallback;
+  }
+}
+function readChanges(p) {
+  const changes = [];
+  const tasks = [];
+  for (const [base2, archived2] of [[p.changes, false], [p.archive, true]]) {
+    if (!isDir(base2)) continue;
+    for (const name of (0, import_node_fs48.readdirSync)(base2).sort()) {
+      const dir = (0, import_node_path53.join)(base2, name);
+      if (name.startsWith(".") || !isDir(dir)) continue;
+      const text2 = readText((0, import_node_path53.join)(dir, "tasks.yaml"));
+      if (text2 === null) continue;
+      const list9 = parseTasks(text2).tasks.filter((t) => isRecord10(t) && typeof t.id === "string");
+      const change = { id: changeIdOf(dir, name), dir, archived: archived2, predates: false };
+      const mine = list9.map((task) => ({ change, task, ev: readEvidenceFile(dir, task.id) }));
+      const cps = mine.flatMap((x) => x.ev?.checkpoints ?? []);
+      change.predates = cps.length > 0 && !cps.some((c) => Number.isInteger(c.run));
+      changes.push(change);
+      tasks.push(...mine);
+    }
+  }
+  return { changes, tasks };
+}
+function isBlocked(c) {
+  if (c.blocked === true) return true;
+  if (c.ok) return false;
+  const failed = Array.isArray(c.verify) ? c.verify.find((v) => v.exit !== 0) : void 0;
+  return !!failed && !failed.timedOut && ENVIRONMENT_FAILURE.test(String(failed.tail ?? ""));
+}
+var isAutoReview = (r) => r.auto === true || /^auto-reviewed:/.test(String(r.notes ?? "").trim());
+var str = (v) => typeof v === "string" ? v : "";
+function ran(t, ev) {
+  return Boolean(t.started_at) || Number(t.runs) > 0 || Number(t.attempts) > 0 || (ev?.checkpoints.length ?? 0) > 0 || t.status === "done";
+}
+function startedOf(t, ev) {
+  const dates = [str(t.started_at), ...(ev?.checkpoints ?? []).map((c) => str(c.at)), ...(ev?.reviews ?? []).map((r) => str(r.at))].filter(Boolean).sort();
+  return dates[0];
+}
+function taskStats(d, pluginHome) {
+  const { task: t, ev } = d;
+  const role = str(t.role) || "(none)";
+  const status = str(t.status) || "pending";
+  const nb = isRecord10(t.not_built) ? { cause: str(t.not_built.cause), reason: str(t.not_built.reason) } : void 0;
+  const didRun = ran(t, ev);
+  if (!didRun && !nb) return null;
+  const checkpoints = (ev?.checkpoints ?? []).filter((c) => !isBlocked(c));
+  const reviews = (ev?.reviews ?? []).filter((r) => !isAutoReview(r));
+  const runs = Number.isInteger(t.runs) ? Number(t.runs) : checkpoints.length;
+  const added = ADDED_ORIGINS.includes(str(t.origin));
+  const entries = Array.isArray(ev?.triage) ? ev?.triage : [];
+  const triage = entries.map((e) => String(e.cause));
+  const upstream = entries.filter((e) => e.outcome === "upstream").map((e) => ({ round: Number(e.round ?? 0), cause: String(e.cause), role: str(e.role) }));
+  let fallback = false;
+  if (!entries.length) {
+    if (isRecord10(t.triage) && str(t.triage.cause)) triage.push(str(t.triage.cause));
+    if (isRecord10(t.upstream)) {
+      const u = t.upstream;
+      upstream.push({ round: Number(u.round ?? 1), cause: str(u.cause), role: str(u.role) });
+      if (!triage.includes(str(u.cause)) && str(u.cause)) triage.push(str(u.cause));
+    }
+    if (nb && /^triage: environment/.test(nb.reason) && !triage.includes("environment")) triage.push("environment");
+    fallback = triage.length > 0 || upstream.length > 0;
+  } else if (isRecord10(t.upstream) && !upstream.length) {
+    upstream.push({ round: Number(t.upstream.round ?? 1), cause: str(t.upstream.cause), role: str(t.upstream.role) });
+  }
+  const rules = safe(() => boundRules(pluginHome, str(t.role) || void 0)) ?? /* @__PURE__ */ new Map();
+  const cited = [];
+  for (const r of reviews) if (r.verdict === "fix") cited.push(...citedRules(String(r.notes ?? ""), rules));
+  let first = null;
+  if (!added && didRun && (status === "done" || status === "not_built")) {
+    const oneRun = Number.isInteger(t.runs) ? Number(t.runs) === 1 : checkpoints.length === 1;
+    const thisRun = (x) => !Number.isInteger(x.run) || x.run === 1;
+    const own = reviews.filter((r) => r.merge !== true && thisRun(r));
+    first = status === "done" && oneRun && checkpoints.length > 0 && checkpoints.filter(thisRun).every((c) => c.ok) && checkpoints.some((c) => c.ok && thisRun(c)) && own.length > 0 && own.every((r) => r.verdict === "pass") && triage.length === 0 && upstream.length === 0 && !isRecord10(t.triage) && !isRecord10(t.upstream);
+  }
+  const last = Math.max(0, ...upstream.map((u) => u.round));
+  const phase = isRecord10(t.upstream) ? str(t.upstream.phase) : "";
+  const rounds = upstream.map((u) => ({
+    ...u,
+    outcome: u.round < last || phase === "fixed" ? "fixed" : nb && /could not fix/.test(nb.reason) ? "cannot" : status === "done" ? "fixed" : "open"
+  }));
+  const agents = [...new Set((ev?.checkpoints ?? []).map((c) => str(c.agent)).filter(Boolean))];
+  const started = startedOf(t, ev);
+  return {
+    change: d.change.id,
+    task: t.id,
+    title: str(t.title),
+    role,
+    status,
+    ...t.origin ? { origin: str(t.origin) } : {},
+    ran: didRun,
+    runs,
+    first_attempt: first,
+    rules: cited,
+    triage,
+    upstream: rounds,
+    ...nb ? { not_built: nb } : {},
+    fallback,
+    agents,
+    ...started ? { started } : {}
+  };
+}
+var SINCE = /^\d{4}-\d{2}-\d{2}$/;
+var validSince = (s) => SINCE.test(s) && !Number.isNaN(Date.parse(`${s}T00:00:00Z`));
+function computeStats(p, pluginHome, opts = {}) {
+  const { changes, tasks } = readChanges(p);
+  const inChange = (c) => !opts.change || c.id === opts.change || c.dir.endsWith(`/${opts.change}`) || c.dir.endsWith(`\\${opts.change}`);
+  const all2 = tasks.filter((d) => inChange(d.change)).map((d) => taskStats(d, pluginHome)).filter((x) => x !== null).filter((x) => !opts.since || x.started !== void 0 && x.started.slice(0, 10) >= opts.since);
+  const counted = changes.filter(inChange).filter((c) => all2.some((x) => x.change === c.id));
+  const roles = /* @__PURE__ */ new Map();
+  const row = (role) => {
+    let r = roles.get(role);
+    if (!r) {
+      r = { role, tasks: 0, ended: 0, first_attempt: 0, rate: null, added: 0, rule_ids: [], triage: {}, upstream_rounds: 0, not_built: {} };
+      roles.set(role, r);
+    }
+    return r;
+  };
+  const ruleCounts = /* @__PURE__ */ new Map();
+  for (const x of all2) {
+    const r = row(x.role);
+    if (x.ran) r.tasks++;
+    if (x.origin && ADDED_ORIGINS.includes(x.origin)) r.added++;
+    if (x.first_attempt !== null) {
+      r.ended++;
+      if (x.first_attempt) r.first_attempt++;
+    }
+    for (const c of x.triage) r.triage[c] = (r.triage[c] ?? 0) + 1;
+    r.upstream_rounds += x.upstream.length;
+    if (x.not_built) r.not_built[x.not_built.cause || "unknown"] = (r.not_built[x.not_built.cause || "unknown"] ?? 0) + 1;
+    for (const c of x.rules) {
+      const m = ruleCounts.get(c.owner) ?? /* @__PURE__ */ new Map();
+      m.set(c.id, (m.get(c.id) ?? 0) + 1);
+      ruleCounts.set(c.owner, m);
+    }
+  }
+  for (const [owner, m] of ruleCounts) {
+    row(owner).rule_ids = [...m.entries()].map(([id, count]) => ({ id, count })).sort((a, b) => b.count - a.count || ruleOrder(a.id, b.id));
+  }
+  for (const r of roles.values()) r.rate = r.ended >= MIN_TASKS_FOR_RATE ? r.first_attempt / r.ended : null;
+  let list9 = [...roles.values()].sort((a, b) => b.tasks - a.tasks || a.role.localeCompare(b.role));
+  if (opts.role) list9 = list9.filter((r) => r.role === opts.role);
+  const partial = counted.some((c) => c.predates) || all2.some((x) => x.fallback);
+  return {
+    changes: counted.map((c) => ({ id: c.id, archived: c.archived, predates: c.predates })),
+    partial,
+    roles: list9,
+    ...opts.role ? { tasks: all2.filter((x) => x.role === opts.role) } : {}
+  };
+}
+function ruleOrder(a, b) {
+  const [, la = "", na = "0"] = /^([A-Z]+)(\d+)$/.exec(a) ?? [];
+  const [, lb = "", nb = "0"] = /^([A-Z]+)(\d+)$/.exec(b) ?? [];
+  return la.localeCompare(lb) || Number(na) - Number(nb);
+}
+var firstAttemptText = (r) => r.ended === 0 ? "-" : `${r.first_attempt} of ${r.ended}${r.rate === null ? "" : ` (${Math.round(r.rate * 100)}%)`}`;
+var countsText = (m) => Object.entries(m).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([k, n]) => `${k} ${n}`).join(", ") || "-";
+var TOP_RULES = 5;
+function table(rows2) {
+  const widths = rows2[0].map((_, i) => Math.max(...rows2.map((r) => (r[i] ?? "").length)));
+  return rows2.map((r) => r.map((c, i) => i === r.length - 1 ? c : c.padEnd(widths[i])).join("  ").trimEnd()).join("\n");
+}
+function footer(s) {
+  const active = s.changes.filter((c) => !c.archived).length;
+  const lines = [
+    s.changes.length ? `Changes counted: ${s.changes.length} (${active} active, ${s.changes.length - active} archived): ${s.changes.map((c) => `${c.id}${c.archived ? " (archived)" : ""}`).join(", ")}` : "Changes counted: none"
+  ];
+  const old = s.changes.filter((c) => c.predates).map((c) => c.id);
+  if (s.partial) {
+    lines.push(
+      `Triage figures are partial: ${old.length ? `${old.length} Change(s) predate the T19 records (${old.join(", ")}); ` : ""}for tasks without a Triage list in their evidence they come from tasks.yaml (the last Triage, the last upstream round and the not-built cause), which a retry or an upstream round clears.`
+    );
+  }
+  lines.push(`First attempt: done after one implementer run, its checkpoint and review passed, no Triage, no upstream round; a rate is shown from ${MIN_TASKS_FOR_RATE} ended tasks of a Role up. Tasks the workflow added are left out.`);
+  return lines;
+}
+function statsText(s) {
+  const out = [];
+  if (!s.roles.length) out.push("No tasks to count.");
+  else {
+    out.push(
+      table([
+        ["role", "tasks", "first attempt", "triage", "top rule ids (fix reviews)"],
+        ...s.roles.map((r) => [
+          r.role,
+          String(r.tasks),
+          firstAttemptText(r),
+          countsText(r.triage),
+          r.rule_ids.slice(0, TOP_RULES).map((x) => `${x.id} x${x.count}`).join(", ") || "-"
+        ])
+      ])
+    );
+  }
+  if (s.tasks) {
+    const r = s.roles[0];
+    out.push("");
+    if (r) {
+      out.push(
+        `${r.role}: ${r.tasks} task(s), first attempt ${firstAttemptText(r)}${r.added ? `, ${r.added} added by the workflow` : ""}; upstream rounds ${r.upstream_rounds}; not built: ${countsText(r.not_built)}`
+      );
+      if (r.rule_ids.length) out.push(`  rule ids of ${r.role} cited: ${r.rule_ids.map((x) => `${x.id} x${x.count}`).join(", ")}`);
+    }
+    for (const t of s.tasks) {
+      const fa = t.first_attempt === null ? t.origin && ADDED_ORIGINS.includes(t.origin) ? `added (${t.origin})` : "not ended" : t.first_attempt ? "first attempt" : "not first attempt";
+      out.push(`  ${t.change}/${t.task}  ${t.status}  runs ${t.runs}  ${fa}`);
+      if (t.agents.length && t.agents.some((a) => a !== `aidw:${t.role}`)) out.push(`    built by: ${t.agents.join(", ")}`);
+      if (t.rules.length) out.push(`    rules: ${t.rules.map((x) => x.owner === t.role ? x.id : `${x.id} (${x.owner})`).join(", ")}`);
+      if (t.triage.length) out.push(`    triage: ${t.triage.join(", ")}${t.fallback ? " (from tasks.yaml)" : ""}`);
+      for (const u of t.upstream) {
+        const what = u.outcome === "fixed" ? "fixed" : u.outcome === "cannot" ? "could not fix" : "is fixing";
+        out.push(`    upstream round ${u.round}: the ${u.role || "?"} ${what} the ${u.cause || "?"}`);
+      }
+      if (t.not_built) out.push(`    not built (${t.not_built.cause}): ${t.not_built.reason.split("\n")[0]?.slice(0, 200) ?? ""}`);
+    }
+  }
+  out.push("", ...footer(s));
+  return `${out.join("\n")}
+`;
+}
+
 // src/cli.ts
 function reviewLine(r, verdict, notes) {
   return `${r.task}: review ${r.verdict} -> ${r.status}${r.commit ? ` (commit ${r.commit.slice(0, 8)})` : ""}${r.warning ? `
@@ -21084,9 +21418,9 @@ function compactNote(cwd, env) {
 function changeTasks(p) {
   const out = [];
   for (const base2 of [p.changes, p.archive]) {
-    if (!(0, import_node_fs48.existsSync)(base2)) continue;
-    for (const d of (0, import_node_fs48.readdirSync)(base2)) {
-      const text2 = readText((0, import_node_path53.join)(base2, d, "tasks.yaml"));
+    if (!(0, import_node_fs49.existsSync)(base2)) continue;
+    for (const d of (0, import_node_fs49.readdirSync)(base2)) {
+      const text2 = readText((0, import_node_path54.join)(base2, d, "tasks.yaml"));
       if (text2 !== null) out.push(parseTasks(text2).tasks);
     }
   }
@@ -21106,9 +21440,10 @@ function nextText(n) {
   if (n.action === "deviation") return deviationText(n);
   return n.action === "implement" ? `implement ${n.task} (${n.reason}): ${n.title}${n.reason === "interrupted" ? " (if an implementer you spawned for it has not reported yet, it is still running: wait for it, do not spawn another)" : ""}` : n.action === "review" ? `review ${n.task}: ${n.title}` : n.action === "resolve" ? `resolve the merge conflict of ${n.task} with ${n.with.join(", ") || "the change branch"} (${n.files.join(", ")}): \`aidw brief ${n.task} --for conflict\`, spawn aidw:integration with the brief, then \`aidw resolve ${n.task}\`` : n.action === "review-merge" ? `review the merge of ${n.task} with ${n.with.join(", ") || "the change branch"}: \`aidw brief ${n.task} --for merge-review\`, spawn ${AGENTS.taskReview} with the brief, then \`aidw verdict ${n.task}\`` : n.action === "consult" ? consultText(n) : n.action === "triage" ? `triage ${n.task} (${n.reason}): \`aidw brief ${n.task} --for triage\`, spawn ${AGENTS.triage} with the brief, then \`aidw triage ${n.task}\`` : n.action === "upstream" ? n.step === "author" ? `upstream round ${n.round} of ${MAX_UPSTREAM_ROUNDS} for ${n.task}: Deviation ${n.deviation} is open for the ${n.role}; spawn aidw:${n.role} with: Upstream brief: ${n.brief}. Read it and fix your Artifact as it says. (If you already spawned it and it has not replied, wait.) Then \`aidw deviation close\` and \`aidw upstream ${n.task}\` (CANNOT FIX: \`aidw upstream ${n.task} --cannot "<its reason>"\`)` : `upstream round ${n.round} of ${MAX_UPSTREAM_ROUNDS} for ${n.task} (Triage cause: ${n.cause}): \`aidw brief ${n.task} --for upstream\` opens the Deviation and prints the brief; spawn aidw:${n.role} with it, then \`aidw deviation close\` and \`aidw upstream ${n.task}\`` : n.action === "escalate" ? `escalate: ${n.reason}` : n.action === "wave" ? `wave of ${n.tasks.length}: ${n.tasks.map((x) => `${x.task} (${x.title})`).join(", ")}` : n.action === "integrate" ? `integrate ${n.tasks.join(", ")}: run \`aidw integrate\` on the merged code` : n.not_built?.length ? `complete: ${n.done} task(s) done, not built: ${n.not_built.join(", ")} (the reasons are in tasks.yaml; the pull request lists them). Go on to verify.` : `complete: all ${n.done} task(s) done`;
 }
-function spawned(p, id, kind, key, task) {
+function spawned(p, id, kind, key, task, agent) {
   try {
-    countAgentRun(loadChange(p, id), kind, key, task);
+    const role = task ? taskField(p, id, task, "role") : "";
+    countAgentRun(loadChange(p, id), kind, key, task, { ...role ? { role } : {}, ...agent ? { agent } : {} });
   } catch {
   }
 }
@@ -21284,7 +21619,8 @@ Unattended (in your own terminal, not inside Claude Code):
   brief <task> [--for implement|review]  write the context packet for a fresh subagent; prints its path
   skills <task> [--for implement|review] vendored skills selected for the task
   checkpoint <task> [--timeout <sec>]    evidence: a test per scenario id + every verify command passes
-  verdict <task> [--notes-file F]        record the reviewer's verdict from .aidw/run/review-<task>.md (first line VERDICT: pass|fix)
+  verdict <task> [--notes-file F]        record the reviewer's verdict from .aidw/run/review-<task>.md (first line VERDICT: pass|fix);
+                                         warns when a fix review of a Role with a rule table cites no rule id
   review <task> pass|fix [--notes-file F | --notes T] [--no-commit]
                                          record the independent review; pass marks done and commits
   verify [--layer L] [--fresh]           (verifying) run quality layers not yet passing on the current code;
@@ -21303,12 +21639,16 @@ Hooks:
   stop-failure                           StopFailure hook: pauses running changes
   session-start                          SessionStart hook: appends the plugin bin/ to PATH via CLAUDE_ENV_FILE
   cost [--session <id prefix>] [--last N]  where the tokens of this project's Claude Code sessions went (orchestrator vs subagents)
+  stats [--role R] [--change ID] [--since YYYY-MM-DD]
+                                         per Role, from every Change (active and archived): tasks, first-attempt passes
+                                         (a rate from 5 ended tasks up), rule ids cited by fix reviews, Triage causes;
+                                         --role lists that Role's tasks; writes nothing
   version
 
 States: ${STATES.join(", ")}
 Exit codes: 0 ok, 1 failed check or refused operation, 2 usage error
 `;
-var VALUE_FLAGS = /* @__PURE__ */ new Set(["role", "files", "consultation", "remove-reason", "scope-reason", "summary", "cause", "task", "session", "last", "root", "title", "input-type", "workflow", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude", "model", "case", "runs", "without", "text", "lang", "weights", "to", "done", "cannot", "raise", "base", "level"]);
+var VALUE_FLAGS = /* @__PURE__ */ new Set(["role", "files", "consultation", "remove-reason", "scope-reason", "summary", "cause", "task", "session", "last", "root", "title", "input-type", "workflow", "reason", "change", "for", "notes", "notes-file", "timeout", "layer", "permission-mode", "max-runs", "claude", "model", "case", "runs", "without", "text", "lang", "weights", "to", "done", "cannot", "raise", "base", "level", "since"]);
 function parseArgs(argv) {
   const pos = [];
   const flags = {};
@@ -21335,12 +21675,12 @@ var UsageError = class extends Error {
 function addBinToPath(env) {
   const file = env.CLAUDE_ENV_FILE;
   if (!file) return false;
-  const bin = (0, import_node_path53.join)(pluginRoot(env), "bin");
+  const bin = (0, import_node_path54.join)(pluginRoot(env), "bin");
   if (bin.includes("'")) return false;
   const line = `export PATH="$PATH":'${bin}'`;
-  const current = (0, import_node_fs48.existsSync)(file) ? (0, import_node_fs48.readFileSync)(file, "utf8") : "";
+  const current = (0, import_node_fs49.existsSync)(file) ? (0, import_node_fs49.readFileSync)(file, "utf8") : "";
   if (current.split("\n").includes(line)) return false;
-  (0, import_node_fs48.appendFileSync)(file, `${current && !current.endsWith("\n") ? "\n" : ""}${line}
+  (0, import_node_fs49.appendFileSync)(file, `${current && !current.endsWith("\n") ? "\n" : ""}${line}
 `);
   return true;
 }
@@ -21353,7 +21693,7 @@ function logHook(env, hook, input, output) {
       parsed = JSON.parse(input);
     } catch {
     }
-    (0, import_node_fs48.appendFileSync)(file, `${JSON.stringify({ at: (/* @__PURE__ */ new Date()).toISOString(), hook, input: parsed, output: output || null })}
+    (0, import_node_fs49.appendFileSync)(file, `${JSON.stringify({ at: (/* @__PURE__ */ new Date()).toISOString(), hook, input: parsed, output: output || null })}
 `);
   } catch {
   }
@@ -21362,7 +21702,7 @@ function fmtDiag(d) {
   const where = d.line ? `${d.file}:${d.line}` : d.file;
   return `${d.level === "error" ? "ERROR" : "WARN "}  ${where}  ${d.message}`;
 }
-function str(v) {
+function str2(v) {
   return typeof v === "string" ? v : void 0;
 }
 function run(argv, env, cwd, io) {
@@ -21384,7 +21724,7 @@ function run(argv, env, cwd, io) {
   const diagsJson = (d) => ({ errors: d.errors, warnings: d.warnings });
   const printDiags = (d) => d.items.map(fmtDiag).join("\n") + (d.items.length ? "\n" : "");
   const project = () => {
-    const dir = findProject({ root: str(args.flags.root), cwd, env });
+    const dir = findProject({ root: str2(args.flags.root), cwd, env });
     if (!dir) throw new OpError("no .aidw/ found in this directory or its parents; run `aidw init`");
     const p = pathsFor(dir);
     assertProject(p);
@@ -21410,8 +21750,8 @@ function run(argv, env, cwd, io) {
     const bare = args.flags.bare === true;
     const runs = args.flags.runs === void 0 ? bare ? 1 : 3 : Number(args.flags.runs);
     if (!Number.isInteger(runs) || runs < 1 || runs > 10) throw new OpError("--runs takes a whole number from 1 to 10");
-    const caseName = str(args.flags.case);
-    const asked = str(args.flags.model);
+    const caseName = str2(args.flags.case);
+    const asked = str2(args.flags.model);
     const roster = loadRoster(root);
     if (!roster.roles[id]) throw new OpError(`"${id}" is not a Role in roster.yaml`);
     const tm = tierModel(root, id);
@@ -21465,7 +21805,7 @@ function run(argv, env, cwd, io) {
       const m = caseName ? mergeLevel2Results(root, id, results, meta) : writeLevel2Results(root, id, results, meta);
       if ("refused" in m) io.err(`  no result file written for ${id}: ${m.refused}
 `);
-      else written.push((0, import_node_path53.relative)(root, m.file));
+      else written.push((0, import_node_path54.relative)(root, m.file));
     }
     emit({ ok, results, written }, printLevel2(results) + written.map((f) => `wrote ${f}
 `).join(""));
@@ -21527,7 +21867,7 @@ function run(argv, env, cwd, io) {
       }
       case "next": {
         const p = project();
-        const id = resolveChangeId(p, str(args.flags.change) ?? rest[0]);
+        const id = resolveChangeId(p, str2(args.flags.change) ?? rest[0]);
         settleChange(p, id);
         const n = nextAction(p, id);
         emit({ change: id, ...n }, `${nextText(n)}
@@ -21537,7 +21877,7 @@ function run(argv, env, cwd, io) {
       case "task": {
         if (rest[0] !== "start" && rest[0] !== "retry" && rest[0] !== "reopen") throw new UsageError("usage: aidw task start|retry|reopen <task>");
         const p = project();
-        const id = resolveChangeId(p, str(args.flags.change));
+        const id = resolveChangeId(p, str2(args.flags.change));
         if (rest[0] === "reopen") {
           const r2 = reopenTask(p, id, need(rest[1], "task id"), { revert: args.flags.revert === true });
           emit(
@@ -21556,9 +21896,9 @@ ${r2.dependents.length ? `WARNING: done task(s) ${r2.dependents.join(", ")} depe
           return 0;
         }
         const r = startTask(p, id, need(rest[1], "task id"), { worktree: args.flags.worktree === true });
-        const brief = buildBrief(p, id, r.task, "implement", (0, import_node_path53.join)(pluginRoot(env), "library", "vendor"));
-        spawned(p, id, "implementer", `${r.task}:r${taskField(p, id, r.task, "runs")}`, r.task);
+        const brief = buildBrief(p, id, r.task, "implement", (0, import_node_path54.join)(pluginRoot(env), "library", "vendor"));
         const agent = agentForTask(pluginRoot(env), r.role);
+        spawned(p, id, "implementer", `${r.task}:r${taskField(p, id, r.task, "runs")}`, r.task, agent);
         emit(
           { ok: true, change: id, ...r, agent, brief: brief.path },
           `${r.task} running: attempt ${r.attempt} of ${r.maxAttempts}${r.resumed ? " (resumed)" : ""}${r.base ? `, base ${r.base.slice(0, 8)}` : ""}${r.worktree ? `, worktree ${r.worktree}` : ""}
@@ -21571,12 +21911,12 @@ SPAWN ${agent} with: Task brief: ${brief.path}. Read it and implement the task.
       case "brief":
       case "skills": {
         const p = project();
-        const id = resolveChangeId(p, str(args.flags.change));
+        const id = resolveChangeId(p, str2(args.flags.change));
         const taskId = need(rest[0], "task id");
-        const kind = str(args.flags.for) ?? "implement";
+        const kind = str2(args.flags.for) ?? "implement";
         if (kind === "triage" && cmd2 === "brief") {
           const tb = buildTriageBrief(p, id, taskId);
-          spawned(p, id, "triage", `${taskId}:${taskField(p, id, taskId, "runs")}`, taskId);
+          spawned(p, id, "triage", `${taskId}:${taskField(p, id, taskId, "runs")}`, taskId, AGENTS.triage);
           emit({ change: id, task: taskId, for: kind, path: tb.path }, `${tb.path}
 SPAWN ${AGENTS.triage} with: Triage brief: ${tb.path}. Read it and write your answer as it says.
 Then: aidw triage ${taskId}
@@ -21585,7 +21925,7 @@ Then: aidw triage ${taskId}
         }
         if (kind === "upstream" && cmd2 === "brief") {
           const ub = buildUpstreamBrief(p, id, taskId, { pluginHome: pluginRoot(env) });
-          spawned(p, id, "author", `${taskId}:${ub.deviation}`, taskId);
+          spawned(p, id, "author", `${taskId}:${ub.deviation}`, taskId, `aidw:${ub.role}`);
           emit(
             { change: id, task: taskId, for: kind, path: ub.path, role: ub.role, cause: ub.cause, round: ub.round, files: ub.files, deviation: ub.deviation, deviation_brief: ub.deviationBrief },
             `${ub.path}
@@ -21598,7 +21938,7 @@ Then: aidw deviation close, and aidw upstream ${taskId} (or, when it replies CAN
         }
         if (kind === "conflict" && cmd2 === "brief") {
           const cb = buildConflictBrief(p, id, taskId);
-          spawned(p, id, "integration", `${taskId}:${taskField(p, id, taskId, "conflict")}`, taskId);
+          spawned(p, id, "integration", `${taskId}:${taskField(p, id, taskId, "conflict")}`, taskId, "aidw:integration");
           emit({ change: id, task: taskId, for: kind, path: cb.path }, `${cb.path}
 SPAWN aidw:integration with: Conflict brief: ${cb.path}. Read it and resolve the conflict.
 Then: aidw resolve ${taskId}
@@ -21607,7 +21947,7 @@ Then: aidw resolve ${taskId}
         }
         if (kind === "merge-review" && cmd2 === "brief") {
           const mb = buildMergeReviewBrief(p, id, taskId);
-          spawned(p, id, "merge-reviewer", `${taskId}:${taskField(p, id, taskId, "conflict")}`, taskId);
+          spawned(p, id, "merge-reviewer", `${taskId}:${taskField(p, id, taskId, "conflict")}`, taskId, AGENTS.taskReview);
           emit({ change: id, task: taskId, for: kind, path: mb.path }, `${mb.path}
 SPAWN ${AGENTS.taskReview} with: Merge review brief: ${mb.path}. Review the merge and reply with the verdict.
 Then: aidw verdict ${taskId}
@@ -21615,8 +21955,8 @@ Then: aidw verdict ${taskId}
           return 0;
         }
         if (kind !== "implement" && kind !== "review") throw new UsageError('--for must be "implement" or "review" (or "triage", "upstream", "conflict", "merge-review" for brief)');
-        const b = buildBrief(p, id, taskId, kind, (0, import_node_path53.join)(pluginRoot(env), "library", "vendor"));
-        if (kind === "review" && cmd2 === "brief") spawned(p, id, "reviewer", `${taskId}:r${taskField(p, id, taskId, "runs")}`, taskId);
+        const b = buildBrief(p, id, taskId, kind, (0, import_node_path54.join)(pluginRoot(env), "library", "vendor"));
+        if (kind === "review" && cmd2 === "brief") spawned(p, id, "reviewer", `${taskId}:r${taskField(p, id, taskId, "runs")}`, taskId, AGENTS.taskReview);
         if (cmd2 === "skills") {
           emit({ change: id, task: taskId, for: kind, skills: b.skills }, b.skills.map((s) => `${s.path}  # ${s.reason}
 `).join(""));
@@ -21628,10 +21968,12 @@ Then: aidw verdict ${taskId}
       }
       case "checkpoint": {
         const p = project();
-        const id = resolveChangeId(p, str(args.flags.change));
-        const timeout = str(args.flags.timeout);
+        const id = resolveChangeId(p, str2(args.flags.change));
+        const timeout = str2(args.flags.timeout);
         if (timeout !== void 0 && !(Number(timeout) > 0)) throw new UsageError("--timeout must be a number of seconds");
-        const r = checkpoint(p, id, need(rest[0], "task id"), timeout ? { timeoutMs: Number(timeout) * 1e3 } : {});
+        const cpTask = need(rest[0], "task id");
+        const cpRole = taskField(p, id, cpTask, "role");
+        const r = checkpoint(p, id, cpTask, { ...timeout ? { timeoutMs: Number(timeout) * 1e3 } : {}, agent: agentForTask(pluginRoot(env), cpRole || void 0) });
         const lines = [
           `${r.ok ? "PASS" : r.status === "blocked" ? "BLOCKED (environment)" : r.status === "not_built" ? "NOT BUILT (environment)" : "FAIL"} ${r.task} -> ${r.status === "blocked" ? "running, no attempt used" : r.status === "not_built" ? `not built, with ${(r.not_built ?? []).join(", ")}; the rest carries on` : r.status}  (evidence ${r.evidence})`,
           ...Object.entries(r.scenarios).map(([s, locs]) => `  ${locs.length ? "ok     " : "MISSING"} ${s}${locs.length ? `  ${locs[0]}` : ""}`),
@@ -21649,8 +21991,8 @@ Then: aidw verdict ${taskId}
             after = `review ${auto.task}: auto-passed (converge tests, or a layer fix its own reviewer judges again)${auto.commit ? ` (commit ${auto.commit.slice(0, 8)})` : ""}
 ${settledNextLine(p, id)}${sessionEnd(env, p, id)}`;
           } else {
-            reviewBrief = buildBrief(p, id, r.task, "review", (0, import_node_path53.join)(pluginRoot(env), "library", "vendor")).path;
-            spawned(p, id, "reviewer", `${r.task}:r${taskField(p, id, r.task, "runs")}`, r.task);
+            reviewBrief = buildBrief(p, id, r.task, "review", (0, import_node_path54.join)(pluginRoot(env), "library", "vendor")).path;
+            spawned(p, id, "reviewer", `${r.task}:r${taskField(p, id, r.task, "runs")}`, r.task, AGENTS.taskReview);
             after = `review brief ${reviewBrief}
 SPAWN ${AGENTS.taskReview} with: ${REVIEWER_PROMPT(reviewBrief)}
 Then: aidw verdict ${r.task}
@@ -21671,14 +22013,14 @@ ${failed.tail}
       }
       case "verify": {
         const p = project();
-        const id = resolveChangeId(p, str(args.flags.change) ?? rest[0]);
-        const timeout = str(args.flags.timeout);
+        const id = resolveChangeId(p, str2(args.flags.change) ?? rest[0]);
+        const timeout = str2(args.flags.timeout);
         if (timeout !== void 0 && !(Number(timeout) > 0)) throw new UsageError("--timeout must be a number of seconds");
         const r = verify(p, id, {
-          ...str(args.flags.layer) ? { layer: str(args.flags.layer) } : {},
+          ...str2(args.flags.layer) ? { layer: str2(args.flags.layer) } : {},
           fresh: args.flags.fresh === true,
           ...timeout ? { timeoutMs: Number(timeout) * 1e3 } : {},
-          vendorDir: (0, import_node_path53.join)(pluginRoot(env), "library", "vendor")
+          vendorDir: (0, import_node_path54.join)(pluginRoot(env), "library", "vendor")
         });
         const lines = r.layers.map((l) => {
           const bad = l.runs.find((x) => x.exit !== 0);
@@ -21690,7 +22032,7 @@ ${failed.tail}
         const group = r.awaitingReviews ?? (a ? [a] : []);
         if (group.length) {
           const rounds = (layer) => loadTasks(p, id).tasks.filter((t) => t.origin === "quality" && t.layer === layer).length;
-          for (const x of group) spawned(p, id, "layer-reviewer", `${x.layer}:${rounds(x.layer)}:${git(p.project, ["rev-parse", "HEAD"]).out}`);
+          for (const x of group) spawned(p, id, "layer-reviewer", `${x.layer}:${rounds(x.layer)}:${git(p.project, ["rev-parse", "HEAD"]).out}`, void 0, x.agent);
         }
         const reviewer = (x) => `
 ${group.length > 1 ? `  layer  ${x.layer}
@@ -21713,19 +22055,19 @@ NEXT: spawn these ${group.length} reviewers in one message, one subagent each wi
       }
       case "layer-review": {
         const p = project();
-        const id = resolveChangeId(p, str(args.flags.change));
+        const id = resolveChangeId(p, str2(args.flags.change));
         const layer = need(rest[0], "layer name");
         let verdict = rest[1];
-        let notesFile = str(args.flags["notes-file"]);
+        let notesFile = str2(args.flags["notes-file"]);
         if (verdict === void 0 || verdict === "auto") {
-          notesFile = notesFile ?? (0, import_node_path53.join)(p.run, `layer-review-${layer}.md`);
-          if (!(0, import_node_fs48.existsSync)(notesFile)) throw new OpError(`no verdict file at ${notesFile}: the reviewer did not write it. Spawn a fresh reviewer, or save its reply there and run this again`);
-          const parsed = parseVerdict((0, import_node_fs48.readFileSync)(notesFile, "utf8"));
+          notesFile = notesFile ?? (0, import_node_path54.join)(p.run, `layer-review-${layer}.md`);
+          if (!(0, import_node_fs49.existsSync)(notesFile)) throw new OpError(`no verdict file at ${notesFile}: the reviewer did not write it. Spawn a fresh reviewer, or save its reply there and run this again`);
+          const parsed = parseVerdict((0, import_node_fs49.readFileSync)(notesFile, "utf8"));
           if (!parsed) throw new OpError(`${notesFile} does not start with "VERDICT: pass" or "VERDICT: fix"; spawn a fresh reviewer once more`);
           verdict = parsed;
         }
         if (verdict !== "pass" && verdict !== "fix") throw new UsageError('verdict must be "pass" or "fix"');
-        const notes = notesFile ? (0, import_node_fs48.readFileSync)(notesFile, "utf8") : str(args.flags.notes) ?? "";
+        const notes = notesFile ? (0, import_node_fs49.readFileSync)(notesFile, "utf8") : str2(args.flags.notes) ?? "";
         if (verdict === "fix" && !notes.trim()) throw new UsageError("a fix verdict needs --notes or --notes-file");
         const r = recordLayerReview(p, id, layer, verdict, notes);
         emit(
@@ -21737,8 +22079,8 @@ NEXT: spawn these ${group.length} reviewers in one message, one subagent each wi
       }
       case "cost": {
         const p = project();
-        const prefix = str(args.flags.session);
-        const last = str(args.flags.last);
+        const prefix = str2(args.flags.session);
+        const last = str2(args.flags.last);
         if (last !== void 0 && !(Number.isInteger(Number(last)) && Number(last) >= 1)) throw new UsageError("--last must be a positive integer");
         let sessions = readSessions(p.project, env);
         if (prefix) sessions = sessions.filter((s) => s.id.startsWith(prefix));
@@ -21780,12 +22122,12 @@ Status: aidw run --status   Stop: aidw run --stop   (it also stops by itself whe
 `);
           return 0;
         }
-        const maxRuns = str(args.flags["max-runs"]);
+        const maxRuns = str2(args.flags["max-runs"]);
         if (maxRuns !== void 0 && !(Number.isInteger(Number(maxRuns)) && Number(maxRuns) >= 1)) throw new UsageError("--max-runs must be a positive integer");
         let startedBrowser = false;
         const r = runLoop(p, id, {
-          ...str(args.flags.claude) ? { claude: str(args.flags.claude) } : {},
-          ...str(args.flags["permission-mode"]) ? { permissionMode: str(args.flags["permission-mode"]) } : {},
+          ...str2(args.flags.claude) ? { claude: str2(args.flags.claude) } : {},
+          ...str2(args.flags["permission-mode"]) ? { permissionMode: str2(args.flags["permission-mode"]) } : {},
           ...maxRuns ? { maxRuns: Number(maxRuns) } : {},
           ...args.flags["keep-mcp"] === true ? { keepMcp: true } : {},
           // The runner runs outside the sandbox that wraps each session, so it hosts the test browser for them.
@@ -21836,7 +22178,7 @@ Status: aidw run --status   Stop: aidw run --stop   (it also stops by itself whe
       }
       case "integrate": {
         const p = project();
-        const id = resolveChangeId(p, str(args.flags.change) ?? rest[0]);
+        const id = resolveChangeId(p, str2(args.flags.change) ?? rest[0]);
         const r = integrateChange(p, id);
         const failed = r.runs.find((x) => x.exit !== 0);
         emit(
@@ -21852,7 +22194,7 @@ ${failed.tail}
       }
       case "converge": {
         const p = project();
-        const id = resolveChangeId(p, str(args.flags.change) ?? rest[0]);
+        const id = resolveChangeId(p, str2(args.flags.change) ?? rest[0]);
         const r = converge(p, id);
         const lines = Object.entries(r.scenarios).map(([s, x]) => `  ${x.status === "pass" ? "ok     " : x.status.toUpperCase().padEnd(7)} ${s}${x.where[0] ? `  ${x.where[0]}` : ""}`);
         emit({ change: id, ...r }, `${r.ok ? "PASS" : "GAPS"} (${r.mode}): ${r.summary}
@@ -21862,7 +22204,7 @@ ${lines.join("\n")}
       }
       case "deliver": {
         const p = project();
-        const id = resolveChangeId(p, str(args.flags.change) ?? rest[0]);
+        const id = resolveChangeId(p, str2(args.flags.change) ?? rest[0]);
         const r = deliver(p, id, { check: args.flags.check === true });
         const ok = r.diags.errors.length === 0;
         const head = args.flags.check === true ? "" : `${r.dir}: wrote ${r.written.length} file(s)${r.created_handoff ? ", created handoff.md skeleton" : ""}, ${r.screenshots} screenshot(s)
@@ -21876,7 +22218,7 @@ ${lines.join("\n")}
       }
       case "deploy": {
         const p = project();
-        const id = resolveChangeId(p, str(args.flags.change) ?? rest[0]);
+        const id = resolveChangeId(p, str2(args.flags.change) ?? rest[0]);
         const r = deploy(p, id);
         const text2 = r.skipped ? `deploy skipped: target "${r.target}" (recorded)
 ` : r.ok ? `deployed ${r.url}
@@ -21891,7 +22233,7 @@ ${[...r.runs, ...r.smoke].find((x) => x.exit !== 0)?.tail ?? r.runs[0]?.tail ?? 
       }
       case "first-deploy": {
         const p = project();
-        const id = resolveChangeId(p, str(args.flags.change) ?? rest[0]);
+        const id = resolveChangeId(p, str2(args.flags.change) ?? rest[0]);
         const r = firstDeploy(p, id, args.flags.yes === true);
         emit({ change: id, ...r }, `${r.ran ? `${r.ok ? "DEPLOYED" : "FAILED"} (${r.command})
 ` : ""}${r.output}
@@ -21900,14 +22242,14 @@ ${r.ok && r.ran ? "Previews work from now on: run aidw deploy.\n" : ""}`);
       }
       case "review": {
         const p = project();
-        const id = resolveChangeId(p, str(args.flags.change));
+        const id = resolveChangeId(p, str2(args.flags.change));
         const taskId = need(rest[0], "task id");
         const verdict = need(rest[1], "verdict (pass|fix)");
         if (verdict !== "pass" && verdict !== "fix") throw new UsageError('verdict must be "pass" or "fix"');
-        const notesFile = str(args.flags["notes-file"]);
-        const notes = notesFile ? (0, import_node_fs48.readFileSync)(notesFile, "utf8") : str(args.flags.notes) ?? "";
+        const notesFile = str2(args.flags["notes-file"]);
+        const notes = notesFile ? (0, import_node_fs49.readFileSync)(notesFile, "utf8") : str2(args.flags.notes) ?? "";
         if (verdict === "fix" && !notes.trim()) throw new UsageError("a fix verdict needs --notes or --notes-file");
-        const r = recordReview(p, id, taskId, verdict, notes, { commit: args.flags["no-commit"] !== true });
+        const r = recordReview(p, id, taskId, verdict, notes, { commit: args.flags["no-commit"] !== true, agent: AGENTS.taskReview });
         emit(
           { ok: true, change: id, ...r },
           `${reviewLine(r, verdict, notes)}${settledNextLine(p, id)}${r.status === "done" ? sessionEnd(env, p, id) : ""}`
@@ -21916,7 +22258,7 @@ ${r.ok && r.ran ? "Previews work from now on: run aidw deploy.\n" : ""}`);
       }
       case "resolve": {
         const p = project();
-        const id = resolveChangeId(p, str(args.flags.change));
+        const id = resolveChangeId(p, str2(args.flags.change));
         const taskId = need(rest[0], "task id");
         const r = resolveConflict(p, id, taskId);
         const lines = r.checks.flatMap((c) => [
@@ -21929,7 +22271,7 @@ ${r.ok && r.ran ? "Previews work from now on: run aidw deploy.\n" : ""}`);
 `;
         if (r.ok) {
           const mb = buildMergeReviewBrief(p, id, taskId);
-          spawned(p, id, "merge-reviewer", `${taskId}:${taskField(p, id, taskId, "conflict")}`, taskId);
+          spawned(p, id, "merge-reviewer", `${taskId}:${taskField(p, id, taskId, "conflict")}`, taskId, AGENTS.taskReview);
           after = `review brief ${mb.path}
 SPAWN ${AGENTS.taskReview} with: Merge review brief: ${mb.path}. Review the merge and reply with the verdict.
 Then: aidw verdict ${taskId}
@@ -21945,12 +22287,12 @@ ${lines.length ? `${lines.join("\n")}
       }
       case "triage": {
         const p = project();
-        const id = resolveChangeId(p, str(args.flags.change));
+        const id = resolveChangeId(p, str2(args.flags.change));
         const taskId = need(rest[0], "task id");
-        const file = str(args.flags["notes-file"]) ?? triageFile(p, taskId);
+        const file = str2(args.flags["notes-file"]) ?? triageFile(p, taskId);
         const unclear = args.flags.unclear === true;
-        if (!unclear && !(0, import_node_fs48.existsSync)(file)) throw new OpError(`no triage answer at ${file}: the Agent did not write it. Spawn it once more with \`aidw brief ${taskId} --for triage\``);
-        const r = recordTriage(p, id, taskId, unclear ? "" : (0, import_node_fs48.readFileSync)(file, "utf8"), { pluginHome: pluginRoot(env), unclear });
+        if (!unclear && !(0, import_node_fs49.existsSync)(file)) throw new OpError(`no triage answer at ${file}: the Agent did not write it. Spawn it once more with \`aidw brief ${taskId} --for triage\``);
+        const r = recordTriage(p, id, taskId, unclear ? "" : (0, import_node_fs49.readFileSync)(file, "utf8"), { pluginHome: pluginRoot(env), unclear });
         const first = r.diagnosis.split("\n").find((l) => l.trim()) ?? "";
         const others = (r.not_built ?? []).filter((t) => t !== r.task);
         const along = others.length ? ` Not built with it (they depend on it): ${others.join(", ")}.` : "";
@@ -21968,9 +22310,9 @@ ${lines.length ? `${lines.join("\n")}
       }
       case "upstream": {
         const p = project();
-        const id = resolveChangeId(p, str(args.flags.change));
+        const id = resolveChangeId(p, str2(args.flags.change));
         const taskId = need(rest[0], "task id");
-        const cannot = str(args.flags.cannot);
+        const cannot = str2(args.flags.cannot);
         const r = recordUpstream(p, id, taskId, cannot === void 0 ? {} : { cannot });
         const others = (r.not_built ?? []).filter((t) => t !== r.task);
         const line = r.outcome === "rerun" ? `${r.task}: the ${r.role} fixed the ${r.cause} (upstream round ${r.round} of ${MAX_UPSTREAM_ROUNDS}); the task runs again with a fresh attempt budget
@@ -21981,25 +22323,37 @@ ${lines.length ? `${lines.join("\n")}
       }
       case "verdict": {
         const p = project();
-        const id = resolveChangeId(p, str(args.flags.change));
+        const id = resolveChangeId(p, str2(args.flags.change));
         const taskId = need(rest[0], "task id");
-        const file = str(args.flags["notes-file"]) ?? (0, import_node_path53.join)(p.run, `review-${taskId}.md`);
-        if (!(0, import_node_fs48.existsSync)(file)) throw new OpError(`no verdict file at ${file}: the reviewer did not write it. Spawn a fresh reviewer, or save its reply there and run this again`);
-        const notes = (0, import_node_fs48.readFileSync)(file, "utf8");
+        const file = str2(args.flags["notes-file"]) ?? (0, import_node_path54.join)(p.run, `review-${taskId}.md`);
+        if (!(0, import_node_fs49.existsSync)(file)) throw new OpError(`no verdict file at ${file}: the reviewer did not write it. Spawn a fresh reviewer, or save its reply there and run this again`);
+        const notes = (0, import_node_fs49.readFileSync)(file, "utf8");
         const verdict = parseVerdict(notes);
         if (!verdict) throw new OpError(`${file} does not start with "VERDICT: pass" or "VERDICT: fix"; spawn a fresh reviewer once more, and if it is still unclear record it with \`aidw review ${taskId} fix --notes-file\``);
-        const r = recordReview(p, id, taskId, verdict, notes, { commit: args.flags["no-commit"] !== true });
+        const before = loadTasks(p, id).tasks.find((t) => t.id === taskId);
+        const ruleWarning = verdict === "fix" && before?.status === "review" ? ruleIdWarning(pluginRoot(env), typeof before.role === "string" ? before.role : void 0, notes) : null;
+        const r = recordReview(p, id, taskId, verdict, notes, { commit: args.flags["no-commit"] !== true, agent: AGENTS.taskReview });
         emit(
-          { ok: true, change: id, ...r },
-          `${reviewLine(r, verdict, notes)}${settledNextLine(p, id)}${r.status === "done" ? sessionEnd(env, p, id) : ""}`
+          { ok: true, change: id, ...r, ...ruleWarning ? { rule_warning: ruleWarning } : {} },
+          `${reviewLine(r, verdict, notes)}${ruleWarning ? `  warning: ${ruleWarning}
+` : ""}${settledNextLine(p, id)}${r.status === "done" ? sessionEnd(env, p, id) : ""}`
         );
+        return 0;
+      }
+      case "stats": {
+        const p = project();
+        const since = str2(args.flags.since);
+        if (since !== void 0 && !validSince(since)) throw new UsageError("--since must be a date: YYYY-MM-DD");
+        const opts = { ...str2(args.flags.role) ? { role: str2(args.flags.role) } : {}, ...str2(args.flags.change) ? { change: str2(args.flags.change) } : {}, ...since ? { since } : {} };
+        const s = computeStats(p, pluginRoot(env), opts);
+        emit(s, statsText(s));
         return 0;
       }
       case "vendor-path": {
         const ref = need(rest[0], "<upstream>/<skill>");
         if (!/^[a-z0-9-]+\/[a-z0-9-]+$/.test(ref)) throw new UsageError(`invalid vendored skill "${ref}"`);
-        const file = skillPath((0, import_node_path53.join)(pluginRoot(env), "library", "vendor"), ref);
-        if (!(0, import_node_fs48.existsSync)(file)) throw new OpError(`skill "${ref}" not found at ${file}`);
+        const file = skillPath((0, import_node_path54.join)(pluginRoot(env), "library", "vendor"), ref);
+        if (!(0, import_node_fs49.existsSync)(file)) throw new OpError(`skill "${ref}" not found at ${file}`);
         emit({ path: file }, `${file}
 `);
         return 0;
@@ -22009,12 +22363,12 @@ ${lines.length ? `${lines.join("\n")}
         const report = need(rest[0], "LCOV report file (e.g. coverage/lcov.info)");
         const min = args.flags.min === void 0 ? 80 : Number(args.flags.min);
         if (!Number.isFinite(min) || min < 0 || min > 100) throw new UsageError("--min must be a number from 0 to 100");
-        const file = (0, import_node_path53.resolve)(p.project, report);
-        if (!(0, import_node_fs48.existsSync)(file)) throw new OpError(`no coverage report at ${report}: run the tests with an lcov reporter first`);
+        const file = (0, import_node_path54.resolve)(p.project, report);
+        if (!(0, import_node_fs49.existsSync)(file)) throw new OpError(`no coverage report at ${report}: run the tests with an lcov reporter first`);
         const open = listChangeIds(p).flatMap((id) => loadTasks(p, id).tasks.map((t) => typeof t.base === "string" ? t.base : null));
         const base2 = typeof args.flags.base === "string" ? args.flags.base : open.find((b) => b) ?? trunkBase(p.project);
         if (!base2) throw new OpError("no base commit to compare with: pass --base <ref>");
-        const c = diffCoverage(p.project, base2, (0, import_node_fs48.readFileSync)(file, "utf8"));
+        const c = diffCoverage(p.project, base2, (0, import_node_fs49.readFileSync)(file, "utf8"));
         emit(c, `${coverageReport(c, min)}
 `);
         return c.percent >= min ? 0 : 1;
@@ -22042,10 +22396,10 @@ ${lines.length ? `${lines.join("\n")}
         }
         const runs = args.flags.runs === void 0 ? 3 : Number(args.flags.runs);
         if (!Number.isInteger(runs) || runs < 1 || runs > 10) throw new OpError("--runs takes a whole number from 1 to 10");
-        const caseName = str(args.flags.case);
-        const without = str(args.flags.without);
+        const caseName = str2(args.flags.case);
+        const without = str2(args.flags.without);
         const bare = args.flags.bare === true;
-        const asked = str(args.flags.model);
+        const asked = str2(args.flags.model);
         const progress = (r) => io.err(`  ... ${r.role}/${r.name}: ${r.error ? "ERROR" : r.pass ? "pass" : "fail"}${r.runs ? ` (${r.runs.passed}/${r.runs.total})` : ""}
 `);
         const results = [];
@@ -22098,7 +22452,7 @@ ${lines.length ? `${lines.join("\n")}
               const m = caseName ? mergeResults(root, id, results, meta) : writeResults(root, id, results, meta);
               if ("refused" in m) io.err(`  no result file written for ${id}: ${m.refused}
 `);
-              else written.push((0, import_node_path53.relative)(root, m.file));
+              else written.push((0, import_node_path54.relative)(root, m.file));
             }
           }
         }
@@ -22113,15 +22467,15 @@ ${lines.length ? `${lines.join("\n")}
         d.add(checkArtifacts(root));
         d.add(checkWorkflows(root));
         d.add(checkEvals(root));
-        for (const [id] of Object.entries(loadRoster(root).roles)) if ((0, import_node_fs48.existsSync)((0, import_node_path53.join)(root, "roles", id, "role.md"))) checkLevel2(root, id, tierModel(root, id) ?? null, d, env);
-        const table = d.errors.length ? "" : rosterTable(root);
+        for (const [id] of Object.entries(loadRoster(root).roles)) if ((0, import_node_fs49.existsSync)((0, import_node_path54.join)(root, "roles", id, "role.md"))) checkLevel2(root, id, tierModel(root, id) ?? null, d, env);
+        const table2 = d.errors.length ? "" : rosterTable(root);
         const strict = args.flags.strict === true;
         const failed = d.failed(strict);
         const summary = `${failed ? "FAILED" : "OK"}: ${d.errors.length} error(s), ${d.warnings.length} warning(s)${strict ? " (strict)" : ""}
 `;
         emit(
           { ok: !failed, strict, written, ...diagsJson(d) },
-          `${table}${written.length ? `wrote agents/: ${written.join(", ")}
+          `${table2}${written.length ? `wrote agents/: ${written.join(", ")}
 ` : ""}${printDiags(d)}${summary}`
         );
         return failed ? 1 : 0;
@@ -22163,7 +22517,7 @@ ${lines.length ? `${lines.join("\n")}
         return 0;
       }
       case "init": {
-        const dir = str(args.flags.root) ?? cwd;
+        const dir = str2(args.flags.root) ?? cwd;
         const { created, detection: d } = initProject(dir);
         emit(
           { ok: true, created, detection: d },
@@ -22179,7 +22533,7 @@ ${d.kind === "brownfield" ? `${d.signals.map((s) => `  signal  ${s}
       case "plan": {
         const p = project();
         const id = resolveChangeId(p, rest[0]);
-        const tasks = parseTasks(readText((0, import_node_path53.join)(loadChange(p, id).dir, "tasks.yaml")) ?? "").tasks;
+        const tasks = parseTasks(readText((0, import_node_path54.join)(loadChange(p, id).dir, "tasks.yaml")) ?? "").tasks;
         const shape = planShape(tasks);
         emit({ change: id, ...shape, summary: planSummary(tasks), advice: planAdvice(tasks) }, `${planSummary(tasks)}
 ${planAdvice(tasks).map((a) => `  advice: ${a}
@@ -22188,8 +22542,8 @@ ${planAdvice(tasks).map((a) => `  advice: ${a}
       }
       case "pr": {
         const p = project();
-        const id = resolveChangeId(p, str(args.flags.change) ?? rest[0]);
-        const base2 = str(args.flags.base);
+        const id = resolveChangeId(p, str2(args.flags.change) ?? rest[0]);
+        const base2 = str2(args.flags.base);
         if (args.flags.create === true) {
           const r = createPr(p, id, { ...base2 ? { base: base2 } : {}, draft: args.flags.draft === true, env });
           emit(
@@ -22226,8 +22580,8 @@ ${next}
       }
       case "cap": {
         const p = project();
-        const id = resolveChangeId(p, str(args.flags.change) ?? rest[0]);
-        const raw = str(args.flags.raise);
+        const id = resolveChangeId(p, str2(args.flags.change) ?? rest[0]);
+        const raw = str2(args.flags.raise);
         if (raw === void 0) throw new UsageError("usage: aidw cap <id> --raise <runs>");
         if (!/^\d+$/.test(raw)) throw new OpError("--raise takes a positive whole number of Agent runs");
         const r = raiseCap(p, id, Number(raw), env);
@@ -22273,9 +22627,9 @@ layers get it as E2E_CDP_URL and E2E_CDP_PORT; for your own shell: export E2E_CD
         const sub = rest[0];
         if (sub === "font") {
           const family = need(rest.slice(1).join(" ").trim() || void 0, "font family");
-          const weights = str(args.flags.weights)?.split(",").map((w) => Number(w.trim()));
+          const weights = str2(args.flags.weights)?.split(",").map((w) => Number(w.trim()));
           if (weights?.some((w) => !Number.isInteger(w))) throw new UsageError("--weights takes numbers, for example 400,700");
-          const to = (0, import_node_path53.resolve)(cwd, str(args.flags.to) ?? (0, import_node_path53.join)(project().design, "mock", "fonts"));
+          const to = (0, import_node_path54.resolve)(cwd, str2(args.flags.to) ?? (0, import_node_path54.join)(project().design, "mock", "fonts"));
           const f = fetchFont(family, { weights, italic: args.flags.italic === true, to });
           emit({ ok: true, ...f, dir: to }, `${f.family} ${f.version} (${f.license}): ${f.files.length} file(s) in ${to}${f.cached ? `, ${f.cached} from cache` : ""}
 link ${f.css} from the mock's CSS (@import url("fonts/${f.css}")) and use font-family: "${f.family}"
@@ -22283,12 +22637,12 @@ link ${f.css} from the mock's CSS (@import url("fonts/${f.css}")) and use font-f
           return 0;
         }
         if (sub === "shots") {
-          const dir = (0, import_node_path53.resolve)(cwd, need(rest[1], "mock folder"));
+          const dir = (0, import_node_path54.resolve)(cwd, need(rest[1], "mock folder"));
           const s = browserStatus(project());
           if (!s.running || !s.record) throw new OpError("mock shots need the test browser: run `aidw browser start` (outside the sandbox if it is refused)");
-          const self = typeof __filename !== "undefined" ? __filename : (0, import_node_path53.join)(pluginRoot(env), "bin", "aidw");
+          const self = typeof __filename !== "undefined" ? __filename : (0, import_node_path54.join)(pluginRoot(env), "bin", "aidw");
           const r = takeShots({ dir, cdp: s.record.url, full: args.flags.full === true }, self);
-          emit({ ok: r.errors.length === 0, dir, ...r }, `${r.written.length} screenshot(s) in ${(0, import_node_path53.join)(dir, "shots")}
+          emit({ ok: r.errors.length === 0, dir, ...r }, `${r.written.length} screenshot(s) in ${(0, import_node_path54.join)(dir, "shots")}
 ${r.errors.map((e) => `failed: ${e}
 `).join("")}`);
           return r.errors.length ? 1 : 0;
@@ -22310,7 +22664,7 @@ ${r.errors.map((e) => `failed: ${e}
         return checks.some((c) => c.status === "fail") ? 1 : 0;
       }
       case "detect": {
-        const dir = findProject({ root: str(args.flags.root), cwd, env }) ?? str(args.flags.root) ?? cwd;
+        const dir = findProject({ root: str2(args.flags.root), cwd, env }) ?? str2(args.flags.root) ?? cwd;
         const d = detectProject(dir);
         const text2 = [
           `${d.kind}${d.packageManager || d.pythonTool ? ` (${d.packageManager ?? d.pythonTool})` : ""}${d.languages.length ? `, ${d.languages.join(", ")}` : ""}`,
@@ -22326,7 +22680,7 @@ ${r.errors.map((e) => `failed: ${e}
       }
       case "baseline": {
         const p = project();
-        const id = resolveChangeId(p, str(args.flags.change));
+        const id = resolveChangeId(p, str2(args.flags.change));
         const file = createBaseline(p, id, need(rest[0], "capability"));
         emit({ ok: true, change: id, file: rel(p, file) }, `wrote baseline skeleton ${rel(p, file)}: describe the current behavior, then aidw analyze ${id}
 `);
@@ -22336,8 +22690,8 @@ ${r.errors.map((e) => `failed: ${e}
         if (rest[0] !== "new") throw new UsageError("usage: aidw change new <id>");
         const p = project();
         const id = need(rest[1], "change id");
-        const wf = str(args.flags.workflow);
-        const dir = newChange(p, id, { title: str(args.flags.title), inputType: str(args.flags["input-type"]), scopeRound: loadWorkflow(pluginRoot(env), wf ?? defaultWorkflowId(p))?.scope_round === true, ...wf ? { workflow: wf, workflows: workflowIds(pluginRoot(env)), skipSpecs: boundaryOf(pluginRoot(env), wf)?.spec_changes === false } : {} });
+        const wf = str2(args.flags.workflow);
+        const dir = newChange(p, id, { title: str2(args.flags.title), inputType: str2(args.flags["input-type"]), scopeRound: loadWorkflow(pluginRoot(env), wf ?? defaultWorkflowId(p))?.scope_round === true, ...wf ? { workflow: wf, workflows: workflowIds(pluginRoot(env)), skipSpecs: boundaryOf(pluginRoot(env), wf)?.spec_changes === false } : {} });
         emit({ ok: true, id, dir: rel(p, dir) }, `created change ${id} at ${rel(p, dir)}
 `);
         return 0;
@@ -22390,10 +22744,10 @@ ${r.errors.map((e) => `failed: ${e}
       }
       case "decide": {
         const p = project();
-        const id = resolveChangeId(p, str(args.flags.change));
+        const id = resolveChangeId(p, str2(args.flags.change));
         const name = need(rest[0], "decision id");
         try {
-          const r = recordDecision(p, id, name, need(rest[1], "answer"), str(args.flags.reason) ?? "", pluginRoot(env));
+          const r = recordDecision(p, id, name, need(rest[1], "answer"), str2(args.flags.reason) ?? "", pluginRoot(env));
           emit({ ok: true, change: id, decision: name, ...r.recorded }, `${id}: ${name} = ${[r.recorded.answer].flat().join(", ")} (${r.decision.decide}): ${r.recorded.reason}
 `);
           return 0;
@@ -22405,7 +22759,7 @@ ${r.errors.map((e) => `failed: ${e}
       case "audit": {
         const p = project();
         const sub = need(rest[0], "brief | report | picks");
-        const id = resolveChangeId(p, str(args.flags.change));
+        const id = resolveChangeId(p, str2(args.flags.change));
         const c = loadChange(p, id);
         const w = workflowOfChange(p, c, pluginRoot(env));
         const roles = lensRoles(w);
@@ -22442,7 +22796,7 @@ SPAWN aidw:${role} with: Audit brief: ${b.path}. Read it and write your answer a
       case "page": {
         const p = project();
         const sub = need(rest[0], "render | answers | audit | triage");
-        const lang = str(args.flags.lang);
+        const lang = str2(args.flags.lang);
         const gateExtras = (id) => {
           const c = loadChange(p, id);
           const all2 = readDecisions(c);
@@ -22450,7 +22804,7 @@ SPAWN aidw:${role} with: Audit brief: ${b.path}. Read it and write your answer a
             const r = all2[x.id];
             return r ? `**${x.id}**: ${[r.answer].flat().join(", ")} (${r.reason || "no reason recorded"})` : `**${x.id}**: open (${x.options.join(" | ")})`;
           });
-          const tasks = parseTasks(readText((0, import_node_path53.join)(c.dir, "tasks.yaml")) ?? "").tasks;
+          const tasks = parseTasks(readText((0, import_node_path54.join)(c.dir, "tasks.yaml")) ?? "").tasks;
           return [
             ...points.length ? [{ id: "decision-points", title: "Decision Points", body: "", points, html: "" }] : [],
             ...tasks.length ? [{ id: "plan", title: "Plan", body: planSummary(tasks), points: [], html: "" }] : [],
@@ -22474,13 +22828,13 @@ Fix the file and render again.`);
           return r.page;
         };
         const save2 = (name, data) => {
-          (0, import_node_fs48.mkdirSync)(pagesDir(p), { recursive: true });
-          (0, import_node_fs48.writeFileSync)(pageDataFile(p, name), typeof data === "string" ? data : (0, import_yaml26.stringify)(data));
+          (0, import_node_fs49.mkdirSync)(pagesDir(p), { recursive: true });
+          (0, import_node_fs49.writeFileSync)(pageDataFile(p, name), typeof data === "string" ? data : (0, import_yaml27.stringify)(data));
         };
         const show = (name) => {
           const page = load2(name);
           const file = pageHtmlFile(p, name);
-          (0, import_node_fs48.writeFileSync)(file, renderPage(page));
+          (0, import_node_fs49.writeFileSync)(file, renderPage(page));
           const url = (0, import_node_url.pathToFileURL)(file).href;
           emit(
             { ok: true, page: name, version: page.version, layout: page.layout, file, url },
@@ -22503,7 +22857,7 @@ NEXT: when they paste it, run \`aidw page answers ${name} --text "<the pasted te
         if (sub === "answers") {
           const name = need(rest[1], "page name");
           const page = load2(name);
-          const pasted = str(args.flags.text) ?? io.stdin?.() ?? "";
+          const pasted = str2(args.flags.text) ?? io.stdin?.() ?? "";
           const a = parseAnswers(page, pasted);
           emit(
             { page: name, ...a },
@@ -22516,7 +22870,7 @@ Ask the user about exactly these; do not guess an answer for them.
           return a.ok ? 0 : 1;
         }
         if (sub === "audit") {
-          const id = resolveChangeId(p, str(args.flags.change));
+          const id = resolveChangeId(p, str2(args.flags.change));
           const r = compileReport(p, id, false);
           if (r.diags.errors.length) throw new OpError("the audit report is not complete: run `aidw audit report` first", r.diags);
           if (!r.findings.length) throw new OpError("the audit has no findings: there is nothing to pick");
@@ -22538,7 +22892,7 @@ Ask the user about exactly these; do not guess an answer for them.
         }
         if (sub === "triage") {
           const taskId = need(rest[1], "task id");
-          const file = str(args.flags["notes-file"]) ?? triageFile(p, taskId);
+          const file = str2(args.flags["notes-file"]) ?? triageFile(p, taskId);
           const diagnosis = readText(file);
           if (diagnosis === null) throw new OpError(`no triage diagnosis at ${rel(p, file)}: this task was not triaged, so put the decision to the user in the chat`);
           const cause = /^CAUSE:\s*(\S+)/m.exec(diagnosis)?.[1] ?? "unknown";
@@ -22565,7 +22919,7 @@ Ask the user about exactly these; do not guess an answer for them.
       }
       case "plan-review": {
         const p = project();
-        const id = resolveChangeId(p, rest[0] ?? str(args.flags.change));
+        const id = resolveChangeId(p, rest[0] ?? str2(args.flags.change));
         if (args.flags.brief === true) {
           const b = buildPlanReviewBrief(p, id, pluginRoot(env));
           emit({ change: id, round: b.round, agent: "aidw:code-reviewer", brief: b.path }, `${b.path}
@@ -22589,8 +22943,8 @@ ${findings}`;
       }
       case "stages": {
         const p = project();
-        const id = resolveChangeId(p, str(args.flags.change) ?? rest[0]);
-        const finished = str(args.flags.done);
+        const id = resolveChangeId(p, str2(args.flags.change) ?? rest[0]);
+        const finished = str2(args.flags.done);
         if (finished) recordStageDone(p, id, finished, pluginRoot(env));
         const v = stagesView(p, id, pluginRoot(env));
         const pending = pendingConsultation(loadChange(p, id));
@@ -22610,7 +22964,7 @@ ${rows2.join("\n")}${rows2.length ? "\n" : ""}${asking}${stagesNext(v)}
         const p = project();
         const sub = rest[0];
         if (sub === "answer" || sub === "resume") {
-          const id2 = resolveChangeId(p, str(args.flags.change));
+          const id2 = resolveChangeId(p, str2(args.flags.change));
           const cid = need(rest[1], "consultation id (C01)");
           if (sub === "answer") {
             const r3 = recordAnswer(p, id2, cid, pluginRoot(env));
@@ -22626,13 +22980,13 @@ ${route}${c3.status === "needs-deviation" ? "Then, once the Deviation is closed"
           }
           const r2 = resumeConsultation(p, id2, cid);
           const c2 = r2.consultation;
-          spawned(p, id2, "resumed", cid, c2.task);
+          spawned(p, id2, "resumed", cid, c2.task, r2.agent);
           const after = c2.task ? `Then, when it reports: aidw checkpoint ${c2.task}` : `Then, when it reports: continue stage ${c2.stage} (\`aidw stages\`)`;
           emit(
             { ok: true, change: id2, ...r2 },
             `${cid} resumed: ${c2.from} continues ${c2.task ?? `stage ${c2.stage}`}
 resume brief ${r2.resume}
-If the Agent that asked is still running in this session, continue it with SendMessage: "Consultation ${cid} is answered: ${(0, import_node_path53.join)(p.changes, id2, c2.answer)}. Read it and continue." Otherwise:
+If the Agent that asked is still running in this session, continue it with SendMessage: "Consultation ${cid} is answered: ${(0, import_node_path54.join)(p.changes, id2, c2.answer)}. Read it and continue." Otherwise:
 SPAWN ${r2.agent} with: Resume brief: ${r2.resume}. Read it and continue the work.
 ${after}
 `
@@ -22640,11 +22994,11 @@ ${after}
           return 0;
         }
         const file = need(sub, "request file (.aidw/changes/<id>/consult/<name>.request.md)");
-        const abs = (0, import_node_path53.resolve)(cwd, file);
-        const id = resolveChangeId(p, changeOfRequest(p, abs, str(args.flags.change)));
+        const abs = (0, import_node_path54.resolve)(cwd, file);
+        const id = resolveChangeId(p, changeOfRequest(p, abs, str2(args.flags.change)));
         const r = requestConsultation(p, id, abs, pluginRoot(env));
         const c = r.consultation;
-        spawned(p, id, "consulted", c.id, c.task);
+        spawned(p, id, "consulted", c.id, c.task, r.agent);
         emit(
           { ok: true, change: id, ...r },
           `${c.id} recorded: ${c.from} (${c.task ?? `stage ${c.stage}`}) asks ${c.to}
@@ -22659,15 +23013,15 @@ Meanwhile the other tasks or stages carry on.
       case "deviation": {
         const p = project();
         const sub = rest[0];
-        const id = resolveChangeId(p, str(args.flags.change) ?? rest[1]);
+        const id = resolveChangeId(p, str2(args.flags.change) ?? rest[1]);
         if (sub === "open") {
-          const files = (str(args.flags.files) ?? "").split(",").map((f) => f.trim()).filter(Boolean);
-          const consultation = str(args.flags.consultation);
-          const task = str(args.flags.task);
+          const files = (str2(args.flags.files) ?? "").split(",").map((f) => f.trim()).filter(Boolean);
+          const consultation = str2(args.flags.consultation);
+          const task = str2(args.flags.task);
           const r = openDeviationFor(p, id, {
-            role: need(str(args.flags.role), "--role <the Role that wrote the files>[,<another>]"),
+            role: need(str2(args.flags.role), "--role <the Role that wrote the files>[,<another>]"),
             files,
-            reason: str(args.flags.reason) ?? "",
+            reason: str2(args.flags.reason) ?? "",
             ...consultation ? { consultation } : {},
             ...task ? { task } : {},
             pluginRoot: pluginRoot(env),
@@ -22685,9 +23039,9 @@ Then: aidw deviation close
           return 0;
         }
         if (sub === "close") {
-          const removeReason = str(args.flags["remove-reason"]);
-          const scopeReason = str(args.flags["scope-reason"]);
-          const summary = str(args.flags.summary);
+          const removeReason = str2(args.flags["remove-reason"]);
+          const scopeReason = str2(args.flags["scope-reason"]);
+          const summary = str2(args.flags.summary);
           const d = closeDeviation(p, id, { ...removeReason ? { removeReason } : {}, ...scopeReason ? { scopeReason } : {}, ...summary ? { summary } : {}, pluginRoot: pluginRoot(env) });
           const lines = [
             `${d.id} recorded: ${d.roles.join(", ")} changed ${(d.changed ?? []).join(", ")}`,
@@ -22721,11 +23075,11 @@ ${settledNextLine(p, id)}`);
       }
       case "not-built": {
         const p = project();
-        const id = resolveChangeId(p, str(args.flags.change));
-        const cause = str(args.flags.cause) ?? "envelope";
+        const id = resolveChangeId(p, str2(args.flags.change));
+        const cause = str2(args.flags.cause) ?? "envelope";
         if (cause !== "envelope" && cause !== "environment") throw new UsageError("--cause is envelope (outside what the user granted) or environment (a missing key, the network)");
         const taskId = need(rest[0], "task id");
-        const reason = (str(args.flags.reason) ?? "").trim();
+        const reason = (str2(args.flags.reason) ?? "").trim();
         if (!reason) throw new OpError('say why it is not built (--reason "...")');
         const tf = loadTasks(p, id);
         const t = tf.tasks.find((x) => x.id === taskId);
@@ -22744,7 +23098,7 @@ ${settledNextLine(p, id)}`);
         const { hash, files, by } = approve(p, id, auto ? { auto: { pluginRoot: pluginRoot(env) } } : {});
         const { kept, reopened } = reconcileDoneTasks(p, id);
         const root = pluginRoot(env);
-        const route = buildRoute(id, tasksLeft(p, id), (0, import_node_path53.join)(root, "bin", "aidw"), installedOutside(root, p.project) ? void 0 : root);
+        const route = buildRoute(id, tasksLeft(p, id), (0, import_node_path54.join)(root, "bin", "aidw"), installedOutside(root, p.project) ? void 0 : root);
         emit(
           { ok: true, id, hash, files, kept, reopened, route },
           `approved ${id}${by === "user" ? "" : ` by ${by}`}
@@ -22779,7 +23133,7 @@ ${kept.length ? `  done work kept: ${kept.join(", ")}
         const p = project();
         const id = need(rest[0], "change id");
         const to = need(rest[1], "target state");
-        const r = transition(p, id, to, { reason: str(args.flags.reason), pluginRoot: pluginRoot(env) });
+        const r = transition(p, id, to, { reason: str2(args.flags.reason), pluginRoot: pluginRoot(env) });
         emit({ ok: true, id, ...r }, `${id}: ${r.from} -> ${r.to}${r.commit ? ` (committed .aidw/ ${r.commit.slice(0, 8)})` : ""}
 ${(r.notes ?? []).map((n) => `  ${n}
 `).join("")}`);
@@ -22858,7 +23212,7 @@ if (typeof require !== "undefined" && require.main === module && process.argv[2]
     err: (s) => process.stderr.write(s),
     stdin: () => {
       try {
-        return (0, import_node_fs48.readFileSync)(0, "utf8");
+        return (0, import_node_fs49.readFileSync)(0, "utf8");
       } catch {
         return "";
       }
