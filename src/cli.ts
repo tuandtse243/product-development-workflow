@@ -873,8 +873,8 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const ok = r.diags.errors.length === 0;
         const head = args.flags.check === true ? "" : `${r.dir}: wrote ${r.written.length} file(s)${r.created_handoff ? ", created handoff.md skeleton" : ""}, ${r.screenshots} screenshot(s)\n`;
         emit(
-          { ok, change: id, dir: r.dir, written: r.written, commit: r.commit, created_handoff: r.created_handoff, screenshots: r.screenshots, ...diagsJson(r.diags) },
-          `${head}${printDiags(r.diags)}${r.commit ? `committed ${r.commit.slice(0, 8)}: the package and the files the delivery wrote\n` : ""}${ok ? "delivery package complete" : "INCOMPLETE: fix the items above"}\n`,
+          { ok, change: id, dir: r.dir, written: r.written, commit: r.commit, left_uncommitted: r.left, ...(r.warning ? { warning: r.warning } : {}), created_handoff: r.created_handoff, screenshots: r.screenshots, ...diagsJson(r.diags) },
+          `${head}${printDiags(r.diags)}${r.commit ? `committed ${r.commit.slice(0, 8)}: the package and the files the delivery wrote\n` : ""}${r.left.map((f) => `left uncommitted (yours): ${f}\n`).join("")}${r.warning ? `WARNING: ${r.warning}\n` : ""}${ok ? "delivery package complete" : "INCOMPLETE: fix the items above"}\n`,
         );
         return ok ? 0 : 1;
       }

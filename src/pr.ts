@@ -172,12 +172,11 @@ export function planPr(p: Paths, id: string, opts: { base?: string; env?: NodeJS
 
 /** The summary without the lines that repeat a manual check: it is listed once, under "Needed from the user". */
 function withoutChecks(text: string, checks: string[]): string {
-  const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ");
-  const marks = checks.map(norm).filter(Boolean);
-  if (!marks.length) return text;
+  const norm = (x: string) => x.toLowerCase().replace(/^\s*(?:[-*]|\d+\.)\s+(?:\[[ xX]\]\s*)?/, "").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  const marks = new Set(checks.map(norm).filter(Boolean));
   return text
     .split("\n")
-    .filter((l) => !/^\s*(?:[-*]|\d+\.)\s/.test(l) || !marks.some((m) => norm(l).includes(m)))
+    .filter((l) => !/^\s*(?:[-*]|\d+\.)\s/.test(l) || !marks.has(norm(l)))
     .join("\n");
 }
 

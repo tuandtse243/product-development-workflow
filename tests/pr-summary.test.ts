@@ -361,7 +361,7 @@ describe("the Documentation Role, its skill and the deliver skill say it (I8, M4
 describe("the pull request body order, title and default branch (B5)", () => {
   it("opens with the summary, takes its H1 as the title, lists the manual check once and marks the task", () => {
     delivered();
-    const withNote = SUMMARY.replace("## Notes\n\n", "## Notes\n\n- Still open: a real phone receives the reschedule SMS.\n");
+    const withNote = SUMMARY.replace("## Notes\n\n", "## Notes\n\n- [ ] A real phone receives the reschedule SMS.\n");
     write(root, `.aidw/changes/${ID}/delivery/pr-summary.md`, withNote);
     const r = cli(["pr", ID]);
     expect(r.code, r.err).toBe(0);
@@ -373,6 +373,15 @@ describe("the pull request body order, title and default branch (B5)", () => {
     expect(body).toMatch(/- T01 Booking API \(manual check open\)/);
     expect(body).not.toMatch(/T01 Booking API \(done\)/);
     expect(r.out).toContain("title: feat(booking): reschedule an appointment");
+  });
+
+  it("drops a summary bullet only when it equals the check, not when it mentions it", () => {
+    delivered(TASKS_YAML.replace('    verify: ["pnpm vitest run lib/booking"]\n', '    verify: ["pnpm vitest run lib/booking"]\n    manual: ["Safari"]\n'));
+    write(root, `.aidw/changes/${ID}/delivery/pr-summary.md`, SUMMARY.replace("## Notes\n\n", "## Notes\n\n- Safari\n- Safari was not tried on the old iPad.\n"));
+    expect(cli(["pr", ID]).code).toBe(0);
+    const body = readFileSync(join(root, ".aidw/run/pr-app.md"), "utf8");
+    expect(body).toContain("- Safari was not tried on the old iPad.");
+    expect(body.match(/Safari/g)).toHaveLength(2); // the check under "Needed from the user", and the bullet that only mentions it
   });
 
   it("names the repository's real default branch, never the literal main", () => {
@@ -394,10 +403,9 @@ describe("the pull request body order, title and default branch (B5)", () => {
 });
 
 describe("delivery leaves a clean tree (B6)", () => {
-  it("commits the README and API docs the delivery wrote, so archive finds nothing extra", () => {
+  it("commits the README the delivery wrote, so archive finds nothing extra", () => {
     delivered();
     write(root, "README.md", "# app\n\nNow with the reschedule route.\n");
-    write(root, "docs/api.md", "# API\n\nPATCH /api/bookings\n");
     cli(["deliver", "--change", ID]);
     write(root, `.aidw/changes/${ID}/delivery/handoff.md`, `# Handoff\n\n${HANDOFF_SECTIONS.map((s) => `## ${s}\n\nNone\n`).join("\n")}`);
     write(root, `.aidw/changes/${ID}/delivery/screenshots/01-book.png`, "png");
@@ -407,5 +415,20 @@ describe("delivery leaves a clean tree (B6)", () => {
     expect(git(root, "status", "--porcelain", "--", ".", ":(exclude).aidw/run")).toBe("");
     const a = cli(["archive", ID, "--force"], {});
     expect(a.out).not.toMatch(/also committed with it/);
+  });
+
+  it("does not commit in --check, and leaves a README the user had edited", () => {
+    delivered();
+    write(root, `.aidw/changes/${ID}/delivery/handoff.md`, `# Handoff\n\n${HANDOFF_SECTIONS.map((s) => `## ${s}\n\nNone\n`).join("\n")}`);
+    write(root, `.aidw/changes/${ID}/delivery/screenshots/01-book.png`, "png");
+    cli(["deliver", "--change", ID]);
+    write(root, "README.md", "# app\n\nedited\n");
+    const before = git(root, "rev-parse", "HEAD");
+    cli(["deliver", "--check", "--change", ID]);
+    expect(git(root, "rev-parse", "HEAD")).toBe(before);
+    setTasks((ts) => (ts[0]!.start_dirty = ["README.md"]));
+    const d = cli(["deliver", "--change", ID]);
+    expect(d.out).toContain("left uncommitted (yours): README.md");
+    expect(git(root, "status", "--porcelain", "--", "README.md")).toMatch(/M README.md/);
   });
 });

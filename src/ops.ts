@@ -543,8 +543,8 @@ function useChangeBranch(p: Paths, change: ReturnType<typeof loadChange>, id: st
   return `task commits go to the new branch ${want} (from ${current || "a detached commit"})`;
 }
 
-/** What the delivery Roles write outside `.aidw/`: the README, the environment template, API docs (`docs/`). */
-export const DELIVERY_FILES = ["README.md", ".env.example", ".gitignore", "docs"];
+/** What the gate lets a delivery Role write outside `.aidw/`: the README, the environment template, .gitignore. */
+export const DELIVERY_FILES = ["README.md", ".env.example", ".gitignore"];
 
 /**
  * Commits pending changes under .aidw/ plus the delivery files the gate lets in after delivery (README.md,
@@ -765,4 +765,37 @@ export function projectStatus(p: Paths, only?: string): ProjectStatus {
 
 export function assertProject(p: Paths): void {
   if (!isDir(p.aidw)) throw new OpError(`no .aidw/ in ${p.project}; run \`aidw init\``);
+}
+
+/**
+ * The delivery commit (B-D3): this Change's own `.aidw/` folder and the delivery files (README.md, .env.example,
+ * .gitignore) the Roles wrote, nothing else. A path that was dirty when a task started (`start_dirty`) is the user's:
+ * left out and named in `left`. A git failure unstages what was staged and comes back as `warning`.
+ */
+export function commitDelivery(p: Paths, id: string, dir: string, startDirty: string[]): { commit: string | null; left: string[]; warning?: string } {
+  if (!isGitRepo(p.project)) return { commit: null, left: [] };
+  const mine = new Set(startDirty);
+  const files = DELIVERY_FILES.filter((f) => existsSync(join(p.project, f)));
+  const left = files.filter((f) => mine.has(f) && git(p.project, ["status", "--porcelain", "--", f]).out !== "");
+  const paths = [rel(p, dir), ...files.filter((f) => !left.includes(f))];
+  const undo = () => git(p.project, ["reset", "-q", "--", ...paths]);
+  const add = git(p.project, ["add", "--", ...paths]);
+  if (!add.ok) {
+    undo();
+    return { commit: null, left, warning: `the delivery commit was not made: git add failed (${add.err.split("\n")[0]})` };
+  }
+  const junk = stagedJunk(p.project, paths);
+  const secrets = stagedSecrets(p.project, paths);
+  if (junk.length || secrets.length) {
+    undo();
+    return { commit: null, left, warning: `the delivery commit was not made: ${junk.length ? junkMessage(junk) : secretsMessage(secrets)}` };
+  }
+  if (git(p.project, ["diff", "--cached", "--quiet", "--", ...paths]).ok) return { commit: null, left };
+  const msg = aidwCommitMessage(`${id} delivery package`, `Change: ${id}\nEvidence: ${rel(p, dir)}/`);
+  const c = git(p.project, ["commit", "-q", "-m", msg, "--", ...paths]);
+  if (!c.ok) {
+    undo();
+    return { commit: null, left, warning: `the delivery commit was not made: git commit failed (${(c.err || c.out).split("\n")[0]})` };
+  }
+  return { commit: headCommit(p.project), left };
 }
