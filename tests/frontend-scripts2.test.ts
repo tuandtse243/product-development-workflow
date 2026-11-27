@@ -267,12 +267,16 @@ describe("on the level 2 fixture and its references", () => {
     const fw = runScript(FW, [FIXTURE]);
     const rg = runScript(RG, [FIXTURE]);
     expect(Date.now() - t).toBeLessThan(10000);
-    expect(fw.json.findings).toEqual([]);
+    // the one planted flaw: useFetch's own uncancelled fetch (the people-search trap), and nothing else
+    expect(fw.json.findings.map((f: any) => [f.file, f.kind])).toEqual([["src/data/useFetch.ts", "uncancelled-effect-fetch"]]);
     expect(rg.json.findings).toEqual([]);
     expect(rg.json.framework).toBe("react-router");
     expect(rg.json.routes.map((x: any) => [x.path, x.element, x.guard])).toEqual([
       ["/", "DoctorsPage", null],
+      ["/contact", "ContactPage", null],
       ["/doctors/:doctorId", "DoctorPage", null],
+      ["/login", "LoginPage", null],
+      ["/notices", "NoticesPage", null],
     ]);
   });
 
@@ -543,5 +547,17 @@ describe("route-guard-inventory: review fixes", () => {
     const r = rgRun({ "src/r.tsx": "function Broken() { return (<div>;\nexport const r = [{ path: '/billing', element: <B /> }];\n" });
     expect(r.code).toBe(0);
     expect(r.json.skipped.length).toBeGreaterThan(0);
+  });
+
+  it("a route element written in parentheses over several lines is read like one on a single line (guard and page found)", () => {
+    const r = rgRun({
+      "src/r.tsx": L("export const router = createBrowserRouter([", "  {", "    path: '/billing',", "    element: (", "      <RequireOwner>", "        <Billing />", "      </RequireOwner>", "    ),", "  },", "  { path: '/open', element: (<Open />) },", "]);"),
+      "src/RequireOwner.tsx": "export function RequireOwner({ children }) { const { session } = useSession(); if (!session) return <Navigate to='/login' />; return children; }\n",
+    });
+    expect(guardsOf(r)["/billing"]).toBe("wrapper:RequireOwner");
+    const by = Object.fromEntries(r.json.routes.map((x: any) => [x.path, x.element]));
+    expect(by["/billing"]).toBe("Billing");
+    expect(by["/open"]).toBe("Open");
+    expect(r.json.findings).toEqual([]);
   });
 });

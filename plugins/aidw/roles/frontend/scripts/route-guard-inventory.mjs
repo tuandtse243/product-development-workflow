@@ -182,7 +182,9 @@ function bodyGuard(label, body, defs) {
 
 /** The guard, page and redirect-ness of a JSX value (element={...}). */
 function elementInfo(text, defs) {
-  const t = text.trim();
+  let t = text.trim();
+  // a multi-line element is written in parentheses: element: (\n <RequireOwner>...</RequireOwner>\n)
+  while (t.startsWith("(") && t.endsWith(")")) t = t.slice(1, -1).trim();
   const hoc = /^(with[A-Z]\w*|require[A-Z]\w*|protect\w*)\s*\(\s*([A-Za-z_$][\w$]*)/.exec(t);
   if (hoc && GUARD_NAME.test(hoc[1].replace(/^with/, "With"))) return { guard: `wrapper:${hoc[1]}`, element: hoc[2], redirect: false };
   if (!t.startsWith("<")) return { guard: null, element: /^[A-Z][\w$]*$/.test(t) ? t : null, redirect: false };

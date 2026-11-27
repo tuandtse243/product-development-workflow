@@ -925,10 +925,11 @@ describe("route-guard-inventory: input edges", () => {
 });
 
 describe("on the real fixture evals/fixtures/frontend-web", () => {
-  it.skipIf(!existsSync(FIXTURE))("fetch-waterfalls reports nothing and skips only the public/ output folder", () => {
+  it.skipIf(!existsSync(FIXTURE))("fetch-waterfalls reports only the planted useFetch flaw and skips only the public/ output folder", () => {
     const r = runScript(FW, [FIXTURE]);
     expect(r.code).toBe(0);
-    expect(r.json.findings).toEqual([]);
+    // the one planted flaw: useFetch's own uncancelled fetch (the people-search trap), and nothing else
+    expect(r.json.findings.map((f: any) => [f.file, f.kind])).toEqual([["src/data/useFetch.ts", "uncancelled-effect-fetch"]]);
     expect(r.json.skipped.map((x: any) => x.file)).toEqual(["public/"]);
     expect(runScript(FW, [FIXTURE, "--text"]).code).toBe(0);
   });
