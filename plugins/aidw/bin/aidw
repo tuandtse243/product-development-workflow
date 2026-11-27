@@ -9237,6 +9237,7 @@ function loadRole(root, id) {
     includes,
     consults: Array.isArray(h.consults) ? h.consults.map(String) : [],
     follows_rules: Array.isArray(h.follows_rules) ? h.follows_rules.map(String) : [],
+    answers_consultations: h.answers_consultations === true,
     body: parsed.body,
     shared: includes.map((f) => (0, import_node_fs9.existsSync)((0, import_node_path11.join)(root, f)) ? read((0, import_node_path11.join)(root, f)).trim() : ""),
     rules: (0, import_node_fs9.existsSync)(rulesFile) ? read(rulesFile).trim() : ""
@@ -9445,6 +9446,8 @@ function checkRoster(root) {
       if (!Array.isArray(h.includes) || !h.includes.every((f) => typeof f === "string")) d.error(file, "includes must be a list of plugin-relative file paths");
       else for (const f of h.includes) if (f.includes("..") || !(0, import_node_fs9.existsSync)((0, import_node_path11.join)(root, f))) d.error(file, `includes: "${f}" not found in the plugin`);
     }
+    if (h.answers_consultations !== void 0 && typeof h.answers_consultations !== "boolean") d.error(file, "answers_consultations must be true or false");
+    if (h.answers_consultations === true && h.access !== "read-only") d.error(file, "answers_consultations only applies to a read-only Role (the other accesses can already write an answer)");
     if (h.consults !== void 0) {
       if (!Array.isArray(h.consults) || !h.consults.every((c) => typeof c === "string")) d.error(file, "consults must be a list of role ids");
       else {
@@ -9452,7 +9455,7 @@ function checkRoster(root) {
           if (c === id) d.error(file, `consults: a role does not consult itself ("${c}")`);
           else if (!(c in roster.roles)) d.error(file, `consults: "${c}" is not a role in roster.yaml`);
           else if (roster.roles[c]?.status !== "active") d.error(file, `consults: "${c}" is not an active role`);
-          else if (loadRole(root, c)?.access === "read-only") d.error(file, `consults: "${c}" is read-only, so it could never write its answer`);
+          else if (loadRole(root, c)?.access === "read-only" && !loadRole(root, c)?.answers_consultations) d.error(file, `consults: "${c}" is read-only, so it could never write its answer (add \`answers_consultations: true\` to its role.md to let it write that one file)`);
         }
         if (new Set(h.consults).size !== h.consults.length) d.error(file, "consults lists a role twice");
       }
@@ -10548,6 +10551,7 @@ function skillPath(vendorDir, id) {
 var UI_TOUCH = /(^|\/)(components?|pages|views|layouts?|styles?|ui|public)(\/|$)|\.(tsx|jsx|vue|svelte|css|scss|html)\b|(^|\/)(src\/)?app\/(?!api\/)/;
 var API_TOUCH = /(^|\/)(api|server|routes?|actions?|trpc|graphql|controllers?|services?|handlers?|middleware)(\/|\.|$)/;
 var DATA_TOUCH = /(^|\/)(supabase|migrations?|prisma|drizzle|db|database|schema)(\/|\.|$)/;
+var CLIENT_DATA_TOUCH = /(^|\/)(supabase|migrations?|prisma|drizzle|db|database)(\/|\.|$)/;
 var SECURITY_HINT = /\b(auth|login|logout|sign-?in|sign-?up|session|password|permissions?|roles?|rls|policy|policies|payments?|stripe|checkout|billing|webhooks?|middleware|admin|tokens?|secrets?)\b/i;
 var BROWSER_VERIFY = /\b(playwright|cypress|e2e)\b/i;
 var DOCKERFILE_TOUCH = /(^|\/)(Dockerfile[\w.-]*|\.dockerignore|docker)(\/|$|\*)/i;
@@ -10630,13 +10634,13 @@ function selectSkills(t, kind, opts = {}) {
   add("obra/verification-before-completion", "core: run the proof before you say it works");
   const ui = touchesUi(t) || role === "frontend";
   const api = role !== "frontend" && (touches.some((g) => API_TOUCH.test(g)) || role === "backend");
-  const data = touches.some((g) => DATA_TOUCH.test(g)) || role === "database";
+  const data = touches.some((g) => (role === "frontend" ? CLIENT_DATA_TOUCH : DATA_TOUCH).test(g)) || role === "database";
   if (ui) add("frontend-ui-engineering", "touches UI files");
-  if (ui && !(role === "frontend" && opts.designTokens)) add("anthropic/frontend-design", "touches UI files: an interface with a point of view, inside the approved design tokens");
+  if (ui && !((!role || role === "frontend" || role === "fullstack") && opts.designTokens)) add("anthropic/frontend-design", "touches UI files: an interface with a point of view (a frontend or fullstack task with approved design tokens follows them instead, so it does not load this)");
   if (ui && MOTION_HINT.test([t.title ?? "", ...list2(t.scenarios)].join(" ").replace(/[/_.-]/g, " "))) add("emil/animate", "the task is about motion");
   if (api) add("api-and-interface-design", "touches API or server code");
   if (api) add("aidw/api-design-rules", "touches API or server code: the concrete rules (errors, lists, repeated writes)");
-  else if (data) add("api-and-interface-design", "touches the data layer (schema is an interface)");
+  else if (data && role !== "frontend") add("api-and-interface-design", "touches the data layer (schema is an interface)");
   if (isSecuritySensitive(t)) add("security-and-hardening", "security-sensitive task (risk or auth/payment/permissions)");
   if (list2(t.verify).some((v) => BROWSER_VERIFY.test(v))) add("browser-testing-with-devtools", "verify runs browser/E2E tests");
   if (data) add("aidw/schema-evolution", "touches the data layer: what each schema change costs on a table with rows, and the expand, migrate, contract order");
@@ -10735,7 +10739,7 @@ function contractAuthors(p, id, task, pluginRoot2) {
     registry = null;
   }
   if (!registry) return [];
-  const names2 = BRIEF_READS.filter((r) => !r.ui || touchesUi(task)).map((r) => r.name);
+  const names2 = BRIEF_READS.filter((r) => !r.ui || touchesUi(task) || task.role === "frontend").map((r) => r.name);
   const owners = /* @__PURE__ */ new Set();
   for (const n of names2) {
     const e = registry[n];
@@ -11299,7 +11303,7 @@ function decide(input, env) {
       if (insideAnyCase(p.changes, file) && (same(parts[1] ?? "", DEVIATIONS_FILE) || same(parts[1] ?? "", DEVIATIONS_DIR)) && parts.length >= 2) {
         return deny("deviations.yaml and deviations/ are the CLI's record of Deviations; only `aidw deviation` writes them");
       }
-      const consult = role === "reviewer" ? null : consultWrite(p, file, name, role);
+      const consult = consultWrite(p, file, name, role);
       if (consult) return consult.allow ? allow(consult.reason) : deny(consult.reason);
       if (same((0, import_node_path20.dirname)(file), p.run) && PLAN_REVIEW_FILE.test((0, import_node_path20.basename)(file)) && name !== "code-reviewer") {
         return deny("the plan review's verdict is written only by the code-reviewer that the orchestrator spawned with its brief");
@@ -11315,6 +11319,7 @@ function decide(input, env) {
     const worktrees = (0, import_node_path20.join)(p.run, "worktrees");
     if (insideAnyCase(worktrees, file)) {
       const parts = (0, import_node_path20.relative)(lower(worktrees), lower(file)).split(import_node_path20.sep);
+      if (role === "author") return deny("a task's worktree holds project code: only that task's implementer writes there, never an authoring role (a Consultation answer is a file under .aidw/run/)");
       if (parts.length < 3) return deny("write inside a task's worktree (.aidw/run/worktrees/<change>/<task>/...)");
       if (parts[2] === AIDW_DIR) return deny("the worktree's .aidw/ is a stale copy; aidw state lives in the main checkout and is the orchestrator's");
       const st2 = gateState(p);
@@ -13534,8 +13539,13 @@ var DEPS = [
   { dep: /^nuxt$/, role: "framework", name: "Nuxt" },
   { dep: /^@sveltejs\/kit$/, role: "framework", name: "SvelteKit" },
   { dep: /^astro$/, role: "framework", name: "Astro" },
-  { dep: /^@remix-run\/react$|^react-router$/, role: "framework", name: "React Router / Remix" },
-  { dep: /^@nestjs\/core$/, role: "framework", name: "NestJS" },
+  // Server-rendering React routers are frameworks of their own (the Remix app packages, not `@remix-run/router`);
+  // `react-router` alone is the library a Vite SPA uses, so it is a `router`, not the `framework`
+  { dep: /^@remix-run\/(react|node|dev|serve|express|cloudflare|architect|deno)$/, role: "framework", name: "Remix" },
+  { dep: /^@react-router\/dev$/, role: "framework", name: "React Router framework mode" },
+  { dep: /^react-router$|^react-router-dom$/, role: "router", name: "React Router" },
+  { dep: /^@tanstack\/react-router$/, role: "router", name: "TanStack Router" },
+  { dep: /^@nestjs\/core$/, role: "framework", name: "NestJS", backend: true },
   { dep: /^express$/, role: "server", name: "Express" },
   { dep: /^fastify$/, role: "server", name: "Fastify" },
   { dep: /^hono$/, role: "server", name: "Hono" },
@@ -13574,9 +13584,9 @@ var DEPS = [
   { dep: /^cypress$/, role: "e2e tests", name: "Cypress" }
 ];
 var PY_DEPS = [
-  { dep: /^django$/, role: "framework", name: "Django" },
-  { dep: /^fastapi$/, role: "framework", name: "FastAPI" },
-  { dep: /^flask$/, role: "framework", name: "Flask" },
+  { dep: /^django$/, role: "framework", name: "Django", backend: true },
+  { dep: /^fastapi$/, role: "framework", name: "FastAPI", backend: true },
+  { dep: /^flask$/, role: "framework", name: "Flask", backend: true },
   { dep: /^uvicorn$|^gunicorn$|^hypercorn$/, role: "server", name: "ASGI/WSGI server" },
   { dep: /^sqlalchemy$/, role: "orm", name: "SQLAlchemy" },
   { dep: /^sqlmodel$/, role: "orm", name: "SQLModel" },
@@ -13689,18 +13699,22 @@ function detectProject(dir) {
   const scripts = pkg?.scripts ?? {};
   const codeFiles = countCode(dir);
   const stack = {};
-  for (const { dep, role, name } of DEPS) {
+  for (const { dep, role, name, backend } of DEPS) {
     const hit = depNames.find((d) => dep.test(d));
-    if (!hit || stack[role]) continue;
+    if (!hit) continue;
     const version = String(deps[hit] ?? "").replace(/^[\^~>=<\s]+/, "").split(" ")[0];
-    stack[role] = version && /^\d/.test(version) ? `${name} ${version}` : name;
+    const value = version && /^\d/.test(version) ? `${name} ${version}` : name;
+    if (!stack[role]) stack[role] = value;
+    else if (backend && !stack.backend) stack.backend = value;
   }
   const py = detectPython(dir);
-  for (const { dep, role, name } of PY_DEPS) {
+  for (const { dep, role, name, backend } of PY_DEPS) {
     const hit = py ? Object.keys(py.deps).find((d) => dep.test(d)) : void 0;
-    if (!hit || stack[role]) continue;
+    if (!hit) continue;
     const v = py?.deps[hit] ?? "";
-    stack[role] = v && role !== "database" ? `${name} ${v}` : name;
+    const value = v && role !== "database" ? `${name} ${v}` : name;
+    if (!stack[role]) stack[role] = value;
+    else if (backend && !stack.backend) stack.backend = value;
   }
   if (py?.configured.ruff && !stack.linter) stack.linter = "Ruff";
   if (py?.configured.pytest && !stack["unit tests"]) stack["unit tests"] = "pytest";
@@ -15556,6 +15570,10 @@ function uiScenarioAdvice(p, id, tasks, d, tf) {
 var import_node_fs34 = require("node:fs");
 var import_node_path39 = require("node:path");
 var import_yaml18 = __toESM(require_dist(), 1);
+function excludesOf(v) {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return {};
+  return Object.fromEntries(Object.entries(v).map(([k, l]) => [k, (Array.isArray(l) ? l : [l]).filter((x) => typeof x === "string")]));
+}
 function requiresOf(v) {
   if (!v || typeof v !== "object" || Array.isArray(v)) return {};
   return Object.fromEntries(Object.entries(v).filter((e) => typeof e[1] === "string"));
@@ -15576,20 +15594,21 @@ function frameworkPacks(root) {
     const h = head;
     const strs = (v) => Array.isArray(v) ? v.map(String) : [];
     if (typeof h?.framework === "string" && Array.isArray(h.roles)) {
-      out.push({ id: name.slice(0, -3), framework: h.framework, roles: h.roles.map(String), file: (0, import_node_path39.join)(dir, name), skills: strs(h.skills), reviewSkills: strs(h.review_skills), detectedAs: typeof h.detected_as === "string" ? h.detected_as : "framework", requires: requiresOf(h.requires) });
+      out.push({ id: name.slice(0, -3), framework: h.framework, roles: h.roles.map(String), file: (0, import_node_path39.join)(dir, name), skills: strs(h.skills), reviewSkills: strs(h.review_skills), detectedAs: typeof h.detected_as === "string" ? h.detected_as : "framework", requires: requiresOf(h.requires), excludes: excludesOf(h.excludes) });
     }
   }
   return out;
 }
-function packsOf(root, stack) {
+function packsOf(root, stack, _role) {
   const all2 = frameworkPacks(root);
   const starts = (key, name) => (stack[key] ?? "").toLowerCase().startsWith(name.toLowerCase());
-  const hit = (p) => starts(p.detectedAs, p.framework) && Object.entries(p.requires).every(([k, n]) => starts(k, n));
+  const hit = (p) => (starts(p.detectedAs, p.framework) || p.detectedAs === "framework" && starts("backend", p.framework)) && Object.entries(p.requires).every(([k, n]) => starts(k, n)) && !Object.entries(p.excludes).some(([k, names2]) => names2.some((n) => starts(k, n)));
   const frameworks = all2.filter((p) => p.detectedAs === "framework" && hit(p));
-  return frameworks.length ? frameworks : all2.filter((p) => p.detectedAs !== "framework" && hit(p));
+  const sharing = (p) => frameworks.some((f) => p.roles.every((r) => f.roles.includes(r)));
+  return [...frameworks, ...all2.filter((p) => p.detectedAs !== "framework" && hit(p) && !sharing(p))];
 }
 function packsFor(root, stack, role) {
-  return packsOf(root, stack).filter((p) => p.roles.includes(role));
+  return packsOf(root, stack, role).filter((p) => p.roles.includes(role));
 }
 
 // src/configlock.ts
@@ -17290,7 +17309,7 @@ function buildBrief(p, id, taskId, kind, vendorDir) {
   const pluginHome = (0, import_node_path42.resolve)(vendorDir, "..", "..");
   const builder = implementerOf(pluginHome, typeof t.role === "string" ? t.role : void 0) ?? defaultTaskRole();
   const builderPacks = packsFor(pluginHome, stackNow, builder);
-  const fromPacks = kind === "implement" ? builderPacks.flatMap((k) => k.skills.map((id2) => ({ id: id2, reason: `the project is built with ${k.framework} (framework pack)` }))) : packsOf(pluginHome, stackNow).flatMap((k) => k.reviewSkills.map((id2) => ({ id: id2, reason: `review of ${k.framework} code (framework pack)` })));
+  const fromPacks = kind === "implement" ? builderPacks.flatMap((k) => k.skills.map((id2) => ({ id: id2, reason: `the project is built with ${k.framework} (framework pack)` }))) : builderPacks.flatMap((k) => k.reviewSkills.map((id2) => ({ id: id2, reason: `review of ${k.framework} code (framework pack)` })));
   const ruleFiles = [builder, ...loadRole(pluginHome, builder)?.follows_rules ?? []].map((r) => ({ role: r, file: (0, import_node_path42.join)(pluginHome, "roles", r, "rules.md") })).filter((x) => (0, import_node_fs37.existsSync)(x.file)).map((x) => ({ ...x, table: loadRuleTable(pluginHome, x.role) }));
   const exampleId = ruleFiles.find((x) => x.table?.length)?.table?.[0]?.id;
   const followed = ruleFiles.filter((x) => x.role !== builder);
