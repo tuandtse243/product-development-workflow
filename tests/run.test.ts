@@ -414,6 +414,15 @@ describe("skill selection by Role", () => {
     expect(pick("frontend", ["src/bookings/**"])).toEqual([...core, "addy/frontend-ui-engineering", "anthropic/frontend-design"]);
   });
 
+  it("a frontend task never gets the API design pair, even when its Touches look like server code", () => {
+    for (const touches of [["components/booking/actions.ts"], ["src/api/client.ts"], ["src/services/slots.ts", "src/handlers/**"]]) {
+      const ids = pick("frontend", touches);
+      expect(ids, touches.join()).not.toContain("addy/api-and-interface-design");
+      expect(ids, touches.join()).not.toContain("aidw/api-design-rules");
+    }
+    expect(pick("fullstack", ["components/booking/actions.ts"])).toContain("aidw/api-design-rules"); // only frontend is exempt
+  });
+
   it("a database task gets the data skills", () => {
     expect(pick("database", ["src/bookings/**"])).toEqual([
       ...core,

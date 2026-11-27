@@ -136,7 +136,8 @@ export function selectSkills(t: Task, kind: BriefKind, opts: { retry?: boolean; 
   add("obra/verification-before-completion", "core: run the proof before you say it works");
 
   const ui = touchesUi(t) || role === "frontend";
-  const api = touches.some((g) => API_TOUCH.test(g)) || role === "backend";
+  // A frontend task calls an API, it never designs one: `actions.ts` or `src/api/client.ts` in its Touches is a client.
+  const api = role !== "frontend" && (touches.some((g) => API_TOUCH.test(g)) || role === "backend");
   const data = touches.some((g) => DATA_TOUCH.test(g)) || role === "database";
   if (ui) add("frontend-ui-engineering", "touches UI files");
   if (ui) add("anthropic/frontend-design", "touches UI files: an interface with a point of view, inside the approved design tokens");
