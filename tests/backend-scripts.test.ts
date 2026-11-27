@@ -689,6 +689,65 @@ describe("review fixes", () => {
     expect(routes.find((x: any) => x.path === "/other/:id").accessCases).toEqual({ noIdentity: true, otherUser: true, owner: true });
   });
 
+  it("route-inventory reads a status passed to an expect…/assert… helper, as a number or a constant", () => {
+    const root = project({
+      "src/a.ts": "router.post('/api/projects/:projectId/tasks', create);\nrouter.get('/notes/:id', getNote);\nrouter.get('/docs/:id', getDoc);\nrouter.get('/teams/:id', getTeam);\nrouter.post('/invoices/:invoiceId/payments', pay);\nrouter.post('/refunds/:id', refund);\n",
+      "tests/a.test.ts":
+        "const problem = (status, type) => ({ status, type });\n" +
+        "const UNAUTH = problem(401, 'unauthenticated');\n" +
+        "const NOT_FOUND = { status: 404, type: 'project-not-found' };\n" +
+        "const LIMIT = 10;\n" +
+        "\n".repeat(40) +
+        "it('no session', async () => { const res = await http.post(`/api/projects/${p.id}/tasks`); expectProblem(res, UNAUTH); });\n" +
+        "it('other team', async () => { const res = await http.post(`/api/projects/${q.id}/tasks`); expectProblem(res, NOT_FOUND); });\n" +
+        "it('member', async () => { const res = await http.post(`/api/projects/${p.id}/tasks`); assertStatus(res, 201); });\n" +
+        "\n".repeat(40) +
+        "it('note', async () => { const res = await http.get(`/notes/${n.id}`); expectPage(res, LIMIT); expectProblem(res, 401, 'x'); });\n" +
+        "\n".repeat(40) +
+        "it('doc', async () => { const res = await http.get(`/docs/${d.id}`); expectProblem(res, problem(401, 'u')); expectProblem(res, problem(404, 'n')); expectOk(res, build(LIMIT)); });\n" +
+        "const team = (id) => http.get(`/teams/${id}`);\n" +
+        "\n".repeat(40) +
+        "it('team none', async () => { const res = await team(t1.id); expect(res.status).toBe(401); });\n" +
+        "\n".repeat(40) +
+        "it('team other', async () => { const res = await team(t2.id); expect(res.status).toBe(404); });\n" +
+        "\n".repeat(40) +
+        "it('team owner', async () => { const res = await team(t1.id); expect(res.status).toBe(200); });\n" +
+        "const pay = (user: { token: string } | null, invoiceId: string, key: string | null) => {\n" +
+        "  const req = http.post(`/invoices/${invoiceId}/payments`);\n" +
+        "  if (user) req.set(auth(user));\n" +
+        "  return req.send({});\n" +
+        "};\n" +
+        "\n".repeat(40) +
+        "it('pay none', async () => { const res = await pay(null, i.id, 'k'); expect(res.status).toBe(401); });\n" +
+        "\n".repeat(40) +
+        "it('pay other', async () => { const res = await pay(bob, i.id, 'k'); expect(res.status).toBe(404); });\n" +
+        "\n".repeat(40) +
+        "it('pay owner', async () => { const res = await pay(ana, i.id, 'k'); expect(res.status).toBe(201); });\n" +
+        "const refundUrl = (id: string) => `/refunds/${id}`;\n" +
+        "const refund = (user: string | null, id: string) => {\n" +
+        "  const req = http.post(refundUrl(id));\n" +
+        "  return req.send({});\n" +
+        "};\n" +
+        "\n".repeat(40) +
+        "it('refund none', async () => { const res = await refund(null, r.id); expect(res.status).toBe(401); });\n" +
+        "\n".repeat(40) +
+        "it('refund other', async () => { const res = await refund('bob', r.id); expect(res.status).toBe(404); });\n" +
+        "\n".repeat(40) +
+        "it('refund owner', async () => { const res = await refund('ana', r.id); expect(res.status).toBe(201); });\n",
+    });
+    const routes = runScript(S("route-inventory.mjs"), [root]).json.routes;
+    expect(routes.find((x: any) => x.path === "/api/projects/:projectId/tasks").accessCases).toEqual({ noIdentity: true, otherUser: true, owner: true });
+    // A constant that is not a status (LIMIT = 10) counts for nothing; the literal 401 does.
+    expect(routes.find((x: any) => x.path === "/notes/:id").accessCases).toEqual({ noIdentity: true, otherUser: false, owner: false });
+    // A status built in the argument (problem(401, …)) counts; build(LIMIT) does not.
+    expect(routes.find((x: any) => x.path === "/teams/:id").accessCases).toEqual({ noIdentity: true, otherUser: true, owner: true });
+    // a helper whose block body of several lines calls the route
+    expect(routes.find((x: any) => x.path === "/invoices/:invoiceId/payments").accessCases).toEqual({ noIdentity: true, otherUser: true, owner: true });
+    // a helper that builds the path, used by a helper that calls it
+    expect(routes.find((x: any) => x.path === "/refunds/:id").accessCases).toEqual({ noIdentity: true, otherUser: true, owner: true });
+    expect(routes.find((x: any) => x.path === "/docs/:id").accessCases).toEqual({ noIdentity: true, otherUser: true, owner: false });
+  });
+
   it("error-shape-probe: header chains, paths relative to [dir], --base, and fewer false leak markers", () => {
     const root = project({
       "openapi.yaml": "components:\n  schemas:\n    ApiError:\n      required: [code]\n",

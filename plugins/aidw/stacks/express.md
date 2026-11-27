@@ -63,8 +63,10 @@ object in. A missing required variable stops the process at boot with a clear me
 
 ## Testing
 
-- Prove each scenario through HTTP with `supertest` against the exported app: `await request(createApp(fakes))
-  .post('/bookings').send(body).expect(201)`. No port, no `listen`, no network.
+- Prove each scenario through HTTP against the exported app. When the project has its own in-process test helper (a
+  `t.http()` in its test helpers, say), use it: it needs no socket, which a sandbox may refuse. Otherwise use
+  `supertest`: `await request(createApp(fakes)).post('/bookings').send(body).expect(201)`. Never start the app with
+  your own `listen`, and reach no network.
 - Cover per endpoint: the success case, invalid input (`400` with the contract's error shape), no credentials (`401`),
   another user's record (`403` or `404` as the contract says), and the error handler's shape for an unexpected throw.
 - Unit-test services without Express. Fake a repository or an outside service at its boundary, passed in, not mocked

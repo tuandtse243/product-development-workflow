@@ -859,7 +859,9 @@ In the user's project, `.aidw/` keeps its current shape and gains `roles/<id>/` 
   content: every file under `roles/<id>/` but the result file and the case files (`evals/*.md`), the generated
   `agents/<id>.md`, the shared procedures its `includes` names, the library skills its index lists and `tiers.yaml`;
   dotfiles are left out and line endings are read as LF. The runner's own prompts (the answer and grading prompts
-  in `src/evalrun.ts`) are not in the digest. Each case entry holds its runs, pass or fail, the criteria that
+  in `src/evalrun.ts`) are not in the digest, and neither are the Role's scripts (`roles/<id>/scripts/`): level 1
+  shows the model the Role's instructions and skills, never a script, so a script fix leaves its results standing.
+  Each case entry holds its runs, pass or fail, the criteria that
   failed, the date that case ran, the model asked for and a digest of its case file. A model of `null` means the
   claude CLI's default on that entry's date, so a file merged over time can mix the defaults of different dates;
   the actual model is not detected. For a tier that maps to `inherit`, `--model` writes nothing. The digests are
@@ -877,6 +879,124 @@ In the user's project, `.aidw/` keeps its current shape and gains `roles/<id>/` 
   Orchestrator, which is not a Role, so no Role eval checks that they keep the request out (OP1, R1). The guard is
   the wording rule in step 1b of the `start` Skill (questions written before rereading the request, no noun of the
   request in a question) and the test that pins it; there is no CLI leak check.
+- **Level 2: a real task with tools (plan C4, `src/evallevel2.ts`).** `aidw eval <role> --level 2 [--case <name>]
+  [--runs <n>] [--bare] [--model <m>]` runs each case of `roles/<id>/evals/level2/` from a source checkout, and must run
+  outside Claude Code's own sandbox (the session it starts sets up its sandbox itself, and the grading uses
+  `sandbox-exec` or `bwrap`). A case is a folder: `case.md` (front matter `case` = the folder name, `covers`, `fixture`,
+  `task`, optional `change`, `must_read`, `must_not_read`, `restore`, `timeout_min` (default 25), `max_turns` (default
+  60); `## Criteria` holds only what no machine can check), an optional `checks.yaml` (commands with an expected exit, a
+  JSON subset of stdout or a regex; a bad `matches` regex is an error when the case loads), and `held-out/` (test files
+  laid over the project at the same relative path after the session ends). A path in `must_read` is relative to the
+  project, or `plugin:<path>` for a plugin file. Level 1 never reads these folders, and they are not part of level 1's
+  shared digest.
+- **The fixture.** `evals/fixtures/<name>` is a small real project with a committed lockfile and aidw Changes made
+  with the CLI, all executing (for backend: `backend-api`, Express 5, TypeScript, PGlite, Vitest, Changes `create-task`,
+  `pay-an-invoice`, `place-an-order` and `book-a-room`, one per case, each case naming its own with `change:`; one
+  PGlite per test file with every table emptied per test, requests served in-process by `tests/http.ts`, files one at a
+  time, so its suite holds under parallel load). Every Change's approved package holds the fixture's `constitution.md`,
+  `domain/` and `architecture/`: editing one of them is drift for all of its Changes, which are then re-approved with
+  the CLI (escalated, analyzing, plan review, approve, executing); the plan-review verdicts of these fixture
+  re-approvals are written by hand (they say what changed) and are not a real review. PGlite
+  runs one statement at a time, so a held-out test of a race makes it real by delaying each statement outside a
+  transaction (requests sent at once then interleave) and, where a read then a write inside one transaction must fail,
+  by a BEFORE INSERT trigger that stores the rival row inside the route's own insert. Its files are what git lists in it. Its packages are installed once (`npm ci --ignore-scripts`, needs
+  the network) into a cache keyed by the lockfile: `$AIDW_FIXTURE_CACHE`, else `$XDG_CACHE_HOME/aidw/fixtures`, else
+  `~/.cache/aidw/fixtures`. The entry is made read-only and its digest is recorded in `.complete`; an entry that changed
+  is refused (delete it to reinstall), and a finished entry is never deleted by a run. Each run copies the fixture to a
+  fresh temp folder, links each cached package into a real `node_modules` folder, commits it to git, clones that base
+  commit to `base.git` beside the project (read-only, its digest kept: the snapshot), and starts the task and writes its
+  brief with the CLI's own code (`aidw task start`). The session's prompt is the orchestrator's: `Task brief: <path>.
+  Read it and implement the task.`
+- **What the session can reach.** The session sees a copy of the plugin without any Role's `evals/` folder (symlinks
+  copied as the files they point to): its `--plugin-dir`, its `bin/` on PATH and every plugin path in the brief point
+  at that copy, so the held-out tests, `case.md` and `checks.yaml` are not in it. Its settings allow reads outside the
+  project only in that copy (none for a bare run); deny reads of the source checkout and its git common dir (whose
+  history holds the hidden tests), the source repo's `evals/` and every `roles/*/evals/`; deny reading, editing and
+  writing the run folder's own files (the snapshot, `settings.json`, `prompt.txt`, the log, the grading index); deny
+  edits of the plugin copy and of the project's `.claude/`. The Role's cases folder and `evals/level2-reference/` are
+  added to every case's `must_not_read`, and a tool call that so much as names the source checkout, its git dir, the
+  snapshot or the settings fails the reads step.
+- **The session.** One `claude -p --output-format stream-json --verbose --plugin-dir <plugin copy> --agent
+  aidw:<role>` in the copy, with `--tools Read,Write,Edit,Glob,Grep,Bash`, `--permission-mode acceptEdits
+  --permission-prompts none`, `--setting-sources project`, `--strict-mcp-config`, `--max-turns <n>` and a `--settings`
+  file, in a trimmed environment (PATH, HOME, TMPDIR, the locale, the user, and what signs claude in and reaches it: API
+  key, OAuth token, `CLAUDE_CONFIG_DIR`, Bedrock/Vertex, proxies, CA certificates; the calling session's `CLAUDECODE`,
+  other `CLAUDE_CODE_*` settings, `ANTHROPIC_MODEL` and `MAX_THINKING_TOKENS` are dropped). No network: Bash runs only
+  in Claude Code's sandbox (`failIfUnavailable`) with no allowed hosts, no local binding and no unsandboxed escape.
+  The fixture's tests need no socket: `t.http()` in the backend fixture's `tests/helpers.ts` sends each request to the
+  app in-process (`tests/http.ts`, a supertest-style client over an in-memory stream pair, through Node's HTTP parser),
+  so no test needs to bind a port, and by its configuration the session can reach no localhost port
+  (`allowLocalBinding` would also open every localhost port on macOS, which a local proxy could carry out); no real
+  session has run on this fixture yet. Bash is allowed by a rule as well as for being sandboxed (the pilot's sandboxed loops and
+  `$(…)` commands still asked for approval, which no one gives); it can run only sandboxed, and where the sandbox
+  cannot start neither does the session; WebFetch and WebSearch are
+  absent and denied. A watcher starts the session in its own process group, keeps the raw log, and stops the whole group
+  at the limits (25 minutes; 60 turns, which `--max-turns` also enforces) or when it is stopped itself; it settles on the
+  session's exit, so a background process left holding stdout cannot hold the run. Afterwards processes still working
+  in the copy are killed (found with `lsof`, best effort). `--bare` drops `--plugin-dir` and `--agent`, and its brief has
+  no Skills section, no rules of other Roles and no path into the plugin.
+- **Before grading.** Nothing of the session's `.git` is read: the snapshot's digest is checked (a changed snapshot
+  makes the run an ERROR), and every git the harness and the checks run uses the snapshot as `GIT_DIR`, the project as
+  its work tree, an index and new objects in the run folder, no replace objects, and no excludes or attributes file.
+  The `.gitignore` and `.gitattributes` files the session changed or added are put back from the snapshot (so no rule of
+  its own hides a file or blanks a diff); then the diff and the list of changed files are taken against the snapshot
+  (committed, replaced or excluded changes included); then files git ignores are removed (but `.aidw/`, which holds the
+  report), the `node_modules` links are made afresh, and the files the grading runs are put back from the snapshot:
+  `package.json`, the lockfile, `.npmrc`, `tsconfig.json`, the vitest and vite configs, `.gitignore`, and the case's
+  `restore:` (the backend cases: `tests/helpers.ts` and `tests/http.ts`, removed when the base has none). Held-out files are written only inside the project (a symlink on
+  the way is removed).
+- **Grading, in order.** (1) The held-out tests: with vitest from the cached packages and the fixture's own config
+  (`node_modules/.bin/vitest run --config <config>`), else the fixture's `npm test -- <files>`; with vitest, a run that
+  reaches fewer tests than `vitest list` collects from the held-out files fails. (2) The case's checks (the Role's
+  scripts through `aidw plugin-path`; `$AIDW_BASE` is the starting commit, `$AIDW_CHANGED` names the list of changed
+  files). (3) The tool log: each `must_read` file was read and no `must_not_read` one was (a Read of it, a Grep or Glob
+  whose path holds it, or a part of a Bash command, split at `;`, `&`, `|`, that runs `cat`, `head`, `sed`, `grep`...
+  and names it, also relative to a folder an earlier `cd` of the command went to; a `for f in <files>; do … cat "$f"
+  …; done` loop whose list names it; or, for a plugin file, `aidw plugin-path <file>` in a command that reads, also
+  through a variable or a loop over Role paths; a command that only prints a path does not count). (4) A model, with level 1's grader, given the brief
+  and, fenced as data it must not take instructions from, the diff, the final reply and the report file; only for
+  `## Criteria`, and only when 1 to 3 passed. The held-out files are removed again after step 1, so the checks see only
+  the session's own tests (route-inventory's access tests must be the session's). The diff and the changed files are
+  kept in memory from before step 1: each check gets them, and a git index of the base read through the snapshot, in a
+  read-only folder of its own, and the run folder's records are written again after the checks. Each grading command
+  gets only PATH, HOME, the locale, the user and a fresh scratch folder as TMPDIR (no keys, no proxies), processes it
+  leaves in the copy are killed, and its report files are read out of the scratch folder. It runs confined: on macOS
+  `sandbox-exec` with no network at all (no outbound connection, localhost and Unix sockets included, no bind) and
+  writes only in the project, its scratch folder and `/dev`; on Linux `bwrap` with `/` read-only, the same writable
+  places and a network namespace of its own with only its own loopback (the host's localhost is out of reach), else
+  `unshare -rn` (an empty network namespace, loopback down;
+  writes not confined). The Linux paths were not tried here. Where none can be applied (inside another sandbox, a container without user
+  namespaces) they run unconfined, the run records `none`, and the output says so. `AIDW_GRADE_SANDBOX=off` turns it
+  off. A session stopped at a limit fails; one that never ran is an ERROR. A run passes when all four pass; a case
+  passes with 3 of 3 runs. `--bare` (C3 at level 2) runs once by default and is judged by 1 and 2 only, with no model
+  call: a case where any bare run passes prints PASSES BARE (exit 1).
+- **Run folders.** Each run keeps its folder in the system temp dir (`aidw-l2-<role>-<case>-<n>-*`): `project/` (the
+  copy), `plugin/` (the session's plugin, without Roles' cases, also behind a symlink), `base.git` (the snapshot), `session.jsonl`, `diff.patch`, `changed.txt`,
+  `held-out.txt`, `held-out.json` and `held-out-list.json`, `checks.txt`, `settings.json`, `prompt.txt` and
+  `result.json`; the path is printed. They are not removed; delete them when done (`chmod -R u+w` first: the snapshot is
+  read-only). A copy that cannot be prepared keeps `result.json` only.
+- **Level 2 result file.** `roles/<id>/evals/level2/results.json` (`format: 2`, `level: 2`), written under level 1's
+  rules (source checkout, tier's model, `--case` merges, nothing written when content changed during the run). Its
+  shared digest is level 1's with the Role's scripts added (a session runs them); each entry adds the digest of its case folder and of its fixture, and how its grading was
+  confined (`gradingSandbox`: `sandbox-exec`, `bwrap`, `unshare` or `none`). A run whose grading ran with `none` writes
+  nothing unless `AIDW_GRADE_SANDBOX=off` was set. For a Role with level 2 cases, `aidw roster` warns (never fails
+  without `--strict`) when the file is missing, made on another model, older than the Role, a case folder or a fixture,
+  from fewer than 3 runs, not passed, or graded with `none`. A malformed level 2 case is an error, as for level 1.
+- **Proven by the backend pilot** (6 real sessions, 2026-11-26): `--agent aidw:<role>` with `-p` runs the Role's
+  agent as the main session; `--setting-sources project` keeps the user's own `~/.claude/CLAUDE.md` out of the
+  session; the sandbox is applied to Bash (it refused a local `listen`, `EPERM`, which the in-process test client
+  now avoids). The pilot's 3/3 ran on the fixture's earlier helper (a server on 127.0.0.1 per test) with
+  `allowLocalBinding`; it must be re-run on the in-process fixture before it counts for it.
+- **Not yet proven by a real run:** that the session, now without `allowLocalBinding`, can reach no localhost port
+  (it holds by configuration; no session has run since), that the sandbox keys block outbound network as intended (no session tried it),
+  that the `Read(...)` deny rules also stop a sandboxed Bash `cat`, and that the sandbox lets Bash write nowhere but the
+  project (if it can write the run folder, the snapshot's digest still turns a changed snapshot into an ERROR).
+- **Residual risks.** Where no grading sandbox can be applied, the held-out tests and checks run code the session wrote
+  with the user's own rights and network (such runs record `none` and are not written by default); there the graded code
+  can also rewrite the run folder's files while it runs, though the grading reads its inputs from memory and fresh
+  folders and writes the records again. `unshare` on Linux confines only the network. Killing leftover processes depends on `lsof` seeing them. The `Read(...)` deny rules and
+  the tool log are the only guards on what the session reads; a read through a path they do not name (another copy of
+  the repository elsewhere on the disk) is not caught.
 - **End to end:** the existing fixtures (`evals/fixtures/brownfield-app`, `greenfield-jd`) and `aidw cost`,
   which already reports cost per agent type, catch coordination problems and cost regressions.
 
