@@ -1,5 +1,8 @@
 import { execFileSync } from "node:child_process";
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { once } from "node:events";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
@@ -56,6 +59,8 @@ function setup(caseExtra = "") {
   const fixtures = temp("aidw-l2h-fixtures-");
   const fx = join(fixtures, "tiny-app");
   cpSync(join(realFixture, ".aidw"), join(fx, ".aidw"), { recursive: true });
+  // only the pilot's Change: a case of the tiny fixture names none
+  for (const id of readdirSync(join(fx, ".aidw", "changes"))) if (id !== "create-task" && id !== ".gitkeep") rmSync(join(fx, ".aidw", "changes", id), { recursive: true });
   put(fx, "package.json", JSON.stringify({ name: "tiny-app", private: true, scripts: { test: "node run-tests.mjs" } }));
   put(fx, "package-lock.json", JSON.stringify({ name: "tiny-app", lockfileVersion: 3, packages: {} }));
   put(fx, ".gitignore", "node_modules\n");
@@ -263,6 +268,27 @@ describe("L3: what counts as a read", () => {
     expect(wasRead(bash('for f in a.md b.md; do echo "$f"; done'), "a.md", ctx)).toBe(false);
     expect(wasRead(bash('for f in a.md; do cat other.txt; echo "$f"; done'), "a.md", ctx)).toBe(false);
     expect(wasRead(bash('for f in b.md; do cat "$f"; done'), "a.md", ctx)).toBe(false);
+    // the email case's run: a cd first, an unquoted $f, and a list of six files
+    expect(wasRead(bash('cd /w/copy && for f in .aidw/c/api.md .aidw/c/data.md .aidw/constitution.md; do echo "=== $f"; cat $f; done'), ".aidw/c/api.md", ctx)).toBe(true);
+  });
+  it("reads a path relative to a folder the command went to first", () => {
+    // the email case's third run
+    expect(wasRead(bash("cd /w/copy/.aidw && cat changes/c/api.md changes/c/data.md"), ".aidw/changes/c/api.md", ctx)).toBe(true);
+    expect(wasRead(bash("cd .aidw && head -50 changes/c/api.md"), ".aidw/changes/c/api.md", ctx)).toBe(true);
+    // another folder: the same tail names another file
+    expect(wasRead(bash("cd /elsewhere && cat changes/c/api.md"), ".aidw/changes/c/api.md", ctx)).toBe(false);
+    // a cd and no read
+    expect(wasRead(bash("cd /w/copy/.aidw && ls changes/c/api.md"), ".aidw/changes/c/api.md", ctx)).toBe(false);
+  });
+  it("counts a plugin file read through aidw plugin-path, directly, through a variable or in a loop", () => {
+    const ref = "plugin:roles/backend/skills/s.md";
+    expect(wasRead(bash('P=$(aidw plugin-path roles/backend/skills/s.md) && cat "$P"'), ref, ctx)).toBe(true);
+    expect(wasRead(bash('cat "$(aidw plugin-path roles/backend/skills/s.md)"'), ref, ctx)).toBe(true);
+    expect(wasRead(bash('for s in roles/backend/lessons.md roles/backend/skills/s.md; do p=$(aidw plugin-path $s); cat "$p"; done'), ref, ctx)).toBe(true);
+    // only looked up, never read
+    expect(wasRead(bash("aidw plugin-path roles/backend/skills/s.md"), ref, ctx)).toBe(false);
+    // another file read
+    expect(wasRead(bash('cat "$(aidw plugin-path roles/backend/skills/other.md)"'), ref, ctx)).toBe(false);
   });
   it("counts Grep and Glob over a folder that holds the file, not over another one", () => {
     expect(wasRead([{ name: "Grep", input: { pattern: "x", path: "/p/roles" } }], "plugin:roles/backend/skills/s.md", ctx)).toBe(true);
@@ -319,10 +345,21 @@ describe("H2: the grading commands' sandbox", () => {
   });
 
   // Only where the sandbox can be applied (not inside another sandbox, as in a Claude Code session).
-  it.skipIf(sb.how === "none")("lets a command reach localhost and nothing else", () => {
-    const local = 'node -e \'const h=require("http");const s=h.createServer((q,r)=>r.end("ok")).listen(0,"127.0.0.1",()=>h.get("http://127.0.0.1:"+s.address().port,(r)=>r.on("data",(d)=>{console.log(String(d));s.close()})))\'';
-    expect(runCheck({ name: "local", run: local, expect: { exit: 0, matches: "^ok$" } }, tmpdir(), process.env, sb)).toEqual({ pass: true, why: "" });
+  it.skipIf(sb.how === "none")("lets a command reach no network: no outbound host, no localhost port, no bind", async () => {
     const out = 'node -e \'require("net").connect(443,"1.1.1.1").on("connect",()=>process.exit(0)).on("error",()=>process.exit(7))\'';
     expect(runCheck({ name: "out", run: out, expect: { exit: 7 } }, tmpdir(), process.env, sb)).toEqual({ pass: true, why: "" });
+    // A server outside the sandbox on localhost (a local proxy, say) is out of reach.
+    const outside = createServer((_q, r) => r.end("ok")).listen(0, "127.0.0.1");
+    await once(outside, "listening");
+    try {
+      const port = (outside.address() as AddressInfo).port;
+      const local = `node -e 'require("net").connect(${port},"127.0.0.1").on("connect",()=>process.exit(0)).on("error",()=>process.exit(7))'`;
+      expect(runCheck({ name: "local", run: local, expect: { exit: 7 } }, tmpdir(), process.env, sb)).toEqual({ pass: true, why: "" });
+    } finally {
+      outside.close();
+    }
+    const bind = 'node -e \'require("net").createServer().listen(0,"127.0.0.1",()=>process.exit(0)).on("error",()=>process.exit(7))\'';
+    // bwrap's own network namespace has a loopback of its own; elsewhere binding is refused.
+    if (sb.how !== "bwrap") expect(runCheck({ name: "bind", run: bind, expect: { exit: 7 } }, tmpdir(), process.env, sb)).toEqual({ pass: true, why: "" });
   }, 30_000);
 });

@@ -655,7 +655,7 @@ export const AGENT_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "Bash"];
 
 /**
  * The session's settings. No network: Bash runs only in Claude Code's sandbox (`sandbox.enabled`, no allowed hosts,
- * `failIfUnavailable`; binding a local port is allowed so tests can start the app on 127.0.0.1), the sandbox's escape hatch is off (`allowUnsandboxedCommands: false`), and Bash is
+ * `failIfUnavailable`, no local binding), the sandbox's escape hatch is off (`allowUnsandboxedCommands: false`), and Bash is
  * allowed by a rule as well as by `autoAllowBashIfSandboxed` (sandboxed loops and `$(…)` commands still asked for
  * approval, which no one gives here); where the sandbox cannot run, the session does not start. WebFetch and WebSearch are not among `--tools` and are denied
  * besides. Reads outside the copy are allowed only in the session's plugin copy (and not at all for a bare run); reads
@@ -688,8 +688,9 @@ export function sessionSettings(o: { pluginRoot: string; project: string; denyRe
       failIfUnavailable: true,
       autoAllowBashIfSandboxed: true,
       allowUnsandboxedCommands: false,
-      // Tests start the app on 127.0.0.1 (the backend fixture's helpers do); without this, listen() is EPERM.
-      network: { allowedDomains: [], allowLocalBinding: true },
+      // No allowLocalBinding: on macOS it also lets a command connect to any localhost port. The backend fixture's tests
+      // serve requests in-process (tests/http.ts), with no socket.
+      network: { allowedDomains: [] },
     },
   };
 }
@@ -910,8 +911,27 @@ export function wasRead(calls: ToolCall[], ref: string, ctx: { project: string; 
     }
     if (c.name === "Bash" && typeof c.input.command === "string") {
       const cmd = c.input.command;
-      if (cmd.split(/;|&&|\|\||\||&|\n/).some((seg) => READ_VERB.test(seg) && names.some((n) => seg.includes(n)))) return true;
-      return loopReads(cmd).some((list) => names.some((n) => list.includes(n)));
+      const segs = cmd.split(/;|&&|\|\||\||&|\n/);
+      // A path relative to a folder the command went to first (`cd .aidw && cat changes/x/api-contract.md`).
+      let cwd = ctx.project;
+      for (const seg of segs) {
+        const cd = /^\s*cd\s+(?:"([^"]+)"|'([^']+)'|(\S+))\s*$/.exec(seg);
+        if (cd) {
+          cwd = resolve(cwd, cd[1] ?? cd[2] ?? cd[3] ?? ".");
+          continue;
+        }
+        if (!READ_VERB.test(seg)) continue;
+        const here = norm(cwd) === norm(ctx.project) ? [] : [relative(cwd, abs), relative(norm(cwd), abs)].filter((r) => r && !r.startsWith(".."));
+        if ([...names, ...here].some((n) => seg.includes(n))) return true;
+      }
+      if (loopReads(cmd).some((list) => names.some((n) => list.includes(n)))) return true;
+      // A plugin file found through `aidw plugin-path` and read in the same command: `cat "$(aidw plugin-path R)"`,
+      // `P=$(aidw plugin-path R) && cat "$P"`, or a loop over Role paths whose body reads `$(aidw plugin-path $s)`.
+      if (plugin && READ_VERB.test(cmd) && !isAbsolute(rel)) {
+        const esc = rel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        if (new RegExp(`plugin-path\\s+["']?${esc}["']?(?=[\\s)"';&|]|$)`).test(cmd)) return true;
+        if (loopReads(cmd, true).some((list) => list.includes(` ${rel} `))) return true;
+      }
     }
     return false;
   });
@@ -920,13 +940,18 @@ export function wasRead(calls: ToolCall[], ref: string, ctx: { project: string; 
 /**
  * The word lists of the `for VAR in LIST; do BODY; done` loops of a command whose body reads `$VAR` (`for f in a b; do
  * cat "$f"; done`): every file in such a list was read, though no part of the command names a file next to a verb.
+ * With `viaPluginPath`, a body that looks `$VAR` up with `aidw plugin-path` and reads something counts too.
  */
-function loopReads(cmd: string): string[] {
+function loopReads(cmd: string, viaPluginPath = false): string[] {
   const lists: string[] = [];
   for (const m of cmd.matchAll(/\bfor\s+([A-Za-z_]\w*)\s+in\s+([^;\n]*)[;\n]\s*do\b([\s\S]*?)\bdone\b/g)) {
     const [, v, list, body] = m;
     const usesVar = new RegExp(`\\$(?:${v}\\b|\\{${v}\\})`);
-    if ((body ?? "").split(/;|&&|\|\||\||&|\n/).some((seg) => READ_VERB.test(seg) && usesVar.test(seg))) lists.push(` ${list} `);
+    const b = body ?? "";
+    const reads = viaPluginPath
+      ? new RegExp(`plugin-path\\s+["']?\\$(?:${v}\\b|\\{${v}\\})`).test(b) && READ_VERB.test(b)
+      : b.split(/;|&&|\|\||\||&|\n/).some((seg) => READ_VERB.test(seg) && usesVar.test(seg));
+    if (reads) lists.push(` ${(list ?? "").trim().split(/\s+/).join(" ")} `);
   }
   return lists;
 }
@@ -1008,11 +1033,12 @@ const real = (p: string) => {
 };
 
 /**
- * The macOS profile: outbound network only to localhost (the tests' own servers), no Unix sockets, and with a scope no
- * writes but to the project, the command's scratch folder and /dev.
+ * The macOS profile: no network at all (no outbound connection, localhost and Unix sockets included, and no bind; the
+ * fixtures' tests serve requests in-process), and with a scope no writes but to the project, the command's scratch
+ * folder and /dev.
  */
 export function sandboxProfile(scope?: GradingScope): string {
-  const net = ["(version 1)", "(allow default)", '(deny network-outbound (remote ip "*:*"))', '(allow network-outbound (remote ip "localhost:*"))', "(deny network-outbound (remote unix-socket))"];
+  const net = ["(version 1)", "(allow default)", "(deny network*)"];
   if (!scope) return net.join("");
   const sub = (p: string) => `(subpath ${sbQuote(real(p))})`;
   return [...net, "(deny file-write*)", `(allow file-write* ${sub(scope.project)} ${sub(scope.scratch)} (subpath "/dev"))`].join("");
@@ -1021,9 +1047,10 @@ export function sandboxProfile(scope?: GradingScope): string {
 let probed: SandboxKind | null = null;
 /**
  * The confinement of the grading commands (the held-out tests and the checks run code the session wrote):
- *   macOS  `sandbox-exec` with sandboxProfile(scope): localhost only, no Unix sockets, writes only in the scope
- *   Linux  `bwrap` with / read-only, the scope writable and its own network (loopback only);
- *          without bwrap, `unshare -rn` (network only: writes are not confined)
+ *   macOS  `sandbox-exec` with sandboxProfile(scope): no network, writes only in the scope
+ *   Linux  `bwrap` with / read-only, the scope writable and a network namespace of its own with only its own
+ *          loopback (the host's localhost is out of reach); without bwrap, `unshare -rn` (an empty network
+ *          namespace, its loopback left down: writes are not confined)
  * Each is probed once; where none works (inside another sandbox, a container without user namespaces) commands run
  * unconfined and the run records `none`. `AIDW_GRADE_SANDBOX=off` turns it off.
  */
@@ -1046,7 +1073,7 @@ export function gradingSandbox(env: NodeJS.ProcessEnv = process.env, scope?: Gra
     const binds = scope ? [scope.project, scope.scratch].flatMap((p) => ["--bind", real(p), real(p)]) : [];
     return { how, wrap: (cmd) => ["bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", ...binds, "--unshare-net", "--die-with-parent", "sh", "-c", cmd] };
   }
-  if (how === "unshare") return { how, wrap: (cmd) => ["unshare", "-rn", "sh", "-c", `ip link set lo up >/dev/null 2>&1 || true; ${cmd}`] };
+  if (how === "unshare") return { how, wrap: (cmd) => ["unshare", "-rn", "sh", "-c", cmd] };
   return none;
 }
 

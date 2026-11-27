@@ -213,18 +213,40 @@ function routeHits(route, content) {
     const tail = segsOfFile.slice(segsOfFile.indexOf("app") + 1).join("/").replace(/\.[cm]?[jt]sx?$/, "");
     if (content.includes(tail)) hits.push(-1); // the test imports the handler: the whole file is its test
   }
-  // A hit inside a one-line helper (`const post = (id) => http.post(`/x/${id}`)`, `function post(id) { … }`): each
-  // call of that helper is a call of the route too.
-  const helpers = new Set();
-  for (const h of hits) {
-    if (h < 0) continue;
+  // A hit inside a helper (`const post = (id) => http.post(`/x/${id}`)`, `function post(id) { … }`, or a block body
+  // of a few lines under such a declaration): each call of that helper is a call of the route too.
+  const DECL = /^\s*(?:export\s+)?(?:(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*(?::[^=]*)?=>|(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\()/;
+  const lines = content.split("\n");
+  const lineOf = lineIndex(content);
+  const helperOf = (h) => {
     const start = content.lastIndexOf("\n", h) + 1;
-    const m = /^\s*(?:export\s+)?(?:(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>|(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\()/.exec(content.slice(start, h));
-    if (m) helpers.add(m[1] ?? m[2]);
-  }
-  for (const name of helpers) {
-    const esc2 = name.replace(/[$]/g, "\\$");
-    for (const m of content.matchAll(new RegExp(`(?<![\\w$.])${esc2}\\(`, "g"))) hits.push(m.index);
+    const m = DECL.exec(content.slice(start, h));
+    if (m) return m[1] ?? m[2];
+    // Inside a block body: walk up, within 10 lines, to the first line that is not indented. If that line declares a
+    // helper and opens a block, the hit belongs to it.
+    const n = lineOf(h) - 1;
+    for (let i = n - 1; i >= Math.max(0, n - 10); i--) {
+      const l = lines[i] ?? "";
+      if (!l.trim() || /^\s/.test(l)) continue;
+      const d = DECL.exec(l);
+      return d && /\{\s*$/.test(l) ? d[1] ?? d[2] : null;
+    }
+    return null;
+  };
+  // Helpers can wrap helpers (`url(id)` used by `pay(…)`): follow them up to three levels.
+  const seen = new Set();
+  let frontier = hits.filter((h) => h >= 0);
+  for (let level = 0; level < 3 && frontier.length; level++) {
+    const found = new Set(frontier.map(helperOf).filter((n) => n && !seen.has(n)));
+    frontier = [];
+    for (const name of found) {
+      seen.add(name);
+      const esc2 = name.replace(/[$]/g, "\\$");
+      for (const m of content.matchAll(new RegExp(`(?<![\\w$.])${esc2}\\(`, "g"))) {
+        hits.push(m.index);
+        frontier.push(m.index);
+      }
+    }
   }
   return hits;
 }

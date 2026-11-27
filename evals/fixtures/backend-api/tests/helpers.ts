@@ -1,9 +1,8 @@
-import type { AddressInfo } from "node:net";
-import request from "supertest";
 import { createApp } from "../src/app.ts";
 import { createSession, hashPassword } from "../src/auth/sessions.ts";
 import { createDb, type Db } from "../src/db/client.ts";
 import { memoryMailer } from "../src/mail/mailer.ts";
+import { http } from "./http.ts";
 
 /**
  * One in-memory Postgres per test file: starting PGlite is slow (seconds under load), so it starts once and every
@@ -12,8 +11,8 @@ import { memoryMailer } from "../src/mail/mailer.ts";
 let shared: Promise<Db> | null = null;
 
 /**
- * A fresh app on an emptied database, served by its own HTTP server, with helpers to seed rows and sign in. Each test
- * builds its own and closes it, so tests never share data or connections.
+ * A fresh app on an emptied database, with helpers to seed rows and sign in. `http()` sends requests to the app
+ * in-process (tests/http.ts): no port, no socket. Each test builds its own and closes it, so tests never share data.
  */
 export async function testApp() {
   shared ??= createDb();
@@ -23,9 +22,7 @@ export async function testApp() {
   if (tables.length) await db.query(`truncate table ${tables.map((t) => t.name).join(", ")} restart identity cascade`);
   const mailer = memoryMailer();
   const app = createApp({ db, mailer });
-  // One server per test, closed with its connections: no kept-alive socket reaches another test's server.
-  const server = app.listen(0, "127.0.0.1");
-  await new Promise<void>((resolve) => server.once("listening", () => resolve()));
+  const client = http(app);
   let n = 0;
 
   const seed = {
@@ -48,7 +45,6 @@ export async function testApp() {
 
   /** `Authorization` header of a signed-in user. */
   const auth = (u: { token: string }) => ({ Authorization: `Bearer ${u.token}` });
-  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 
   return {
     app,
@@ -56,13 +52,10 @@ export async function testApp() {
     mailer,
     seed,
     auth,
-    http: () => request(url),
-    /** Closes this test's server and its connections; the database stays for the next test of the file. */
-    close: () =>
-      new Promise<void>((resolve) => {
-        server.closeAllConnections();
-        server.close(() => resolve());
-      }),
+    /** supertest-style: `await t.http().post(url).set(name, value).send(body)` gives `{ status, headers, body, text }`. */
+    http: () => client,
+    /** Ends any request still being served; the database stays for the next test of the file. */
+    close: async () => client.close(),
   };
 }
 

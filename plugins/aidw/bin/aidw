@@ -19093,8 +19093,9 @@ function sessionSettings(o) {
       failIfUnavailable: true,
       autoAllowBashIfSandboxed: true,
       allowUnsandboxedCommands: false,
-      // Tests start the app on 127.0.0.1 (the backend fixture's helpers do); without this, listen() is EPERM.
-      network: { allowedDomains: [], allowLocalBinding: true }
+      // No allowLocalBinding: on macOS it also lets a command connect to any localhost port. The backend fixture's tests
+      // serve requests in-process (tests/http.ts), with no socket.
+      network: { allowedDomains: [] }
     }
   };
 }
@@ -19267,18 +19268,36 @@ function wasRead(calls, ref, ctx) {
     }
     if (c.name === "Bash" && typeof c.input.command === "string") {
       const cmd2 = c.input.command;
-      if (cmd2.split(/;|&&|\|\||\||&|\n/).some((seg) => READ_VERB.test(seg) && names2.some((n) => seg.includes(n)))) return true;
-      return loopReads(cmd2).some((list9) => names2.some((n) => list9.includes(n)));
+      const segs = cmd2.split(/;|&&|\|\||\||&|\n/);
+      let cwd = ctx.project;
+      for (const seg of segs) {
+        const cd = /^\s*cd\s+(?:"([^"]+)"|'([^']+)'|(\S+))\s*$/.exec(seg);
+        if (cd) {
+          cwd = (0, import_node_path47.resolve)(cwd, cd[1] ?? cd[2] ?? cd[3] ?? ".");
+          continue;
+        }
+        if (!READ_VERB.test(seg)) continue;
+        const here = norm2(cwd) === norm2(ctx.project) ? [] : [(0, import_node_path47.relative)(cwd, abs), (0, import_node_path47.relative)(norm2(cwd), abs)].filter((r) => r && !r.startsWith(".."));
+        if ([...names2, ...here].some((n) => seg.includes(n))) return true;
+      }
+      if (loopReads(cmd2).some((list9) => names2.some((n) => list9.includes(n)))) return true;
+      if (plugin && READ_VERB.test(cmd2) && !(0, import_node_path47.isAbsolute)(rel2)) {
+        const esc2 = rel2.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        if (new RegExp(`plugin-path\\s+["']?${esc2}["']?(?=[\\s)"';&|]|$)`).test(cmd2)) return true;
+        if (loopReads(cmd2, true).some((list9) => list9.includes(` ${rel2} `))) return true;
+      }
     }
     return false;
   });
 }
-function loopReads(cmd2) {
+function loopReads(cmd2, viaPluginPath = false) {
   const lists = [];
   for (const m of cmd2.matchAll(/\bfor\s+([A-Za-z_]\w*)\s+in\s+([^;\n]*)[;\n]\s*do\b([\s\S]*?)\bdone\b/g)) {
     const [, v, list9, body] = m;
     const usesVar = new RegExp(`\\$(?:${v}\\b|\\{${v}\\})`);
-    if ((body ?? "").split(/;|&&|\|\||\||&|\n/).some((seg) => READ_VERB.test(seg) && usesVar.test(seg))) lists.push(` ${list9} `);
+    const b = body ?? "";
+    const reads = viaPluginPath ? new RegExp(`plugin-path\\s+["']?\\$(?:${v}\\b|\\{${v}\\})`).test(b) && READ_VERB.test(b) : b.split(/;|&&|\|\||\||&|\n/).some((seg) => READ_VERB.test(seg) && usesVar.test(seg));
+    if (reads) lists.push(` ${(list9 ?? "").trim().split(/\s+/).join(" ")} `);
   }
   return lists;
 }
@@ -19301,7 +19320,7 @@ var real2 = (p) => {
   }
 };
 function sandboxProfile(scope) {
-  const net = ["(version 1)", "(allow default)", '(deny network-outbound (remote ip "*:*"))', '(allow network-outbound (remote ip "localhost:*"))', "(deny network-outbound (remote unix-socket))"];
+  const net = ["(version 1)", "(allow default)", "(deny network*)"];
   if (!scope) return net.join("");
   const sub = (p) => `(subpath ${sbQuote(real2(p))})`;
   return [...net, "(deny file-write*)", `(allow file-write* ${sub(scope.project)} ${sub(scope.scratch)} (subpath "/dev"))`].join("");
@@ -19326,7 +19345,7 @@ function gradingSandbox(env = process.env, scope) {
     const binds = scope ? [scope.project, scope.scratch].flatMap((p) => ["--bind", real2(p), real2(p)]) : [];
     return { how: how2, wrap: (cmd2) => ["bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", ...binds, "--unshare-net", "--die-with-parent", "sh", "-c", cmd2] };
   }
-  if (how2 === "unshare") return { how: how2, wrap: (cmd2) => ["unshare", "-rn", "sh", "-c", `ip link set lo up >/dev/null 2>&1 || true; ${cmd2}`] };
+  if (how2 === "unshare") return { how: how2, wrap: (cmd2) => ["unshare", "-rn", "sh", "-c", cmd2] };
   return none;
 }
 function sh(command, cwd, env, sandbox, timeoutMs = 10 * 60 * 1e3) {

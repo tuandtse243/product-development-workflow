@@ -1,0 +1,18 @@
+tasks:
+  - id: T01
+    title: Place an order, confirmation sent after commit
+    role: backend
+    type: feat
+    specs: [orders/place-an-order]
+    scenarios:
+      - orders/place-an-order/member-places-an-order
+      - orders/place-an-order/no-session
+      - orders/place-an-order/team-of-another-member
+      - orders/place-an-order/unknown-product
+      - orders/place-an-order/mail-provider-down
+      - orders/place-an-order/order-write-fails
+      - orders/place-an-order/sender-runs-twice
+    depends_on: []
+    touches: ["src/orders/**", "src/jobs/**", "tests/orders/**", "tests/jobs/**", "src/app.ts"]
+    verify: ["npm test", "npm run typecheck"]
+    status: pending

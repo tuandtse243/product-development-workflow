@@ -1,0 +1,18 @@
+tasks:
+  - id: T01
+    title: Book a slot of a room, one booking per slot
+    role: backend
+    type: feat
+    specs: [bookings/book-a-slot]
+    scenarios:
+      - bookings/book-a-slot/member-books-a-free-slot
+      - bookings/book-a-slot/no-session
+      - bookings/book-a-slot/room-of-another-team
+      - bookings/book-a-slot/slot-already-taken
+      - bookings/book-a-slot/two-bookings-at-once
+      - bookings/book-a-slot/cancelled-booking-frees-the-slot
+      - bookings/book-a-slot/slot-in-the-past
+    depends_on: []
+    touches: ["src/bookings/**", "tests/bookings/**", "src/app.ts"]
+    verify: ["npm test", "npm run typecheck"]
+    status: pending

@@ -20,7 +20,7 @@ In: creating a task (title, optional due date). Out: listing, editing, deleting 
 
 ## Existing system
 
-Express 5 API with sessions, teams and projects (`src/`), Vitest and supertest on PGlite; `npm test` and
+Express 5 API with sessions, teams and projects (`src/`), Vitest and the in-process `t.http()` client on PGlite; `npm test` and
 `npm run typecheck` pass today. The `tasks` table exists in `src/db/schema.sql` with no route using it yet. The
 projects routes take the selected team from the `x-team-id` header the web app sends.
 
@@ -32,7 +32,7 @@ User, Team, Project, Task. See `.aidw/domain/model.md`.
 
 Source: client
 
-The existing stack is kept: Express 5, TypeScript, PGlite (Postgres), zod, Vitest, supertest.
+The existing stack is kept: Express 5, TypeScript, PGlite (Postgres), zod, Vitest, the in-process `t.http()` test client.
 
 ## Design
 
