@@ -766,9 +766,10 @@ In the user's project, `.aidw/` keeps its current shape and gains `roles/<id>/` 
 - **The fixture.** `evals/fixtures/<name>` is a small real project with a committed lockfile and aidw Changes made
   with the CLI, all executing (for backend: `backend-api`, Express 5, TypeScript, PGlite, Vitest, Changes `create-task`,
   `pay-an-invoice`, `place-an-order` and `book-a-room`, one per case, each case naming its own with `change:`; one
-  PGlite per test file with every table emptied per test, one HTTP server per test, files one at a time, so its suite
-  holds under parallel load). Every Change's approved package holds the fixture's `constitution.md`, `domain/` and
-  `architecture/`: editing one of them is drift for all of its Changes, which are then made again with the CLI. PGlite
+  PGlite per test file with every table emptied per test, requests served in-process by `tests/http.ts`, files one at a
+  time, so its suite holds under parallel load). Every Change's approved package holds the fixture's `constitution.md`,
+  `domain/` and `architecture/`: editing one of them is drift for all of its Changes, which are then re-approved with
+  the CLI (escalated, analyzing, plan review, approve, executing). PGlite
   runs one statement at a time, so a held-out test of a race makes it real by delaying each statement outside a
   transaction (requests sent at once then interleave) and, where a read then a write inside one transaction must fail,
   by a BEFORE INSERT trigger that stores the rival row inside the route's own insert. Its files are what git lists in it. Its packages are installed once (`npm ci --ignore-scripts`, needs
@@ -794,12 +795,12 @@ In the user's project, `.aidw/` keeps its current shape and gains `roles/<id>/` 
   file, in a trimmed environment (PATH, HOME, TMPDIR, the locale, the user, and what signs claude in and reaches it: API
   key, OAuth token, `CLAUDE_CONFIG_DIR`, Bedrock/Vertex, proxies, CA certificates; the calling session's `CLAUDECODE`,
   other `CLAUDE_CODE_*` settings, `ANTHROPIC_MODEL` and `MAX_THINKING_TOKENS` are dropped). No network: Bash runs only
-  in Claude Code's sandbox (`failIfUnavailable`) with no allowed hosts and no unsandboxed escape, but with
-  `allowLocalBinding` (the session's own tests start the app on 127.0.0.1; the pilot's sessions without it could not
-  run them, `listen EPERM`). On macOS `allowLocalBinding` also lets the session connect to any port on localhost, so
-  "no network" holds only on a machine where nothing local forwards traffic out (a Claude Code proxy, a dev proxy, a
-  Docker TCP API): an accepted risk while evals run on the owner's machine, to be closed before level 2 opens for
-  other Roles by fixture tests that need no socket. Bash is allowed by a rule as well as for being sandboxed (the pilot's sandboxed loops and
+  in Claude Code's sandbox (`failIfUnavailable`) with no allowed hosts, no local binding and no unsandboxed escape.
+  The fixture's tests need no socket: `t.http()` in the backend fixture's `tests/helpers.ts` sends each request to the
+  app in-process (`tests/http.ts`, a supertest-style client over an in-memory stream pair, through Node's HTTP parser),
+  so no test needs to bind a port, and by its configuration the session can reach no localhost port
+  (`allowLocalBinding` would also open every localhost port on macOS, which a local proxy could carry out); no real
+  session has run on this fixture yet. Bash is allowed by a rule as well as for being sandboxed (the pilot's sandboxed loops and
   `$(…)` commands still asked for approval, which no one gives); it can run only sandboxed, and where the sandbox
   cannot start neither does the session; WebFetch and WebSearch are
   absent and denied. A watcher starts the session in its own process group, keeps the raw log, and stops the whole group
@@ -832,9 +833,11 @@ In the user's project, `.aidw/` keeps its current shape and gains `roles/<id>/` 
   read-only folder of its own, and the run folder's records are written again after the checks. Each grading command
   gets only PATH, HOME, the locale, the user and a fresh scratch folder as TMPDIR (no keys, no proxies), processes it
   leaves in the copy are killed, and its report files are read out of the scratch folder. It runs confined: on macOS
-  `sandbox-exec` with outbound network only to localhost, no Unix sockets, and writes only in the project, its scratch
-  folder and `/dev`; on Linux `bwrap` with `/` read-only, the same writable places and its own network, else `unshare
-  -rn` (network only; writes not confined). The Linux paths were not tried here. Where none can be applied (inside another sandbox, a container without user
+  `sandbox-exec` with no network at all (no outbound connection, localhost and Unix sockets included, no bind) and
+  writes only in the project, its scratch folder and `/dev`; on Linux `bwrap` with `/` read-only, the same writable
+  places and a network namespace of its own with only its own loopback (the host's localhost is out of reach), else
+  `unshare -rn` (an empty network namespace, loopback down;
+  writes not confined). The Linux paths were not tried here. Where none can be applied (inside another sandbox, a container without user
   namespaces) they run unconfined, the run records `none`, and the output says so. `AIDW_GRADE_SANDBOX=off` turns it
   off. A session stopped at a limit fails; one that never ran is an ERROR. A run passes when all four pass; a case
   passes with 3 of 3 runs. `--bare` (C3 at level 2) runs once by default and is judged by 1 and 2 only, with no model
@@ -853,8 +856,11 @@ In the user's project, `.aidw/` keeps its current shape and gains `roles/<id>/` 
   from fewer than 3 runs, not passed, or graded with `none`. A malformed level 2 case is an error, as for level 1.
 - **Proven by the backend pilot** (6 real sessions, 2026-11-26): `--agent aidw:<role>` with `-p` runs the Role's
   agent as the main session; `--setting-sources project` keeps the user's own `~/.claude/CLAUDE.md` out of the
-  session; the sandbox is applied to Bash (it refused a local `listen` until `allowLocalBinding` was set).
-- **Not yet proven by a real run:** that the sandbox keys block outbound network as intended (no session tried it),
+  session; the sandbox is applied to Bash (it refused a local `listen`, `EPERM`, which the in-process test client
+  now avoids). The pilot's 3/3 ran on the fixture's earlier helper (a server on 127.0.0.1 per test) with
+  `allowLocalBinding`; it must be re-run on the in-process fixture before it counts for it.
+- **Not yet proven by a real run:** that the session, now without `allowLocalBinding`, can reach no localhost port
+  (it holds by configuration; no session has run since), that the sandbox keys block outbound network as intended (no session tried it),
   that the `Read(...)` deny rules also stop a sandboxed Bash `cat`, and that the sandbox lets Bash write nowhere but the
   project (if it can write the run folder, the snapshot's digest still turns a changed snapshot into an ERROR).
 - **Residual risks.** Where no grading sandbox can be applied, the held-out tests and checks run code the session wrote

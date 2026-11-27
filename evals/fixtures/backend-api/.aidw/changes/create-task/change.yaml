@@ -3,15 +3,15 @@ id: create-task
 title: "Create a task in a project"
 input_type: null
 state: executing
-created_at: 2026-11-27T00:35:03.646Z
+created_at: 2026-11-25T08:33:38.147Z
 skip_specs: false
 approval:
-  hash: sha256:a0e90dbd5931fa27a67a1e5a842ec0da6bc054acd7ad31cdafab94705fd85b55
-  at: 2026-11-27T00:35:04.690Z
+  hash: sha256:3b3076bdcf91c4f76d8ad3be91505605e3df7b62ad6ae2d6a5e59cae5dc6e485
+  at: 2026-11-27T00:58:34.570Z
   by: user
   package: 3
   agent_run_cap: 6
 run:
   paused: null
   branch: aidw/create-task
-  base_branch: main
+  base_branch: null

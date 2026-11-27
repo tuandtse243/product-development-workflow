@@ -365,7 +365,7 @@ describe("level 2: the session", () => {
 
   it("sandboxes Bash with no network, no way out of the sandbox, and no start without it", () => {
     const st = sessionSettings({ pluginRoot: "/p/aidw", project: "/w/copy", denyRead: ["/repo/evals/**", "/real/roles/*/evals/**"] }) as { permissions: { allow: string[]; deny: string[] }; sandbox: Record<string, unknown> };
-    expect(st.sandbox).toEqual({ enabled: true, failIfUnavailable: true, autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false, network: { allowedDomains: [], allowLocalBinding: true } });
+    expect(st.sandbox).toEqual({ enabled: true, failIfUnavailable: true, autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false, network: { allowedDomains: [] } });
     // no bare Read: reads outside the copy only in the session's plugin copy
     // Bash by a rule too (sandboxed loops and $(…) asked for approval); it can still run only sandboxed
     expect(st.permissions.allow).toEqual(["Bash", "Read(//p/aidw/**)"]);
