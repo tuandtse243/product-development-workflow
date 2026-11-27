@@ -35,7 +35,7 @@ export function runnerCommand(id: string, aidw: string, pluginDir?: string): str
 /**
  * The route for a Change with `tasks` tasks left; `aidw` is the CLI as the orchestrator should type it, `pluginDir` the
  * plugin directory when aidw is loaded from a folder rather than installed. Only the start of an installed plugin is
- * allowed by the gate without asking; from a folder the user confirms it at a prompt,, where a session can show prompts.
+ * allowed by the gate without asking; from a folder the user confirms it at a prompt, where a session can show prompts.
  */
 export function buildRoute(id: string, tasks: number, aidw = "aidw", pluginDir?: string): BuildRoute {
   if (tasks > RUNNER_THRESHOLD) {

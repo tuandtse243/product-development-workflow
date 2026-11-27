@@ -289,7 +289,9 @@ export function runLoop(p: Paths, id: string, opts: RunnerOptions = {}): RunnerR
     });
     runs++;
     const parsed = parseSessionJson(r.stdout ?? "");
-    const output = parsed ? `${parsed.text}\n${r.stderr ?? ""}`.trim() : `${r.stdout ?? ""}\n${r.stderr ?? ""}`.trim();
+    // an error result (error_max_turns, error_during_execution) has no text: keep the raw JSON so a limit or error shows
+    const said = parsed?.text ? parsed.text : (r.stdout ?? "");
+    const output = `${said}\n${r.stderr ?? ""}`.trim();
     if (parsed?.cost != null) {
       costUsd += parsed.cost;
       costSessions++;
