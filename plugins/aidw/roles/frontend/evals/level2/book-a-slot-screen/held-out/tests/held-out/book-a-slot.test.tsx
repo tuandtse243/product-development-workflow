@@ -94,6 +94,35 @@ describe("book a slot (held out)", () => {
     expect(screen.getByRole("button", { name: /09:30/ })).toBeEnabled();
   });
 
+  it("while the slots have not arrived, the screen says they are loading, and the slots replace it", async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    server.use(
+      http.get(SLOTS, async () => {
+        await gate;
+        return HttpResponse.json([
+          { id: "s1", time: "09:00", booked: false },
+          { id: "s2", time: "09:30", booked: false },
+          { id: "s3", time: "10:00", booked: true },
+        ]);
+      }),
+    );
+    renderAt(DAY);
+    // any form of "loading": a status, a progressbar, a busy region or text that says loading
+    const says = () =>
+      screen.queryAllByRole("status").length > 0 ||
+      screen.queryAllByRole("progressbar").length > 0 ||
+      document.querySelector('[aria-busy="true"]') !== null ||
+      screen.queryAllByText(/loading|please wait/i).length > 0;
+    await waitFor(() => expect(says()).toBe(true));
+    expect(screen.queryByRole("button", { name: /09:00/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/no open slots/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    release();
+    expect(await screen.findByRole("button", { name: /09:00/ })).toBeEnabled();
+    expect(screen.queryAllByRole("progressbar")).toHaveLength(0);
+  });
+
   it("a failed load is an alert with a Retry that loads the slots again, never the empty text", async () => {
     const reads = countSlotReads();
     server.use(http.get(SLOTS, () => new HttpResponse(null, { status: 503 }), { once: true }));

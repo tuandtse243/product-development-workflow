@@ -10,7 +10,7 @@ import { ensureFixturePackages, fixturesDir, loadLevel2Cases, noScreenshotsBrief
  * Edge tests for the frontend level 2 case book-a-slot-screen and its harness, with no model: plausible wrong solutions
  * each of which must fail a check or a held-out test, plausible correct ones that must pass, `screenshots: off` on odd
  * briefs, the custom jsdom environment's `{ signal }` handling, the restore list, and determinism.
- * A test named "BUG: ..." fails on purpose: it states what should hold and does not (see the report of the run).
+ * A test named "LIMIT: ..." pins a documented limit of the case (see its case.md), not a defect.
  * Needs the fixture's packages in the cache (AIDW_FIXTURE_CACHE) and the built plugin bin; skipped without them.
  */
 const repo = join(__dirname, "..");
@@ -149,7 +149,7 @@ export function FocusDialog(props: DialogProps) {
 interface Variant {
   name: string;
   edit: (g: G) => void;
-  /** held-out tests that must fail (their words); none: all 7 pass */
+  /** held-out tests that must fail (their words); none: all 8 pass */
   fails?: RegExp[];
   passes?: RegExp[];
   a11y?: boolean;
@@ -326,7 +326,7 @@ describe.skipIf(!ready || !scriptsReady)(`level 2 ${CASE}: plausible wrong solut
       v.edit(g);
       const r = verdict(g);
       expect(r.t.status, r.t.out).toBe(0);
-      expect(r.t.out).toMatch(/7 passed/);
+      expect(r.t.out).toMatch(/8 passed/);
       expect(r.a11y, JSON.stringify(r.a11y)).toMatchObject({ pass: true });
       expect(r.tokens, JSON.stringify(r.tokens)).toMatchObject({ pass: true });
       expect(r.touches, JSON.stringify(r.touches)).toMatchObject({ pass: true });
@@ -368,19 +368,19 @@ it("Tab and Shift+Tab stay inside the open dialog", async () => {
     expect(t2.status, t2.out).not.toBe(0);
   }, 600_000);
 
-  it("BUG: a dialog that does not trap Tab fails a check or a held-out test (no held-out test presses Tab)", () => {
+  it("LIMIT: a dialog that does not trap Tab passes every grader (no scenario of the Change states a Tab trap, see case.md)", () => {
     const g = graded();
     put(g, "src/booking/PlainDialog.tsx", PLAIN_DIALOG);
     swap(g, SCREEN, 'import { Dialog } from "../ui/Dialog";', 'import { Dialog } from "./PlainDialog";');
     const r = verdict(g);
-    expect(r.t.status !== 0 || !r.a11y.pass || !r.tokens.pass || !r.touches.pass, "the solution passes every machine grader").toBe(true);
+    expect(r.t.status === 0 && r.a11y.pass && r.tokens.pass && r.touches.pass, "the solution passes every machine grader").toBe(true);
   }, 600_000);
 
-  it("BUG: a screen with no loading indication fails a check or a held-out test (scenario slots-loading is only named, never observed)", () => {
+  it("a screen with no loading indication fails a held-out test (scenario slots-loading)", () => {
     const g = graded();
     swap(g, SCREEN, '{state.status === "loading" && <Spinner label="Loading slots…" />}', "");
     const r = verdict(g);
-    expect(r.t.status !== 0 || !r.a11y.pass || !r.tokens.pass || !r.touches.pass, "the solution passes every machine grader").toBe(true);
+    expect(r.t.status, "the held-out tests fail").not.toBe(0);
   }, 600_000);
 });
 
@@ -559,7 +559,7 @@ describe("jsdom-node-abort", () => {
     takesSignal(document);
     takesSignal(document.body);
   });
-  it("bug: window takes { signal }", () => takesSignal(window));
+  it("window takes { signal }", () => takesSignal(window));
   it("one signal removes every listener added with it", () => {
     const ac = new AbortController(), t = target(), a = vi.fn(), b = vi.fn();
     t.addEventListener("x", a, { signal: ac.signal });
@@ -590,7 +590,7 @@ describe("jsdom-node-abort", () => {
     ac.abort();
     await expect(fetch("http://localhost/x", { signal: ac.signal })).rejects.toBeTruthy();
   });
-  it("bug: the same listener added twice with two signals survives the abort of the second (the second add is ignored)", () => {
+  it("the same listener added twice with two signals survives the abort of the second (the second add is ignored)", () => {
     const a = new AbortController(), b = new AbortController(), t = target(), fn = vi.fn();
     t.addEventListener("x", fn, { signal: a.signal });
     t.addEventListener("x", fn, { signal: b.signal });
@@ -598,7 +598,7 @@ describe("jsdom-node-abort", () => {
     fire(t);
     expect(fn).toHaveBeenCalledTimes(1);
   });
-  it("bug: a listener removed by hand and added again without a signal survives the abort of the old signal", () => {
+  it("a listener removed by hand and added again without a signal survives the abort of the old signal", () => {
     const a = new AbortController(), t = target(), fn = vi.fn();
     t.addEventListener("x", fn, { signal: a.signal });
     t.removeEventListener("x", fn);
@@ -625,25 +625,25 @@ describe.skipIf(!ready)("the custom jsdom environment (tests/environment.ts) and
 
   it("handles { signal } with once, manual removal, AbortSignal.timeout and AbortSignal.any like a browser", () => {
     const r = run();
-    const failed = failedTests(r.out).filter((n) => !/^bug:/.test(n));
+    const failed = failedTests(r.out).filter((n) => !/^(window takes|the same listener added twice|a listener removed by hand and added again)/.test(n));
     expect(failed, r.out).toEqual([]);
     expect(r.out).toMatch(/\d+ passed/);
   }, 300_000);
 
-  it("BUG: window takes { signal } like an element and the document do (window.addEventListener('resize', fn, { signal }) throws; found: window only)", () => {
+  it("window takes { signal } like an element and the document do", () => {
     const r = run();
-    const failed = failedTests(r.out).filter((n) => /^bug: window/.test(n));
+    const failed = failedTests(r.out).filter((n) => /^window takes/.test(n));
     expect(failed, r.out).toEqual([]);
   }, 300_000);
 
-  it("BUG: a duplicate add with a second signal is ignored by the browser, and the second signal's abort must not remove the listener", () => {
+  it("a duplicate add with a second signal is ignored by the browser, and the second signal's abort must not remove the listener", () => {
     const r = run();
-    expect(failedTests(r.out), r.out).not.toContain("bug: the same listener added twice with two signals survives the abort of the second (the second add is ignored)");
+    expect(failedTests(r.out), r.out).not.toContain("the same listener added twice with two signals survives the abort of the second (the second add is ignored)");
   }, 300_000);
 
-  it("BUG: a listener removed by hand has no abort left behind: re-adding it without a signal must survive the old signal's abort", () => {
+  it("a listener removed by hand has no abort left behind: re-adding it without a signal must survive the old signal's abort", () => {
     const r = run();
-    expect(failedTests(r.out), r.out).not.toContain("bug: a listener removed by hand and added again without a signal survives the abort of the old signal");
+    expect(failedTests(r.out), r.out).not.toContain("a listener removed by hand and added again without a signal survives the abort of the old signal");
   }, 300_000);
 });
 
@@ -720,13 +720,13 @@ describe.skipIf(!ready || !scriptsReady)("the restore list and determinism", () 
     expect(prompts).toHaveLength(0);
   }, 900_000);
 
-  it("the reference and the held-out tests five times in a row in one copy: 7 passed every time, and no state or file is left behind", () => {
+  it("the reference and the held-out tests five times in a row in one copy: 8 passed every time, and no state or file is left behind", () => {
     const g = graded();
     const before = g.sh("git status --porcelain").out;
     const runs = Array.from({ length: 5 }, () => g.heldOut());
     for (const t of runs) {
       expect(t.status, t.out).toBe(0);
-      expect(t.out).toMatch(/7 passed/);
+      expect(t.out).toMatch(/8 passed/);
     }
     // the shapes of the outputs agree: the same tests, in the same count
     expect(new Set(runs.map((t) => (/(\d+) passed/.exec(t.out) ?? [])[1])).size).toBe(1);
@@ -738,6 +738,6 @@ describe.skipIf(!ready || !scriptsReady)("the restore list and determinism", () 
     put(g, "tests/z-first.test.tsx", 'import { expect, it } from "vitest";\nimport { db } from "./msw/handlers";\nit("leaves a mess", () => { db.bookings.push({ id: "bX", slotId: "s1" }); db.slots[0]!.booked = true; db.doctors[0]!.name = "Dr. Leak"; });\n');
     const t = g.sh(`npm test --silent -- tests/z-first.test.tsx ${pilot().heldOut.join(" ")} --sequence.shuffle`);
     expect(t.status, t.out).toBe(0);
-    expect(t.out).toMatch(/8 passed/);
+    expect(t.out).toMatch(/9 passed/);
   }, 600_000);
 });

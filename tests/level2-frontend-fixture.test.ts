@@ -131,7 +131,7 @@ describe.skipIf(!ready)(`the frontend-web fixture and level 2 case ${CASE} (cach
     const g = graded(c, CASE);
     const t = g.heldOut();
     expect(t.status, t.out).toBe(0);
-    expect(t.out).toMatch(/7 passed/);
+    expect(t.out).toMatch(/8 passed/);
     const results = c.checks.filter((ch) => !waitsForScript(ch.name)).map((ch) => [ch.name, runCheck(ch, g.project, g.env)] as const);
     expect(results.length).toBe(c.checks.length - missingScripts.length);
     expect(results.filter(([, r]) => !r.pass)).toEqual([]);
@@ -158,11 +158,11 @@ describe.skipIf(!ready)(`the frontend-web fixture and level 2 case ${CASE} (cach
     }, 600_000);
   }
 
-  it("a reference that words the confirm button and the failure alert differently still passes the held-out tests (7 of 7)", () => {
+  it("a reference that words the confirm button and the failure alert differently still passes the held-out tests (8 of 8)", () => {
     const g = graded(pilot(), CASE, `${CASE}-reworded`);
     const t = g.heldOut();
     expect(t.status, t.out).toBe(0);
-    expect(t.out).toMatch(/7 passed/);
+    expect(t.out).toMatch(/8 passed/);
   }, 600_000);
 
   it.skipIf(missingScripts.includes("a11y-names"))("the a11y-names check fails the div-slots solution and passes the correct one", () => {
@@ -185,7 +185,7 @@ describe.skipIf(!ready)(`the frontend-web fixture and level 2 case ${CASE} (cach
     const g = graded(pilot());
     const t = g.heldOut();
     expect(t.status).not.toBe(0);
-    expect(failedTests(t.out), t.out).toHaveLength(7);
+    expect(failedTests(t.out), t.out).toHaveLength(8);
     expect(g.check(/scenario id/)).toMatchObject({ pass: false, why: expect.stringMatching(/no test names /) });
   }, 600_000);
 

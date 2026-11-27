@@ -35,7 +35,10 @@ whole in the dialog's name; no slot button's name holds a raw icon key (`icon-`)
 `token-literals` (no color, length, radius, shadow, font or z-index literal added that is not a token; the tokens file
 is restored before grading, so a token added for a literal does not count), that every scenario id names a test, the
 whole suite, the typecheck, and that nothing outside Touches changed (only `src/booking/`, `tests/booking/`,
-`src/routes.tsx` and the run and change folders of `.aidw/`). A model grades only what the Agent says about the Dialog.
+`src/routes.tsx` and the run and change folders of `.aidw/`). The held-out tests also observe `slots-loading` (the response is held back; a status, a progressbar, a busy region or
+text that says loading must show, then the slots replace it). Known limit: no scenario of the Change states that Tab is
+trapped in the dialog (the spec is approved and stays as it is), so a held-out test for it would be a hidden
+requirement and there is none; a screen whose own dialog lets Tab leave passes. A model grades only what the Agent says about the Dialog.
 
 ## Criteria
 
