@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { Diags, diagsJson } from "../src/diag.js";
 import { planAdvice, planInfo, planShape } from "../src/plan.js";
 import type { Task } from "../src/tasks.js";
 
@@ -94,7 +95,12 @@ describe("planInfo (waves the dependency graph allows but a wave cannot run)", (
     expect(planInfo(trial(), 1)).toEqual([]);
   });
 
+  it("reports tasks that share touches once, and the max line once per wave", () => {
+    expect(planInfo([t("T01", ["a/**"]), t("T02", ["a/x/**"]), t("T03", ["a/y/**"])], 3)).toEqual(["T02, T03 wait for T01: they touch the same files"]);
+    expect(planInfo([t("T01", ["a/**"]), t("T02", ["b/**"]), t("T03", ["c/**"]), t("T04", ["d/**"]), t("T05", ["e/**"])], 3)).toEqual(["T04, T05 wait for the next wave: parallel.max is 3"]);
+  });
+
   it("reports a split by overlapping touches", () => {
-    expect(planInfo([t("T01", ["a/**"]), t("T02", ["a/x/**"])], 3)).toEqual(["T02 and T01 touch the same files, so they run one after the other"]);
+    expect(planInfo([t("T01", ["a/**"]), t("T02", ["a/x/**"])], 3)).toEqual(["T02 waits for T01: they touch the same files"]);
   });
 });

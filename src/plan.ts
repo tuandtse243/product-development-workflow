@@ -127,13 +127,17 @@ export function planInfo(all: Task[], max: number): string[] {
     if (left.length && mustRunAlone(first)) {
       out.push(`${first.id} is ${aloneWhy(first)}: it runs alone, so ${first.id} and ${left.map((t) => t.id).join(", ")} run one after the other`);
     } else {
+      const groups = new Map<string, string[]>();
+      const add = (key: string, id: string) => groups.set(key, [...(groups.get(key) ?? []), id]);
       for (const t of left) {
         const other = wave.find((w) => touchesOverlap(list(w.touches), list(t.touches)));
+        const browser = wave.find(drivesBrowser);
         if (mustRunAlone(t)) out.push(`${t.id} is ${aloneWhy(t)}: it runs alone, so ${t.id} and ${wave.map((w) => w.id).join(", ")} run one after the other`);
-        else if (other) out.push(`${t.id} and ${other.id} touch the same files, so they run one after the other`);
-        else if (drivesBrowser(t) && wave.some(drivesBrowser)) out.push(`${t.id} and ${wave.find(drivesBrowser)?.id} both drive the browser, so they run one after the other`);
-        else out.push(`${t.id} waits for the next wave: parallel.max is ${max}`);
+        else if (other) add(`for ${other.id}: they touch the same files`, t.id);
+        else if (drivesBrowser(t) && browser) add(`for ${browser.id}: both drive the browser`, t.id);
+        else add(`for the next wave: parallel.max is ${max}`, t.id);
       }
+      for (const [why, ids] of groups) out.push(`${ids.join(", ")} ${ids.length > 1 ? "wait" : "waits"} ${why}`);
     }
     for (const t of sim) if (inWave.has(t.id)) t.status = "done";
   }

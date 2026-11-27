@@ -54,3 +54,6 @@ export class OpError extends Error {
     super(message);
   }
 }
+
+/** The findings of a check as `--json` output. */
+export const diagsJson = (d: Diags) => ({ errors: d.errors, warnings: d.warnings, info: d.infos });

@@ -32,7 +32,7 @@ import { claudeExec, mergeResults, printResults, runCases, takeDigests, writeRes
 import { checkWorkflows, loadWorkflow, workflowIds } from "./workflow.js";
 import { agentForTask, AGENTS, checkRoster, loadRoster, rosterTable, tierModel, writeAgents } from "./roles.js";
 import { checkChange, checkSpecs } from "./check.js";
-import { Diags, type Diagnostic } from "./diag.js";
+import { Diags, diagsJson, type Diagnostic } from "./diag.js";
 import {
   approve,
   archiveChange,
@@ -485,7 +485,6 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
   const json = args.flags.json === true;
   const [cmd, ...rest] = args.pos;
   const emit = (data: unknown, text: string) => io.out(json ? `${JSON.stringify(data, null, 2)}\n` : text);
-  const diagsJson = (d: Diags) => ({ errors: d.errors, warnings: d.warnings });
   const printDiags = (d: Diags) => d.items.map(fmtDiag).join("\n") + (d.items.length ? "\n" : "");
 
   const project = (): Paths => {
