@@ -3,6 +3,7 @@
  * parallel wave (slice S8), however disjoint the tasks' `touches` are, so the plan is where that is cheap to
  * fix. Everything here is advice (warnings): a dependency is often real.
  */
+import { drivesBrowser, mustRunAlone, planWave } from "./parallel.js";
 import { staticPrefix, touchesOverlap } from "./touches.js";
 import type { Task } from "./tasks.js";
 
@@ -101,5 +102,44 @@ export function planAdvice(all: Task[]): string[] {
   const heavy = counts.filter((c) => total >= 8 && c.n >= 8 && c.n / total >= 0.3);
   if (heavy.length) out.push(`task(s) ${heavy.map((c) => `${c.id} (${c.n} of ${total} scenarios)`).join(", ")} carry a third of the plan: they set the pace of their wave. Split each into slices that touch different files (for example list, create, edit and delete) so the pieces can run side by side.`);
   if (s.catchAll.length) out.push(`task(s) ${s.catchAll.join(", ")} touch "**", so they always run alone; list the folders they really change.`);
+  return out;
+}
+
+const aloneWhy = (t: Task) => (t.risk === "high" ? "risk high" : t.sequential === true ? "sequential" : 'touches "**"');
+
+/**
+ * INFO lines for tasks the dependency graph lets run together but a wave cannot: simulates `planWave` over the
+ * planned tasks (each wave done before the next) and names why each ready task was left for a later wave. Advice
+ * only: it never changes when tasks run. Nothing at `max` 1, where every task is sequential by choice.
+ */
+export function planInfo(all: Task[], max: number): string[] {
+  if (max < 2) return [];
+  const sim = all.filter(isPlanned).map((t) => ({ ...t, status: "pending" }) as Task);
+  const out: string[] = [];
+  for (;;) {
+    const done = new Set(sim.filter((t) => t.status === "done").map((t) => t.id));
+    const ready = sim.filter((t) => t.status === "pending" && list(t.depends_on).every((d) => done.has(d)));
+    const wave = planWave(sim, max);
+    if (!wave.length) break;
+    const inWave = new Set(wave.map((t) => t.id));
+    const left = ready.filter((t) => !inWave.has(t.id));
+    const first = wave[0] as Task;
+    if (left.length && mustRunAlone(first)) {
+      out.push(`${first.id} is ${aloneWhy(first)}: it runs alone, so ${first.id} and ${left.map((t) => t.id).join(", ")} run one after the other`);
+    } else {
+      const groups = new Map<string, string[]>();
+      const add = (key: string, id: string) => groups.set(key, [...(groups.get(key) ?? []), id]);
+      for (const t of left) {
+        const other = wave.find((w) => touchesOverlap(list(w.touches), list(t.touches)));
+        const browser = wave.find(drivesBrowser);
+        if (mustRunAlone(t)) out.push(`${t.id} is ${aloneWhy(t)}: it runs alone, so ${t.id} and ${wave.map((w) => w.id).join(", ")} run one after the other`);
+        else if (other) add(`for ${other.id}: they touch the same files`, t.id);
+        else if (drivesBrowser(t) && browser) add(`for ${browser.id}: both drive the browser`, t.id);
+        else add(`for the next wave: parallel.max is ${max}`, t.id);
+      }
+      for (const [why, ids] of groups) out.push(`${ids.join(", ")} ${ids.length > 1 ? "wait" : "waits"} ${why}`);
+    }
+    for (const t of sim) if (inWave.has(t.id)) t.status = "done";
+  }
   return out;
 }

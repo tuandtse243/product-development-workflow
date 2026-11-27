@@ -32,7 +32,7 @@ import { claudeExec, mergeResults, printResults, runCases, takeDigests, writeRes
 import { checkWorkflows, loadWorkflow, workflowIds } from "./workflow.js";
 import { agentForTask, AGENTS, checkRoster, loadRoster, rosterTable, tierModel, writeAgents } from "./roles.js";
 import { checkChange, checkSpecs } from "./check.js";
-import { Diags, type Diagnostic } from "./diag.js";
+import { Diags, diagsJson, type Diagnostic } from "./diag.js";
 import {
   approve,
   archiveChange,
@@ -60,6 +60,7 @@ import { doctor, doctorText, drivesBrowser } from "./doctor.js";
 import { createPr, planPr, prNext, writePrBody } from "./pr.js";
 import { grantsSection } from "./grants.js";
 import { planAdvice, planShape, planSummary } from "./plan.js";
+import { parallelConfig } from "./parallel.js";
 import { buildRoute, installedOutside, tasksLeft } from "./buildroute.js";
 import { detachRun, runLoop, runnerPid, stopRunner } from "./runner.js";
 import { deliver } from "./deliver.js";
@@ -462,7 +463,7 @@ function logHook(env: NodeJS.ProcessEnv, hook: string, input: string, output: st
 
 function fmtDiag(d: Diagnostic): string {
   const where = d.line ? `${d.file}:${d.line}` : d.file;
-  return `${d.level === "error" ? "ERROR" : "WARN "}  ${where}  ${d.message}`;
+  return `${d.level === "error" ? "ERROR" : d.level === "info" ? "INFO " : "WARN "}  ${where}  ${d.message}`;
 }
 
 function str(v: string | true | undefined): string | undefined {
@@ -484,7 +485,6 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
   const json = args.flags.json === true;
   const [cmd, ...rest] = args.pos;
   const emit = (data: unknown, text: string) => io.out(json ? `${JSON.stringify(data, null, 2)}\n` : text);
-  const diagsJson = (d: Diags) => ({ errors: d.errors, warnings: d.warnings });
   const printDiags = (d: Diags) => d.items.map(fmtDiag).join("\n") + (d.items.length ? "\n" : "");
 
   const project = (): Paths => {
@@ -1467,7 +1467,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
           return [
             ...(points.length ? [{ id: "decision-points", title: "Decision Points", body: "", points, html: "" }] : []),
             // T13: the plan as stages, with each task's patterns, Docs Briefs (linked) and checks for the user
-            ...(tasks.length ? [planGateSection(p, tasks, pagesDir(p))] : []),
+            ...(tasks.length ? [planGateSection(p, tasks, pagesDir(p), parallelConfig(p, c).max)] : []),
             ...[grantsSection(p, c)].filter((x): x is PageSection => x !== null),
           ];
         };

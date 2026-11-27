@@ -42,7 +42,7 @@ export { globsOverlap, staticPrefix, touchesOverlap } from "./touches.js";
 /** A task whose verify or screenshots start the app in a browser: two at once would fight over the e2e port. */
 export const drivesBrowser = (t: Task) => list(t.verify).some((v) => BROWSER_VERIFY.test(v)) || touchesUi(t);
 
-const mustRunAlone = (t: Task) => t.risk === "high" || t.sequential === true || list(t.touches).some((g) => staticPrefix(g).length === 0);
+export const mustRunAlone = (t: Task) => t.risk === "high" || t.sequential === true || list(t.touches).some((g) => staticPrefix(g).length === 0);
 
 /**
  * The next wave: ready pending tasks in file order. The first ready task always runs; others join only when
