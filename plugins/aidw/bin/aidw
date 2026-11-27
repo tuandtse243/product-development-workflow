@@ -7330,6 +7330,73 @@ __export(cli_exports, {
 });
 module.exports = __toCommonJS(cli_exports);
 var import_node_fs52 = require("node:fs");
+
+// src/labels.ts
+var EN = {
+  beforeAfterBody: "What the user sees today, and what they will see once this Change is built.",
+  before: "Before",
+  after: "After",
+  programDesign: "Program Design",
+  programDesignBody: (id, file) => `The files this Change adds, changes and removes, and its main signatures and contracts (.aidw/changes/${id}/${file}). You approve it with the package: code that differs from it is a Deviation, decided by the Software Architect and listed in the pull request.`,
+  decisionPoints: "Decision Points",
+  open: "open",
+  noReason: "no reason recorded",
+  plan: "Plan",
+  patterns: "Patterns",
+  docs: "Docs",
+  forYouToCheck: "For you to check",
+  stage: "stage",
+  tasks: "Tasks",
+  stages: "Stages",
+  widestStage: "Widest stage",
+  checksForYou: "Checks for you",
+  docsBriefs: "Docs Briefs",
+  docsBriefsNote: "what the official documentation says, written by Research",
+  planChecksNote: 'The build does not stop for these; delivery lists them under "Checks for you":',
+  grants: "Grants for this Change",
+  grantsBody: "Recorded in quality.yaml `grants` and approved with the package; the branch and the remote's URL are fixed when you approve. Mark it for a change to grant or withdraw any of them.",
+  pushAndPr: "Push and pull request",
+  envelope: "Permission envelope",
+  cap: "Cap",
+  neverAutomatic: "Never automatic",
+  openFindings: "Open findings of the independent review",
+  unanswered: "Questions no Role could answer"
+};
+var VI = {
+  beforeAfterBody: "\u0110i\u1EC1u ng\u01B0\u1EDDi d\xF9ng th\u1EA5y h\xF4m nay, v\xE0 \u0111i\u1EC1u h\u1ECD s\u1EBD th\u1EA5y khi Change n\xE0y \u0111\u01B0\u1EE3c build xong.",
+  before: "Tr\u01B0\u1EDBc",
+  after: "Sau",
+  programDesign: "Thi\u1EBFt k\u1EBF ch\u01B0\u01A1ng tr\xECnh",
+  programDesignBody: (id, file) => `C\xE1c t\u1EC7p Change n\xE0y th\xEAm, s\u1EEDa v\xE0 x\xF3a, c\xF9ng ch\u1EEF k\xFD v\xE0 h\u1EE3p \u0111\u1ED3ng ch\xEDnh c\u1EE7a n\xF3 (.aidw/changes/${id}/${file}). B\u1EA1n duy\u1EC7t n\xF3 c\xF9ng g\xF3i: code kh\xE1c v\u1EDBi n\xF3 l\xE0 m\u1ED9t Deviation, do Software Architect quy\u1EBFt \u0111\u1ECBnh v\xE0 ghi trong pull request.`,
+  decisionPoints: "C\xE1c \u0111i\u1EC3m quy\u1EBFt \u0111\u1ECBnh",
+  open: "\u0111ang m\u1EDF",
+  noReason: "ch\u01B0a ghi l\xFD do",
+  plan: "K\u1EBF ho\u1EA1ch",
+  patterns: "M\u1EABu c\u1EA7n theo",
+  docs: "T\xE0i li\u1EC7u",
+  forYouToCheck: "B\u1EA1n c\u1EA7n ki\u1EC3m tra",
+  stage: "giai \u0111o\u1EA1n",
+  tasks: "Task",
+  stages: "Giai \u0111o\u1EA1n",
+  widestStage: "Giai \u0111o\u1EA1n r\u1ED9ng nh\u1EA5t",
+  checksForYou: "Checks for you (vi\u1EC7c b\u1EA1n c\u1EA7n ki\u1EC3m tra)",
+  docsBriefs: "Docs Brief",
+  docsBriefsNote: "t\xE0i li\u1EC7u ch\xEDnh th\u1EE9c n\xF3i g\xEC, do Research vi\u1EBFt",
+  planChecksNote: 'Vi\u1EC7c build kh\xF4ng d\u1EEBng v\xEC nh\u1EEFng m\u1EE5c n\xE0y; l\xFAc giao, aidw li\u1EC7t k\xEA ch\xFAng \u1EDF "Checks for you":',
+  grants: "Quy\u1EC1n \u0111\u01B0\u1EE3c c\u1EA5p cho Change n\xE0y",
+  grantsBody: "Ghi trong `grants` c\u1EE7a quality.yaml v\xE0 \u0111\u01B0\u1EE3c duy\u1EC7t c\xF9ng g\xF3i; nh\xE1nh v\xE0 URL c\u1EE7a remote \u0111\u01B0\u1EE3c ch\u1ED1t khi b\u1EA1n duy\u1EC7t. \u0110\xE1nh d\u1EA5u c\u1EA7n \u0111\u1ED5i \u0111\u1EC3 c\u1EA5p th\xEAm ho\u1EB7c r\xFAt l\u1EA1i b\u1EA5t k\u1EF3 quy\u1EC1n n\xE0o.",
+  pushAndPr: "Push v\xE0 pull request",
+  envelope: "Ph\u1EA1m vi quy\u1EC1n",
+  cap: "Gi\u1EDBi h\u1EA1n",
+  neverAutomatic: "Kh\xF4ng bao gi\u1EDD t\u1EF1 \u0111\u1ED9ng",
+  openFindings: "Ph\xE1t hi\u1EC7n c\xF2n m\u1EDF c\u1EE7a l\u01B0\u1EE3t review \u0111\u1ED9c l\u1EADp",
+  unanswered: "C\xE2u h\u1ECFi kh\xF4ng Role n\xE0o tr\u1EA3 l\u1EDDi \u0111\u01B0\u1EE3c"
+};
+function gateLabels(lang) {
+  return lang === "vi" ? VI : EN;
+}
+
+// src/cli.ts
 var import_node_path57 = require("node:path");
 var import_node_child_process14 = require("node:child_process");
 var import_node_url = require("node:url");
@@ -9720,14 +9787,16 @@ function checkBeforeAfter(analysis, file, opts, d) {
     if (!answered.has(id)) d.error(file, `"### ${DEFERRED}": ${id} has no answer in "## Architecture" (a "- ${id}: <answer>" line)`, def.line);
   }
 }
-function beforeAfterSection(analysis) {
+function beforeAfterSection(analysis, lang) {
+  const l = gateLabels(lang);
   const ba = beforeAfterOf(analysis);
   if (!ba || !ba.before.length && !ba.after.length) return null;
   return {
     id: "before-after",
-    title: BEFORE_AFTER,
-    body: "What the user sees today, and what they will see once this Change is built.",
-    points: [...ba.before.map((l) => `**Before**: ${l}`), ...ba.after.map((l) => `**After**: ${l}`)],
+    title: lang === "vi" ? l.before + " / " + l.after : BEFORE_AFTER,
+    body: l.beforeAfterBody,
+    // the point keys stay English: page.ts parses them, and draws the column headings in the page lang
+    points: [...ba.before.map((x) => `**Before**: ${x}`), ...ba.after.map((x) => `**After**: ${x}`)],
     html: ""
   };
 }
@@ -10542,16 +10611,17 @@ var plannedTaskCount = (change) => {
     return 0;
   }
 };
-function grantLines(g, push, planned2) {
+function grantLines(g, push, planned2, lang) {
+  const L = gateLabels(lang);
   const b = push.binding;
   return [
-    g.push && b ? `**Push and pull request**: push \`${b.branch}\` to remote \`${b.remote}\`${b.url ? ` (${b.url})` : ""} and open one pull request (a draft when something is not built) against base \`${b.base}\`, without asking. No other branch or remote; Task Worktree branches are never pushed.` : g.push ? `**Push and pull request**: granted in quality.yaml but it cannot hold: ${push.problem ?? "no Change Branch"}; the push and the pull request will ask.` : "**Push and pull request**: not granted; the push and the pull request ask at the end of the run.",
-    g.envelope ? `**Permission envelope**: ${ENVELOPE.join("; ")}. Work outside it is marked not built.` : "**Permission envelope**: not granted; only the tier 2 resources listed under Permissions.",
-    `**Cap**: ${agentRunCap(g, planned2.runs)} Agent runs${g.agentRuns === null ? ` (default: ${AGENT_RUNS_FACTOR} \xD7 ${planned2.runs} planned = ${planned2.tasks} tasks \xD7 2 + ${planned2.reviewLayers} review layers)` : ""}; at the cap no new task starts, running work finishes and the run ends cleanly in a pull request.`,
-    `**Never automatic**, whatever is granted: ${NEVER_AUTOMATIC.join(", ")}.`
+    g.push && b ? `**${L.pushAndPr}**: push \`${b.branch}\` to remote \`${b.remote}\`${b.url ? ` (${b.url})` : ""} and open one pull request (a draft when something is not built) against base \`${b.base}\`, without asking. No other branch or remote; Task Worktree branches are never pushed.` : g.push ? `**${L.pushAndPr}**: granted in quality.yaml but it cannot hold: ${push.problem ?? "no Change Branch"}; the push and the pull request will ask.` : `**${L.pushAndPr}**: not granted; the push and the pull request ask at the end of the run.`,
+    g.envelope ? `**${L.envelope}**: ${ENVELOPE.join("; ")}. Work outside it is marked not built.` : `**${L.envelope}**: not granted; only the tier 2 resources listed under Permissions.`,
+    `**${L.cap}**: ${agentRunCap(g, planned2.runs)} Agent runs${g.agentRuns === null ? ` (default: ${AGENT_RUNS_FACTOR} \xD7 ${planned2.runs} planned = ${planned2.tasks} tasks \xD7 2 + ${planned2.reviewLayers} review layers)` : ""}; at the cap no new task starts, running work finishes and the run ends cleanly in a pull request.`,
+    `**${L.neverAutomatic}**, whatever is granted: ${NEVER_AUTOMATIC.join(", ")}.`
   ];
 }
-function grantsSection(p, change) {
+function grantsSection(p, change, lang) {
   try {
     (0, import_node_fs14.readFileSync)((0, import_node_path17.join)(change.dir, "quality.yaml"));
   } catch {
@@ -10560,9 +10630,9 @@ function grantsSection(p, change) {
   const bound = boundPush(p, change);
   return {
     id: "grants",
-    title: "Grants for this Change",
-    body: "Recorded in quality.yaml `grants` and approved with the package; the branch and the remote's URL are fixed when you approve. Mark it for a change to grant or withdraw any of them.",
-    points: grantLines(readGrants(change), bound ? { binding: bound, problem: null } : bindPush(p, change), plannedAgentRuns(change)),
+    title: gateLabels(lang).grants,
+    body: gateLabels(lang).grantsBody,
+    points: grantLines(readGrants(change), bound ? { binding: bound, problem: null } : bindPush(p, change), plannedAgentRuns(change), lang),
     html: ""
   };
 }
@@ -11766,7 +11836,7 @@ function consultWrite(p, file, agent, role) {
   return null;
 }
 var stageConsultationsInFlight = (change, stage) => loadConsultations(change).filter((c) => c.stage && c.status !== "resumed" && (!stage || c.stage === stage));
-function unansweredSection(change) {
+function unansweredSection(change, lang) {
   const list9 = loadConsultations(change).filter((c) => !c.after_gate && c.outcome === "cannot-answer");
   if (!list9.length) return null;
   const question2 = (c) => {
@@ -11778,7 +11848,7 @@ function unansweredSection(change) {
   };
   return {
     id: "unanswered-consultations",
-    title: "Questions no Role could answer",
+    title: gateLabels(lang).unanswered,
     body: "An Agent asked another Role these questions while drafting the package and got no answer. Each is recorded as an open question in the asker's Artifact. Approve with them, or mark this section for a change.",
     points: list9.map((c) => `**${c.id}** ${c.from} asked ${c.to} (stage \`${c.stage}\`): ${question2(c)}`),
     html: ""
@@ -12048,13 +12118,13 @@ function buildPlanReviewBrief(p, id, pluginRoot2) {
   (0, import_node_fs20.writeFileSync)(path, text2);
   return { path, text: text2, round };
 }
-function openFindingsSection(p, change, w) {
+function openFindingsSection(p, change, w, lang) {
   if (!reviewStage(w)) return null;
   const open = carriedFindings(p, change);
   if (!open.length) return null;
   return {
     id: "open-findings",
-    title: "Open findings of the independent review",
+    title: gateLabels(lang).openFindings,
     body: `The code-reviewer graded the architecture and the plan against a fixed list; after ${MAX_FIX_ROUNDS} rounds of fixes these are still open. Approve with them, or mark this section for a change.`,
     points: open.map((f) => `**item ${f.item}** (${CHECKLIST[f.item - 1] ?? "?"}) \`${f.target}\`: ${f.text}`),
     html: ""
@@ -12292,7 +12362,7 @@ function signatureView(f) {
   if (f.lang === "diff") return { kind: "diff", text: cut(f.text) };
   return { kind: "diff", text: cut(f.text.split("\n").map((l) => `+${l}`).join("\n")) };
 }
-function programDesignSection(text2, changeId) {
+function programDesignSection(text2, changeId, lang) {
   if (text2 === null || !text2.trim()) return null;
   const parts = programDesignParts(text2);
   const views = [];
@@ -12307,8 +12377,8 @@ function programDesignSection(text2, changeId) {
   if (!views.length) return null;
   return {
     id: "program-design",
-    title: "Program Design",
-    body: `The files this Change adds, changes and removes, and its main signatures and contracts (.aidw/changes/${changeId}/${PROGRAM_DESIGN_FILE}). You approve it with the package: code that differs from it is a Deviation, decided by the Software Architect and listed in the pull request.`,
+    title: gateLabels(lang).programDesign,
+    body: gateLabels(lang).programDesignBody(changeId, PROGRAM_DESIGN_FILE),
     points: [],
     html: "",
     views
@@ -16321,7 +16391,8 @@ function docsBriefLines(p, t) {
   return out;
 }
 var escHtml = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-function planGateSection(p, tasks, pagesDir2, parallelMax2 = 1) {
+function planGateSection(p, tasks, pagesDir2, parallelMax2 = 1, lang) {
+  const L = gateLabels(lang);
   const shape = planShape(tasks);
   const byId = new Map(tasks.map((t) => [t.id, t]));
   const briefs = [];
@@ -16333,25 +16404,25 @@ function planGateSection(p, tasks, pagesDir2, parallelMax2 = 1) {
       if (!t) continue;
       const lines = [];
       const pats = taskPatterns(t);
-      if (pats.length) lines.push(`Patterns: ${pats.map((x) => `\`${x.path}\`${x.why ? ` (${x.why})` : ""}`).join("; ")}`);
+      if (pats.length) lines.push(`${L.patterns}: ${pats.map((x) => `\`${x.path}\`${x.why ? ` (${x.why})` : ""}`).join("; ")}`);
       const docs = taskDocs(t).map((x) => ({ entry: x.entry, check: checkDocsBrief(p.aidw, x.ref) }));
       briefs.push(...docs.filter((x) => !briefs.some((b) => b.check.rel === x.check.rel)));
-      if (docs.length) lines.push(`Docs: ${docs.map((x) => `\`${x.entry}\` (${x.check.status})`).join("; ")}`);
+      if (docs.length) lines.push(`${L.docs}: ${docs.map((x) => `\`${x.entry}\` (${x.check.status})`).join("; ")}`);
       const checks = taskManual(t);
       manual.push(...checks.map((c) => `**${id}**: ${c}`));
-      if (checks.length) lines.push(`For you to check: ${checks.join("; ")}`);
+      if (checks.length) lines.push(`${L.forYouToCheck}: ${checks.join("; ")}`);
       const tags = [String(t.role ?? ""), ...t.risk === "high" ? ["risk: high"] : []].filter(Boolean);
-      steps.push({ title: `${id} ${String(t.title ?? "")}`.trim(), when: `stage ${i + 1}`, at: "", detail: lines.join("\n"), tags, hot: false, views: [] });
+      steps.push({ title: `${id} ${String(t.title ?? "")}`.trim(), when: `${L.stage} ${i + 1}`, at: "", detail: lines.join("\n"), tags, hot: false, views: [] });
     }
   });
-  const figures = { Tasks: String(shape.tasks), Stages: String(shape.levels.length), "Widest stage": String(shape.width) };
-  if (manual.length) figures["Checks for you"] = String(manual.length);
-  const html = briefs.length ? `<p><b>Docs Briefs</b> (what the official documentation says, written by Research)</p><ul>${briefs.map((b) => `<li><a href="${escHtml((0, import_node_path39.relative)(pagesDir2, b.check.path).split(import_node_path39.sep).join("/"))}">${escHtml(b.entry)}</a> <code>${escHtml(b.check.rel)}</code> ${escHtml(b.check.status)}</li>`).join("")}</ul>` : "";
+  const figures = { [L.tasks]: String(shape.tasks), [L.stages]: String(shape.levels.length), [L.widestStage]: String(shape.width) };
+  if (manual.length) figures[L.checksForYou] = String(manual.length);
+  const html = briefs.length ? `<p><b>${L.docsBriefs}</b> (${L.docsBriefsNote})</p><ul>${briefs.map((b) => `<li><a href="${escHtml((0, import_node_path39.relative)(pagesDir2, b.check.path).split(import_node_path39.sep).join("/"))}">${escHtml(b.entry)}</a> <code>${escHtml(b.check.rel)}</code> ${escHtml(b.check.status)}</li>`).join("")}</ul>` : "";
   return {
     id: "plan",
-    title: "Plan",
+    title: L.plan,
     body: planSummary(tasks),
-    points: [...planInfo(tasks, parallelMax2), ...manual.length ? ['The build does not stop for these; delivery lists them under "Checks for you":', ...manual] : []],
+    points: [...planInfo(tasks, parallelMax2), ...manual.length ? [L.planChecksNote, ...manual] : []],
     html,
     layout: "plan",
     figures,
@@ -22797,19 +22868,20 @@ SPAWN aidw:${role} with: Audit brief: ${b.path}. Read it and write your answer a
         const p = project();
         const sub = need(rest[0], "render | answers | audit | triage");
         const lang = str(args.flags.lang);
-        const gateExtras = (id) => {
+        const gateExtras = (id, lg) => {
+          const L = gateLabels(lg);
           const c = loadChange(p, id);
           const all2 = readDecisions(c);
           const points = workflowOfChange(p, c, pluginRoot(env)).decisions.map((x) => {
             const r = all2[x.id];
-            return r ? `**${x.id}**: ${[r.answer].flat().join(", ")} (${r.reason || "no reason recorded"})` : `**${x.id}**: open (${x.options.join(" | ")})`;
+            return r ? `**${x.id}**: ${[r.answer].flat().join(", ")} (${r.reason || L.noReason})` : `**${x.id}**: ${L.open} (${x.options.join(" | ")})`;
           });
           const tasks = parseTasks(readText((0, import_node_path57.join)(c.dir, "tasks.yaml")) ?? "").tasks;
           return [
-            ...points.length ? [{ id: "decision-points", title: "Decision Points", body: "", points, html: "" }] : [],
+            ...points.length ? [{ id: "decision-points", title: L.decisionPoints, body: "", points, html: "" }] : [],
             // T13: the plan as stages, with each task's patterns, Docs Briefs (linked) and checks for the user
-            ...tasks.length ? [planGateSection(p, tasks, pagesDir(p), parallelConfig(p, c).max)] : [],
-            ...[grantsSection(p, c)].filter((x) => x !== null)
+            ...tasks.length ? [planGateSection(p, tasks, pagesDir(p), parallelConfig(p, c).max, lg)] : [],
+            ...[grantsSection(p, c, lg)].filter((x) => x !== null)
           ];
         };
         const load2 = (name) => {
@@ -22818,13 +22890,13 @@ SPAWN aidw:${role} with: Audit brief: ${b.path}. Read it and write your answer a
           if (source === null) throw new OpError(`no page data at ${rel(p, pageDataFile(p, name))}: write it first (aidw plugin-path library/decision-pages.md says how)`);
           const first = parsePage(name, source);
           const gateId = first.page.layout === "gate" && first.page.change ? resolveChangeId(p, first.page.change) : null;
-          const lead = (id) => {
+          const lead = (id, lg) => {
             const c = loadChange(p, id);
-            const beforeAfter = first.page.sections.some((s) => s.id === "before-after") ? null : beforeAfterSection(readText((0, import_node_path57.join)(c.dir, "analysis.md")) ?? "");
-            return [beforeAfter, openFindingsSection(p, c, workflowOfChange(p, c, pluginRoot(env))), unansweredSection(c)].filter((x) => x !== null);
+            const beforeAfter = first.page.sections.some((s) => s.id === "before-after") ? null : beforeAfterSection(readText((0, import_node_path57.join)(c.dir, "analysis.md")) ?? "", lg);
+            return [beforeAfter, openFindingsSection(p, c, workflowOfChange(p, c, pluginRoot(env)), lg), unansweredSection(c, lg)].filter((x) => x !== null);
           };
-          const programDesign = (id) => first.page.sections.some((s) => s.id === "program-design") ? [] : [programDesignSection(readText((0, import_node_path57.join)(loadChange(p, id).dir, PROGRAM_DESIGN_FILE)), id)].filter((x) => x !== null);
-          const r = gateId ? parsePage(name, source, [...programDesign(gateId), ...gateExtras(gateId)], lead(gateId)) : first;
+          const programDesign = (id, lg) => first.page.sections.some((s) => s.id === "program-design") ? [] : [programDesignSection(readText((0, import_node_path57.join)(loadChange(p, id).dir, PROGRAM_DESIGN_FILE)), id, lg)].filter((x) => x !== null);
+          const r = gateId ? parsePage(name, source, [...programDesign(gateId, first.page.lang), ...gateExtras(gateId, first.page.lang)], lead(gateId, first.page.lang)) : first;
           if (r.problems.length) throw new OpError(`the data of page "${name}" (${rel(p, pageDataFile(p, name))}) has ${r.problems.length} problem(s):
 ${r.problems.map((x) => `  - ${x}`).join("\n")}
 Fix the file and render again.`);
