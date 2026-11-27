@@ -21129,18 +21129,27 @@ function safe(f) {
     return null;
   }
 }
+function blockingPart(notes) {
+  const m = /^[ \t>#*_-]*Non-blocking\b/im.exec(notes);
+  return m ? notes.slice(0, m.index) : notes;
+}
 function citedRules(notes, rules) {
   const out = [];
-  for (const m of notes.matchAll(RULE_TOKEN)) {
+  for (const m of blockingPart(notes).matchAll(RULE_TOKEN)) {
     const owner = rules.get(m[0]);
     if (owner && !out.some((x) => x.id === m[0])) out.push({ id: m[0], owner });
   }
   return out;
 }
 function ruleIdWarning(pluginHome, role, notes) {
-  const rules = safe(() => boundRules(pluginHome, role));
-  if (!rules || rules.size === 0) return null;
-  if (citedRules(notes, rules).length) return null;
+  if (!role) return null;
+  const builder = safe(() => implementerOf(pluginHome, role));
+  if (!builder) return null;
+  const rules = /* @__PURE__ */ new Map();
+  for (const r of /* @__PURE__ */ new Set([role, builder])) for (const rule of safe(() => loadRuleTable(pluginHome, r)) ?? []) if (!rules.has(rule.id)) rules.set(rule.id, r);
+  if (rules.size === 0) return null;
+  const bound = safe(() => boundRules(pluginHome, role)) ?? rules;
+  if (citedRules(notes, bound).length) return null;
   const owners = [...new Set(rules.values())];
   return `the fix review cites no rule id of ${owners.join(", ")} (for example \`1. ${[...rules.keys()][0]}: <file>: <problem>\`); \`aidw stats\` counts broken rules from these ids`;
 }
@@ -21149,11 +21158,13 @@ function readEvidenceFile(dir, taskId) {
   if (!(0, import_node_fs48.existsSync)(file)) return null;
   try {
     const ev = JSON.parse((0, import_node_fs48.readFileSync)(file, "utf8"));
+    if (!isRecord10(ev)) return null;
+    const records = (v) => Array.isArray(v) ? v.filter(isRecord10) : [];
     return {
       ...ev,
-      checkpoints: Array.isArray(ev.checkpoints) ? ev.checkpoints : [],
-      reviews: Array.isArray(ev.reviews) ? ev.reviews : [],
-      ...Array.isArray(ev.triage) ? { triage: ev.triage } : {}
+      checkpoints: records(ev.checkpoints).map((c) => ({ ...c, verify: records(c.verify) })),
+      reviews: records(ev.reviews),
+      ...Array.isArray(ev.triage) ? { triage: records(ev.triage) } : {}
     };
   } catch {
     return null;
@@ -21193,7 +21204,7 @@ function readChanges(p) {
 function isBlocked(c) {
   if (c.blocked === true) return true;
   if (c.ok) return false;
-  const failed = Array.isArray(c.verify) ? c.verify.find((v) => v.exit !== 0) : void 0;
+  const failed = Array.isArray(c.verify) ? c.verify.find((v) => isRecord10(v) && v.exit !== 0) : void 0;
   return !!failed && !failed.timedOut && ENVIRONMENT_FAILURE.test(String(failed.tail ?? ""));
 }
 var isAutoReview = (r) => r.auto === true || /^auto-reviewed:/.test(String(r.notes ?? "").trim());
@@ -21205,7 +21216,7 @@ function startedOf(t, ev) {
   const dates = [str(t.started_at), ...(ev?.checkpoints ?? []).map((c) => str(c.at)), ...(ev?.reviews ?? []).map((r) => str(r.at))].filter(Boolean).sort();
   return dates[0];
 }
-function taskStats(d, pluginHome) {
+function taskStats(d, pluginHome, rulesOf = (r) => safe(() => boundRules(pluginHome, r)) ?? /* @__PURE__ */ new Map()) {
   const { task: t, ev } = d;
   const role = str(t.role) || "(none)";
   const status = str(t.status) || "pending";
@@ -21214,7 +21225,8 @@ function taskStats(d, pluginHome) {
   if (!didRun && !nb) return null;
   const checkpoints = (ev?.checkpoints ?? []).filter((c) => !isBlocked(c));
   const reviews = (ev?.reviews ?? []).filter((r) => !isAutoReview(r));
-  const runs = Number.isInteger(t.runs) ? Number(t.runs) : checkpoints.length;
+  const firstRun = Number.isInteger(checkpoints[0]?.run) ? Number(checkpoints[0]?.run) : 1;
+  const runs = Number.isInteger(t.runs) ? Math.max(0, Number(t.runs) - firstRun + 1) : checkpoints.length;
   const added = ADDED_ORIGINS.includes(str(t.origin));
   const entries = Array.isArray(ev?.triage) ? ev?.triage : [];
   const triage = entries.map((e) => String(e.cause));
@@ -21232,13 +21244,18 @@ function taskStats(d, pluginHome) {
   } else if (isRecord10(t.upstream) && !upstream.length) {
     upstream.push({ round: Number(t.upstream.round ?? 1), cause: str(t.upstream.cause), role: str(t.upstream.role) });
   }
-  const rules = safe(() => boundRules(pluginHome, str(t.role) || void 0)) ?? /* @__PURE__ */ new Map();
+  const rules = rulesOf(str(t.role) || void 0);
   const cited = [];
-  for (const r of reviews) if (r.verdict === "fix") cited.push(...citedRules(String(r.notes ?? ""), rules));
+  for (const r of reviews) if (r.verdict === "fix" && r.merge !== true) cited.push(...citedRules(String(r.notes ?? ""), rules));
   let first = null;
-  if (!added && didRun && (status === "done" || status === "not_built")) {
-    const oneRun = Number.isInteger(t.runs) ? Number(t.runs) === 1 : checkpoints.length === 1;
-    const thisRun = (x) => !Number.isInteger(x.run) || x.run === 1;
+  let excluded;
+  const ended = !added && didRun && (status === "done" || status === "not_built");
+  const refusedOnly = checkpoints.length === 0 && ((ev?.checkpoints.length ?? 0) > 0 || status === "not_built" && nb?.cause === "environment");
+  if (ended && refusedOnly) excluded = "refused";
+  else if (ended && ev === null) excluded = "no evidence";
+  else if (ended) {
+    const oneRun = Number.isInteger(t.runs) ? runs === 1 : checkpoints.length === 1;
+    const thisRun = (x) => !Number.isInteger(x.run) || x.run === firstRun;
     const own = reviews.filter((r) => r.merge !== true && thisRun(r));
     first = status === "done" && oneRun && checkpoints.length > 0 && checkpoints.filter(thisRun).every((c) => c.ok) && checkpoints.some((c) => c.ok && thisRun(c)) && own.length > 0 && own.every((r) => r.verdict === "pass") && triage.length === 0 && upstream.length === 0 && !isRecord10(t.triage) && !isRecord10(t.upstream);
   }
@@ -21260,6 +21277,7 @@ function taskStats(d, pluginHome) {
     ran: didRun,
     runs,
     first_attempt: first,
+    ...excluded ? { excluded } : {},
     rules: cited,
     triage,
     upstream: rounds,
@@ -21269,18 +21287,33 @@ function taskStats(d, pluginHome) {
     ...started ? { started } : {}
   };
 }
-var SINCE = /^\d{4}-\d{2}-\d{2}$/;
-var validSince = (s) => SINCE.test(s) && !Number.isNaN(Date.parse(`${s}T00:00:00Z`));
+var SINCE = /^(\d{4})-(\d{2})-(\d{2})$/;
+function validSince(s) {
+  const m = SINCE.exec(s);
+  if (!m) return false;
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  return d.toISOString().slice(0, 10) === s;
+}
 function computeStats(p, pluginHome, opts = {}) {
   const { changes, tasks } = readChanges(p);
+  const cache2 = /* @__PURE__ */ new Map();
+  const rulesOf = (role) => {
+    const key = role ?? "";
+    let m = cache2.get(key);
+    if (!m) {
+      m = safe(() => boundRules(pluginHome, role)) ?? /* @__PURE__ */ new Map();
+      cache2.set(key, m);
+    }
+    return m;
+  };
   const inChange = (c) => !opts.change || c.id === opts.change || c.dir.endsWith(`/${opts.change}`) || c.dir.endsWith(`\\${opts.change}`);
-  const all2 = tasks.filter((d) => inChange(d.change)).map((d) => taskStats(d, pluginHome)).filter((x) => x !== null).filter((x) => !opts.since || x.started !== void 0 && x.started.slice(0, 10) >= opts.since);
+  const all2 = tasks.filter((d) => inChange(d.change)).map((d) => taskStats(d, pluginHome, rulesOf)).filter((x) => x !== null).filter((x) => !opts.since || x.started !== void 0 && x.started.slice(0, 10) >= opts.since);
   const counted = changes.filter(inChange).filter((c) => all2.some((x) => x.change === c.id));
   const roles = /* @__PURE__ */ new Map();
   const row = (role) => {
     let r = roles.get(role);
     if (!r) {
-      r = { role, tasks: 0, ended: 0, first_attempt: 0, rate: null, added: 0, rule_ids: [], triage: {}, upstream_rounds: 0, not_built: {} };
+      r = { role, tasks: 0, ended: 0, first_attempt: 0, rate: null, added: 0, rule_ids: [], triage: {}, upstream_rounds: 0, not_built: {}, no_evidence: 0, refused: 0 };
       roles.set(role, r);
     }
     return r;
@@ -21290,6 +21323,8 @@ function computeStats(p, pluginHome, opts = {}) {
     const r = row(x.role);
     if (x.ran) r.tasks++;
     if (x.origin && ADDED_ORIGINS.includes(x.origin)) r.added++;
+    if (x.excluded === "no evidence") r.no_evidence++;
+    if (x.excluded === "refused") r.refused++;
     if (x.first_attempt !== null) {
       r.ended++;
       if (x.first_attempt) r.first_attempt++;
@@ -21329,21 +21364,25 @@ function table(rows2) {
   const widths = rows2[0].map((_, i) => Math.max(...rows2.map((r) => (r[i] ?? "").length)));
   return rows2.map((r) => r.map((c, i) => i === r.length - 1 ? c : c.padEnd(widths[i])).join("  ").trimEnd()).join("\n");
 }
-function footer(s) {
+var MAX_LISTED_CHANGES = 10;
+function footer(s, names2) {
   const active = s.changes.filter((c) => !c.archived).length;
   const lines = [
-    s.changes.length ? `Changes counted: ${s.changes.length} (${active} active, ${s.changes.length - active} archived): ${s.changes.map((c) => `${c.id}${c.archived ? " (archived)" : ""}`).join(", ")}` : "Changes counted: none"
+    s.changes.length ? `Changes counted: ${s.changes.length} (${active} active, ${s.changes.length - active} archived)${names2 ? `: ${s.changes.map((c) => `${c.id}${c.archived ? " (archived)" : ""}`).join(", ")}` : ""}` : "Changes counted: none"
   ];
   const old = s.changes.filter((c) => c.predates).map((c) => c.id);
   if (s.partial) {
     lines.push(
-      `Triage figures are partial: ${old.length ? `${old.length} Change(s) predate the T19 records (${old.join(", ")}); ` : ""}for tasks without a Triage list in their evidence they come from tasks.yaml (the last Triage, the last upstream round and the not-built cause), which a retry or an upstream round clears.`
+      `Triage figures are partial: ${old.length ? `${old.length} Change(s) predate the T19 records${names2 ? ` (${old.join(", ")})` : ""}; ` : ""}for tasks without a Triage list in their evidence they come from tasks.yaml (the last Triage, the last upstream round and the not-built cause), which a retry or an upstream round clears.`
     );
   }
-  lines.push(`First attempt: done after one implementer run, its checkpoint and review passed, no Triage, no upstream round; a rate is shown from ${MIN_TASKS_FOR_RATE} ended tasks of a Role up. Tasks the workflow added are left out.`);
+  lines.push(`First attempt: done after one implementer run, its checkpoint and review passed, no Triage, no upstream round; a rate is shown from ${MIN_TASKS_FOR_RATE} ended tasks of a Role up. Tasks the workflow added, tasks whose every check the machine refused and tasks with no readable evidence are left out.`);
+  const noEv = s.roles.reduce((n, r) => n + r.no_evidence, 0);
+  const refused = s.roles.reduce((n, r) => n + r.refused, 0);
+  if (noEv || refused) lines.push(`Left out: ${[noEv ? `${noEv} ended task(s) with no evidence (missing or unreadable)` : "", refused ? `${refused} whose every check the machine refused` : ""].filter(Boolean).join(", ")}.`);
   return lines;
 }
-function statsText(s) {
+function statsText(s, listChanges = false) {
   const out = [];
   if (!s.roles.length) out.push("No tasks to count.");
   else {
@@ -21370,7 +21409,7 @@ function statsText(s) {
       if (r.rule_ids.length) out.push(`  rule ids of ${r.role} cited: ${r.rule_ids.map((x) => `${x.id} x${x.count}`).join(", ")}`);
     }
     for (const t of s.tasks) {
-      const fa = t.first_attempt === null ? t.origin && ADDED_ORIGINS.includes(t.origin) ? `added (${t.origin})` : "not ended" : t.first_attempt ? "first attempt" : "not first attempt";
+      const fa = t.first_attempt === null ? t.origin && ADDED_ORIGINS.includes(t.origin) ? `added (${t.origin})` : t.excluded === "no evidence" ? "left out: no evidence" : t.excluded === "refused" ? "left out: the machine refused every check" : "not ended" : t.first_attempt ? "first attempt" : "not first attempt";
       out.push(`  ${t.change}/${t.task}  ${t.status}  runs ${t.runs}  ${fa}`);
       if (t.agents.length && t.agents.some((a) => a !== `aidw:${t.role}`)) out.push(`    built by: ${t.agents.join(", ")}`);
       if (t.rules.length) out.push(`    rules: ${t.rules.map((x) => x.owner === t.role ? x.id : `${x.id} (${x.owner})`).join(", ")}`);
@@ -21382,7 +21421,7 @@ function statsText(s) {
       if (t.not_built) out.push(`    not built (${t.not_built.cause}): ${t.not_built.reason.split("\n")[0]?.slice(0, 200) ?? ""}`);
     }
   }
-  out.push("", ...footer(s));
+  out.push("", ...footer(s, listChanges || s.changes.length <= MAX_LISTED_CHANGES));
   return `${out.join("\n")}
 `;
 }
@@ -21639,7 +21678,7 @@ Hooks:
   stop-failure                           StopFailure hook: pauses running changes
   session-start                          SessionStart hook: appends the plugin bin/ to PATH via CLAUDE_ENV_FILE
   cost [--session <id prefix>] [--last N]  where the tokens of this project's Claude Code sessions went (orchestrator vs subagents)
-  stats [--role R] [--change ID] [--since YYYY-MM-DD]
+  stats [--role R] [--change ID] [--since YYYY-MM-DD (UTC)]
                                          per Role, from every Change (active and archived): tasks, first-attempt passes
                                          (a rate from 5 ended tasks up), rule ids cited by fix reviews, Triage causes;
                                          --role lists that Role's tasks; writes nothing
@@ -22346,7 +22385,7 @@ ${lines.length ? `${lines.join("\n")}
         if (since !== void 0 && !validSince(since)) throw new UsageError("--since must be a date: YYYY-MM-DD");
         const opts = { ...str2(args.flags.role) ? { role: str2(args.flags.role) } : {}, ...str2(args.flags.change) ? { change: str2(args.flags.change) } : {}, ...since ? { since } : {} };
         const s = computeStats(p, pluginRoot(env), opts);
-        emit(s, statsText(s));
+        emit(s, statsText(s, Boolean(opts.role || opts.change)));
         return 0;
       }
       case "vendor-path": {
