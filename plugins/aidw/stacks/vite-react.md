@@ -2,6 +2,7 @@
 framework: Vite
 detected_as: bundler
 requires: { ui: React }
+excludes: { framework: [Astro, Remix, React Router framework mode] }
 roles: [frontend, fullstack]
 skills: [aidw/react-rules]
 ---
@@ -10,8 +11,11 @@ skills: [aidw/react-rules]
 How to build a React single-page app bundled by Vite, usually with React Router and TypeScript. Tooling (package
 manager, formatter, tests in CI) is in `node.md`; this file is only what is specific to the setup. A framework pack
 answers the same questions under the same headings (a test checks it, ADR-0001). The pack loads for a project whose
-`package.json` has `vite` and `react` and no framework with a pack of its own (Next.js, Nuxt, SvelteKit win). When the
-project's code or `.aidw/constitution.md` says otherwise, follow them first and treat this file as a reference.
+`package.json` has `vite` and `react`, unless a framework with a pack for the same Role wins (Next.js, Nuxt, SvelteKit;
+a backend framework such as NestJS, FastAPI or Django in the same root does not count for the frontend) or the app
+renders on a server (Astro, Remix, React Router framework mode with `@react-router/dev`). React Router as a library
+(`react-router`) keeps the pack. When the project's code or `.aidw/constitution.md` says otherwise, follow them first
+and treat this file as a reference.
 
 Everything here runs in the browser. There is no server in the app: secrets, access checks and business rules live
 behind the API it calls. The parts of `aidw/react-rules` about Server Components, `cache()`, `next/dynamic` and Server

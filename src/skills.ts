@@ -30,6 +30,8 @@ export function skillPath(vendorDir: string, id: string): string {
 const UI_TOUCH = /(^|\/)(components?|pages|views|layouts?|styles?|ui|public)(\/|$)|\.(tsx|jsx|vue|svelte|css|scss|html)\b|(^|\/)(src\/)?app\/(?!api\/)/;
 const API_TOUCH = /(^|\/)(api|server|routes?|actions?|trpc|graphql|controllers?|services?|handlers?|middleware)(\/|\.|$)/;
 const DATA_TOUCH = /(^|\/)(supabase|migrations?|prisma|drizzle|db|database|schema)(\/|\.|$)/;
+// A client's `schema.ts` is a form schema (zod, yup), not the data layer: for the frontend Role `schema` alone is no signal.
+const CLIENT_DATA_TOUCH = /(^|\/)(supabase|migrations?|prisma|drizzle|db|database)(\/|\.|$)/;
 const SECURITY_HINT = /\b(auth|login|logout|sign-?in|sign-?up|session|password|permissions?|roles?|rls|policy|policies|payments?|stripe|checkout|billing|webhooks?|middleware|admin|tokens?|secrets?)\b/i;
 const BROWSER_VERIFY = /\b(playwright|cypress|e2e)\b/i;
 const DOCKERFILE_TOUCH = /(^|\/)(Dockerfile[\w.-]*|\.dockerignore|docker)(\/|$|\*)/i;
@@ -143,9 +145,9 @@ export function selectSkills(t: Task, kind: BriefKind, opts: { retry?: boolean; 
   const ui = touchesUi(t) || role === "frontend";
   // A frontend task calls an API, it never designs one: `actions.ts` or `src/api/client.ts` in its Touches is a client.
   const api = role !== "frontend" && (touches.some((g) => API_TOUCH.test(g)) || role === "backend");
-  const data = touches.some((g) => DATA_TOUCH.test(g)) || role === "database";
+  const data = touches.some((g) => (role === "frontend" ? CLIENT_DATA_TOUCH : DATA_TOUCH).test(g)) || role === "database";
   if (ui) add("frontend-ui-engineering", "touches UI files");
-  if (ui && !(role === "frontend" && opts.designTokens)) add("anthropic/frontend-design", "touches UI files: an interface with a point of view, inside the approved design tokens");
+  if (ui && !(role === "frontend" && opts.designTokens)) add("anthropic/frontend-design", "touches UI files: an interface with a point of view (a frontend task with approved design tokens follows them instead, so it does not load this)");
   if (ui && MOTION_HINT.test([t.title ?? "", ...list(t.scenarios)].join(" ").replace(/[/_.-]/g, " "))) add("emil/animate", "the task is about motion");
   if (api) add("api-and-interface-design", "touches API or server code");
   if (api) add("aidw/api-design-rules", "touches API or server code: the concrete rules (errors, lists, repeated writes)");

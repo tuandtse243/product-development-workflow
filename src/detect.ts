@@ -66,7 +66,10 @@ const DEPS: { dep: RegExp; role: string; name: string }[] = [
   { dep: /^nuxt$/, role: "framework", name: "Nuxt" },
   { dep: /^@sveltejs\/kit$/, role: "framework", name: "SvelteKit" },
   { dep: /^astro$/, role: "framework", name: "Astro" },
-  { dep: /^@remix-run\/react$|^react-router$/, role: "framework", name: "React Router / Remix" },
+  // Server-rendering React routers are frameworks of their own; `react-router` alone is the library (a Vite SPA uses it)
+  { dep: /^@remix-run\//, role: "framework", name: "Remix" },
+  { dep: /^@react-router\/dev$/, role: "framework", name: "React Router framework mode" },
+  { dep: /^react-router$/, role: "framework", name: "React Router" },
   { dep: /^@nestjs\/core$/, role: "framework", name: "NestJS" },
   { dep: /^express$/, role: "server", name: "Express" },
   { dep: /^fastify$/, role: "server", name: "Fastify" },

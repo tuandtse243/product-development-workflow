@@ -423,6 +423,16 @@ describe("skill selection by Role", () => {
     expect(pick("fullstack", ["components/booking/actions.ts"])).toContain("aidw/api-design-rules"); // only frontend is exempt
   });
 
+  it("a frontend task does not get the data-layer skills for a form schema, only for real database paths", () => {
+    const dataIds = ["addy/api-and-interface-design", "aidw/schema-evolution", "supabase/supabase-postgres-best-practices"];
+    for (const touches of [["src/forms/schema.ts"], ["src/features/invite/schema/**"]]) {
+      const ids = pick("frontend", touches);
+      for (const d of dataIds) expect(ids, `${touches.join()}: ${d}`).not.toContain(d);
+    }
+    expect(pick("frontend", ["supabase/functions/**"])).toContain("aidw/schema-evolution"); // a real data-layer path still counts
+    expect(pick("backend", ["src/forms/schema.ts"])).toContain("aidw/schema-evolution"); // only frontend is exempt
+  });
+
   it("a frontend task gets anthropic/frontend-design only when the approved design has no tokens", () => {
     const withTokens = (role: string, designTokens: boolean) =>
       selectSkills({ id: "T", title: "x", role, type: "feat", verify: ["pnpm vitest"], touches: ["components/calendar/**"] } as never, "implement", { designTokens }).map((s) => s.id);

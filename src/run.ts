@@ -1342,7 +1342,7 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
   const fromPacks =
     kind === "implement"
       ? builderPacks.flatMap((k) => k.skills.map((id) => ({ id, reason: `the project is built with ${k.framework} (framework pack)` })))
-      : packsOf(pluginHome, stackNow).flatMap((k) => k.reviewSkills.map((id) => ({ id, reason: `review of ${k.framework} code (framework pack)` })));
+      : packsOf(pluginHome, stackNow, builder).flatMap((k) => k.reviewSkills.map((id) => ({ id, reason: `review of ${k.framework} code (framework pack)` })));
   const ruleFiles = [builder, ...(loadRole(pluginHome, builder)?.follows_rules ?? [])]
     .map((r) => ({ role: r, file: join(pluginHome, "roles", r, "rules.md") }))
     .filter((x) => existsSync(x.file))
