@@ -107,3 +107,28 @@ describe("discovery asks product questions, and the app answers what it already 
     expect(start).toMatch(/in the user's language/);
   });
 });
+
+describe("backlog skill rules (B7, B8)", () => {
+  const skill = read("skills/start/SKILL.md");
+
+  it("step 5 reuses the tokens without a Decision Page (B7)", () => {
+    const step5 = skill.split("## 5. Design decision")[1]?.split("## 6.")[0] ?? "";
+    expect(step5).toContain(".aidw/design/tokens.yaml");
+    expect(step5).toContain('aidw decide design-needed reuse-existing --reason "<why>"');
+    expect(step5).toMatch(/no new kind of screen/);
+    expect(step5).toMatch(/one line in the chat/);
+    expect(step5).toMatch(/no Decision Page/i);
+  });
+
+  it("intake asks for the test browser once, and step 8 never asks (B8)", () => {
+    const step1 = skill.split("## 1. Intake")[1]?.split("## 1b.")[0] ?? "";
+    expect(step1).toMatch(/Test browser preflight/);
+    expect(step1).toContain("aidw browser start");
+    expect(step1).toMatch(/Change has UI/);
+    const step8 = skill.split("## 8. Test plan")[1]?.split("## 9.")[0] ?? "";
+    expect(step8).toContain("aidw browser status");
+    expect(step8).toMatch(/never ask/);
+    expect(step8).toMatch(/aidw run` starts the browser itself/);
+    expect(step8).not.toMatch(/ask the user to run `aidw browser start`/);
+  });
+});
