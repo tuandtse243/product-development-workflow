@@ -1,0 +1,40 @@
+# Machine checks of a level 2 run, after the held-out tests. Each command runs in the temp copy with `sh -c`; the
+# plugin's bin/ is first on PATH, $AIDW_BASE is the commit the Agent started from, and $AIDW_CHANGED names a file that
+# lists the files the session changed. A check passes when the command exits with `exit` (default 0), its stdout parsed
+# as JSON contains `json` (a subset; a string "/re/" is a regex) and its output matches `matches` (a regex), each when
+# given.
+checks:
+  - name: no secret-looking public name, no unprefixed read and no server import in the client code added (F10, public-env-scan)
+    # --base: only the reads and imports on lines added since the base commit. `reads` lists each environment variable the
+    # client reads with `public` false when its name lacks the framework's prefix (a leak or undefined in the browser);
+    # `secretLooking` is a public-prefixed name that looks secret. A script that is missing or fails prints no JSON, and the
+    # parse fails the check.
+    run: >-
+      node "$(aidw plugin-path roles/frontend/scripts/public-env-scan.mjs)" --base "$AIDW_BASE" . |
+      node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>{const j=JSON.parse(s);const bad=[...j.secretLooking,...j.reads.filter((r)=>r.public===false||/SECRET/.test(r.name)),...j.serverImportsInClient];if(bad.length){console.log(JSON.stringify(bad));process.exit(1)}})'
+  - name: /billing is not reported as unguarded or missing in the route inventory (F11, route-guard-inventory)
+    # --routes /billing: only that route. The held-out tests stay the primary grader; this reads the findings only, never
+    # routes[].guard (a string or null whose values the script may change).
+    run: >-
+      node "$(aidw plugin-path roles/frontend/scripts/route-guard-inventory.mjs)" --routes /billing . |
+      node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>{const j=JSON.parse(s);const bad=j.findings.filter((f)=>f.kind==="unguarded-route"||f.kind==="route-not-found");if(bad.length){console.log(JSON.stringify(bad));process.exit(1)}})'
+  - name: no literal that is not a token in the added styles (F2, token-literals)
+    run: >-
+      node "$(aidw plugin-path roles/frontend/scripts/token-literals.mjs)" --base "$AIDW_BASE" . |
+      node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>{const bad=JSON.parse(s).findings;if(bad.length){console.log(JSON.stringify(bad));process.exit(1)}})'
+  - name: every scenario id names a test in tests/billing
+    run: >-
+      for id in checking-access billing-for-an-owner signed-out members-see-an-owners-only-page test-mode-badge;
+      do grep -rqF "billing/billing-for-owners/$id" tests/billing || { echo "no test names billing/billing-for-owners/$id"; exit 1; }; done
+  - name: the whole suite passes
+    run: npm test
+  - name: the typecheck passes
+    run: npm run typecheck
+  - name: nothing outside Touches changed (the billing area, its tests, the routes; not the header's links, not .env.example)
+    # Against the base commit, so a commit cannot hide a change. $AIDW_CHANGED lists the files the session changed, taken
+    # before the harness put back the files the grading runs; run by hand, the list is taken from git.
+    run: >-
+      changed=$(if [ -n "$AIDW_CHANGED" ]; then cat "$AIDW_CHANGED"; else git diff --name-only "$AIDW_BASE";
+      git ls-files --others --exclude-standard; fi);
+      out=$(printf '%s\n' "$changed" | grep -vE '^(src/billing/|tests/billing/|tests/held-out/|src/routes\.tsx$|\.aidw/(run|changes)/)' | grep -v '^$');
+      test -z "$out" || { echo "$out"; exit 1; }

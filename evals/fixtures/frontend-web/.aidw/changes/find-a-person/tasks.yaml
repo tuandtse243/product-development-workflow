@@ -1,0 +1,18 @@
+tasks:
+  - id: T01
+    title: The people search screen
+    role: frontend
+    type: feat
+    specs: [people/search-people]
+    scenarios:
+      - people/search-people/nothing-typed-yet
+      - people/search-people/search-waiting
+      - people/search-people/people-matching-the-text
+      - people/search-people/latest-text-wins
+      - people/search-people/clear-the-box
+      - people/search-people/nobody-matches
+      - people/search-people/search-fails
+    depends_on: []
+    touches: ["src/people/**", "tests/people/**", "src/data/useFetch.ts", "src/routes.tsx"]
+    verify: ["npm test", "npm run typecheck"]
+    status: pending

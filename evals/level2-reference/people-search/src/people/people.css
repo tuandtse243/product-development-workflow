@@ -1,0 +1,29 @@
+/* Every value is a token (src/styles/tokens.css). */
+.people__field {
+  display: grid;
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
+}
+
+.people__list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.people__item {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border-radius: var(--radius-1);
+  background: var(--color-surface-raised);
+}
+
+.people__title {
+  color: var(--color-text-muted);
+}
+
+.people__error {
+  color: var(--color-danger);
+}

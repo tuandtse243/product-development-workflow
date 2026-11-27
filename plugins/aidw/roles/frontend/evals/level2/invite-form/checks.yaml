@@ -1,0 +1,33 @@
+# Machine checks of a level 2 run, after the held-out tests. Each command runs in the temp copy with `sh -c`; the
+# plugin's bin/ is first on PATH, $AIDW_BASE is the commit the Agent started from, and $AIDW_CHANGED names a file that
+# lists the files the session changed. A check passes when the command exits with `exit` (default 0), its stdout parsed
+# as JSON contains `json` (a subset; a string "/re/" is a regex) and its output matches `matches` (a regex), each when
+# given. The request counts of F9 (no request for a refused form, one for a double submit) are asserted by the held-out
+# tests from the MSW log.
+checks:
+  - name: no field without a label and no control without a name in the added code (F4, F9, a11y-names)
+    # --base: only the lines added since the base commit, so the contact form's placeholder-only fields are not counted.
+    # A script that is missing or fails prints no JSON, and the parse fails the check.
+    run: >-
+      node "$(aidw plugin-path roles/frontend/scripts/a11y-names.mjs)" --base "$AIDW_BASE" . |
+      node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>{const bad=JSON.parse(s).findings.filter((f)=>f.problem==="no-label"||f.problem==="no-name"||f.problem==="div-click");if(bad.length){console.log(JSON.stringify(bad));process.exit(1)}})'
+  - name: no literal that is not a token in the added styles (F2, token-literals)
+    run: >-
+      node "$(aidw plugin-path roles/frontend/scripts/token-literals.mjs)" --base "$AIDW_BASE" . |
+      node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>{const bad=JSON.parse(s).findings;if(bad.length){console.log(JSON.stringify(bad));process.exit(1)}})'
+  - name: every scenario id names a test in tests/team
+    run: >-
+      for id in the-form refused-before-sending invitation-sent field-error-from-the-api send-once invitation-fails;
+      do grep -rqF "team/invite-a-person/$id" tests/team || { echo "no test names team/invite-a-person/$id"; exit 1; }; done
+  - name: the whole suite passes
+    run: npm test
+  - name: the typecheck passes
+    run: npm run typecheck
+  - name: nothing outside Touches changed (the team area, its tests, the routes)
+    # Against the base commit, so a commit cannot hide a change. $AIDW_CHANGED lists the files the session changed, taken
+    # before the harness put back the files the grading runs; run by hand, the list is taken from git.
+    run: >-
+      changed=$(if [ -n "$AIDW_CHANGED" ]; then cat "$AIDW_CHANGED"; else git diff --name-only "$AIDW_BASE";
+      git ls-files --others --exclude-standard; fi);
+      out=$(printf '%s\n' "$changed" | grep -vE '^(src/team/|tests/team/|tests/held-out/|src/routes\.tsx$|\.aidw/(run|changes)/)' | grep -v '^$');
+      test -z "$out" || { echo "$out"; exit 1; }

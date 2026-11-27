@@ -1,0 +1,16 @@
+tasks:
+  - id: T01
+    title: The owners-only billing page
+    role: frontend
+    type: feat
+    specs: [billing/billing-for-owners]
+    scenarios:
+      - billing/billing-for-owners/checking-access
+      - billing/billing-for-owners/billing-for-an-owner
+      - billing/billing-for-owners/signed-out
+      - billing/billing-for-owners/members-see-an-owners-only-page
+      - billing/billing-for-owners/test-mode-badge
+    depends_on: []
+    touches: ["src/billing/**", "tests/billing/**", "src/routes.tsx"]
+    verify: ["npm test", "npm run typecheck"]
+    status: pending
