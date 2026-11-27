@@ -97,7 +97,23 @@ source for greenfield (a named document or a URL). A reason with nothing to cite
 line, `Why: assumed: <reason> (overview.md, "## Assumptions")`, and write the assumption under `## Assumptions` in
 `.aidw/architecture/overview.md` in the same words: a citation must point at text that says it. A tool taken from
 the stack pool cites the stack pool, not an assumption. Write `Rejected: none` when no other option was
-on the table. Write "None" under the heading when the Change makes
+on the table. Two choices are always Design Questions that you settle, never leave open: `DQ: data model needed` and `DQ: API
+contract needed`. The main session records them with `aidw decide data-model-needed` and `api-contract-needed`, and
+the Database Architect and API Designer run before the round. Settle them by these criteria:
+
+- Data model: `design` when the Change adds or alters tables or collections beyond a column or two, has a rule the
+  database must enforce (uniqueness, no double booking), or changes something that already holds data; otherwise
+  `none`.
+- API contract: `openapi` when the Change adds or changes HTTP routes that a separate client, another service or a
+  parallel task will call; `actions` for server actions or RPC with the same need; `none` when one task owns both
+  sides.
+
+Their `Chosen:` line starts with the answer key (`Chosen: design`, `Chosen: openapi`, `Chosen: none`), then a
+short reason; `Why:` and `Rejected:` as for any DQ. A Role after you may say a settled DQ conflicts with its work
+(`conflicts with DQ<n>: <why>`): you are spawned again with its objection and keep the DQ, with the reason, or change
+it. You never hand it back to the user unless it is truly `Open` by the rule above.
+
+Write "None" under the heading when the Change makes
 no technical choice. The main session puts the open questions to the user in the system design round, records the
 answers under `### System design round` and turns each into a settled one; `aidw analyze` refuses a package with a
 question still open or settled without `Chosen:`, `Why:` and `Rejected:`. A choice the code must keep also goes to
