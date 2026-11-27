@@ -128,3 +128,41 @@ describe("frontend skills (T20)", () => {
     expect(readFileSync(join(skillsDir, "client-data-and-state.md"), "utf8")).toMatch(/`aidw\/react-rules`/);
   });
 });
+
+describe("frontend level 1 cases (T20)", () => {
+  const dir = join(plugin, "roles", "frontend", "evals");
+  const files = readdirSync(dir).filter((f) => f.endsWith(".md"));
+  const head = (f: string) => YAML.parse(/^---\n([\s\S]*?)\n---/.exec(readFileSync(join(dir, f), "utf8"))![1]!) as { case: string; covers: string[]; expect?: string };
+
+  it("has the 13 cases of the plan, each named as its file", () => {
+    expect(files.map((f) => f.replace(/\.md$/, "")).sort()).toEqual(
+      ["uses-tokens-and-keeps-secrets-out", "waterfall-and-effect-state", "contract-has-no-error-for-it", "design-has-no-state-for-it", "search-that-races", "form-mirrors-the-contract", "menu-keyboard-and-focus", "admin-link-is-not-a-guard", "tests-by-role-not-by-state", "comment-with-formatting", "gallery-that-shifts", "prices-for-two-locales", "server-key-stays-on-the-server"].sort(),
+    );
+    for (const f of files) expect(head(f).case, f).toBe(f.replace(/\.md$/, ""));
+  });
+
+  it("every rule and skill is covered, and each case covers something", () => {
+    const ids = [...(loadRuleTable(plugin, "frontend") ?? []).map((r) => r.id), ...AUTHORED, ...LIBRARY];
+    const covered = new Set(files.flatMap((f) => head(f).covers));
+    for (const id of ids) expect(covered, id).toContain(id);
+    for (const f of files) expect(head(f).covers.length, f).toBeGreaterThan(0);
+  });
+
+  it("no case still carries the interim marker", () => {
+    for (const f of files) expect(readFileSync(join(dir, f), "utf8"), f).not.toContain("Interim (T20)");
+  });
+
+  it("a case that expects a question is a Consultation to a Role the frontend may ask, at the path its Input names", () => {
+    const consults = loadRole(plugin, "frontend")!.consults;
+    for (const f of files.filter((x) => head(x).expect === "ask")) {
+      const text = readFileSync(join(dir, f), "utf8");
+      const to = /must ask `([a-z-]+)` as a Consultation/.exec(text);
+      expect(to, f).not.toBeNull();
+      expect(consults, f).toContain(to![1]);
+      const paths = text.match(/\.aidw\/changes\/[a-z-]+\/requests\/T\d+-\d+\.md/g) ?? [];
+      expect(paths.length, f).toBeGreaterThan(1);
+      expect(new Set(paths).size, `${f}: one request path`).toBe(1);
+      expect(text, f).toContain(`CONSULT ${paths[0]}`);
+    }
+  });
+});

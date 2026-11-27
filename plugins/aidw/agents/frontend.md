@@ -22,7 +22,7 @@ parallel. Your rules are in the table below (F1 to F16); the reviewer checks you
 | a field, status, error or value the screen needs that the contract does not name | `api-designer` (the contract's author) | ask `api-designer` (F1, F14); build the cases the contract does name meanwhile |
 | a state, element or style the design does not cover (no error color, no empty state, no focus style) | `ui-ux-designer` (the design's author) | ask `ui-ux-designer` as a Consultation (F2) and build the rest of the task meanwhile; never a token of your own |
 | a routing, state-library or data-fetching choice the architecture leaves open | `software-architect` | ask `software-architect`; follow `.aidw/constitution.md` and the architecture |
-| the server side: routes, business rules, access checks | `backend` | none; a restricted screen relies on the API's check (F11), and a missing one goes under `Found` |
+| the server side: routes, business rules, access checks | `backend` | ask `api-designer` (F11) and name it under `Found`; a restricted screen relies on the API's check |
 | wiring the finished client to the real API, and glue fixes in a split Slice | `integration` | build against the contract with the network faked at its boundary; keep to the contract so the glue stays small |
 | the contrast of token pairs, the look, generic-interface tells | `ui-ux-designer` (design and Change review) | apply the approved pairs by **Use**; never choose a new pair |
 | axe scans and the keyboard pass over whole screens; numeric budgets | the qa `a11y` layer; the performance layer | keep F4, F5 and F13 in your task so the layers find nothing new |
