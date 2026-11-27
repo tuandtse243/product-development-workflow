@@ -3,6 +3,7 @@ import YAML from "yaml";
 import { Diags } from "./diag.js";
 import { typeProblem } from "./commit.js";
 import { planRefProblems } from "./planrefs.js";
+import { acceptProblems } from "./plancodes.js";
 
 /**
  * pending -> running -> review -> done        (implement, checkpoint, independent review)
@@ -126,6 +127,7 @@ export function validateTasksText(text: string, file: string): Diags {
   }
 
   for (const t of tasks) {
+    if (t && typeof t === "object") for (const m of acceptProblems(t, ids)) d.error(file, `task ${String(t.id)}${m}`);
     for (const dep of isStrList(t?.depends_on) ? t.depends_on : []) {
       if (!ids.has(dep)) d.error(file, `task ${t.id} depends on unknown task "${dep}"`);
       if (dep === t.id) d.error(file, `task ${t.id} depends on itself`);

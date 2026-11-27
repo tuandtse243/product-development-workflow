@@ -53,6 +53,8 @@ tasks:
       - { path: "lib/schedule/store.ts:12-48", why: "a store function: input parsed with zod, typed error, its test" }
     docs: ["zod@3.23.8 parsing"]   # <lib>@<version> <topic>: a library new to the project or sensitive to its version
     manual: ["the reminder email reads well in Gmail on a phone"]   # checks only a human can make
+    accept:                    # a plan warning you keep on purpose, with the reason the plan states (see below)
+      - { warn: depends-without-overlap, on: T01, why: "the 409 tests need T01's trigger" }
     status: pending
 ```
 
@@ -75,6 +77,17 @@ guess.
 - **`manual`: the checks only a human can make.** A look at a real phone, an email in a real inbox, a payment in the
   provider's dashboard. The build does not stop for them; the gate lists them and delivery hands them over under
   "Checks for you". Do not put there what a test can prove.
+
+- **`accept`: a plan warning you keep on purpose.** `aidw analyze` warns about the shape of the plan, and each warning
+  has a code: `one-chain`, `depends-without-overlap` (a pair, so name the other task in `on`), `narrow-plan`,
+  `large-task` and `catch-all-touches`. When a warning is a false alarm, because a dependency is on behaviour and not
+  on shared files, or because one big task is one function that every scenario goes through, add
+  `{ warn: <code>, on: <task id, for a pair>, why: <reason> }` to the task the warning names (for a warning about
+  the whole plan, `one-chain` or `narrow-plan`, to the first task). Analyze then prints the
+  warning as INFO with your reason, and the gate shows it. Rules: write `accept` only when `analysis.md` `## Plan`
+  already states that reason, and make `why` concrete (name the function, the route, the trigger); never use it to
+  hide a real problem (when the dependency is not needed or the task can be split, fix the plan); never add an entry
+  for a warning that does not occur, because analyze warns about an entry that matches nothing.
 
 ### Who owns a task
 

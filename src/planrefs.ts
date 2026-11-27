@@ -23,7 +23,7 @@ import type { Diags } from "./diag.js";
 import { checkDocsBrief, DOCS_BRIEF_DIR, docsBriefName, parseDocsBrief, parseDocsRef, type DocsBriefCheck, type DocsRef } from "./docsbrief.js";
 import { changedSince, git } from "./git.js";
 import type { PageSection, PageStep } from "./page.js";
-import { planInfo, planShape, planSummary } from "./plan.js";
+import { planAdviceAccepted, planInfo, planShape, planSummary } from "./plan.js";
 import { fences, fileTreeOf, programDesignParts } from "./programdesign.js";
 import type { Paths } from "./project.js";
 import type { Task } from "./tasks.js";
@@ -565,7 +565,7 @@ export function planGateSection(p: Paths, tasks: Task[], pagesDir: string, paral
     id: "plan",
     title: L.plan,
     body: planSummary(tasks),
-    points: [...planInfo(tasks, parallelMax), ...(manual.length ? [L.planChecksNote, ...manual] : [])],
+    points: [...planAdviceAccepted(tasks).accepted, ...planInfo(tasks, parallelMax), ...(manual.length ? [L.planChecksNote, ...manual] : [])],
     html,
     layout: "plan",
     figures,
