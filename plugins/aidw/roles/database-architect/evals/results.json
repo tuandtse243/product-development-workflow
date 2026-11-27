@@ -1,0 +1,37 @@
+{
+  "format": 2,
+  "role": "database-architect",
+  "date": "2026-11-27T05:21:29.310Z",
+  "model": null,
+  "tier": "deep",
+  "runs": 3,
+  "digest": "sha256:e28e7bb2535a4e309367f146ec0e2c7cf594b1b5aa94159daba9142c95026b0f",
+  "cases": [
+    {
+      "name": "many-to-many-and-soft-delete",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": [],
+      "digest": "sha256:c24dac6d165440838b5e43f38158f2a25a45dfe14698c09b395a7d27ed3462fb",
+      "date": "2026-11-27T05:21:29.310Z",
+      "model": null
+    },
+    {
+      "name": "reports-a-conflict-with-a-settled-dq",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": [],
+      "digest": "sha256:371935c1fd8a02debb67fae6ce94adda63b02f5767d37c357c2001d4dd58697c",
+      "date": "2026-11-27T05:21:29.310Z",
+      "model": null
+    }
+  ]
+}
