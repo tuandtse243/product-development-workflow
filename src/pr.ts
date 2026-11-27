@@ -19,11 +19,12 @@ import { approvalStatus } from "./approval.js";
 import { bindingProblem, boundPush, githubSlug, GRANT_STATES, pushGrantReason, readGrants } from "./grants.js";
 import { secretsInChanges, secretsProblem } from "./secrets.js";
 import { lastDeploy, readSummary } from "./quality.js";
-import { git, isEnvFile, isGeneratedPath } from "./git.js";
+import { defaultBranch, git, isEnvFile, isGeneratedPath } from "./git.js";
 import { commitAidw, OpError } from "./ops.js";
 import { readText, rel, type Paths } from "./project.js";
 import { sections } from "./spec/parse.js";
 import { parseTasks, type Task } from "./tasks.js";
+import { taskManual } from "./planrefs.js";
 import { readPrSummary } from "./prsummary.js";
 
 export interface PrPlan {
@@ -55,6 +56,10 @@ const DEP_FILES = /(^|\/)(package\.json|pnpm-lock\.yaml|package-lock\.json|yarn\
 export function mergeDanger(p: Paths, id: string, tasks: Task[], base: string, head: string): string[] {
   const out: string[] = [];
   for (const t of tasks.filter((x) => x.breaking === true)) out.push(`Breaking change: ${t.id} ${String(t.title ?? "")}`);
+  const def = defaultBranch(p.project, base);
+  if (def && base !== def && git(p.project, ["rev-parse", "--verify", "-q", `refs/heads/${base}`]).ok && !git(p.project, ["merge-base", "--is-ancestor", base, def]).ok) {
+    out.push(`Base branch ${base} is not merged into ${def}: this pull request also carries its commits.`);
+  }
   const files = git(p.project, ["diff", "--name-only", `${base}...${head}`, "--", ".", ":(exclude).aidw"]);
   const changed = files.ok && files.out ? files.out.split("\n") : [];
   const mig = changed.filter((f) => MIGRATION.test(f));
@@ -109,7 +114,7 @@ export function planPr(p: Paths, id: string, opts: { base?: string; env?: NodeJS
   const bound = boundPush(p, change);
   const grant = readGrants(change).push;
   const head = bound?.branch ?? run.branch ?? `aidw/${id}`;
-  const base = opts.base ?? bound?.base ?? grant?.base ?? run.base_branch ?? "main";
+  const base = opts.base ?? bound?.base ?? grant?.base ?? run.base_branch ?? defaultBranch(p.project, run.base_branch) ?? "main"; // "main" only when git names no branch at all (no repository)
   const remote = bound?.remote ?? grant?.remote ?? "origin";
   const url = git(p.project, ["remote", "get-url", remote]);
   const repo = url.ok ? githubSlug(url.out) : null;
@@ -117,7 +122,6 @@ export function planPr(p: Paths, id: string, opts: { base?: string; env?: NodeJS
   const planned = tasks.filter((t) => !t.origin);
   const allFix = planned.length > 0 && planned.every((t) => t.type === "fix");
   const first = planned[0];
-  const title = header(allFix ? "fix" : "feat", first ? scopeOf(first) : "config", String(change.data.title ?? id));
   const readiness = prReadiness(p, change, tasks);
 
   const analysis = readText(join(change.dir, "analysis.md"));
@@ -125,16 +129,20 @@ export function planPr(p: Paths, id: string, opts: { base?: string; env?: NodeJS
   const layers = Object.entries(readSummary(change).layers).map(([n, r]) => `- ${n}: ${r.status}${r.review ? ` (review: ${r.review.verdict})` : ""}`);
   const deploy = lastDeploy(change);
   const shots = join(change.dir, "delivery", "screenshots");
-  const taskRows = tasks.map((t) => `- ${t.id} ${String(t.title ?? "")} (${String(t.status ?? "pending")})`);
+  // a done task whose manual check is still open is not "done": the check is the user's
+  const taskRows = tasks.map((t) => `- ${t.id} ${String(t.title ?? "")} (${taskManual(t).length && String(t.status ?? "pending") === "done" ? "manual check open" : String(t.status ?? "pending")})`);
   const danger = mergeDanger(p, id, tasks, base, head);
   const where = rel(p, change.dir);
   // I8: the Documentation Role's summary (after example 17) replaces the Analysis summary; refused when it names a file
   // that is neither in the diff nor an approved Artifact (src/prsummary.ts)
   const written = readPrSummary(p, change, base, head);
+  const title = header(allFix ? "fix" : "feat", first ? scopeOf(first) : "config", written?.title ?? String(change.data.title ?? id));
   const body = [
-    // D12: three fixed sections first, in this order, "Nothing." when empty
+    // the Documentation Role's summary opens the body; its manual-check lines are left to "Needed from the user"
+    ...(written ? [withoutChecks(written.text, tasks.flatMap(taskManual)), ""] : []),
+    // D12: three fixed sections, in this order, "Nothing." when empty
     ...withManualChecks(prSections(p, change, tasks), manualChecks(tasks)),
-    ...(written ? [written.text, ""] : ["## Summary", "", summary || String(change.data.title ?? id), ""]),
+    ...(written ? [] : ["## Summary", "", summary || String(change.data.title ?? id), ""]),
     "## Tasks",
     "",
     ...taskRows,
@@ -160,6 +168,17 @@ export function planPr(p: Paths, id: string, opts: { base?: string; env?: NodeJS
   // the gate's own rule (src/grants.ts): does `aidw pr <id> --create` pass without asking right now?
   const granted = pushGrantReason(p, `aidw pr ${id} --create`, GRANT_STATES, p.project, opts.env ?? process.env) !== null;
   return { title, body, head, base, remote, repo, bodyFile, commands, ready: readiness.ready, why: readiness.why, warnings: written?.warnings ?? [], granted, record: prRecord(change) };
+}
+
+/** The summary without the lines that repeat a manual check: it is listed once, under "Needed from the user". */
+function withoutChecks(text: string, checks: string[]): string {
+  const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ");
+  const marks = checks.map(norm).filter(Boolean);
+  if (!marks.length) return text;
+  return text
+    .split("\n")
+    .filter((l) => !/^\s*(?:[-*]|\d+\.)\s/.test(l) || !marks.some((m) => norm(l).includes(m)))
+    .join("\n");
 }
 
 /**

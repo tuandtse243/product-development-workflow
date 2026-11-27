@@ -18,6 +18,20 @@ export function isDefaultBranch(cwd: string, name: string): boolean {
   return ["main", "master", "trunk", "develop"].includes(name);
 }
 
+/**
+ * The repository's real default branch: what origin/HEAD names, else `init.defaultBranch` when that branch exists, else
+ * a local `main` or `master`, else `startedFrom` (the branch the Change started from). Never a bare guess.
+ */
+export function defaultBranch(cwd: string, startedFrom?: string | null): string | null {
+  const has = (b: string) => git(cwd, ["rev-parse", "--verify", "-q", `refs/heads/${b}`]).ok;
+  const origin = git(cwd, ["symbolic-ref", "-q", "--short", "refs/remotes/origin/HEAD"]);
+  if (origin.ok && origin.out) return origin.out.replace(/^origin\//, "");
+  const init = git(cwd, ["config", "--get", "init.defaultBranch"]);
+  if (init.ok && init.out && has(init.out)) return init.out;
+  for (const b of ["main", "master"]) if (has(b)) return b;
+  return startedFrom || null;
+}
+
 export function isGitRepo(cwd: string): boolean {
   return git(cwd, ["rev-parse", "--is-inside-work-tree"]).out === "true";
 }
