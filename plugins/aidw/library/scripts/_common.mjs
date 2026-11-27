@@ -1,5 +1,5 @@
-// Shared helpers of the backend Role's scripts. Not a tool itself: the five scripts next to it import it.
-// Node built-ins only (Node >= 20).
+// Shared helpers of the Roles' scripts (roles/<id>/scripts/*.mjs). Not a tool itself: a script imports it as
+// "../../../library/scripts/_common.mjs", which resolves next to the plugin it runs from. Node built-ins only (Node >= 20).
 
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";

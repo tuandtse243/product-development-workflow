@@ -53,7 +53,7 @@ Exit: 0 when the probe ran (whatever it found), 2 on a usage or read error.
 
 import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
-import { changedSince, inStringOf, isAdded, isPython, isTestFile, JS_EXTS, lineIndex, loadSources, maskComments, matchClose, objectKeys, projectRoot, PY_EXTS, runCli, splitTop, UsageError } from "./_common.mjs";
+import { changedSince, inStringOf, isAdded, isPython, isTestFile, JS_EXTS, lineIndex, loadSources, maskComments, matchClose, objectKeys, projectRoot, PY_EXTS, runCli, splitTop, UsageError } from "../../../library/scripts/_common.mjs";
 
 const PROBLEM = { source: "default (RFC 9457 problem details)", required: ["type", "title", "status"], properties: ["type", "title", "status", "detail", "instance", "errors"], mediaType: "application/problem+json" };
 

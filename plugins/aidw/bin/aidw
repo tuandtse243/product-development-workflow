@@ -18257,6 +18257,7 @@ function roleFiles(root, id, noCases, noScripts = false) {
     else files.push(rel2);
   };
   walk(`roles/${id}`);
+  if (!noScripts && (0, import_node_fs40.existsSync)((0, import_node_path45.join)(root, "roles", id, "scripts"))) walk("library/scripts");
   walk(`agents/${id}.md`);
   const roleMd = (0, import_node_path45.join)(root, "roles", id, "role.md");
   const head = (0, import_node_fs40.existsSync)(roleMd) ? parseRoleText((0, import_node_fs40.readFileSync)(roleMd, "utf8").replace(/\r\n/g, "\n"))?.header : void 0;

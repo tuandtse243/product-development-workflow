@@ -40,7 +40,7 @@ or serializers (pino redact, a pino req serializer) still shows up; judge each f
 Exit: 0 when the scan ran (whatever it found), 2 on a usage or read error.
 `;
 
-import { inStringOf, changedSince, isAdded, isPython, isTestFile, JS_EXTS, lineIndex, maskComments, matchClose, loadSources, projectRoot, PY_EXTS, runCli, splitTop, stripStrings } from "./_common.mjs";
+import { inStringOf, changedSince, isAdded, isPython, isTestFile, JS_EXTS, lineIndex, maskComments, matchClose, loadSources, projectRoot, PY_EXTS, runCli, splitTop, stripStrings } from "../../../library/scripts/_common.mjs";
 
 const RISKY_LAST = new Set(["password", "passwords", "passwd", "pwd", "secret", "secrets", "token", "tokens", "apikey", "authorization", "cookie", "cookies", "jwt", "sessionid", "cvv", "ssn", "credentials"]);
 const RISKY_LAST_TWO = new Set(["api key", "session id", "connection string", "database url", "private key", "card number", "set cookie"]);
