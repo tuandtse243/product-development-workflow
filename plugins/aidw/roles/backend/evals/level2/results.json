@@ -2,12 +2,45 @@
   "format": 2,
   "level": 2,
   "role": "backend",
-  "date": "2026-11-26T17:05:26.524Z",
+  "date": "2026-11-27T06:25:23.010Z",
   "model": null,
   "tier": "deep",
   "runs": 3,
-  "digest": "sha256:d3eb9d1ed59287a22934a44b1a18fc7c3463b5470f9dd7cff3178497d5d1caeb",
+  "digest": "sha256:c732a52f112b7059e16027421be3b0d458e0857ab96edc2f624ac7fd7bc00f88",
   "cases": [
+    {
+      "name": "charge-once",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": [],
+      "digest": "sha256:615e7fe1495dae3b75db83573498c57f6bf705676377fb649638031e00c4f9d1",
+      "fixture": "sha256:5921368d0dd27f1c000702f87cbaa741c22458d585365aabb75a28f7a563ecd2",
+      "gradingSandbox": "sandbox-exec",
+      "date": "2026-11-27T06:25:23.010Z",
+      "model": null
+    },
+    {
+      "name": "email-after-the-order",
+      "pass": false,
+      "runs": {
+        "total": 3,
+        "passed": 0,
+        "errors": 0
+      },
+      "failed": [
+        "reads: did not read plugin:roles/backend/skills/effects-after-commit.md (3 of 3 runs)",
+        "reads: did not read .aidw/changes/place-an-order/api-contract.md (1 of 3 runs)"
+      ],
+      "digest": "sha256:fe5383deaba990b58ce40ed64dc071f0c8df43816ae66eae6e37ee0a40402d73",
+      "fixture": "sha256:5921368d0dd27f1c000702f87cbaa741c22458d585365aabb75a28f7a563ecd2",
+      "gradingSandbox": "sandbox-exec",
+      "date": "2026-11-27T06:25:23.010Z",
+      "model": null
+    },
     {
       "name": "team-comes-from-the-session",
       "pass": true,
@@ -17,10 +50,25 @@
         "errors": 0
       },
       "failed": [],
-      "digest": "sha256:7da967ab31803a98741e37e424285310744e4b15511689b51ed7379055573f19",
-      "fixture": "sha256:463cc2e70153268e8e26cc4d8330c8dda48a1f42c493d754ec2a842998ed6742",
+      "digest": "sha256:67dc15ed39e9154becce492d2ee068449c1e9ffc98d392f18628b94e653d786d",
+      "fixture": "sha256:5921368d0dd27f1c000702f87cbaa741c22458d585365aabb75a28f7a563ecd2",
       "gradingSandbox": "sandbox-exec",
-      "date": "2026-11-26T17:05:26.524Z",
+      "date": "2026-11-27T06:25:23.010Z",
+      "model": null
+    },
+    {
+      "name": "two-requests-one-slot",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": [],
+      "digest": "sha256:90a6b35ccc72e21e3dde2c27e0234f86be84d25f8cd4c0f0883d620ab7d2e2c5",
+      "fixture": "sha256:5921368d0dd27f1c000702f87cbaa741c22458d585365aabb75a28f7a563ecd2",
+      "gradingSandbox": "sandbox-exec",
+      "date": "2026-11-27T06:25:23.010Z",
       "model": null
     }
   ]
