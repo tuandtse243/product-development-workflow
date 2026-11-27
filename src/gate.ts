@@ -321,6 +321,7 @@ export function decide(input: HookInput, env: NodeJS.ProcessEnv): Decision {
     const worktrees = join(p.run, "worktrees");
     if (insideAnyCase(worktrees, file)) {
       const parts = relative(lower(worktrees), lower(file)).split(sep);
+      if (role === "author") return deny("a task's worktree holds project code: only that task's implementer writes there, never an authoring role (a Consultation answer is a file under .aidw/run/)");
       if (parts.length < 3) return deny("write inside a task's worktree (.aidw/run/worktrees/<change>/<task>/...)");
       if (parts[2] === AIDW_DIR) return deny("the worktree's .aidw/ is a stale copy; aidw state lives in the main checkout and is the orchestrator's");
       const st = gateState(p);
