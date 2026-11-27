@@ -1,0 +1,51 @@
+/* Every value is a token (src/styles/tokens.css). */
+.doctor-list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.doctor-list__item {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border-radius: var(--radius-1);
+  background: var(--color-surface-raised);
+}
+
+.doctor-list__specialty {
+  color: var(--color-text-muted);
+}
+
+.day-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.day {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border-radius: var(--radius-1);
+  background: var(--color-surface-raised);
+  cursor: pointer;
+}
+
+.day--full {
+  background: var(--color-booked);
+  color: var(--color-text-muted);
+}
+
+.day__open {
+  color: var(--color-text-muted);
+}
+
+.day-list__more {
+  display: flex;
+  align-items: center;
+  padding: var(--space-2);
+  cursor: pointer;
+}
