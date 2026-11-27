@@ -1,0 +1,6 @@
+layers:
+  - name: code
+    run: ["npm run typecheck"]
+  - name: unit
+    run: ["npm test"]
+permissions: []

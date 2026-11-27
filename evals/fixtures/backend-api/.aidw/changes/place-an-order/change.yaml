@@ -1,0 +1,17 @@
+schema: 1
+id: place-an-order
+title: "Place an order"
+input_type: client_request
+state: executing
+created_at: 2026-11-27T00:35:06.266Z
+skip_specs: false
+approval:
+  hash: sha256:1feb1cdce27cbc42694a0dcb82165822a89938782a1cc74ecbc331ed249b94fc
+  at: 2026-11-27T00:35:07.316Z
+  by: user
+  package: 3
+  agent_run_cap: 6
+run:
+  paused: null
+  branch: aidw/place-an-order
+  base_branch: main

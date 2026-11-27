@@ -1,0 +1,17 @@
+schema: 1
+id: book-a-room
+title: "Book a room"
+input_type: client_request
+state: executing
+created_at: 2026-11-27T00:35:07.596Z
+skip_specs: false
+approval:
+  hash: sha256:6683bb650c7a69430b83cbf80dc16776d8b6b738f97c6344a697eacc3c219e56
+  at: 2026-11-27T00:35:08.777Z
+  by: user
+  package: 3
+  agent_run_cap: 6
+run:
+  paused: null
+  branch: aidw/book-a-room
+  base_branch: main

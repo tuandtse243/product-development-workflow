@@ -6,6 +6,8 @@ const Env = z.object({
   DATABASE_DIR: z.string().optional(),
   SESSION_TTL_HOURS: z.coerce.number().int().positive().default(72),
   MAIL_FROM: z.string().email().default("no-reply@tracker.example"),
+  PAYMENTS_URL: z.string().url().default("https://payments.example"),
+  PAYMENTS_API_KEY: z.string().default(""),
 });
 
 export type Config = z.infer<typeof Env>;

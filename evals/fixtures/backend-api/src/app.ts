@@ -4,6 +4,7 @@ import type { Db } from "./db/client.ts";
 import { errorHandler, notFound } from "./http/errors.ts";
 import type { Mailer } from "./mail/mailer.ts";
 import { projectRoutes } from "./projects/routes.ts";
+import { roomRoutes } from "./rooms/routes.ts";
 import { teamRoutes } from "./teams/routes.ts";
 
 export interface Deps {
@@ -21,6 +22,7 @@ export function createApp(deps: Deps): express.Express {
   app.use(sessionRoutes(deps.db, deps.sessionTtlHours ?? 72));
   app.use(teamRoutes(deps.db));
   app.use(projectRoutes(deps.db));
+  app.use(roomRoutes(deps.db));
 
   app.use(notFound);
   app.use(errorHandler);
