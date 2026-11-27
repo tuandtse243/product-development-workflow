@@ -264,15 +264,17 @@ Fastify, Hono.
   - The runs found one Role gap: the Agent kept quiet about the existing routes' `x-team-id` hole in 2 of 6 runs.
     The report's `Found:` line closed it.
   - Level 1 no longer digests the Role's scripts (it never shows them to the model). Level 2 still does.
-  - Owed: `log-with-a-token` is 2/3 at level 1, twice. A run logs the provider error's message and code but no
-    stack. Sharpen `server-logs-and-errors` with the next change to the backend Role, so that the 30-call rerun
-    of level 1 is paid once.
+  - Done 2026-11-28: `log-with-a-token` was 2/3 at level 1, twice (no stack on the provider error line).
+    `server-logs-and-errors` now puts message, code and stack on every error line; the case is 3/3.
   - Done 2026-11-27 (was owed before T20+): `allowLocalBinding` also let a session connect to any localhost port on
     macOS, so a local proxy could carry traffic out. The fixture's `t.http()` now calls the app in-process with no
     socket (`tests/http.ts`, same supertest-style API, supertest removed), the session settings drop the setting, and
     the grading sandbox allows no network at all, localhost included.
-  - Owed: re-run the pilot's 3/3 on the in-process fixture. The 3/3 above ran on the old helper with
-    `allowLocalBinding`.
+  - Done 2026-11-28: the three further cases `charge-once`, `email-after-the-order` and `two-requests-one-slot`, and
+    the pilot re-run on the in-process fixture. Backend level 2 is 4/4 at 3/3 and level 1 is 10/10 at 3/3, with
+    `effects-after-commit` rewritten to claim with a lease, commit, then send (no transaction open across the call).
+    These runs found more grader misses, now fixed: `route-inventory` follows block and nested route helpers, and
+    the reads step counts paths after a `cd` and files found through `aidw plugin-path`.
   - Not yet proven: that the session sandbox blocks outbound network, that the session can reach no localhost port
     now (it holds by configuration), and that `Read` deny rules stop a sandboxed `cat`. No run tried any of them.
 - The cases of every other active Role have no `covers:` yet; T12 must not fail `aidw roster` for Roles that
