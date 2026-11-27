@@ -460,7 +460,8 @@ user can check:
    decision without `Why:` or `Rejected:`. Implementers may not deviate from these without escalating, so be
    precise and include only real decisions. The `## Summary`
    must fit one page: goal, scope, the key decisions, and the risks and assumptions that need attention.
-   `## Before / After` has `### Before` and `### After`, 3 to 6 `- ` lines each, as the user sees it; Before draws
+   `## Before / After` has `### Before` and `### After`, 3 to 6 `- ` lines each, as the user sees it, in the user's
+   language (the page `lang`; the headings stay in English, the CLI checks them); Before draws
    from `existing-system.md` and names it when the Change has that report, otherwise from today's workaround.
    `### Deferred to architecture` (in `## Requirements and scope`) lists the technical questions discovery put
    aside as `- DA1: <question>`, or says "None"; each id has its answer, `- DA1: <answer>`, in `## Architecture`.
@@ -486,9 +487,11 @@ user can check:
    first of all (a section you write with the id `before-after` replaces it), then the review's open findings, and
    adds the Program Design (`program-design.md` as Views; a section you write with the id `program-design` replaces
    it), the Decision Points and the plan (its stages, and each task's patterns, Docs Briefs and checks for the user).
-   Name
-   `.aidw/changes/<id>/analysis.md` in the intro. Tell the user the link, and that once they agree to every section
-   (or type `/aidw:approve`) the build starts by itself.
+   The CLI writes the headings and fixed labels of the sections it adds in the page `lang` (`en` or `vi`).
+   Name `.aidw/changes/<id>/analysis.md` in the intro. Tell the user the link, and what happens next: once they agree
+   to every section, you run `aidw approve` and Claude Code asks them to confirm; if it cannot ask (a headless
+   session), they type `/aidw:approve`. The build starts after that confirmation, not before. Write this intro in
+   the page `lang`.
 6. **Stop and wait for the answer.** Do not start building before it. When the user pastes the page's answer, check it:
    every section agreed (or the user says they approve) goes on to step 10; a section marked for a change is revised as
    under "Revising".
@@ -501,7 +504,8 @@ Only when the user, **in this session**, answered the gate page agreeing to ever
 
 Follow steps 2 to 6 of `$(aidw plugin-path skills/approve/SKILL.md)`, as if the user had typed `/aidw:approve <id>`:
 validate and analyze, confirm the push grant when `quality.yaml` has one, `aidw approve <id>` (the user confirms its
-permission prompt; if they decline, stop and do not retry), then follow the `NEXT:` line it prints. The CLI decides
+permission prompt; if they decline, stop and do not retry; if Claude Code cannot ask, a headless session, tell the user
+to type `/aidw:approve`), then follow the `NEXT:` line it prints. The CLI decides
 where the build runs from the number of tasks; do not choose yourself:
 
 - `NEXT: build here: ...` (3 tasks or fewer): follow `$(aidw plugin-path skills/run/SKILL.md)` for `<id>` now.

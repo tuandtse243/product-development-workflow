@@ -69,7 +69,7 @@ done; assumptions, each marked as assumed. The requirements quote these, so a re
 a job.
 
 Today's workaround becomes the `### Before` of `## Before / After`: 3 to 6 lines of what the user does, waits for or
-cannot do now, in their words. When the Change has an Existing System Report (`existing-system.md`), Before draws
+cannot do now, in their words and in their language (the `lang` of the gate page; the headings stay as they are). When the Change has an Existing System Report (`existing-system.md`), Before draws
 on it instead and names it, because the code shows what the user really meets. `### After` says, in the same
 voice, what each of those lines becomes. A line that mentions a table, an endpoint or a component is written for
 the wrong reader.

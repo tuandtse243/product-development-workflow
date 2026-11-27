@@ -4,6 +4,7 @@
  * Architect in `## Architecture`). `aidw analyze` requires both of a Change created with `analysis_template: 2` or later;
  * the gate page shows Before / After first.
  */
+import { gateLabels } from "./labels.js";
 import type { Change } from "./change.js";
 import type { Diags } from "./diag.js";
 import type { PageSection } from "./page.js";
@@ -126,14 +127,15 @@ export function checkBeforeAfter(analysis: string, file: string, opts: { existin
 }
 
 /** The first section of the gate page, from analysis.md; null when the analysis has no Before / After lines. */
-export function beforeAfterSection(analysis: string): PageSection | null {
+export function beforeAfterSection(analysis: string, lang?: string): PageSection | null {
+  const l = gateLabels(lang);
   const ba = beforeAfterOf(analysis);
   if (!ba || (!ba.before.length && !ba.after.length)) return null;
   return {
     id: "before-after",
-    title: BEFORE_AFTER,
-    body: "What the user sees today, and what they will see once this Change is built.",
-    points: [...ba.before.map((l) => `**Before**: ${l}`), ...ba.after.map((l) => `**After**: ${l}`)],
+    title: lang === "vi" ? l.before + " / " + l.after : BEFORE_AFTER,
+    body: l.beforeAfterBody,
+    points: [...ba.before.map((x) => `**${l.before}**: ${x}`), ...ba.after.map((x) => `**${l.after}**: ${x}`)],
     html: "",
   };
 }
