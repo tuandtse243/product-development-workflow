@@ -1,0 +1,17 @@
+tasks:
+  - id: T01
+    title: The invite form
+    role: frontend
+    type: feat
+    specs: [team/invite-a-person]
+    scenarios:
+      - team/invite-a-person/the-form
+      - team/invite-a-person/refused-before-sending
+      - team/invite-a-person/invitation-sent
+      - team/invite-a-person/field-error-from-the-api
+      - team/invite-a-person/send-once
+      - team/invite-a-person/invitation-fails
+    depends_on: []
+    touches: ["src/team/**", "tests/team/**", "src/routes.tsx"]
+    verify: ["npm test", "npm run typecheck"]
+    status: pending

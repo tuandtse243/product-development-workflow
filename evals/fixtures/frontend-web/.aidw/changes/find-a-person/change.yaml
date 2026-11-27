@@ -1,0 +1,17 @@
+schema: 1
+id: find-a-person
+title: "Find a person"
+input_type: client_request
+state: executing
+created_at: 2026-11-27T12:22:06.497Z
+skip_specs: false
+approval:
+  hash: sha256:c3ff2f66603a18bd861067a2b46fd3d4d51ff41efb517d539eadad72c560c724
+  at: 2026-11-27T12:28:23.626Z
+  by: user
+  package: 3
+  agent_run_cap: 6
+run:
+  paused: null
+  branch: aidw/find-a-person
+  base_branch: main
