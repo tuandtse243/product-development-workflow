@@ -166,7 +166,7 @@ aidw becomes a software factory with a Roster of Roles, Workflows as data and de
     that read it). An implementer's brief points at the pack of the project's framework; `frontend` never gets NestJS. Adding a
     framework is adding one file.
   - [x] Two more packs for the other frameworks `aidw detect` reports as a full-stack framework: `stacks/nuxt.md` and
-    `stacks/sveltekit.md`. Astro and React Router / Remix are detected but have no pack yet.
+    `stacks/sveltekit.md`. Astro and Remix are detected but have no pack yet; React Router as a library is the `router`, and a backend beside Remix is recorded as `backend`.
   - [x] Server packs `stacks/express.md`, `fastify.md` and `hono.md` (`detected_as: server`): `aidw detect` reports these
     libraries as the `server`; their pack loads for `backend` and `fullstack` only when no framework pack matches.
   - [x] Python: `aidw detect` reads `pyproject.toml` (PEP 621, Poetry, dependency groups), `requirements*.txt` and `Pipfile`

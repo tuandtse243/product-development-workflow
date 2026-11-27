@@ -68,18 +68,21 @@ export function frameworkPacks(root: string): FrameworkPack[] {
 
 /**
  * The packs of the project's framework, whoever reads them: a reviewer takes their review Skills. A pack of a bundler or
- * server library yields to the framework packs that serve the same Roles (the reading `role`, or any Role of that pack):
- * a NestJS API in the same root does not take the Vite + React pack away from the frontend.
+ * server library yields to a framework pack that serves every Role of that pack: a NestJS API in the same root does not take
+ * the Vite + React pack away from the frontend or from fullstack.
  */
-export function packsOf(root: string, stack: Record<string, string>, role?: string): FrameworkPack[] {
+export function packsOf(root: string, stack: Record<string, string>, _role?: string): FrameworkPack[] {
   const all = frameworkPacks(root);
   const starts = (key: string, name: string) => (stack[key] ?? "").toLowerCase().startsWith(name.toLowerCase());
+  // A backend framework beside another framework (NestJS or FastAPI next to Remix) sits under the `backend` key
   const hit = (p: FrameworkPack) =>
-    starts(p.detectedAs, p.framework) &&
+    (starts(p.detectedAs, p.framework) || (p.detectedAs === "framework" && starts("backend", p.framework))) &&
     Object.entries(p.requires).every(([k, n]) => starts(k, n)) &&
     !Object.entries(p.excludes).some(([k, names]) => names.some((n) => starts(k, n)));
   const frameworks = all.filter((p) => p.detectedAs === "framework" && hit(p));
-  const sharing = (p: FrameworkPack) => frameworks.some((f) => (role ? f.roles.includes(role) : f.roles.some((r) => p.roles.includes(r))));
+  // A framework takes the pack's place only when it serves every Role the pack serves (Next.js for Vite + React); NestJS serves
+  // the backend and fullstack but renders no UI, so fullstack keeps both packs.
+  const sharing = (p: FrameworkPack) => frameworks.some((f) => p.roles.every((r) => f.roles.includes(r)));
   return [...frameworks, ...all.filter((p) => p.detectedAs !== "framework" && hit(p) && !sharing(p))];
 }
 
