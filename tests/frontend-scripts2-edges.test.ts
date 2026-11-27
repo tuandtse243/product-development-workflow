@@ -252,16 +252,24 @@ describe("fetch-waterfalls: false negatives", () => {
     expect(kinds(r)).toEqual(["uncancelled-effect-fetch@3"]);
   });
 
-  it("documents the limit: a call whose name is not fetch-like (api.request) is unseen", () => {
-    // documents the limit: names decide. getJSON/loadX are seen; a call named `request` or `run` is not.
-    const r = fw({
+  it("a call named request or fetcher is seen; documents the limit: a call named run is not", () => {
+    // names decide. getJSON/loadX/request/fetcher are seen; a call named `run` is not.
+    const seen = fw({
       "src/a.tsx": L(
         "export function A({ id }) {",
         "  useEffect(() => { api.request({ url: '/u/' + id }).then(setU); }, [id]);",
         "}",
       ),
     });
-    expect(r.json.findings).toEqual([]);
+    expect(kinds(seen)).toEqual(["uncancelled-effect-fetch@2"]);
+    const unseen = fw({
+      "src/a.tsx": L(
+        "export function A({ id }) {",
+        "  useEffect(() => { api.run({ url: '/u/' + id }).then(setU); }, [id]);",
+        "}",
+      ),
+    });
+    expect(unseen.json.findings).toEqual([]);
   });
 
   it("derived-state effect with several setters, each from the dependencies", () => {
@@ -540,17 +548,18 @@ describe("route-guard-inventory: React Router shapes", () => {
     expect(Object.keys(g).sort()).toEqual(["/account", "/billing", "/settings"]);
     expect(g["/billing"]).toBeNull();
     expect(g["/account"]).toBe("wrapper:RequireAuth");
-    expect(r.json.findings.map((f: any) => f.path)).toEqual(["/billing", "/settings"]);
+    // the modules are not scanned files: the guard is unknown, which is "lazy-unresolved", never "unguarded-route"
+    expect(r.json.findings.map((f: any) => [f.kind, f.path])).toEqual([["lazy-unresolved", "/billing"], ["lazy-unresolved", "/settings"]]);
   });
 
-  it("BUG: a lazy route whose module's loader redirects cannot be seen, but lazy with a guard inside must not crash", () => {
+  it("a lazy route whose module is a scanned file is followed: its loader that redirects is its guard", () => {
     const r = rg({
       "src/r.tsx": "export const router = createBrowserRouter([{ path: '/billing', lazy: () => import('./Billing') }]);\n",
       "src/Billing.tsx": "export async function loader() { if (!isLoggedIn()) throw redirect('/login'); return null; }\nexport const Component = () => null;\n",
     });
     expect(r.code).toBe(0);
-    // documents the limit: the loader lives in the lazy module and is not followed
-    expect(guards(r)["/billing"]).toBeNull();
+    expect(guards(r)["/billing"]).toBe("loader:loader");
+    expect(r.json.findings).toEqual([]);
   });
 
   it("BUG (low): a route whose element is a <Navigate/> redirect is not a page, so it is not an unguarded-route finding", () => {
@@ -664,14 +673,14 @@ describe("route-guard-inventory: React Router shapes", () => {
     expect(x.guardKind).not.toBe("server");
   });
 
-  it("BUG: a guard component defined in the file that redirects on a localStorage role check is recognised as a guard (it checks 'role')", () => {
+  it("a guard component that redirects on a localStorage role check is not a guard: the user controls localStorage", () => {
     const r = rg({
       "src/r.tsx": L(
         "function AdminOnly({ children }) { return localStorage.getItem('role') === 'admin' ? children : <Navigate to='/' />; }",
         "export const router = createBrowserRouter([ { path: '/admin', element: <AdminOnly><Admin /></AdminOnly> } ]);",
       ),
     });
-    expect(guards(r)["/admin"]).toBe("wrapper:AdminOnly");
+    expect(guards(r)["/admin"]).toBeNull();
   });
 
   it("a route with a trailing-slash path or an uppercase path is still listed", () => {

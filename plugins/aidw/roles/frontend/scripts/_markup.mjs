@@ -35,6 +35,26 @@ export function blankTemplateExprs(body) {
   return out.join("");
 }
 
+/**
+ * Every bracket pair of comment-masked code in one pass: Map(index of ( [ or { -> index of its closer). A closer that
+ * does not match the open one is ignored; strings are skipped. Linear, unlike a matchClose per bracket.
+ */
+export function bracketPairs(code) {
+  const pairs = new Map();
+  const stack = [];
+  const CLOSER = { "(": ")", "[": "]", "{": "}" };
+  for (let i = 0; i < code.length; i++) {
+    const c = code[i];
+    if (c === '"' || c === "'" || c === "`") { i = stringEnd(code, i) - 1; continue; }
+    if (CLOSER[c]) stack.push(i);
+    else if (c === ")" || c === "]" || c === "}") {
+      const o = stack[stack.length - 1];
+      if (o !== undefined && CLOSER[code[o]] === c) { stack.pop(); pairs.set(o, i); }
+    }
+  }
+  return pairs;
+}
+
 // ---------------------------------------------------------------- JSX
 
 const TAG = /<([A-Za-z][\w.:-]*)/y;

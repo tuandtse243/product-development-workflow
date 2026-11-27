@@ -189,7 +189,10 @@ generated agent files are up to date.
   and `route-guard-inventory` (React Router object and JSX routes and Next.js app router pages with the guard each
   has: wrapper element, redirecting loader, guard layout, middleware match, server-side redirect; `--routes
   /billing,/admin` lists the paths that must be guarded and reports each with no guard or no route; F11). The last
-  two are heuristic by names and were tuned on the `frontend-web` level 2 fixture. They read JSX
+  two are heuristic by names; they were checked against the `frontend-web` fixture and synthetic trees, and real level 2
+  and level 4 shapes are not yet tested. `route-guard-inventory` spells `guard` as a string (`wrapper:RequireAuth`,
+  `loader:requireSession`, `middleware`, `layout:...`) or null plus a `guardKind` (`client` or `server`), unlike the
+  `server` / `client` / `none` of §5 of the research report, and does not implement that report's `reads` field. They read JSX
   and TSX; `.vue` and `.svelte` templates come later. Their own helpers (JSX elements, CSS rules) are in
   `roles/frontend/scripts/_markup.mjs`. Every JSON output
   starts with `tool` and `schemaVersion: 1`; a directory scan lists under `skipped` what it did not read (`public/`
