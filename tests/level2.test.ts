@@ -610,7 +610,8 @@ describe("aidw roster and level 2", () => {
   // These runs grade with AIDW_GRADE_SANDBOX=off (no sandbox can be applied inside a Claude Code session): that
   // warning is tested on its own below, and left out here.
   const NO_SANDBOX = /graded with no sandbox/;
-  const l2 = (out: string) => out.split("\n").filter((l) => l.includes("level2/results.json") && !NO_SANDBOX.test(l));
+  // backend's file only: the plugin's other Roles with level 2 cases (frontend) warn about their own
+  const l2 = (out: string) => out.split("\n").filter((l) => l.includes("backend/evals/level2/results.json") && !NO_SANDBOX.test(l));
 
   it("warns, never fails, when the results are missing, stale or failing", () => {
     const s = setup();

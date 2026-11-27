@@ -248,7 +248,8 @@ describe("the result file of a Role's cases (C6)", () => {
     expect(go(["roster"]).code).toBe(0); // results.json missing: a warning
     const strict = go(["roster", "--strict"]);
     expect(strict.code).toBe(1);
-    expect(strict.out).toMatch(/FAILED: 0 error\(s\), 1 warning\(s\) \(strict\)/);
+    // the table Role's missing results.json, and the missing level 2 results of the Roles that have level 2 cases
+    expect(strict.out).toMatch(/FAILED: 0 error\(s\), [1-9]\d* warning\(s\) \(strict\)/);
   });
 });
 
