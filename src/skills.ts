@@ -151,7 +151,7 @@ export function selectSkills(t: Task, kind: BriefKind, opts: { retry?: boolean; 
   if (ui && MOTION_HINT.test([t.title ?? "", ...list(t.scenarios)].join(" ").replace(/[/_.-]/g, " "))) add("emil/animate", "the task is about motion");
   if (api) add("api-and-interface-design", "touches API or server code");
   if (api) add("aidw/api-design-rules", "touches API or server code: the concrete rules (errors, lists, repeated writes)");
-  else if (data) add("api-and-interface-design", "touches the data layer (schema is an interface)");
+  else if (data && role !== "frontend") add("api-and-interface-design", "touches the data layer (schema is an interface)");
   // No signal, no skill: a slice touching only plain logic gets the core pair, nothing "just in case".
   if (isSecuritySensitive(t)) add("security-and-hardening", "security-sensitive task (risk or auth/payment/permissions)");
   if (list(t.verify).some((v) => BROWSER_VERIFY.test(v))) add("browser-testing-with-devtools", "verify runs browser/E2E tests");
