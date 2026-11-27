@@ -17,7 +17,8 @@ import { Diags } from "./diag.js";
 import { fenceTracker } from "./fences.js";
 import { keepDiscardedWork } from "./draft.js";
 import { git, isGitRepo } from "./git.js";
-import { OpError } from "./ops.js";
+import { aidwCommitMessage } from "./commit.js";
+import { commitAidw, OpError } from "./ops.js";
 import { readText, rel, walkFiles, type Paths } from "./project.js";
 import { EXPECTED_LAYERS, RECOMMENDED_LAYERS, lastDeploy, loadQuality, parseQuality, qualityFile, readSummary } from "./quality.js";
 import { loadTasks, type Evidence } from "./run.js";
@@ -371,6 +372,8 @@ export interface DeliverResult {
   created_handoff: boolean;
   screenshots: number;
   diags: Diags;
+  /** the delivery commit: the package and every file the delivery Roles wrote (README, API docs); null when nothing was pending */
+  commit: string | null;
 }
 
 /** Writes the generated parts of the package (always regenerated) and a handoff skeleton (never overwritten). */
@@ -407,7 +410,11 @@ export function deliver(p: Paths, id: string, opts: { check?: boolean } = {}): D
     }
     write("README.md", readmeMd(p, change, tasks));
   }
-  return { dir: rel(p, dir), written, created_handoff: createdHandoff, screenshots: screenshots(change).length, diags: checkDelivery(p, id) };
+  const diags = checkDelivery(p, id);
+  // B-D3: delivery leaves a clean tree. What the Roles wrote (README, API docs) is committed here, before delivery
+  // reports done, so `aidw archive` has nothing of theirs left to pick up. Not while the package still has errors.
+  const commit = diags.errors.length ? null : commitAidw(p, aidwCommitMessage(`${id} delivery package`, `Evidence: ${rel(p, dir)}/`), { delivery: true, guard: true });
+  return { dir: rel(p, dir), written, created_handoff: createdHandoff, screenshots: screenshots(change).length, diags, commit };
 }
 
 function readmeMd(p: Paths, change: Change, tasks: Task[]): string {

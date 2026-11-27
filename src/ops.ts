@@ -543,13 +543,16 @@ function useChangeBranch(p: Paths, change: ReturnType<typeof loadChange>, id: st
   return `task commits go to the new branch ${want} (from ${current || "a detached commit"})`;
 }
 
+/** What the delivery Roles write outside `.aidw/`: the README, the environment template, API docs (`docs/`). */
+export const DELIVERY_FILES = ["README.md", ".env.example", ".gitignore", "docs"];
+
 /**
  * Commits pending changes under .aidw/ plus the delivery files the gate lets in after delivery (README.md,
  * .env.example, and .gitignore, which deploy CLIs edit, e.g. `.vercel`) and nothing else. Returns the commit, or null outside git or when nothing changed.
  */
 export function commitAidw(p: Paths, message: string, opts: { delivery?: boolean; guard?: boolean } = {}): string | null {
   if (!isGitRepo(p.project)) return null;
-  const paths = [".aidw", ...(opts.delivery ? ["README.md", ".env.example", ".gitignore"].filter((f) => existsSync(join(p.project, f))) : [])];
+  const paths = [".aidw", ...(opts.delivery ? DELIVERY_FILES.filter((f) => existsSync(join(p.project, f))) : [])];
   if (!git(p.project, ["add", "--", ...paths]).ok) return null;
   if (opts.guard) {
     // T11: this commit is pushed (the pull request, the archive): the same checks as a task commit, before it exists
