@@ -120,7 +120,7 @@ function approved() {
 
 const toArchitecture = () => {
   for (const s of ["intake", "analyzing"]) expect(cli("transition", ID, s).code).toBe(0);
-  for (const s of ["assessment", "discovery", "research", "user-research", "requirements", "design", "architecture"]) {
+  for (const s of ["assessment", "discovery", "research", "user-research", "requirements", "design", "architecture", "contracts"]) {
     const r = cli("stages", "--done", s, "--change", ID);
     expect(r.code, `${s}: ${r.err}`).toBe(0);
   }
@@ -137,7 +137,6 @@ describe("a Change created before template 3 owes neither the round nor the Prog
       expect(cli("stages", ID).out).not.toMatch(/open Design Question\(s\)|ask one question in the chat|lists no "### Design Questions"|has no system design round/);
       const round = cli("stages", "--done", "system-design-round", "--change", ID);
       expect(round.code, round.err).toBe(0);
-      expect(cli("stages", "--done", "contracts", "--change", ID).code).toBe(0);
       const pd = cli("stages", "--done", "program-design", "--change", ID);
       expect(pd.code, pd.err).toBe(0);
     });

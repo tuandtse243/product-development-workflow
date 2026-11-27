@@ -256,7 +256,7 @@ export function checkProgramDesign(p: Paths, change: Change, opts: { small: bool
   const abs = join(change.dir, PROGRAM_DESIGN_FILE);
   const file = rel(p, abs);
   if (!existsSync(abs)) {
-    d.error(file, `${PROGRAM_DESIGN_FILE} is missing: the Software Architect writes the Program Design (${REQUIRED_PARTS.map((x) => `"## ${x}"`).join(" and ")}) after the system design round (/aidw:start step 6)`);
+    d.error(file, `${PROGRAM_DESIGN_FILE} is missing: the Software Architect writes the Program Design (${REQUIRED_PARTS.map((x) => `"## ${x}"`).join(" and ")}) after the system design round (/aidw:start step 6c)`);
     return;
   }
   const text = readFileSync(abs, "utf8");

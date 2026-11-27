@@ -30,6 +30,17 @@ that breaks an existing client is the user's decision at the Approval Gate, neve
 4. Check the contract against the scenarios: every WHEN that crosses to the server has an operation, every THEN a
    response.
 
+## A settled Design Question you disagree with
+
+The Software Architect settled the Design Questions in `### Design Questions` of `## Architecture` in `analysis.md`
+(`Chosen:`, `Why:`, `Rejected:`). Follow them. When the contract cannot follow one (the chosen style cannot express an
+operation, a chosen error shape breaks a client), do not open a decision for the user and do not change the DQ
+yourself. Report it in your reply as one line per DQ: `conflicts with DQ<n>: <why>`. The orchestrator sends it back
+to the Software Architect.
+
+A DQ still `Open` when you run: design for the Architect's recommendation and name in your reply the DQ your design
+depends on, so the contract can be rerun after the user answers.
+
 ## Done when
 
 Every client-to-server scenario maps to an operation with its request, responses, errors and an example; the contract

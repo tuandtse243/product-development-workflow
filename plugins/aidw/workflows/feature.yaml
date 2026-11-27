@@ -126,19 +126,19 @@ stages:
     reads: [analysis-deferred-to-architecture, requirements, delta-specs, domain-model, design-direction, design-tokens, project-config]
     writes: [architecture, decisions-architecture, constitution, project-config, analysis-stack, analysis-architecture]
 
+  - id: contracts
+    title: Data model and API contract, each when the Design Questions the Software Architect settled say the Change needs it
+    states: [analyzing]
+    roles: [software-architect, database-architect, api-designer]
+    reads: [requirements, delta-specs, domain-model, architecture, analysis-architecture, constitution]
+    writes: [decision-data-model-needed, decision-api-contract-needed, data-model-dbml, data-model-notes, api-contract-openapi, api-contract-notes]
+
   - id: system-design-round
     title: System design round, the open Design Questions put to the user (none for Size small)
     states: [analyzing]
     roles: [software-architect]
-    reads: [architecture, analysis-architecture]
+    reads: [architecture, analysis-architecture, data-model-notes, api-contract-notes]
     writes: [analysis-system-design-round, analysis-architecture, architecture, decisions-architecture]
-
-  - id: contracts
-    title: Data model and API contract, each when the Software Architect decides the Change needs it
-    states: [analyzing]
-    roles: [software-architect, database-architect, api-designer]
-    reads: [requirements, delta-specs, domain-model, architecture, constitution]
-    writes: [decision-data-model-needed, decision-api-contract-needed, data-model-dbml, data-model-notes, api-contract-openapi, api-contract-notes]
 
   - id: program-design
     title: Program Design, the files and the main signatures and contracts (the short one for Size small)

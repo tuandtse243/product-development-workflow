@@ -287,7 +287,7 @@ ${PLACEHOLDER}: design references, bundle, or AI design direction. UI work also 
 
 ${PLACEHOLDER}: architecture overview and new ADRs. Link .aidw/architecture/overview.md. Add "### Design Questions"
 (each technical choice as "- DQ1: <question>" with "Open:" or "Chosen:", "Why:", "Rejected:" lines) and, for a
-Size: normal Change, "### System design round" (the checked answer, word for word); see /aidw:start step 6.
+Size: normal Change, "### System design round" (the checked answer, word for word); see /aidw:start step 6c.
 
 ## Specs
 

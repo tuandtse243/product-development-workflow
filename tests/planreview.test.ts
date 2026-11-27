@@ -42,7 +42,7 @@ function drafted(): string {
 }
 
 /** The lead has reported every stage before the review. */
-const STAGES = ["discovery", "research", "user-research", "requirements", "design", "architecture", "system-design-round", "contracts", "program-design", "plan", "quality-profile"];
+const STAGES = ["discovery", "research", "user-research", "requirements", "design", "architecture", "contracts", "system-design-round", "program-design", "plan", "quality-profile"];
 function stepped(): string {
   const root = drafted();
   for (const s of STAGES) expect(cli(root, "stages", "--done", s, "--change", ID).code, s).toBe(0);
