@@ -60,7 +60,7 @@ import { detectProject } from "./detect.js";
 import { doctor, doctorText, drivesBrowser } from "./doctor.js";
 import { createPr, planPr, prNext, writePrBody } from "./pr.js";
 import { grantsSection } from "./grants.js";
-import { planAdvice, planShape, planSummary } from "./plan.js";
+import { planAdviceAccepted, planShape, planSummary } from "./plan.js";
 import { parallelConfig } from "./parallel.js";
 import { buildRoute, installedOutside, tasksLeft } from "./buildroute.js";
 import { detachRun, runLoop, runnerPid, stopRunner } from "./runner.js";
@@ -1212,7 +1212,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const id = resolveChangeId(p, rest[0]);
         const tasks = parseTasks(readText(join(loadChange(p, id).dir, "tasks.yaml")) ?? "").tasks;
         const shape = planShape(tasks);
-        emit({ change: id, ...shape, summary: planSummary(tasks), advice: planAdvice(tasks) }, `${planSummary(tasks)}\n${planAdvice(tasks).map((a) => `  advice: ${a}\n`).join("")}`);
+        emit({ change: id, ...shape, summary: planSummary(tasks), advice: planAdviceAccepted(tasks).warnings }, `${planSummary(tasks)}\n${planAdviceAccepted(tasks).warnings.map((a) => `  advice: ${a}\n`).join("")}`);
         return 0;
       }
 
