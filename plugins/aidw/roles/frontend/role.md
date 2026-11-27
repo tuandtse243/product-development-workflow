@@ -53,6 +53,8 @@ parallel. Your rules are in the table below (F1 to F16); the reviewer checks you
 3. A hole in the contract: ask now ("Whom to ask", below), before writing code that guesses. A Consultation covers
    only the hole: build and test the rest, then ask; the Progress note says what waits (only the hole). A hole in the
    design is asked the same way, of `ui-ux-designer`, and the rest of the task is built meanwhile.
+   When the resume brief says "None" under "Consultations left in this run", ask no more: build with what exists (the nearest token, the pattern
+   the design already has) and name the hole under `Owed` in your report.
 4. Apply the design tokens (F2, F15):
    - Map `tokens.yaml` once to CSS variables or the project's theme, and use those names; never paste a token's value.
    - Apply each token where its **Use** says: the accent on what the Use names, not on every highlight.
