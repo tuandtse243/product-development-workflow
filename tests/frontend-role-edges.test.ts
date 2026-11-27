@@ -89,8 +89,9 @@ describe("pack detection matrix (real detectProject + packsFor)", () => {
     const fw = (deps: Record<string, string>) => detectProject(root(pkg(deps))).stack.framework;
     expect(fw({ "@remix-run/react": "^2.15.0" })).toMatch(/^Remix /);
     expect(fw({ "react-router": "^7.1.0", "@react-router/dev": "^7.1.0" })).toMatch(/^React Router framework mode /);
-    expect(fw({ "react-router": "^7.1.0" })).toBe("React Router 7.1.0");
-    expect(fw({ "react-router-dom": "^6.28.0" })).toBeUndefined(); // the v6 DOM package alone says nothing about a framework
+    expect(fw({ "react-router": "^7.1.0" })).toBeUndefined(); // the library is the `router`, not a framework
+    expect(detectProject(root(pkg({ "react-router": "^7.1.0" }))).stack.router).toBe("React Router 7.1.0");
+    expect(fw({ "react-router-dom": "^6.28.0" })).toBeUndefined();
   });
 
   it("react-router in library mode and TanStack Router are SPAs: vite-react", () => {
@@ -628,3 +629,66 @@ describe("frontend docs and the research report agree", () => {
     expect(readFileSync(join(plugin, "agents/ui-ux-designer.md"), "utf8")).toMatch(/Consultation/);
   });
 });
+
+// ---------------------------------------------------------------- fixes after the first edge run
+
+describe("author Roles never write in a task's worktree", () => {
+  it("api-designer and ui-ux-designer are denied a worktree file while the build is open; the implementer of T02 is allowed", () => {
+    const rootDir = approvedProject({ design: true });
+    const file = join(rootDir, ".aidw/run/worktrees", ID, "T02/app/page.tsx");
+    for (const who of ["aidw:api-designer", UX, "aidw:software-architect"]) expect(writeAs(rootDir, file, who), who).toBe("deny");
+    expect(writeAs(rootDir, file, "aidw:frontend")).toBe("allow");
+  });
+});
+
+describe("a backend framework beside a router or Remix", () => {
+  it("react-router, react-router-dom and TanStack Router are the `router`, not the framework", () => {
+    for (const r of ["react-router", "react-router-dom", "@tanstack/react-router"]) {
+      const s = detectProject(root(pkg({ ...REACT_VITE, [r]: "^7.0.0" }))).stack;
+      expect(s.router, r).toBeTruthy();
+      expect(s.framework, r).toBeUndefined();
+    }
+  });
+
+  it("@remix-run/router alone is no Remix app, and the Remix app packages are", () => {
+    expect(detectProject(root(pkg({ "@remix-run/router": "^1.20.0" }))).stack.framework).toBeUndefined();
+    expect(detectProject(root(pkg({ "@remix-run/node": "^2.15.0" }))).stack.framework).toMatch(/^Remix/);
+  });
+
+  it("NestJS beside Remix is the `backend`, and Remix keeps the `framework`", () => {
+    const s = detectProject(root(pkg({ "@remix-run/react": "^2.15.0", "@nestjs/core": "^10.4.0" }))).stack;
+    expect(s.framework).toMatch(/^Remix/);
+    expect(s.backend).toMatch(/^NestJS/);
+  });
+});
+
+describe("skills and packs, review follow-ups", () => {
+  it("a frontend Supabase client path loads the data skills but not the API pair", () => {
+    expect(ids(task({ role: "frontend", touches: ["src/lib/supabase.ts"] }))).toEqual(expect.arrayContaining(DATA));
+  });
+
+  it("fullstack in a NestJS + Vite + React root gets both packs and react-rules", () => {
+    const dir = root(pkg({ ...REACT_VITE, "@nestjs/core": "^10.4.0" }));
+    expect(packs(dir, "fullstack").sort()).toEqual(["nestjs", "vite-react"]);
+    const skills = packsFor(plugin, detectProject(dir).stack, "fullstack").flatMap((p) => p.skills);
+    expect(skills).toContain("aidw/react-rules");
+    expect(skills).toContain("aidw/nestjs-rules");
+  });
+
+  it("the review of a frontend task in a NestJS + Vite root loads no NestJS or Django review skills", () => {
+    const rootDir = approvedProject({ design: true });
+    write(rootDir, "package.json", JSON.stringify({ name: "x", dependencies: { ...REACT_VITE, "@nestjs/core": "^10.4.0" } }));
+    const got = briefSkills(rootDir, "T02", "review");
+    expect(got.filter((s) => /nestjs|django/.test(s))).toEqual([]);
+  });
+
+  it("a frontend task with Touches under src/features is offered ui-ux-designer once the design exists", () => {
+    const rootDir = approvedProject({ design: true });
+    write(rootDir, `.aidw/changes/${ID}/tasks.yaml`, TASKS.replace('touches: ["app/(site)/**"]', 'touches: ["src/features/booking/**"]'));
+    expect(taskConsultable(pathsFor(rootDir), ID, taskOf2(rootDir, "T02"), plugin).roles).toContain("ui-ux-designer");
+  });
+});
+
+function taskOf2(rootDir: string, id: string): Task {
+  return parseTasks(readFileSync(join(rootDir, ".aidw/changes", ID, "tasks.yaml"), "utf8")).tasks.find((t) => t.id === id)!;
+}
