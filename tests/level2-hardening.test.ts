@@ -268,6 +268,27 @@ describe("L3: what counts as a read", () => {
     expect(wasRead(bash('for f in a.md b.md; do echo "$f"; done'), "a.md", ctx)).toBe(false);
     expect(wasRead(bash('for f in a.md; do cat other.txt; echo "$f"; done'), "a.md", ctx)).toBe(false);
     expect(wasRead(bash('for f in b.md; do cat "$f"; done'), "a.md", ctx)).toBe(false);
+    // the email case's run: a cd first, an unquoted $f, and a list of six files
+    expect(wasRead(bash('cd /w/copy && for f in .aidw/c/api.md .aidw/c/data.md .aidw/constitution.md; do echo "=== $f"; cat $f; done'), ".aidw/c/api.md", ctx)).toBe(true);
+  });
+  it("reads a path relative to a folder the command went to first", () => {
+    // the email case's third run
+    expect(wasRead(bash("cd /w/copy/.aidw && cat changes/c/api.md changes/c/data.md"), ".aidw/changes/c/api.md", ctx)).toBe(true);
+    expect(wasRead(bash("cd .aidw && head -50 changes/c/api.md"), ".aidw/changes/c/api.md", ctx)).toBe(true);
+    // another folder: the same tail names another file
+    expect(wasRead(bash("cd /elsewhere && cat changes/c/api.md"), ".aidw/changes/c/api.md", ctx)).toBe(false);
+    // a cd and no read
+    expect(wasRead(bash("cd /w/copy/.aidw && ls changes/c/api.md"), ".aidw/changes/c/api.md", ctx)).toBe(false);
+  });
+  it("counts a plugin file read through aidw plugin-path, directly, through a variable or in a loop", () => {
+    const ref = "plugin:roles/backend/skills/s.md";
+    expect(wasRead(bash('P=$(aidw plugin-path roles/backend/skills/s.md) && cat "$P"'), ref, ctx)).toBe(true);
+    expect(wasRead(bash('cat "$(aidw plugin-path roles/backend/skills/s.md)"'), ref, ctx)).toBe(true);
+    expect(wasRead(bash('for s in roles/backend/lessons.md roles/backend/skills/s.md; do p=$(aidw plugin-path $s); cat "$p"; done'), ref, ctx)).toBe(true);
+    // only looked up, never read
+    expect(wasRead(bash("aidw plugin-path roles/backend/skills/s.md"), ref, ctx)).toBe(false);
+    // another file read
+    expect(wasRead(bash('cat "$(aidw plugin-path roles/backend/skills/other.md)"'), ref, ctx)).toBe(false);
   });
   it("counts Grep and Glob over a folder that holds the file, not over another one", () => {
     expect(wasRead([{ name: "Grep", input: { pattern: "x", path: "/p/roles" } }], "plugin:roles/backend/skills/s.md", ctx)).toBe(true);

@@ -911,8 +911,27 @@ export function wasRead(calls: ToolCall[], ref: string, ctx: { project: string; 
     }
     if (c.name === "Bash" && typeof c.input.command === "string") {
       const cmd = c.input.command;
-      if (cmd.split(/;|&&|\|\||\||&|\n/).some((seg) => READ_VERB.test(seg) && names.some((n) => seg.includes(n)))) return true;
-      return loopReads(cmd).some((list) => names.some((n) => list.includes(n)));
+      const segs = cmd.split(/;|&&|\|\||\||&|\n/);
+      // A path relative to a folder the command went to first (`cd .aidw && cat changes/x/api-contract.md`).
+      let cwd = ctx.project;
+      for (const seg of segs) {
+        const cd = /^\s*cd\s+(?:"([^"]+)"|'([^']+)'|(\S+))\s*$/.exec(seg);
+        if (cd) {
+          cwd = resolve(cwd, cd[1] ?? cd[2] ?? cd[3] ?? ".");
+          continue;
+        }
+        if (!READ_VERB.test(seg)) continue;
+        const here = norm(cwd) === norm(ctx.project) ? [] : [relative(cwd, abs), relative(norm(cwd), abs)].filter((r) => r && !r.startsWith(".."));
+        if ([...names, ...here].some((n) => seg.includes(n))) return true;
+      }
+      if (loopReads(cmd).some((list) => names.some((n) => list.includes(n)))) return true;
+      // A plugin file found through `aidw plugin-path` and read in the same command: `cat "$(aidw plugin-path R)"`,
+      // `P=$(aidw plugin-path R) && cat "$P"`, or a loop over Role paths whose body reads `$(aidw plugin-path $s)`.
+      if (plugin && READ_VERB.test(cmd) && !isAbsolute(rel)) {
+        const esc = rel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        if (new RegExp(`plugin-path\\s+["']?${esc}["']?(?=[\\s)"';&|]|$)`).test(cmd)) return true;
+        if (loopReads(cmd, true).some((list) => list.includes(` ${rel} `))) return true;
+      }
     }
     return false;
   });
@@ -921,13 +940,18 @@ export function wasRead(calls: ToolCall[], ref: string, ctx: { project: string; 
 /**
  * The word lists of the `for VAR in LIST; do BODY; done` loops of a command whose body reads `$VAR` (`for f in a b; do
  * cat "$f"; done`): every file in such a list was read, though no part of the command names a file next to a verb.
+ * With `viaPluginPath`, a body that looks `$VAR` up with `aidw plugin-path` and reads something counts too.
  */
-function loopReads(cmd: string): string[] {
+function loopReads(cmd: string, viaPluginPath = false): string[] {
   const lists: string[] = [];
   for (const m of cmd.matchAll(/\bfor\s+([A-Za-z_]\w*)\s+in\s+([^;\n]*)[;\n]\s*do\b([\s\S]*?)\bdone\b/g)) {
     const [, v, list, body] = m;
     const usesVar = new RegExp(`\\$(?:${v}\\b|\\{${v}\\})`);
-    if ((body ?? "").split(/;|&&|\|\||\||&|\n/).some((seg) => READ_VERB.test(seg) && usesVar.test(seg))) lists.push(` ${list} `);
+    const b = body ?? "";
+    const reads = viaPluginPath
+      ? new RegExp(`plugin-path\\s+["']?\\$(?:${v}\\b|\\{${v}\\})`).test(b) && READ_VERB.test(b)
+      : b.split(/;|&&|\|\||\||&|\n/).some((seg) => READ_VERB.test(seg) && usesVar.test(seg));
+    if (reads) lists.push(` ${(list ?? "").trim().split(/\s+/).join(" ")} `);
   }
   return lists;
 }
