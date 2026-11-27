@@ -23,7 +23,7 @@ import { changedSince, git, headCommit, isGitRepo, junkMessage, stagedJunk } fro
 import { matchesAny } from "./glob.js";
 import { detectProject } from "./detect.js";
 import { defaultTaskRole, implementerOf, loadRole, loadRuleTable } from "./roles.js";
-import { packsFor, packsOf } from "./stackpacks.js";
+import { packsFor } from "./stackpacks.js";
 import { OpError, transition } from "./ops.js";
 import { readText, rel, walkFiles, type Paths } from "./project.js";
 import { planWaveBeside, closeConflict, conflictPartners, ensureWorktree, recordConflict, updateConflict, removeSnapshot, snapshotBase, integrate, mergeWorktree, parallelConfig, pendingIntegration, planWave, removeWorktree, taskDir, type IntegrateResult } from "./parallel.js";
@@ -1342,7 +1342,7 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
   const fromPacks =
     kind === "implement"
       ? builderPacks.flatMap((k) => k.skills.map((id) => ({ id, reason: `the project is built with ${k.framework} (framework pack)` })))
-      : packsOf(pluginHome, stackNow, builder).flatMap((k) => k.reviewSkills.map((id) => ({ id, reason: `review of ${k.framework} code (framework pack)` })));
+      : builderPacks.flatMap((k) => k.reviewSkills.map((id) => ({ id, reason: `review of ${k.framework} code (framework pack)` })));
   const ruleFiles = [builder, ...(loadRole(pluginHome, builder)?.follows_rules ?? [])]
     .map((r) => ({ role: r, file: join(pluginHome, "roles", r, "rules.md") }))
     .filter((x) => existsSync(x.file))

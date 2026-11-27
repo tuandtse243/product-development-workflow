@@ -140,7 +140,7 @@ export function contractAuthors(p: Paths, id: string, task: Task, pluginRoot: st
     registry = null;
   }
   if (!registry) return [];
-  const names = BRIEF_READS.filter((r) => !r.ui || touchesUi(task)).map((r) => r.name);
+  const names = BRIEF_READS.filter((r) => !r.ui || touchesUi(task) || task.role === "frontend").map((r) => r.name);
   const owners = new Set<string>();
   for (const n of names) {
     const e = registry[n];
