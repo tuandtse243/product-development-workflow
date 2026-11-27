@@ -75,3 +75,35 @@ describe("implementers follow a precedence and report a mismatch in three lines 
     expect(read("agents/backend.md")).toMatch(/^Why this matters: /m);
   });
 });
+
+describe("discovery asks product questions, and the app answers what it already does (D1, D3)", () => {
+  const start = read("skills/start/SKILL.md");
+  const pm = read("roles/product-manager/role.md");
+  const frame = read("roles/product-manager/skills/discovery-frame.md");
+
+  it("the orchestrator sets the Size and never asks it on a discovery page (D1)", () => {
+    expect(start).toMatch(/set the size yourself[\s\S]{0,200}not a question on a discovery page/i);
+    expect(pm).toMatch(/Set the size yourself/);
+    expect(pm).toMatch(/Do not ask the user/);
+    expect(frame).toMatch(/size of the Change is not a question/i);
+  });
+
+  it("a question whose options are mechanisms becomes a product rule, the mechanism is deferred (D1)", () => {
+    for (const t of [start, pm, frame]) {
+      expect(t).toMatch(/mechanism/i);
+      expect(t).toMatch(/Deferred to\s+architecture/);
+    }
+    expect(start).toMatch(/Rewrite such a question\s+as the product rule/);
+  });
+
+  it("an answer that only copies the app is assumed with file:line, not asked (D3)", () => {
+    expect(start).toMatch(/Before asking the user anything in chat, check whether your\s+recommended answer only copies how the app already behaves/);
+    expect(start).toContain("Assumed: <answer> (copies <file:line>)");
+    expect(start).toMatch(/which the gate shows/);
+  });
+
+  it("no internal note reaches the user, and every user line is in the user's language (D3)", () => {
+    expect(start).toMatch(/Never write an internal note/);
+    expect(start).toMatch(/in the user's language/);
+  });
+});
