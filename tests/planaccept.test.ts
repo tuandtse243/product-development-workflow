@@ -65,6 +65,7 @@ describe("plan warning codes and accept:", () => {
     expect(check([{ warn: "large-task" }]).join("\n")).toMatch(/needs a "why"/);
     expect(check([{ warn: "large-task", why: "  " }]).join("\n")).toMatch(/needs a "why"/);
     expect(check([{ warn: "depends-without-overlap", on: "T99", why: "x" }]).join("\n")).toMatch(/unknown task "T99"/);
+    expect(check([{ warn: "depends-without-overlap", why: "x" }]).join("\n")).toMatch(/needs "on"/);
     expect(check([{ warn: "large-task", why: WHY_BIG }])).toEqual([]);
   });
 

@@ -41,6 +41,8 @@ export function acceptProblems(t: object, ids: ReadonlySet<string>): string[] {
     }
     if (typeof r.why !== "string" || !r.why.trim()) out.push(`${at} needs a "why": the reason the plan keeps what the warning names`);
     if (r.on !== undefined && !(typeof r.on === "string" && ids.has(r.on))) out.push(`${at} names unknown task "${String(r.on)}" in "on"`);
+    // a pair warning accepted without its other task would cover every pair of the task
+    if (r.warn === "depends-without-overlap" && r.on === undefined) out.push(`${at} needs "on": the task this depends_on names`);
   });
   return out;
 }
