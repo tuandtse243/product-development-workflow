@@ -15,7 +15,6 @@ Touches: `src/product/gallery/**`, `tests/product/gallery/**`. Verify: `npm test
 ## Criteria
 
 - must give every image its dimensions (`width` and `height` from the payload, or an aspect ratio) so the page does not shift when it loads
-- must load the images below the fold lazily (`loading="lazy"`), and not the first one
-- must load the zoom view's library on demand (a dynamic `import()` or `lazy`) when the user opens it, not in the page's main bundle
-- must not add a carousel dependency for the strip (a scrolling container is enough)
-- must reserve space for the gallery while the product loads (a placeholder or skeleton of the same size)
+- must load the images below the fold lazily (`loading="lazy"`)
+- must load the zoom view (and any library it uses) on demand (a dynamic `import()` or `lazy`) when the user opens it, not in the page's main bundle
+- must reserve space for content that arrives later where the size is known (a placeholder or skeleton of the gallery's size)

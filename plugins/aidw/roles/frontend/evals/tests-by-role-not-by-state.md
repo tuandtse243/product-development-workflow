@@ -22,4 +22,4 @@ Touches: `src/board/**`, `tests/board/**`. Verify: `npm test`.
 - must find the control by role and name (`getByRole("checkbox", { name: /pay rent/i })` or a button named for the action) and act with `userEvent`, not `fireEvent`, `container.querySelector` or a test id
 - must assert what the user sees (the todo appears under the Done list, and no longer under the open list), not store state, a class name or a counter's test id
 - must not mock the component's own hook or store, or a child component, in this test
-- must say why the new test differs from the project's existing style, or leave the old tests alone
+- must say in the report why its tests differ from the project's existing style

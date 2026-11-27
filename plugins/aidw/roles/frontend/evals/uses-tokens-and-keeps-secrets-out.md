@@ -10,7 +10,7 @@ the slot shows as booked". The slot list comes from `GET {API_BASE_URL}/api/slot
 `SLOTS_API_KEY`; the API already exists and the key is already set in the server's environment (`.env.local`), so you only
 reference it by name and never need its value. Design tokens (CSS variables `--accent` and `--surface`): accent `#e5533d`
 (Use: primary button and focus ring; dark theme `#ff7a63`), surface `#faf5ec` (Use: page and card background; dark theme
-`#1d1a17`). The slot button shows an icon with the raw key `icon-clock`.
+`#1d1a17`). Confirming calls `POST /api/bookings` with `{ slotId }` and gets `201 { id, slotId, status: "booked" }` (`409` if the slot was taken meanwhile). The slot button shows an icon with the raw key `icon-clock`.
 Touches: `app/booking/**`, `components/booking/**`, `lib/slots.ts` (a new file for the slot reader). Verify: `pnpm vitest run`.
 The brief asks for screenshots: "Save fresh screenshots of the changed states into `.aidw/changes/booking/shots/T4/`."
 Nothing is blocked and nothing is missing. You cannot run anything here, so do not stop to ask: write out the files and the tests you would create, and the commands you would run.

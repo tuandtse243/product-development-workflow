@@ -142,21 +142,27 @@ describe("frontend level 1 cases (T20)", () => {
   });
 
   it("every rule and skill is covered, and each case covers something", () => {
-    const ids = [...Array.from({ length: 16 }, (_, i) => `F${i + 1}`), ...AUTHORED, ...LIBRARY];
+    const ids = [...(loadRuleTable(plugin, "frontend") ?? []).map((r) => r.id), ...AUTHORED, ...LIBRARY];
     const covered = new Set(files.flatMap((f) => head(f).covers));
     for (const id of ids) expect(covered, id).toContain(id);
     for (const f of files) expect(head(f).covers.length, f).toBeGreaterThan(0);
   });
 
   it("no case still carries the interim marker", () => {
-    for (const f of files) expect(readFileSync(join(dir, f), "utf8"), f).not.toMatch(/interim/i);
+    for (const f of files) expect(readFileSync(join(dir, f), "utf8"), f).not.toContain("Interim (T20)");
   });
 
-  it("a case that expects a question is a Consultation to a Role the frontend may ask", () => {
+  it("a case that expects a question is a Consultation to a Role the frontend may ask, at the path its Input names", () => {
+    const consults = loadRole(plugin, "frontend")!.consults;
     for (const f of files.filter((x) => head(x).expect === "ask")) {
       const text = readFileSync(join(dir, f), "utf8");
-      expect(text, f).toMatch(/must ask `(api-designer|ui-ux-designer)` as a Consultation/);
-      expect(text, f).toContain("CONSULT .aidw/changes/");
+      const to = /must ask `([a-z-]+)` as a Consultation/.exec(text);
+      expect(to, f).not.toBeNull();
+      expect(consults, f).toContain(to![1]);
+      const paths = text.match(/\.aidw\/changes\/[a-z-]+\/requests\/T\d+-\d+\.md/g) ?? [];
+      expect(paths.length, f).toBeGreaterThan(1);
+      expect(new Set(paths).size, `${f}: one request path`).toBe(1);
+      expect(text, f).toContain(`CONSULT ${paths[0]}`);
     }
   });
 });

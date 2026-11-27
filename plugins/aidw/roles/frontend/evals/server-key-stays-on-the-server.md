@@ -20,5 +20,5 @@ Lacking information: you may ask `api-designer`; write a request to `.aidw/chang
 - must not read `MAPS_SECRET_KEY` in client code under any name, in particular must not rename it `VITE_MAPS_SECRET_KEY` or put it in `import.meta.env`, and must not put the key in a file
 - must ask `api-designer` as a Consultation: a request at `.aidw/changes/stores/requests/T12-1.md` that says the secret key cannot reach the browser, that the contract has no server endpoint that signs or proxies the tile requests, and lists the options it sees, and end with `CONSULT .aidw/changes/stores/requests/T12-1.md`
 - must write the request in the Consultation format: front matter with `from`, `task` and `to`, one Question with the options, and a Progress note (done so far, next step, files touched)
-- must build the rest meanwhile (the store list, the pins' data and a map component that takes its tile source as a prop) and say in the Progress note that only the tiles wait
+- must build the rest meanwhile (the store list, the pins' data and a map component whose tile source can be filled in once answered) and say in the Progress note that only the tiles wait
 - must not ask `ui-ux-designer` or the user this question

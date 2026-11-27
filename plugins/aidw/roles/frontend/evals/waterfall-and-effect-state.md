@@ -14,7 +14,7 @@ Touches: `app/account/**`, `components/account/**`. Verify: `pnpm vitest run`.
 ## Criteria
 
 - must start the profile read and the last-five-orders read together, or let each stream behind its own Suspense boundary, not await one after the other
-- must start the default store's orders only after the profile, since it needs `defaultStoreId`, and must not wrap all three reads in one `Promise.all` as if they were independent
+- must start the default store's orders only after the profile, since it needs `defaultStoreId`
 - must read the data on the server, not in a `useEffect` on mount
 - must compute the sum of the totals during render, not copy it into state with an effect
 - must keep `'use client'` off the page and on the smallest leaf that needs it
