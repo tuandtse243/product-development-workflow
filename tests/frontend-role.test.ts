@@ -128,3 +128,35 @@ describe("frontend skills (T20)", () => {
     expect(readFileSync(join(skillsDir, "client-data-and-state.md"), "utf8")).toMatch(/`aidw\/react-rules`/);
   });
 });
+
+describe("frontend level 1 cases (T20)", () => {
+  const dir = join(plugin, "roles", "frontend", "evals");
+  const files = readdirSync(dir).filter((f) => f.endsWith(".md"));
+  const head = (f: string) => YAML.parse(/^---\n([\s\S]*?)\n---/.exec(readFileSync(join(dir, f), "utf8"))![1]!) as { case: string; covers: string[]; expect?: string };
+
+  it("has the 13 cases of the plan, each named as its file", () => {
+    expect(files.map((f) => f.replace(/\.md$/, "")).sort()).toEqual(
+      ["uses-tokens-and-keeps-secrets-out", "waterfall-and-effect-state", "contract-has-no-error-for-it", "design-has-no-state-for-it", "search-that-races", "form-mirrors-the-contract", "menu-keyboard-and-focus", "admin-link-is-not-a-guard", "tests-by-role-not-by-state", "comment-with-formatting", "gallery-that-shifts", "prices-for-two-locales", "server-key-stays-on-the-server"].sort(),
+    );
+    for (const f of files) expect(head(f).case, f).toBe(f.replace(/\.md$/, ""));
+  });
+
+  it("every rule and skill is covered, and each case covers something", () => {
+    const ids = [...Array.from({ length: 16 }, (_, i) => `F${i + 1}`), ...AUTHORED, ...LIBRARY];
+    const covered = new Set(files.flatMap((f) => head(f).covers));
+    for (const id of ids) expect(covered, id).toContain(id);
+    for (const f of files) expect(head(f).covers.length, f).toBeGreaterThan(0);
+  });
+
+  it("no case still carries the interim marker", () => {
+    for (const f of files) expect(readFileSync(join(dir, f), "utf8"), f).not.toMatch(/interim/i);
+  });
+
+  it("a case that expects a question is a Consultation to a Role the frontend may ask", () => {
+    for (const f of files.filter((x) => head(x).expect === "ask")) {
+      const text = readFileSync(join(dir, f), "utf8");
+      expect(text, f).toMatch(/must ask `(api-designer|ui-ux-designer)` as a Consultation/);
+      expect(text, f).toContain("CONSULT .aidw/changes/");
+    }
+  });
+});

@@ -304,8 +304,9 @@ Fastify, Hono.
     `ui-ux-designer` now has `access: artifacts` and a procedure for answering a Consultation from frontend (its
     review job is unchanged), and frontend consults `api-designer`, `ui-ux-designer` and `software-architect`. A hole in
     the design is asked of `ui-ux-designer` and the rest of the task is built meanwhile (F2).
-  - Interim: the 2 existing frontend cases carry `covers:` for every rule and skill so roster has 0 errors; the
-    level 1 case task removes the ones listed only for coverage (`uses-tokens-and-keeps-secrets-out` says which).
+  - Level 1 cases (2026-11-28): 13 cases, the 2 existing ones revised plus E1-E11, each `covers:` only what the case
+    can fail without. The interim `covers:` that kept roster at 0 errors is gone; F1-F16 and the five skills plus
+    `library/react-rules` are covered by the cases themselves.
 - The cases of every other active Role have no `covers:` yet; T12 must not fail `aidw roster` for Roles that
   have not been upgraded (require coverage only once a Role's `rules.md` uses the table format).
 - The owner prefers question rounds as an HTML Decision Page with options, examples and a copy-back summary,
