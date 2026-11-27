@@ -72,6 +72,13 @@ interface Spec {
   name: string;
   checks: number;
   wrong: { overlay: string; fails: RegExp[] }[];
+  /** Wrong solutions the held-out tests let pass and a check of checks.yaml catches. */
+  byCheck?: { overlay: string; check: RegExp }[];
+  /**
+   * BUG: wrong solutions that pass the held-out tests and every check today (the case cannot tell them from a right
+   * one). `probe` is a proposed held-out test file (evals/level2-reference/gap-probes/<case>/) that catches the flaw.
+   */
+  gaps?: { overlay: string; probe?: string }[];
 }
 
 const SPECS: Spec[] = [
@@ -82,7 +89,16 @@ const SPECS: Spec[] = [
       { overlay: "charge-once-no-key-store", fails: [/same request sent again after it finished/, /key reused for another request/, /request still running/] },
       { overlay: "charge-once-fresh-provider-key", fails: [/provider does not answer/, /provider charged but its answer was lost/] },
       { overlay: "charge-once-charges-in-transaction", fails: [/request still running/] },
+      { overlay: "charge-once-key-not-scoped", fails: [/keys belong to the caller/] },
+      { overlay: "charge-once-provider-key-not-scoped", fails: [/keys belong to the caller/] },
+      { overlay: "charge-once-no-fingerprint", fails: [/key reused for another request/] },
+      { overlay: "charge-once-fingerprint-without-invoice", fails: [/key reused for another request/] },
+      { overlay: "charge-once-declined-not-stored", fails: [/card declined/] },
+      { overlay: "charge-once-provider-key-per-payment", fails: [/provider does not answer/, /provider charged but its answer was lost/] },
+      { overlay: "charge-once-unavailable-left-in-progress", fails: [/provider does not answer/, /provider charged but its answer was lost/] },
     ],
+    byCheck: [{ overlay: "charge-once-fetch-without-timeout", check: /leak-and-timeout-scan/ }],
+    gaps: [{ overlay: "gap-charge-once-fetch-init-in-variable" }],
   },
   {
     name: "email-after-the-order",
@@ -90,6 +106,17 @@ const SPECS: Spec[] = [
     wrong: [
       { overlay: "email-after-the-order-sends-in-transaction", fails: [/order write fails part way/, /mail provider down/] },
       { overlay: "email-after-the-order-unclaimed-sender", fails: [/sender runs twice at the same moment/, /a send whose answer was lost/] },
+      { overlay: "email-after-the-order-outbox-before-transaction", fails: [/order write fails part way/] },
+      { overlay: "email-after-the-order-marks-sent-first", fails: [/mail provider down/, /gives a confirmation up after 5/] },
+      { overlay: "email-after-the-order-no-retry-cap", fails: [/gives a confirmation up after 5/] },
+      { overlay: "email-after-the-order-no-idempotency-key", fails: [/a send whose answer was lost/] },
+      { overlay: "email-after-the-order-key-per-attempt", fails: [/a send whose answer was lost/] },
+      { overlay: "email-after-the-order-no-timeout", fails: [/sent with a timeout/] },
+      { overlay: "email-after-the-order-claim-without-condition", fails: [/sender runs twice at the same moment/] },
+    ],
+    gaps: [
+      { overlay: "gap-email-after-the-order-outbox-after-commit", probe: "the owed row is in the order's transaction" },
+      { overlay: "gap-email-after-the-order-sends-in-claim-transaction", probe: "holds no transaction open" },
     ],
   },
   {
@@ -99,7 +126,11 @@ const SPECS: Spec[] = [
       { overlay: "two-requests-one-slot-check-then-insert", fails: [/two bookings at once/, /another booking lands between/] },
       // PGlite serialises transactions: only the rival inserted from inside the route's insert catches this one
       { overlay: "two-requests-one-slot-check-in-transaction", fails: [/another booking lands between/] },
+      { overlay: "two-requests-one-slot-for-update-then-insert", fails: [/another booking lands between/] },
+      { overlay: "two-requests-one-slot-on-conflict-without-predicate", fails: [/books a free slot/, /two bookings at once/] },
+      { overlay: "two-requests-one-slot-check-on-team", fails: [/another room and the next hour/] },
     ],
+    gaps: [{ overlay: "gap-two-requests-one-slot-every-error-is-409", probe: "fails for another reason than the slot" }],
   },
 ];
 
@@ -132,6 +163,44 @@ for (const s of SPECS) {
         const failed = failedTests(t.out).join("\n");
         for (const f of w.fails) expect(failed, t.out).toMatch(f);
       }, 600_000);
+    }
+
+    for (const w of s.byCheck ?? []) {
+      it(`the wrong solution ${w.overlay} passes the held-out tests and fails the check that catches it`, () => {
+        const g = graded(caseOf(s.name), s.name, w.overlay);
+        const t = g.heldOut();
+        expect(t.status, t.out).toBe(0);
+        expect(g.check(w.check).pass).toBe(false);
+      }, 600_000);
+    }
+
+    for (const w of s.gaps ?? []) {
+      // it.fails: the body asserts that the case catches the flaw, which it does not today. When a held-out test or
+      // check is added that catches it, this fails: turn it into a `wrong` (or `byCheck`) entry.
+      it.fails(`BUG: the wrong solution ${w.overlay} is caught by the held-out tests or a check (it is not)`, () => {
+        const c = caseOf(s.name);
+        const g = graded(c, s.name, w.overlay);
+        const t = g.heldOut();
+        const failedChecks = t.status === 0 ? c.checks.filter((ch) => !runCheck(ch, g.project, g.env).pass).map((ch) => ch.name) : [];
+        expect(t.status !== 0 || failedChecks.length > 0, `${t.out}\nfailed checks: ${failedChecks.join(", ")}`).toBe(true);
+      }, 600_000);
+
+      if (w.probe) {
+        it(`a proposed held-out test (${w.probe}) passes the correct solution and catches ${w.overlay}`, () => {
+          const probe = (overlays: string[]) => {
+            const g = graded(caseOf(s.name), ...overlays);
+            cpSync(join(reference, "gap-probes", s.name), g.project, { recursive: true });
+            const r = spawnSync("sh", ["-c", `npm test --silent -- tests/held-out/gap-probes.test.ts -t "${w.probe}"`], { cwd: g.project, env: g.env, encoding: "utf8", timeout: 240_000 });
+            return { status: r.status, out: `${r.stdout}${r.stderr}`.replace(/\x1b\[[0-9;]*m/g, "") };
+          };
+          const right = probe([s.name]);
+          expect(right.status, right.out).toBe(0);
+          expect(right.out).toMatch(/1 passed/);
+          const wrong = probe([s.name, w.overlay]);
+          expect(wrong.status, wrong.out).not.toBe(0);
+          expect(failedTests(wrong.out).join("\n"), wrong.out).toContain(w.probe);
+        }, 600_000);
+      }
     }
 
     it("the untouched fixture fails the held-out tests, route-inventory and the scenario-id check", () => {
