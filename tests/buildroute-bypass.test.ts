@@ -132,6 +132,12 @@ describe("route: a plugin loaded from a directory is passed to the runner", () =
     expect(r.command).toBe(`${PLUGIN}/bin/aidw run ${ID} --detach --permission-mode auto -- --plugin-dir ${PLUGIN}`);
     expect(r.next).toMatch(/asks the user to confirm, because aidw is loaded from a folder/);
     expect(buildRoute(ID, 4, `${PLUGIN}/bin/aidw`).next).not.toMatch(/asks the user/);
+    // B-D2: with no terminal nothing asks, and the line says so; the command is the same
+    const headless = buildRoute(ID, 4, `${PLUGIN}/bin/aidw`, PLUGIN, false);
+    expect(headless.next).toMatch(/no terminal is attached, so the start runs without asking/);
+    expect(headless.next).not.toMatch(/the start asks the user to confirm/);
+    expect(headless.command).toBe(r.command);
+    expect(buildRoute(ID, 4, `${PLUGIN}/bin/aidw`, undefined, false).next).not.toMatch(/asks the user|asking/);
     const home = realpathSync(mkdtempSync(join(tmpdir(), "aidw-home-")));
     const installed = join(home, ".claude", "plugins", "cache", "aidw");
     mkdirSync(installed, { recursive: true });

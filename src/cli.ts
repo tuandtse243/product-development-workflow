@@ -1745,7 +1745,7 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const { kept, reopened } = reconcileDoneTasks(p, id);
         // D2: the CLI, not the session, decides where the build runs.
         const root = pluginRoot(env);
-        const route = buildRoute(id, tasksLeft(p, id), join(root, "bin", "aidw"), installedOutside(root, p.project) ? undefined : root);
+        const route = buildRoute(id, tasksLeft(p, id), join(root, "bin", "aidw"), installedOutside(root, p.project) ? undefined : root, Boolean(process.stdin.isTTY && process.stdout.isTTY));
         emit(
           { ok: true, id, hash, files, kept, reopened, route },
           `approved ${id}${by === "user" ? "" : ` by ${by}`}\n  ${hash}\n  covers ${files.length} file(s)\n${kept.length ? `  done work kept: ${kept.join(", ")}\n` : ""}${reopened.length ? `  edited tasks run again: ${reopened.join(", ")}\n` : ""}${route.next}\n`,

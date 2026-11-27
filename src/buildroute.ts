@@ -35,12 +35,20 @@ export function runnerCommand(id: string, aidw: string, pluginDir?: string): str
 /**
  * The route for a Change with `tasks` tasks left; `aidw` is the CLI as the orchestrator should type it, `pluginDir` the
  * plugin directory when aidw is loaded from a folder rather than installed. Only the start of an installed plugin is
- * allowed by the gate without asking; from a folder the user confirms it at a prompt.
+ * allowed by the gate without asking; from a folder the user confirms it at a prompt, when a terminal is attached
+ * (`tty`).
  */
-export function buildRoute(id: string, tasks: number, aidw = "aidw", pluginDir?: string): BuildRoute {
+export function buildRoute(id: string, tasks: number, aidw = "aidw", pluginDir?: string, tty = true): BuildRoute {
   if (tasks > RUNNER_THRESHOLD) {
     const command = runnerCommand(id, aidw, pluginDir);
-    const asks = pluginDir ? "; the start asks the user to confirm, because aidw is loaded from a folder" : "";
+    // The confirmation is Claude Code's permission prompt (the gate answers "ask"); it needs a terminal to show it. With
+    // none (claude -p, a pipe) nothing asks, so the line says so (B-D2). The command itself is the same either way, so a
+    // headless orchestrator keeps working.
+    const asks = pluginDir
+      ? tty
+        ? "; the start asks the user to confirm, because aidw is loaded from a folder"
+        : "; no terminal is attached, so the start runs without asking the user to confirm (with a terminal it would ask, because aidw is loaded from a folder)"
+      : "";
     return {
       mode: "runner",
       tasks,
