@@ -8,18 +8,46 @@ export interface Mail {
   text: string;
 }
 
-export interface Mailer {
-  send(mail: Mail): Promise<void>;
+/**
+ * `timeoutMs`: how long the provider may take; left out, its HTTP client waits as long as the connection stays open.
+ * `idempotencyKey`: the provider sends a mail once per key, so sending again with the same key after a lost answer
+ * does not send it twice.
+ */
+export interface SendOptions {
+  timeoutMs?: number;
+  idempotencyKey?: string;
 }
 
-/** Keeps every mail in `sent`; `failWith` makes the next sends throw (to test a failing provider). */
-export function memoryMailer(): Mailer & { sent: Mail[]; failWith: Error | null } {
+export interface Mailer {
+  send(mail: Mail, opts?: SendOptions): Promise<void>;
+}
+
+/**
+ * A fake provider. `calls` keeps every call, `sent` every mail the provider sent (one per idempotency key, as the real
+ * one does). `failWith` makes the next calls throw before anything is sent (the provider is down); `failAfterSend`
+ * makes them throw after the mail was sent (the answer was lost, as on a timeout).
+ */
+export function memoryMailer(): Mailer & {
+  sent: Mail[];
+  calls: { mail: Mail; opts?: SendOptions }[];
+  failWith: Error | null;
+  failAfterSend: Error | null;
+} {
+  const keys = new Set<string>();
   const m = {
     sent: [] as Mail[],
+    calls: [] as { mail: Mail; opts?: SendOptions }[],
     failWith: null as Error | null,
-    async send(mail: Mail) {
+    failAfterSend: null as Error | null,
+    async send(mail: Mail, opts?: SendOptions) {
+      m.calls.push({ mail, ...(opts ? { opts } : {}) });
       if (m.failWith) throw m.failWith;
-      m.sent.push(mail);
+      const key = opts?.idempotencyKey;
+      if (!key || !keys.has(key)) {
+        if (key) keys.add(key);
+        m.sent.push(mail);
+      }
+      if (m.failAfterSend) throw m.failAfterSend;
     },
   };
   return m;

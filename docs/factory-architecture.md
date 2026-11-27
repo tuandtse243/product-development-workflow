@@ -763,10 +763,17 @@ In the user's project, `.aidw/` keeps its current shape and gains `roles/<id>/` 
   laid over the project at the same relative path after the session ends). A path in `must_read` is relative to the
   project, or `plugin:<path>` for a plugin file. Level 1 never reads these folders, and they are not part of level 1's
   shared digest.
-- **The fixture.** `evals/fixtures/<name>` is a small real project with a committed lockfile and an aidw Change made
-  with the CLI (for backend: `backend-api`, Express 5, TypeScript, PGlite, Vitest, Change `create-task`; one PGlite per
-  test file with every table emptied per test, one HTTP server per test, files one at a time, so its suite holds under
-  parallel load). Its files are what git lists in it. Its packages are installed once (`npm ci --ignore-scripts`, needs
+- **The fixture.** `evals/fixtures/<name>` is a small real project with a committed lockfile and aidw Changes made
+  with the CLI, all executing (for backend: `backend-api`, Express 5, TypeScript, PGlite, Vitest, Changes `create-task`,
+  `pay-an-invoice`, `place-an-order` and `book-a-room`, one per case, each case naming its own with `change:`; one
+  PGlite per test file with every table emptied per test, requests served in-process by `tests/http.ts`, files one at a
+  time, so its suite holds under parallel load). Every Change's approved package holds the fixture's `constitution.md`,
+  `domain/` and `architecture/`: editing one of them is drift for all of its Changes, which are then re-approved with
+  the CLI (escalated, analyzing, plan review, approve, executing); the plan-review verdicts of these fixture
+  re-approvals are written by hand (they say what changed) and are not a real review. PGlite
+  runs one statement at a time, so a held-out test of a race makes it real by delaying each statement outside a
+  transaction (requests sent at once then interleave) and, where a read then a write inside one transaction must fail,
+  by a BEFORE INSERT trigger that stores the rival row inside the route's own insert. Its files are what git lists in it. Its packages are installed once (`npm ci --ignore-scripts`, needs
   the network) into a cache keyed by the lockfile: `$AIDW_FIXTURE_CACHE`, else `$XDG_CACHE_HOME/aidw/fixtures`, else
   `~/.cache/aidw/fixtures`. The entry is made read-only and its digest is recorded in `.complete`; an entry that changed
   is refused (delete it to reinstall), and a finished entry is never deleted by a run. Each run copies the fixture to a
@@ -810,7 +817,7 @@ In the user's project, `.aidw/` keeps its current shape and gains `roles/<id>/` 
   (committed, replaced or excluded changes included); then files git ignores are removed (but `.aidw/`, which holds the
   report), the `node_modules` links are made afresh, and the files the grading runs are put back from the snapshot:
   `package.json`, the lockfile, `.npmrc`, `tsconfig.json`, the vitest and vite configs, `.gitignore`, and the case's
-  `restore:` (the backend pilot: `tests/helpers.ts`). Held-out files are written only inside the project (a symlink on
+  `restore:` (the backend cases: `tests/helpers.ts` and `tests/http.ts`, removed when the base has none). Held-out files are written only inside the project (a symlink on
   the way is removed).
 - **Grading, in order.** (1) The held-out tests: with vitest from the cached packages and the fixture's own config
   (`node_modules/.bin/vitest run --config <config>`), else the fixture's `npm test -- <files>`; with vitest, a run that

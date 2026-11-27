@@ -2,6 +2,7 @@
 case: team-comes-from-the-session
 covers: [B2, B3, endpoint-test-matrix]
 fixture: backend-api
+change: create-task
 task: T01
 restore: [tests/helpers.ts, tests/http.ts]
 must_read:

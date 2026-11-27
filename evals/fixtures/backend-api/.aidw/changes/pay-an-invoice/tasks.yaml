@@ -1,0 +1,18 @@
+tasks:
+  - id: T01
+    title: Pay an invoice once per Idempotency-Key
+    role: backend
+    type: feat
+    specs: [payments/pay-an-invoice]
+    scenarios:
+      - payments/pay-an-invoice/member-pays-an-invoice
+      - payments/pay-an-invoice/no-session
+      - payments/pay-an-invoice/invoice-of-another-team
+      - payments/pay-an-invoice/same-request-sent-again
+      - payments/pay-an-invoice/key-reused-for-another-request
+      - payments/pay-an-invoice/request-still-running
+      - payments/pay-an-invoice/provider-does-not-answer
+    depends_on: []
+    touches: ["src/payments/**", "tests/payments/**", "src/app.ts"]
+    verify: ["npm test", "npm run typecheck"]
+    status: pending

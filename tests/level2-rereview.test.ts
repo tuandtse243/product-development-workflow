@@ -1,5 +1,5 @@
 import { execFileSync, spawn } from "node:child_process";
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
@@ -52,6 +52,8 @@ function setup() {
   const fixtures = temp("aidw-l2r-fixtures-");
   const fx = join(fixtures, "tiny-app");
   cpSync(join(realFixture, ".aidw"), join(fx, ".aidw"), { recursive: true });
+  // only the pilot's Change: a case of the tiny fixture names none
+  for (const id of readdirSync(join(fx, ".aidw", "changes"))) if (id !== "create-task" && id !== ".gitkeep") rmSync(join(fx, ".aidw", "changes", id), { recursive: true });
   put(fx, "package.json", JSON.stringify({ name: "tiny-app", private: true, scripts: { test: "node run-tests.mjs" } }));
   put(fx, "package-lock.json", JSON.stringify({ name: "tiny-app", lockfileVersion: 3, packages: {} }));
   put(fx, ".gitignore", "node_modules\n");

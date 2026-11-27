@@ -1,0 +1,37 @@
+# Machine checks of a level 2 run, after the held-out tests. Each command runs in the temp copy with `sh -c`; the
+# plugin's bin/ is first on PATH, $AIDW_BASE is the commit the Agent started from, and $AIDW_CHANGED names a file that
+# lists the files the session changed. A check passes when the command exits with `exit` (default 0), its stdout parsed
+# as JSON contains `json` (a subset; a string "/re/" is a regex) and its output matches `matches` (a regex), each when
+# given.
+checks:
+  - name: the route has its three access tests (B2, route-inventory)
+    run: node "$(aidw plugin-path roles/backend/scripts/route-inventory.mjs)" --base "$AIDW_BASE" .
+    expect:
+      json:
+        routes:
+          - method: POST
+            path: "/^\\/api\\/invoices\\/:[A-Za-z]+\\/payments$/"
+            accessCases: { noIdentity: true, otherUser: true, owner: true }
+  - name: every scenario id names a test in tests/payments
+    run: >-
+      for id in member-pays-an-invoice no-session invoice-of-another-team same-request-sent-again
+      key-reused-for-another-request request-still-running provider-does-not-answer;
+      do grep -rqF "payments/pay-an-invoice/$id" tests/payments || { echo "no test names payments/pay-an-invoice/$id"; exit 1; }; done
+  - name: no added outbound call without a timeout and no risky log line (B12, B14, leak-and-timeout-scan)
+    run: node "$(aidw plugin-path roles/backend/scripts/leak-and-timeout-scan.mjs)" --base "$AIDW_BASE" .
+    expect:
+      json:
+        summary: { timeout: 0, leak: 0 }
+  - name: the whole suite passes
+    run: npm test
+  - name: the typecheck passes
+    run: npm run typecheck
+  - name: nothing outside Touches changed (B15)
+    # Against the base commit, so a commit cannot hide a change. $AIDW_CHANGED lists the files the session changed, taken
+    # before the harness put back the files the grading runs; run by hand, the list is taken from git. The gateway
+    # (src/billing/) and the schema are outside Touches.
+    run: >-
+      changed=$(if [ -n "$AIDW_CHANGED" ]; then cat "$AIDW_CHANGED"; else git diff --name-only "$AIDW_BASE";
+      git ls-files --others --exclude-standard; fi);
+      out=$(printf '%s\n' "$changed" | grep -vE '^(src/payments/|tests/payments/|tests/held-out/|src/app\.ts$|\.aidw/)' | grep -v '^$');
+      test -z "$out" || { echo "$out"; exit 1; }
