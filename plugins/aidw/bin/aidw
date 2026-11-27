@@ -15945,6 +15945,39 @@ var isSymlink = (f) => {
   }
 };
 
+// src/plancodes.ts
+var PLAN_WARNING_CODES = ["one-chain", "depends-without-overlap", "narrow-plan", "large-task", "catch-all-touches"];
+function taskAccepts(t) {
+  const acc = t.accept;
+  if (!Array.isArray(acc)) return [];
+  const out = [];
+  for (const e of acc) {
+    const r = e;
+    if (r && typeof r === "object" && typeof r.warn === "string" && typeof r.why === "string" && r.why.trim()) {
+      out.push({ warn: r.warn, why: r.why.trim(), ...typeof r.on === "string" ? { on: r.on } : {} });
+    }
+  }
+  return out;
+}
+function acceptProblems(t, ids) {
+  const acc = t.accept;
+  if (acc === void 0) return [];
+  if (!Array.isArray(acc)) return [': "accept" must be a list of { warn, on?, why } entries'];
+  const out = [];
+  acc.forEach((e, i) => {
+    const r = e;
+    const at = `: accept #${i + 1}`;
+    if (!r || typeof r !== "object" || Array.isArray(r)) return void out.push(`${at} is not a mapping with warn and why`);
+    if (typeof r.warn !== "string" || !PLAN_WARNING_CODES.includes(r.warn)) {
+      out.push(`${at} has unknown warning code "${String(r.warn)}" (expected ${PLAN_WARNING_CODES.join(", ")})`);
+    }
+    if (typeof r.why !== "string" || !r.why.trim()) out.push(`${at} needs a "why": the reason the plan keeps what the warning names`);
+    if (r.on !== void 0 && !(typeof r.on === "string" && ids.has(r.on))) out.push(`${at} names unknown task "${String(r.on)}" in "on"`);
+    if (r.warn === "depends-without-overlap" && r.on === void 0) out.push(`${at} needs "on": the task this depends_on names`);
+  });
+  return out;
+}
+
 // src/plan.ts
 var list5 = (v) => Array.isArray(v) ? v.map(String) : [];
 var isPlanned = (t) => t.origin === void 0 || t.origin === "plan";
@@ -15989,29 +16022,90 @@ function planSummary(all2) {
   return `${s.tasks} task(s) in ${s.levels.length} stage(s), widest stage ${s.width}: ${s.levels.map((l) => l.join("+")).join(" -> ")}`;
 }
 var MIN_TASKS = 4;
-function planAdvice(all2) {
+function planWarnings(all2) {
   const s = planShape(all2);
   if (s.tasks < MIN_TASKS) return [];
   const out = [];
+  const pairRefs = s.independentPairs.map((p) => ({ task: p.task, on: p.on }));
   if (s.width === 1) {
-    const pairs = s.independentPairs.slice(0, 4).map((p) => `${p.task} after ${p.on}`);
-    out.push(
-      `the ${s.tasks} tasks form one dependency chain, so none can run side by side (a wave). ` + (pairs.length ? `Their touches do not overlap for ${pairs.join(", ")}: if the later task does not need the earlier one's output, drop its depends_on. ` : "") + "Slice by vertical feature (API + UI + tests of one behavior) rather than by layer, so slices can be independent."
-    );
+    out.push({
+      code: "one-chain",
+      refs: pairRefs,
+      text: (refs) => {
+        const pairs = refs.slice(0, 4).map((p) => `${p.task} after ${p.on}`);
+        return `the ${s.tasks} tasks form one dependency chain, so none can run side by side (a wave). ` + (pairs.length ? `Their touches do not overlap for ${pairs.join(", ")}: if the later task does not need the earlier one's output, drop its depends_on. ` : "") + "Slice by vertical feature (API + UI + tests of one behavior) rather than by layer, so slices can be independent.";
+      }
+    });
   } else if (s.independentPairs.length && s.width < Math.ceil(s.tasks / 2)) {
-    const pairs = s.independentPairs.slice(0, 4).map((p) => `${p.task} on ${p.on}`);
-    out.push(`the plan runs at most ${s.width} task(s) at once; depends_on without overlapping touches: ${pairs.join(", ")}. Drop each one the later task does not truly need.`);
+    out.push({
+      code: "depends-without-overlap",
+      refs: pairRefs,
+      text: (refs) => `the plan runs at most ${s.width} task(s) at once; depends_on without overlapping touches: ${refs.slice(0, 4).map((p) => `${p.task} on ${p.on}`).join(", ")}. Drop each one the later task does not truly need.`
+    });
   }
   if (s.width > 1 && s.width <= 2 && s.tasks >= 6 && !out.length) {
-    out.push(`the ${s.tasks} tasks run at most ${s.width} at once (stages: ${s.levels.map((l) => l.join("+")).join(" -> ")}). If a stage is a long single-task chain, check whether each depends_on is a real data dependency, and whether tasks share one big file (they then cannot overlap): slice by file ownership.`);
+    out.push({
+      code: "narrow-plan",
+      refs: [],
+      text: () => `the ${s.tasks} tasks run at most ${s.width} at once (stages: ${s.levels.map((l) => l.join("+")).join(" -> ")}). If a stage is a long single-task chain, check whether each depends_on is a real data dependency, and whether tasks share one big file (they then cannot overlap): slice by file ownership.`
+    });
   }
   const planned2 = all2.filter(isPlanned);
   const counts = planned2.map((t) => ({ id: t.id, n: list5(t.scenarios).length }));
   const total = counts.reduce((n, c) => n + c.n, 0);
   const heavy = counts.filter((c) => total >= 8 && c.n >= 8 && c.n / total >= 0.3);
-  if (heavy.length) out.push(`task(s) ${heavy.map((c) => `${c.id} (${c.n} of ${total} scenarios)`).join(", ")} carry a third of the plan: they set the pace of their wave. Split each into slices that touch different files (for example list, create, edit and delete) so the pieces can run side by side.`);
-  if (s.catchAll.length) out.push(`task(s) ${s.catchAll.join(", ")} touch "**", so they always run alone; list the folders they really change.`);
+  if (heavy.length) {
+    out.push({
+      code: "large-task",
+      refs: heavy.map((c) => ({ task: c.id })),
+      text: (refs) => `task(s) ${heavy.filter((c) => refs.some((r) => r.task === c.id)).map((c) => `${c.id} (${c.n} of ${total} scenarios)`).join(", ")} carry a third of the plan: they set the pace of their wave. Split each into slices that touch different files (for example list, create, edit and delete) so the pieces can run side by side.`
+    });
+  }
+  if (s.catchAll.length) {
+    out.push({
+      code: "catch-all-touches",
+      refs: s.catchAll.map((id) => ({ task: id })),
+      text: (refs) => `task(s) ${refs.map((r) => r.task).join(", ")} touch "**", so they always run alone; list the folders they really change.`
+    });
+  }
   return out;
+}
+function planAdviceAccepted(all2) {
+  const warnings = planWarnings(all2);
+  const entries = all2.filter(isPlanned).flatMap((t) => taskAccepts(t).map((a) => ({ task: t.id, ...a })));
+  const used = /* @__PURE__ */ new Set();
+  const res = { warnings: [], accepted: [], stale: [] };
+  const covers = (e, r) => e.task === r.task && (e.on === void 0 || e.on === r.on);
+  for (const w of warnings) {
+    const mine = entries.filter((e) => e.warn === w.code);
+    if (!w.refs.length) {
+      if (mine.length) {
+        mine.forEach((e) => used.add(e));
+        res.accepted.push(`accepted: ${w.text([])}: ${mine.map((e) => e.why).join("; ")}`);
+      } else res.warnings.push(w.text([]));
+      continue;
+    }
+    const rest = [];
+    const accepted = [];
+    const whys = [];
+    for (const r of w.refs) {
+      const hit = mine.filter((e) => covers(e, r));
+      if (!hit.length) rest.push(r);
+      else {
+        accepted.push(r);
+        hit.forEach((e) => {
+          used.add(e);
+          if (!whys.includes(e.why)) whys.push(e.why);
+        });
+      }
+    }
+    if (accepted.length) res.accepted.push(`accepted: ${w.text(accepted)}: ${whys.join("; ")}`);
+    if (rest.length) res.warnings.push(w.text(rest));
+  }
+  for (const e of entries) {
+    if (!used.has(e)) res.stale.push(`accept on ${e.task} matches no warning (${e.warn}${e.on ? ` on ${e.on}` : ""}): remove it`);
+  }
+  return res;
 }
 var aloneWhy = (t) => t.risk === "high" ? "risk high" : t.sequential === true ? "sequential" : 'touches "**"';
 function planInfo(all2, max) {
@@ -16474,7 +16568,7 @@ function planGateSection(p, tasks, pagesDir2, parallelMax2 = 1, lang) {
     id: "plan",
     title: L.plan,
     body: planSummary(tasks),
-    points: [...planInfo(tasks, parallelMax2), ...manual.length ? [L.planChecksNote, ...manual] : []],
+    points: [...planAdviceAccepted(tasks).accepted, ...planInfo(tasks, parallelMax2), ...manual.length ? [L.planChecksNote, ...manual] : []],
     html,
     layout: "plan",
     figures,
@@ -16625,6 +16719,7 @@ function validateTasksText(text2, file) {
     }
   }
   for (const t of tasks) {
+    if (t && typeof t === "object") for (const m of acceptProblems(t, ids)) d.error(file, `task ${String(t.id)}${m}`);
     for (const dep of isStrList2(t?.depends_on) ? t.depends_on : []) {
       if (!ids.has(dep)) d.error(file, `task ${t.id} depends on unknown task "${dep}"`);
       if (dep === t.id) d.error(file, `task ${t.id} depends on itself`);
@@ -17303,7 +17398,10 @@ function analyzeChange(p, id) {
     }
     if (quality && quality.deploy.target !== "none") d.warn(rel(p, analysisFile), "Size: small does not deploy unless the user asked for it; set the deploy target to none");
   }
-  for (const advice of planAdvice(tasks)) d.warn(tf, advice);
+  const advice = planAdviceAccepted(tasks);
+  for (const w of advice.warnings) d.warn(tf, w);
+  for (const w of advice.stale) d.warn(tf, w);
+  for (const line of advice.accepted) d.info(tf, line);
   for (const line of planInfo(tasks, parallelConfig(p, change).max)) d.info(tf, line);
   checkPlanRefs(p, change, tasks, tf, d, { programDesign: due.programDesign ? readText((0, import_node_path43.join)(change.dir, PROGRAM_DESIGN_FILE)) : null });
   return d;
@@ -22700,8 +22798,8 @@ ${d.kind === "brownfield" ? `${d.signals.map((s) => `  signal  ${s}
         const id = resolveChangeId(p, rest[0]);
         const tasks = parseTasks(readText((0, import_node_path57.join)(loadChange(p, id).dir, "tasks.yaml")) ?? "").tasks;
         const shape = planShape(tasks);
-        emit({ change: id, ...shape, summary: planSummary(tasks), advice: planAdvice(tasks) }, `${planSummary(tasks)}
-${planAdvice(tasks).map((a) => `  advice: ${a}
+        emit({ change: id, ...shape, summary: planSummary(tasks), advice: planAdviceAccepted(tasks).warnings }, `${planSummary(tasks)}
+${planAdviceAccepted(tasks).warnings.map((a) => `  advice: ${a}
 `).join("")}`);
         return 0;
       }
