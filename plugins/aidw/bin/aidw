@@ -18636,7 +18636,7 @@ ${r.answer.trim()}
 var LEVEL2_DIR = "level2";
 var DEFAULT_TIMEOUT_MIN = 25;
 var DEFAULT_MAX_TURNS = 60;
-var CASE_KEYS2 = ["case", "covers", "fixture", "task", "change", "must_read", "must_not_read", "timeout_min", "max_turns", "restore"];
+var CASE_KEYS2 = ["case", "covers", "fixture", "task", "change", "must_read", "must_not_read", "timeout_min", "max_turns", "restore", "screenshots"];
 var KEBAB2 = /^[a-z0-9-]+$/;
 var RESTORED = [
   "package.json",
@@ -18800,6 +18800,8 @@ function loadLevel2Cases(root, id) {
       }
       return v;
     };
+    const shots = head.screenshots;
+    if (shots !== void 0 && shots !== "on" && shots !== "off" && typeof shots !== "boolean") d.error(file, "screenshots: on or off (off drops the screenshot lines from the brief)");
     const section2 = /^## Criteria\n([\s\S]*?)(?=^## |$(?![\s\S]))/m.exec(text2);
     const bullets = (section2?.[1] ?? "").split("\n").map((l) => l.trim()).filter(Boolean);
     for (const l of bullets.filter((x) => !/^- must( not)? \S/.test(x))) d.error(file, `criterion "${l.slice(0, 50)}" must be a bullet starting "- must" or "- must not"`);
@@ -18820,7 +18822,8 @@ function loadLevel2Cases(root, id) {
       checks: (0, import_node_fs42.existsSync)(checksFile) ? parseChecks((0, import_node_fs42.readFileSync)(checksFile, "utf8"), `${dir}/checks.yaml`, d) : [],
       criteria: bullets.filter((l) => /^- must( not)? \S/.test(l)).map((l) => l.slice(2)),
       heldOut,
-      restore: lists.restore ?? []
+      restore: lists.restore ?? [],
+      screenshots: shots !== "off" && shots !== false
     });
   }
   return { cases, diags: d };
@@ -19035,6 +19038,12 @@ function bareBrief(text2, pluginRoot2) {
   const drop = /^## (Skills \(read each SKILL\.md and apply it\)|Rules of the Roles yours follows)\n[\s\S]*?(?=^## |$(?![\s\S]))/gm;
   return text2.replace(drop, "").split("\n").filter((l) => !l.includes(pluginRoot2)).join("\n").replace(/\n{3,}/g, "\n\n");
 }
+function noScreenshotsBrief(text2) {
+  const lines = text2.split("\n");
+  const kept = lines.filter((l) => !/^- \*\*Screenshots\*\*:/.test(l) && !/^- Take screenshots with Playwright\b/.test(l));
+  if (kept.length === lines.length) throw new Error("screenshots: off, but the brief has no screenshot line to drop: the task builds no screen with design tokens, or the brief changed its wording");
+  return kept.join("\n");
+}
 function prepareCopy(root, c, fixture, nodeModules, into, opts = {}) {
   (0, import_node_fs42.mkdirSync)(into, { recursive: true });
   for (const f of fixtureFiles(fixture)) {
@@ -19062,10 +19071,9 @@ function prepareCopy(root, c, fixture, nodeModules, into, opts = {}) {
   const plugin = opts.plugin ?? root;
   const b = buildBrief(p, change, c.task, "implement", (0, import_node_path47.join)(plugin, "library", "vendor"));
   let briefText = b.text;
-  if (opts.bare) {
-    briefText = bareBrief(b.text, (0, import_node_path47.resolve)(plugin));
-    (0, import_node_fs42.writeFileSync)(b.path, briefText);
-  }
+  if (!c.screenshots) briefText = noScreenshotsBrief(briefText);
+  if (opts.bare) briefText = bareBrief(briefText, (0, import_node_path47.resolve)(plugin));
+  if (briefText !== b.text) (0, import_node_fs42.writeFileSync)(b.path, briefText);
   return { project: into, base: base2, change, brief: b.path, briefText, snapshot, snapshotDigest };
 }
 var AGENT_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "Bash"];
