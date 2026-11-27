@@ -45,6 +45,9 @@ operation, a chosen error shape breaks a client), do not open a decision for the
 yourself. Report it in your reply as one line per DQ: `conflicts with DQ<n>: <why>`. The orchestrator sends it back
 to the Software Architect.
 
+A DQ still `Open` when you run: design for the Architect's recommendation and name in your reply the DQ your design
+depends on, so the contract can be rerun after the user answers.
+
 ## Done when
 
 Every client-to-server scenario maps to an operation with its request, responses, errors and an example; the contract

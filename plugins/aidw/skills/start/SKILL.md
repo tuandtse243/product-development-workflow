@@ -341,7 +341,8 @@ reads `data-model.md` and `api-contract.md` when they exist.
   and stop. Record the lines `aidw page answers system-design` prints word for word under `### System design round`
   in `## Architecture`, and turn each open question into a settled one (`Chosen:`, `Why:`, `Rejected:`). When an
   answer goes against the Agent's recommendation, spawn `aidw:software-architect` again with the answers to bring
-  the architecture in line.
+  the architecture in line, then spawn `aidw:database-architect` and `aidw:api-designer` again when the change touches
+  their files (`data-model.md`, `api-contract.md`), since they were written before the round.
 - Nothing open: one question in the chat (`library/decision-pages.md`, "One question after a design"): two or three
   lines of summary, the link to `.aidw/architecture/overview.md` and a View of the main shape as a fenced block. The
   summary names the data model and the API contract when the Change has them (step 6b), with the link to each file.
