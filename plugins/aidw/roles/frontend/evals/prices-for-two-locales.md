@@ -17,4 +17,4 @@ Touches: `src/orders/summary/**`, `src/locales/**`, `tests/orders/**`. Verify: `
 - must format money with `Intl.NumberFormat` (or `toLocaleString` with options) using the order's currency and the user's locale, and must not build the string by hand (such as `"$" + (cents / 100).toFixed(2)` or a `€` appended)
 - must format the delivery date with `Intl.DateTimeFormat` (or `toLocaleDateString` with options, or the project's formatter) in the user's locale, not by slicing the ISO string
 - must put every visible string it adds (headings, "Total", "Delivery") through `t()` and add the keys to both locale files
-- must test the same order in `en-US` and `de-DE` and assert the two different formats the user sees
+- must test the summary in both `en-US` and `de-DE` and assert the formatted money and date the user sees in each (the same order in both, or an order in each locale's usual currency), so that a hand-built string would fail
