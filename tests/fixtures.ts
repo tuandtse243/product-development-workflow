@@ -61,7 +61,11 @@ export function bareBackend(root: string): void {
   const frontend = join(root, "roles", "frontend");
   rmSync(join(frontend, "rules.md"), { force: true });
   const fevals = join(frontend, "evals");
-  if (existsSync(fevals)) for (const f of readdirSync(fevals).filter((n) => n.endsWith(".md"))) writeFileSync(join(fevals, f), readFileSync(join(fevals, f), "utf8").replace(/^---\n[\s\S]*?\n---\n/, (fm) => fm.replace(/^(# .*|covers: .*)\n/gm, "")));
+  const dropCovers = (f: string) => writeFileSync(f, readFileSync(f, "utf8").replace(/^---\n[\s\S]*?\n---\n/, (fm) => fm.replace(/^(# .*|covers: .*)\n/gm, "")));
+  if (existsSync(fevals)) for (const f of readdirSync(fevals).filter((n) => n.endsWith(".md"))) dropCovers(join(fevals, f));
+  // its level 2 cases cover rule ids too, which are gone with the table
+  const fl2 = join(fevals, "level2");
+  if (existsSync(fl2)) for (const c of readdirSync(fl2)) if (existsSync(join(fl2, c, "case.md"))) dropCovers(join(fl2, c, "case.md"));
   writeAgents(root);
 }
 

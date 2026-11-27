@@ -19067,7 +19067,9 @@ function bareBrief(text2, pluginRoot2) {
 function noScreenshotsBrief(text2) {
   const lines = text2.split("\n");
   const kept = lines.filter((l) => !/^- \*\*Screenshots\*\*:/.test(l) && !/^- Take screenshots with Playwright\b/.test(l));
-  if (kept.length === lines.length) throw new Error("screenshots: off, but the brief has no screenshot line to drop: the task builds no screen with design tokens, or the brief changed its wording");
+  const dropped = lines.length - kept.length;
+  if (dropped === 0) throw new Error("screenshots: off, but the brief has no screenshot line to drop: the task builds no screen with design tokens, or the brief changed its wording");
+  if (dropped !== 2) throw new Error(`screenshots: off drops exactly the two screenshot lines of the brief, but ${dropped} lines match: the brief changed its wording`);
   return kept.join("\n");
 }
 function prepareCopy(root, c, fixture, nodeModules, into, opts = {}) {
