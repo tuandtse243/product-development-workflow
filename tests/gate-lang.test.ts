@@ -46,6 +46,14 @@ describe("CLI-made gate sections follow the page lang", () => {
     expect(html).not.toContain(">Program Design<");
   });
 
+  it("fills both Before and After columns on a vi page with the right lines", () => {
+    const html = gate("vi");
+    const panel = (side: string) => new RegExp(`<div class="panel ${side}"><div class="k">[^<]+</div><ul>(.*?)</ul>`, "s").exec(html)?.[1] ?? "";
+    expect(panel("before")).toContain("A patient phones the clinic and waits on hold to book.");
+    expect(panel("after")).toContain("A patient picks a free slot on their phone.");
+    expect(panel("before")).not.toContain("picks a free slot");
+  });
+
   it("stays in English for lang: en", () => {
     const html = gate("en");
     for (const s of ["Program Design", ">Plan<", "Grants for this Change", "Before / After", "Widest stage", "Permission envelope"]) expect(html).toContain(s);
@@ -55,7 +63,7 @@ describe("CLI-made gate sections follow the page lang", () => {
   it("falls back to English labels for any other lang", () => {
     expect(gateLabels("fr")).toBe(gateLabels("en"));
     expect(gateLabels(undefined).plan).toBe("Plan");
-    expect(gateLabels("vi").checksForYou).toBe("Việc bạn cần kiểm tra");
+    expect(gateLabels("vi").checksForYou).toBe("Checks for you (việc bạn cần kiểm tra)");
     expect(gateLabels("vi").patterns).toBe("Mẫu cần theo");
     expect(gateLabels("vi").decisionPoints).toBe("Các điểm quyết định");
   });

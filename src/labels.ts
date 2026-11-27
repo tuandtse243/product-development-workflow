@@ -3,6 +3,8 @@
  * English is the default for any other lang. Only headings and fixed words are translated here: never a file path,
  * an id, code or the content of an Artifact.
  */
+// Sentence bodies stay in English on purpose (grant details, findings, unanswered questions, planInfo lines): only
+// headings and fixed labels are translated here.
 export type Lang = "en" | "vi";
 
 export interface GateLabels {
@@ -87,7 +89,7 @@ const VI: GateLabels = {
   tasks: "Task",
   stages: "Giai đoạn",
   widestStage: "Giai đoạn rộng nhất",
-  checksForYou: "Việc bạn cần kiểm tra",
+  checksForYou: "Checks for you (việc bạn cần kiểm tra)",
   docsBriefs: "Docs Brief",
   docsBriefsNote: "tài liệu chính thức nói gì, do Research viết",
   planChecksNote: "Việc build không dừng vì những mục này; lúc giao, aidw liệt kê chúng ở \"Checks for you\":",

@@ -135,7 +135,8 @@ export function beforeAfterSection(analysis: string, lang?: string): PageSection
     id: "before-after",
     title: lang === "vi" ? l.before + " / " + l.after : BEFORE_AFTER,
     body: l.beforeAfterBody,
-    points: [...ba.before.map((x) => `**${l.before}**: ${x}`), ...ba.after.map((x) => `**${l.after}**: ${x}`)],
+    // the point keys stay English: page.ts parses them, and draws the column headings in the page lang
+    points: [...ba.before.map((x) => `**Before**: ${x}`), ...ba.after.map((x) => `**After**: ${x}`)],
     html: "",
   };
 }
