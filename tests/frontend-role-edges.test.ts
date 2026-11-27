@@ -222,10 +222,12 @@ describe("selectSkills: anthropic/frontend-design and approved tokens", () => {
     expect(ids(task({ role: "frontend", touches: [] }))).toContain(FD); // frontend implies UI
   });
 
-  it("tokens never take frontend-design away from fullstack, a Role-less task or integration", () => {
-    for (const role of ["fullstack", undefined, "integration"]) {
+  it("tokens never take frontend-design away from a Role-less task or integration; fullstack follows frontend", () => {
+    for (const role of [undefined, "integration"]) {
       expect(ids(task({ role, touches: ["src/x.tsx"] }), "implement", { designTokens: true }), String(role)).toContain(FD);
     }
+    expect(ids(task({ role: "fullstack", touches: ["src/x.tsx"] }), "implement", { designTokens: true })).not.toContain(FD);
+    expect(ids(task({ role: "fullstack", touches: ["src/x.tsx"] }), "implement", { designTokens: false })).toContain(FD);
   });
 
   it("the other UI skills are untouched by tokens", () => {
@@ -373,11 +375,12 @@ const UX = "aidw:ui-ux-designer";
 const writeAs = (rootDir: string, file: string, who: string, tool = "Write") => decide(hook(rootDir, tool, { file_path: file }, who), env)?.decision ?? "none";
 const bashAs = (rootDir: string, command: string, who: string) => decide(hook(rootDir, "Bash", { command }, who), env)?.decision ?? "none";
 
-describe("ui-ux-designer as an author", () => {
-  it("is an `artifacts` Role whose profile still lists the verdict and design artifacts it writes", () => {
+describe("ui-ux-designer as a read-only reviewer that answers Consultations", () => {
+  it("is a read-only Role that opts in to answering, and its profile still lists the verdict and design artifacts it writes", () => {
     const role = loadRole(plugin, "ui-ux-designer")!;
-    expect(role.access).toBe("artifacts");
-    expect(role.tools).toEqual(["Read", "Grep", "Glob", "Bash", "Write"]); // no Edit: it drafts whole files
+    expect(role.access).toBe("read-only");
+    expect(role.answers_consultations).toBe(true);
+    expect(role.tools).toEqual(["Read", "Grep", "Glob", "Bash", "Write"]);
     expect(role.consults).toEqual([]);
   });
 
@@ -439,12 +442,12 @@ describe("ui-ux-designer as an author", () => {
     }
   });
 
-  it("before approval it may draft the design Artifacts it owns", () => {
+  it("before approval it is read-only: the design Artifacts are drafted by the start skill, not by this worker Agent", () => {
     const rootDir = tempProject();
     temps.push(rootDir);
     expect(cli(rootDir, "init").code).toBe(0);
     expect(cli(rootDir, "change", "new", ID, "--title", "Booking").code).toBe(0);
-    for (const f of [".aidw/design/direction.md", ".aidw/design/tokens.yaml", `.aidw/changes/${ID}/analysis-design.md`]) expect(writeAs(rootDir, join(rootDir, f), UX), f).toBe("allow");
+    for (const f of [".aidw/design/direction.md", ".aidw/design/tokens.yaml", `.aidw/changes/${ID}/analysis-design.md`]) expect(writeAs(rootDir, join(rootDir, f), UX), f).toBe("deny");
   });
 
   it("is not allowed to write another Role's consult files, or an answer nobody asked it for", () => {
@@ -566,14 +569,14 @@ describe("the consult gate for frontend", () => {
     expect(bad).toMatch(/read-only|cannot answer|consult/i);
   });
 
-  it("ui-ux-designer is consultable now (artifacts access), so the roster accepts it as a target but not a Role that cannot write", () => {
+  it("a read-only Role is consultable only with `answers_consultations`: ui-ux-designer without it is refused as a target", () => {
     const copy = mkdtempSync(join(tmpdir(), "aidw-roster-"));
     temps.push(copy);
     for (const d of ["roles", "company"]) if (existsSync(join(plugin, d))) cpDir(join(plugin, d), join(copy, d));
     for (const f of ["roster.yaml", "tiers.yaml", "artifacts.yaml"]) if (existsSync(join(plugin, f))) writeFileSync(join(copy, f), readFileSync(join(plugin, f)));
     const file = join(copy, "roles/ui-ux-designer/role.md");
-    writeFileSync(file, readFileSync(file, "utf8").replace(/^access: artifacts$/m, "access: read-only"));
-    expect(checkRoster(copy).errors.map((e) => JSON.stringify(e)).join("\n")).toMatch(/ui-ux-designer/); // frontend consults it, so it must be able to write its answer
+    writeFileSync(file, readFileSync(file, "utf8").replace(/^answers_consultations: true\n/m, ""));
+    expect(checkRoster(copy).errors.map((e) => JSON.stringify(e)).join("\n")).toMatch(/ui-ux-designer.*read-only/); // frontend consults it, so it must be able to write its answer
   });
 });
 

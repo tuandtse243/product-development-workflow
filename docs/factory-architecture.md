@@ -103,6 +103,7 @@ skills:                    # on-demand: roles/<id>/skills/<name>.md, read only w
   - breaking-change: when changing an existing contract
   - library/external-api: when calling an outside service   # shared: library/skills/<name>/SKILL.md
 follows_rules: [backend]   # other Roles' rules.md that also bind this Role's work (listed in its review brief)
+answers_consultations: true   # read-only Roles only: may write the answer of a Consultation addressed to it
 ---
 ## Responsibility
 ## Procedure
@@ -118,7 +119,9 @@ procedure all implementing Roles follow, so it exists once. `reads` and `writes`
 `artifacts.yaml`; the profile's text still names the paths for the Agent, and `aidw roster` checks the names.
 `consults` lists the Roles an Agent of this Role may ask a question while it works (section 7, Consultation);
 `aidw roster` refuses an id that is not in the Roster, a Role that is not active, and the Role itself, and the
-generated agent ends with a "Consultation" note naming them. The first pairs: `ux-research`, `product-manager` and
+generated agent ends with a "Consultation" note naming them. A `read-only` Role cannot be consulted unless its
+`role.md` opts in with `answers_consultations: true`: the gate then lets it write one more file, the `C<NN>.answer.md` of an
+open Consultation addressed to it, and still no project file (`ui-ux-designer` answers a design hole from `frontend` so). The first pairs: `ux-research`, `product-manager` and
 `software-architect` ask `research`; `technical-planner` asks `software-architect`; `backend`, `frontend` and
 `fullstack` ask `api-designer`, `database-architect` and `software-architect`.
 

@@ -84,6 +84,8 @@ export interface RoleProfile {
   includes: string[];
   /** the Roles an Agent of this Role may ask a question through the Orchestrator (a Consultation, ADR-0013) */
   consults: string[];
+  /** a read-only Role that may be consulted: the gate lets it write the answer of an open Consultation addressed to it, nothing else */
+  answers_consultations: boolean;
   /** Roles whose rules.md also binds this Role's work (fullstack follows backend's): the review brief lists each file */
   follows_rules: string[];
   /** role.md after its header */
@@ -140,6 +142,7 @@ export function loadRole(root: string, id: string): RoleProfile | null {
     includes,
     consults: Array.isArray(h.consults) ? h.consults.map(String) : [],
     follows_rules: Array.isArray(h.follows_rules) ? h.follows_rules.map(String) : [],
+    answers_consultations: h.answers_consultations === true,
     body: parsed.body,
     shared: includes.map((f) => (existsSync(join(root, f)) ? read(join(root, f)).trim() : "")),
     rules: existsSync(rulesFile) ? read(rulesFile).trim() : "",
@@ -388,6 +391,8 @@ export function checkRoster(root: string): Diags {
       if (!Array.isArray(h.includes) || !h.includes.every((f) => typeof f === "string")) d.error(file, "includes must be a list of plugin-relative file paths");
       else for (const f of h.includes as string[]) if (f.includes("..") || !existsSync(join(root, f))) d.error(file, `includes: "${f}" not found in the plugin`);
     }
+    if (h.answers_consultations !== undefined && typeof h.answers_consultations !== "boolean") d.error(file, "answers_consultations must be true or false");
+    if (h.answers_consultations === true && h.access !== "read-only") d.error(file, "answers_consultations only applies to a read-only Role (the other accesses can already write an answer)");
     if (h.consults !== undefined) {
       // ADR-0013: a Consultation goes to an active Role, never to the asker itself
       if (!Array.isArray(h.consults) || !h.consults.every((c) => typeof c === "string")) d.error(file, "consults must be a list of role ids");
@@ -396,7 +401,7 @@ export function checkRoster(root: string): Diags {
           if (c === id) d.error(file, `consults: a role does not consult itself ("${c}")`);
           else if (!(c in roster.roles)) d.error(file, `consults: "${c}" is not a role in roster.yaml`);
           else if (roster.roles[c]?.status !== "active") d.error(file, `consults: "${c}" is not an active role`);
-          else if (loadRole(root, c)?.access === "read-only") d.error(file, `consults: "${c}" is read-only, so it could never write its answer`);
+          else if (loadRole(root, c)?.access === "read-only" && !loadRole(root, c)?.answers_consultations) d.error(file, `consults: "${c}" is read-only, so it could never write its answer (add \`answers_consultations: true\` to its role.md to let it write that one file)`);
         }
         if (new Set(h.consults).size !== h.consults.length) d.error(file, "consults lists a role twice");
       }

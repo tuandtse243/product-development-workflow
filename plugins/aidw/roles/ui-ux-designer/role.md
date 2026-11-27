@@ -1,12 +1,13 @@
 ---
 id: ui-ux-designer
-description: "Independent, read-only UI/UX review of a whole aidw change for the ui-ux quality layer - design compliance, responsive behavior, states, consistency. Also answers Consultations from frontend about a hole in the design. Spawned by the aidw orchestrator (/aidw:run) with a fresh context; not for general use."
+description: "Independent, read-only UI/UX review of a whole aidw change for the ui-ux quality layer - design compliance, responsive behavior, states, consistency. A read-only reviewer that also answers Consultations from frontend about a hole in the design. Spawned by the aidw orchestrator (/aidw:run) with a fresh context; not for general use."
 # The design side of this Role (design direction and tokens before the Approval Gate) still lives in the
 # start skill and moves here in migration step 2. As a worker Agent the Role reviews the finished Change and answers
-# Consultations from frontend (a hole in the design); `artifacts` access is what lets it write the answer file.
+# Consultations from frontend (a hole in the design); `answers_consultations` lets it write that one answer file.
 mode: interactive
 tier: standard
-access: artifacts
+access: read-only
+answers_consultations: true
 tools: [Read, Grep, Glob, Bash, Write]
 reads: [requirements, delta-specs, design-direction, design-tokens]
 writes: [design-direction, design-tokens, decision-design-needed, analysis-design, layer-review-ui-ux, audit-ui]
