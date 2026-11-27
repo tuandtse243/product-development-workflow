@@ -7,11 +7,11 @@ import { cleanTemps, gitBase, project, roleScript, runScript, write } from "./ro
 const S = (name: string) => roleScript("frontend", name);
 afterAll(cleanTemps);
 
-const SCRIPTS = ["token-literals.mjs", "a11y-names.mjs", "public-env-scan.mjs"];
+const SCRIPTS = ["token-literals.mjs", "a11y-names.mjs", "public-env-scan.mjs", "fetch-waterfalls.mjs", "route-guard-inventory.mjs"]; // the last two are tested in frontend-scripts2.test.ts
 const DIR = join(__dirname, "..", "plugins", "aidw", "roles", "frontend", "scripts");
 
 describe("every frontend script", () => {
-  it("is one of the three, prints --help with exit 0, refuses an unknown option with exit 2", () => {
+  it("is one of the five, prints --help with exit 0, refuses an unknown option with exit 2", () => {
     expect(readdirSync(DIR).filter((f) => !f.startsWith("_")).sort()).toEqual([...SCRIPTS].sort());
     for (const name of SCRIPTS) {
       const help = runScript(S(name), ["--help"]);
