@@ -1,11 +1,11 @@
 {
   "format": 2,
   "role": "technical-planner",
-  "date": "2026-11-27T19:13:36.074Z",
+  "date": "2026-11-28T02:29:34.661Z",
   "model": null,
   "tier": "deep",
   "runs": 3,
-  "digest": "sha256:81f8fd0b21691bac84052ad9b5ffa2a714942be9ee1c719fc81d14be23c95166",
+  "digest": "sha256:087b6ce0eed902ac1d78353ea2144e6efe298830b66db87fa53b07e756072914",
   "cases": [
     {
       "name": "accepts-a-warning-with-its-reason",
@@ -17,7 +17,7 @@
       },
       "failed": [],
       "digest": "sha256:c4b3ca9a927e8727497ccb05abd55c884423cff3628cd8000fa7840108e89de5",
-      "date": "2026-11-27T19:01:00.455Z",
+      "date": "2026-11-28T02:29:34.661Z",
       "model": null
     },
     {
@@ -30,7 +30,7 @@
       },
       "failed": [],
       "digest": "sha256:89a500e40702b60247bacd07d60359de753906ce09a80432edcd490e924443ff",
-      "date": "2026-11-27T19:01:00.455Z",
+      "date": "2026-11-28T02:29:34.661Z",
       "model": null
     },
     {
@@ -43,22 +43,20 @@
       },
       "failed": [],
       "digest": "sha256:90db8ddacb9042fc7f944ce5207166e5be2e8dd54999ef769235c5e7d6af6c89",
-      "date": "2026-11-27T19:01:00.455Z",
+      "date": "2026-11-28T02:29:34.661Z",
       "model": null
     },
     {
       "name": "vertical-slices-not-a-chain",
-      "pass": false,
+      "pass": true,
       "runs": {
         "total": 3,
-        "passed": 2,
+        "passed": 3,
         "errors": 0
       },
-      "failed": [
-        "must give every slice task `touches` that are tight folders (the scaffold may touch the root configuration files), and every task a `type` for the commit"
-      ],
+      "failed": [],
       "digest": "sha256:e334550c9ae7269ee41266a884cd7f580759f0a72d9e1b59d51dfc72e24bc94a",
-      "date": "2026-11-27T19:13:36.074Z",
+      "date": "2026-11-28T02:29:34.661Z",
       "model": null
     }
   ]
