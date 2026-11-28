@@ -36,7 +36,7 @@
       },
       "failed": [],
       "digest": "sha256:b44bbf1514b696bf9c6f633af5946184392f34519d62fe2717fac58baae2bd47",
-      "fixture": "sha256:654af8f0d9a0ec81c2c504fadd53d33818a5690ec3a047b83191fc1f4ad3ac72",
+      "fixture": "sha256:7108af65a8a410fa6ae37be8eec78c1c3e151b5d2bc7130accbc3c30b45f43c7",
       "gradingSandbox": "sandbox-exec",
       "date": "2026-11-28T12:26:39.386Z",
       "model": null
