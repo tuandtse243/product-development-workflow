@@ -142,9 +142,10 @@ it leaves the automatic approval and waits for the user.
   behaviors is `scaffold -> schema -> slice+slice+...` (a slice that only needs the table depends on the schema, not
   on another slice); if no stage after the scaffold holds two tasks, re-cut, unless each dependency is real.
 - **A UI plan carries the a11y layer.** `aidw analyze` refuses a plan that changes UI with no `a11y` layer in `quality.yaml`. When the
-  project does not have axe yet (`aidw detect` shows no `a11y tests`), the first UI task adds `@axe-core/playwright` as a dev dependency,
-  the `a11y` Playwright project and `e2e/a11y.spec.ts`: put `package.json`, the lockfile, `playwright.config.ts` and `e2e/a11y*` in its
-  `touches`, and say in `analysis.md` that this dev dependency was added for the layer.
+  project does not have axe yet (`aidw detect` shows no `a11y tests`), one task adds `@axe-core/playwright` as a dev dependency, the
+  `a11y` Playwright project and `e2e/a11y.spec.ts`, with `package.json`, the lockfile, `playwright.config.ts` and `e2e/a11y*` in its
+  `touches`: in a new project the scaffold, which already owns the root configuration, so no slice touches it; in an existing
+  project the first UI task. Say in `analysis.md` that this dev dependency was added for the layer.
 - **Touches include the tests.** The implementer writes one test per scenario, often in more than one file (a unit test of
   the module and a test of the screen), and a reviewer may ask for another. Give the task a glob for its tests
   (`tests/<feature>*`, `e2e/<feature>*`), not one file name; a test outside Touches is reported and reviewed every time.
