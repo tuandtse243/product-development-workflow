@@ -23180,8 +23180,9 @@ function ruleIdWarning(pluginHome, role, notes) {
   if (rules.size === 0) return null;
   const bound = safe(() => boundRules(pluginHome, role)) ?? rules;
   if (citedRules(notes, bound).length) return null;
-  const owners = [...new Set(rules.values())];
-  return `the fix review cites no rule id of ${owners.join(", ")} (for example \`1. ${[...rules.keys()][0]}: <file>: <problem>\`); \`aidw stats\` counts broken rules from these ids`;
+  const owners = [...new Set(bound.values())];
+  const example = owners.length > 1 ? [...bound].find(([, o]) => o === owners[1])[0] : [...bound.keys()][0];
+  return `the fix review cites no rule id of ${owners.join(", ")} (for example \`1. ${example}: <file>: <problem>\`); \`aidw stats\` counts broken rules from these ids`;
 }
 function readEvidenceFile(dir, taskId) {
   const file = (0, import_node_path58.join)(dir, "evidence", `${taskId}.json`);

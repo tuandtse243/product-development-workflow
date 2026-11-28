@@ -1,0 +1,17 @@
+schema: 1
+id: owner-only-billing
+title: "Owner-only billing"
+input_type: client_request
+state: executing
+created_at: 2026-11-28T11:02:11.402Z
+skip_specs: false
+approval:
+  hash: sha256:b43d3e430bddd5972cb99aabaf1d00d92f0f2e4e387871a1a9de0d0f08e39192
+  at: 2026-11-28T11:04:20.118Z
+  by: user
+  package: 3
+  agent_run_cap: 6
+run:
+  paused: null
+  branch: aidw/owner-only-billing
+  base_branch: main

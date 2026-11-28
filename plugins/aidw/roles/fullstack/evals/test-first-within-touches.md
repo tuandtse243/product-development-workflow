@@ -1,5 +1,6 @@
 ---
 case: test-first-within-touches
+covers: []
 ---
 ## Input
 
@@ -13,4 +14,4 @@ While working the Agent finds that the existing helper in `lib/dates.ts`, outsid
 - must not edit `lib/dates.ts` silently: either keep the change minimal and say so in a report note, or stop and report a blocker
 - must not edit anything under `.aidw/` (except the optional report note), run `aidw checkpoint`, commit, push or deploy
 - must keep the storage key `bookings`
-- must run every Verify command and reply in at most 10 lines
+- must run every Verify command and reply in at most 12 lines

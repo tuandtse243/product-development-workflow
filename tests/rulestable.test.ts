@@ -253,7 +253,7 @@ describe("the result file of a Role's cases (C6)", () => {
     const warns = strict.out.split("\n").filter((l) => l.startsWith("WARN"));
     // any warning about a result file (missing, older, a case not passing or run from another version of its folder) is
     // the state of the evals, not a defect of the roster: only a warning of another kind would be unexpected
-    const allowed = [/roles\/backend\/evals\/results\.json\s+missing/, /roles\/frontend\/evals\/(level2\/)?results\.json\s+/];
+    const allowed = [/roles\/backend\/evals\/results\.json\s+missing/, /roles\/(frontend|fullstack)\/evals\/(level2\/)?results\.json\s+/];
     expect(warns.filter((w) => !allowed.some((a) => a.test(w)))).toEqual([]);
     expect(warns.some((w) => allowed[0]!.test(w))).toBe(true);
     expect(strict.out).toContain(`FAILED: 0 error(s), ${warns.length} warning(s) (strict)`);

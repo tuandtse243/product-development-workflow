@@ -388,6 +388,7 @@ describe("the Role case runner", () => {
         const root = full();
         const dir = join(root, "roles", "fullstack", "evals");
         mkdirSync(dir, { recursive: true });
+        rmSync(join(dir, "results.json"), { force: true }); // the copy carries fullstack's real results.json; this test needs a Role with none
         writeFileSync(join(dir, `${ONE}.md`), readFileSync(join(root, "roles", "backend", "evals", `${ONE}.md`), "utf8"));
         const r = go(root, ["eval", "--case", ONE, "--runs", "1"], () => fake(true));
         expect(r.out).toMatch(/wrote roles\/backend\/evals\/results\.json/);

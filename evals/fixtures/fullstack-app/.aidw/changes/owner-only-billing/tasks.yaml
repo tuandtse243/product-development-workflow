@@ -1,0 +1,14 @@
+tasks:
+  - id: T01
+    title: Owner-only billing, route and page
+    role: fullstack
+    type: feat
+    specs: [billing/owner-only-billing]
+    scenarios:
+      - billing/owner-only-billing/owner-sees-the-invoices
+      - billing/owner-only-billing/member-is-refused
+      - billing/owner-only-billing/signed-out-caller
+    depends_on: []
+    touches: ["shared/billing.ts", "server/billing/**", "server/tests/billing/**", "web/billing/**", "web/tests/billing/**"]
+    verify: ["npm test", "npm run typecheck"]
+    status: pending

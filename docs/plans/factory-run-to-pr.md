@@ -321,6 +321,36 @@ Fastify, Hono.
   - Level 1 cases (2026-11-28): 13 cases, the 2 existing ones revised plus E1-E11, each `covers:` only what the case
     can fail without. The interim `covers:` that kept roster at 0 errors is gone; F1-F16 and the five skills plus
     `library/react-rules` are covered by the cases themselves.
+- T20 fullstack design: decided 2026-11-28 (research in `docs/research/fullstack-role.md`, the seam S-1 to S-12):
+  1. Consult: `api-designer`, `database-architect`, `software-architect`, `ui-ux-designer`, `research`; `reads` gains
+     `design-direction`.
+  2. Rules: all seven seam rules X1 to X7 in `roles/fullstack/rules.md`, binding only when the task's Touches hold both
+     halves; B1-B15 and F1-F16 still bind through `follows_rules`.
+  3. Inherited "ask `api-designer`" (F11, F14) when the server half is in Touches: rule X5 plus its reading in the
+     boundaries table (close it in your half when the contract names it; ask only what the contract does not name).
+  4. Skills: `seam-test` (K1) and `server-to-client-data` (K2) as fullstack's own; `contract-tests` moves from
+     integration to `library/skills/` for integration and fullstack; `library/react-rules` is wired in.
+  5. Scripts: none new; role.md lists the five backend and five frontend scripts by condition (`shape-drift` after
+     the level 2 fixture shows a need).
+  6. Order of work: outside-in (seam test red, server half, screen, seam test green).
+  7. A short "Scaffold task" section in role.md.
+  8. Level 1 cases: E1-E8 plus `test-first-within-touches` revised; 9 × 3 = 27 model calls; no bare or `--without`
+     runs unless a case passes trivially.
+  9. Level 2 fixture: a new `evals/fixtures/fullstack-app`: Vite + React client (`web/`), Express + PGlite server
+     (`server/`), shared zod schemas (`shared/`); in the client tests MSW forwards `/api/*` to the in-process app.
+  10. Level 2 plan: pilot L1 `rename-a-project` first (at most 6 sessions), then L2 `invite-with-one-schema` and L3
+      `owner-only-billing` (6 sessions plus spares); ask before more.
+  - Built (2026-11-28): fullstack has `rules.md` X1-X7, skills `seam-test` and `server-to-client-data`,
+    `library/contract-tests` (moved from integration), `library/react-rules`, and a role.md with a boundaries table,
+    an outside-in Procedure, a Scaffold task section, a 12-line report that replaces the shared 10-line limit, and the
+    ten backend and frontend scripts by condition. The `aidw verdict` warning for a Role with `follows_rules` names
+    every bound table.
+  - Level 1: 9/9 at 3/3 (36 model calls: 27, then 9 for three cases whose criteria asked more than the Role text says).
+    Level 2: `rename-a-project`, `invite-with-one-schema`, `owner-only-billing` all 3/3 (18 sessions: pilot 3, full 9,
+    approved re-run 6). The real sessions found case defects, now fixed: a file the fixture calls "the only module that
+    calls fetch" was outside Touches (all three sessions rightly edited it); a criterion asked the report to mention a
+    fix the held-out tests already prove; `must_read` named `rules.md`, which is inlined in the agent's system prompt;
+    Touches naming `.tsx` files make `aidw analyze` demand tokens and an a11y layer, so fixture Changes use globs.
 - The cases of every other active Role have no `covers:` yet; T12 must not fail `aidw roster` for Roles that
   have not been upgraded (require coverage only once a Role's `rules.md` uses the table format).
 - The owner prefers question rounds as an HTML Decision Page with options, examples and a copy-back summary,
