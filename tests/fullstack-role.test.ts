@@ -1,8 +1,15 @@
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import YAML from "yaml";
-import { describe, expect, it } from "vitest";
-import { generateAgents, loadRole, loadRuleTable, parseRoleText, parseRulesTable, RULE_CHECKERS, skillFile } from "../src/roles.js";
+import { afterAll, describe, expect, it } from "vitest";
+import { run } from "../src/cli.js";
+import { taskConsultable } from "../src/consult.js";
+import { checkEvals, loadEvalCases } from "../src/evals.js";
+import { pathsFor } from "../src/project.js";
+import { checkRoster, generateAgents, loadRole, loadRuleTable, parseRoleText, parseRulesTable, RULE_CHECKERS, skillFile } from "../src/roles.js";
+import { buildBrief } from "../src/run.js";
+import { parseTasks } from "../src/tasks.js";
+import { ANALYSIS_MD, MAIN_SPEC, QUALITY_YAML, REQ, TOKENS_YAML, planReviewed, tempProject, write } from "./fixtures.js";
 
 // The fullstack Role to the frontend pattern (plan T20, fullstack design): seam rules X1-X7, two authored skills,
 // contract-tests moved to the shared library, the five backend and five frontend scripts listed by condition.
@@ -183,5 +190,185 @@ describe("contract-tests in the shared library", () => {
       expect(existsSync(join(plugin, skillFile(id, "library/contract-tests"))), id).toBe(true);
     }
     expect(loadRole(plugin, "integration")!.skills.find((x) => x.name === "library/contract-tests")!.when).toBe("when the client and the server meet over an HTTP or RPC contract, to prove they agree");
+  });
+});
+
+// ---------------------------------------------------------------- acceptance: cases, roster, consult gate, briefs
+
+describe("fullstack level 1 cases and the roster", () => {
+  it("ships nine cases that together cover X1 to X7 and every skill role.md lists", () => {
+    const { cases, diags } = loadEvalCases(plugin, "fullstack");
+    expect(diags.errors).toEqual([]);
+    expect(cases).toHaveLength(9);
+    const covered = new Set(cases.flatMap((c) => c.covers));
+    for (const r of loadRuleTable(plugin, "fullstack")!) expect(covered, r.id).toContain(r.id);
+    for (const s of loadRole(plugin, "fullstack")!.skills) expect(covered, s.name).toContain(s.name);
+  });
+
+  it("the roster and the eval checks report no error", () => {
+    expect(checkRoster(plugin).errors).toEqual([]);
+    expect(checkEvals(plugin).errors).toEqual([]);
+  });
+});
+
+describe("X5 reads F11 and F14 when the server half is in Touches", () => {
+  it("the X5 row and the boundaries row say the access check and a named computed field are fullstack's", () => {
+    const x5 = loadRuleTable(plugin, "fullstack")!.find((r) => r.id === "X5")!;
+    expect(x5.rule).toMatch(/Touches hold the server half/);
+    expect(x5.rule).toMatch(/F11 and F14/);
+    expect(x5.rule).toMatch(/access check is always yours/);
+    expect(x5.rule).toMatch(/computed field the contract names is yours/);
+    expect(x5.rule).toMatch(/ask `api-designer` only when/);
+    expect(x5.appliesWhen).toMatch(/F11 or F14/);
+    const row = loadRole(plugin, "fullstack")!.body.split("\n").find((l) => l.includes("X5 reads F11 and F14"))!;
+    expect(row).toMatch(/when the server half is in Touches/);
+    expect(row).toMatch(/access check is always yours/);
+  });
+});
+
+describe("contract-tests through aidw plugin-path", () => {
+  it("the new path resolves and the old one does not", () => {
+    const pp = (rel: string) => {
+      let out = "";
+      let err = "";
+      const code = run(["plugin-path", rel], {}, plugin, { out: (s) => (out += s), err: (s) => (err += s) });
+      return { code, out: out.trim(), err };
+    };
+    const ok = pp("library/skills/contract-tests/SKILL.md");
+    expect(ok.code, ok.err).toBe(0);
+    expect(existsSync(ok.out)).toBe(true);
+    expect(pp("roles/integration/skills/contract-tests.md").code).not.toBe(0);
+  });
+});
+
+const temps: string[] = [];
+afterAll(() => temps.forEach((t) => rmSync(t, { recursive: true, force: true })));
+const vendor = join(plugin, "library", "vendor");
+const ID = "2026-11-24-booking";
+const OK = `node -e "process.exit(0)"`;
+const FS_TASKS = `tasks:
+  - id: T01
+    title: Reschedule a booking
+    role: fullstack
+    type: feat
+    specs: [booking/reschedule-appointment]
+    scenarios: [booking/reschedule-appointment/reschedule-appointment-works]
+    depends_on: []
+    touches: ["app/api/**", "app/(site)/**"]
+    verify: ['${OK}']
+    status: pending
+  - id: T02
+    title: Booking page
+    role: frontend
+    type: feat
+    depends_on: []
+    touches: ["app/(site)/**"]
+    verify: ['${OK}']
+    status: pending
+`;
+const cli = (rootDir: string, ...argv: string[]) => {
+  let out = "";
+  let err = "";
+  const code = run([...argv, "--root", rootDir], {}, rootDir, { out: (s) => (out += s), err: (s) => (err += s) });
+  return { code, out, err };
+};
+
+function fullstackProject(): string {
+  const rootDir = tempProject();
+  temps.push(rootDir);
+  expect(cli(rootDir, "init").code).toBe(0);
+  write(rootDir, ".aidw/specs/booking/spec.md", MAIN_SPEC);
+  expect(cli(rootDir, "change", "new", ID, "--title", "Booking").code).toBe(0);
+  const c = `.aidw/changes/${ID}`;
+  write(rootDir, `${c}/analysis.md`, ANALYSIS_MD);
+  write(rootDir, ".aidw/design/tokens.yaml", TOKENS_YAML);
+  write(rootDir, ".aidw/design/direction.md", "# Direction\n");
+  write(rootDir, `${c}/tasks.yaml`, FS_TASKS);
+  write(rootDir, `${c}/quality.yaml`, QUALITY_YAML);
+  write(rootDir, `${c}/specs/booking/spec.md`, `## ADDED Requirements\n\n${REQ("Reschedule appointment")}`);
+  write(rootDir, ".aidw/architecture/overview.md", "# Architecture\n");
+  write(rootDir, "package.json", JSON.stringify({ name: "x", dependencies: { react: "^19.0.0", vite: "^6.0.1", express: "^5.1.0" } }));
+  planReviewed(rootDir, ID);
+  for (const s of ["intake", "analyzing", "awaiting_approval"]) {
+    const t = cli(rootDir, "transition", ID, s);
+    expect(t.code, t.err + t.out).toBe(0);
+  }
+  const approved = cli(rootDir, "approve", ID);
+  expect(approved.code, approved.err + approved.out).toBe(0);
+  expect(cli(rootDir, "transition", ID, "executing").code).toBe(0);
+  return rootDir;
+}
+
+describe("the consult gate for fullstack", () => {
+  const taskOf = (rootDir: string, id: string) => parseTasks(readFileSync(join(rootDir, ".aidw/changes", ID, "tasks.yaml"), "utf8")).tasks.find((t) => t.id === id)!;
+
+  it("offers ui-ux-designer to a fullstack task once the design exists, and database-architect once a data model does", () => {
+    const rootDir = fullstackProject();
+    write(rootDir, `.aidw/changes/${ID}/data-model.md`, "# Data model\n");
+    const offered = taskConsultable(pathsFor(rootDir), ID, taskOf(rootDir, "T01"), plugin);
+    expect(offered.role).toBe("fullstack");
+    expect(offered.roles).toContain("ui-ux-designer");
+    expect(offered.roles).toContain("database-architect");
+  });
+
+  it("records a Consultation from fullstack to ui-ux-designer and spawns it", () => {
+    const rootDir = fullstackProject();
+    expect(cli(rootDir, "task", "start", "T01").code).toBe(0);
+    const file = write(rootDir, `.aidw/changes/${ID}/consult/T01.request.md`, `---\nfrom: fullstack\ntask: T01\nto: ui-ux-designer\n---\n\n## Question\n\nWhat does the reschedule button show while the request is in flight?\n\n## Progress\n\nDone so far: the seam test.\nNext step: the screen.\nFiles touched: app/api/bookings/route.ts\n`);
+    const r = cli(rootDir, "consult", file);
+    expect(r.code, r.err).toBe(0);
+    expect(r.out).toMatch(/C01 recorded: fullstack \(T01\) asks ui-ux-designer/);
+    expect(r.out).toMatch(/SPAWN aidw:ui-ux-designer/);
+  });
+
+  it("still refuses a Role fullstack does not declare", () => {
+    const rootDir = fullstackProject();
+    expect(cli(rootDir, "task", "start", "T01").code).toBe(0);
+    const file = write(rootDir, `.aidw/changes/${ID}/consult/T01.request.md`, `---\nfrom: fullstack\ntask: T01\nto: qa\n---\n\n## Question\n\nWhich layer?\n\n## Progress\n\nDone so far: nothing.\nNext step: tests.\nFiles touched: none\n`);
+    const r = cli(rootDir, "consult", file);
+    expect(r.code).toBe(1);
+    expect(r.err).toMatch(/fullstack does not consult qa/);
+  });
+});
+
+describe("briefs of a fullstack task", () => {
+  const rulesOf = (r: string) => join(plugin, "roles", r, "rules.md");
+
+  it("the review brief points at fullstack's, backend's and frontend's rules.md, each a table with ids", () => {
+    const rootDir = fullstackProject();
+    const text = buildBrief(pathsFor(rootDir), ID, "T01", "review", vendor).text;
+    expect(text).toContain("## Rules of the Role that built it (fullstack)");
+    for (const r of ["fullstack", "backend", "frontend"]) expect(text, r).toContain(`\`${rulesOf(r)}\`: rules of ${r}, one per row with an id.`);
+    expect(text).toMatch(/cite its id \(for example `X1`\)/);
+  });
+
+  it("the implement brief points at the backend and frontend rules it follows, not its own (they are in its profile)", () => {
+    const rootDir = fullstackProject();
+    const text = buildBrief(pathsFor(rootDir), ID, "T01", "implement", vendor).text;
+    expect(text).toContain("## Rules of the Roles yours follows");
+    for (const r of ["backend", "frontend"]) expect(text, r).toContain(`\`${rulesOf(r)}\``);
+    expect(text).not.toContain(`\`${rulesOf("fullstack")}\``);
+  });
+
+  it("names the React skill and the UI skills as the frontend brief does, plus the API pair for its server half", () => {
+    const rootDir = fullstackProject();
+    const ids = (t: string) => buildBrief(pathsFor(rootDir), ID, t, "implement", vendor).skills.map((s) => s.id);
+    const fs = ids("T01");
+    const fe = ids("T02");
+    expect(fe).toContain("aidw/react-rules");
+    expect(fs).toContain("aidw/react-rules");
+    for (const s of fe.filter((x) => x !== "anthropic/frontend-design")) expect(fs, s).toContain(s);
+    expect(fs).toContain("aidw/api-design-rules");
+    for (const s of buildBrief(pathsFor(rootDir), ID, "T01", "implement", vendor).skills) expect(existsSync(s.path), s.path).toBe(true);
+  });
+
+  it("the generated fullstack agent names each of its skills with a resolvable plugin path", () => {
+    const agent = readFileSync(join(plugin, "agents", "fullstack.md"), "utf8");
+    for (const s of loadRole(plugin, "fullstack")!.skills) {
+      expect(agent, s.name).toContain(`- \`${s.name}\`: ${s.when}`);
+      const rel = skillFile("fullstack", s.name);
+      expect(agent, s.name).toContain(`aidw plugin-path ${rel}`);
+      expect(existsSync(join(plugin, rel)), rel).toBe(true);
+    }
   });
 });
