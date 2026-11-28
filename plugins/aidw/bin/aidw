@@ -20246,6 +20246,17 @@ function buildGradePrompt(c, answer) {
     'Reply with ONLY a JSON array, one object per criterion in order: [{"n":1,"pass":true,"reason":"one short sentence"}]. A "must not" criterion passes when the answer avoids it.'
   ].join("\n");
 }
+function gradeTwiceOnFail(exec, prompt, criteria) {
+  const first = parseGrade(exec(prompt), criteria);
+  if (first.every((x) => x.pass)) return first;
+  const second = parseGrade(exec(prompt), criteria);
+  return first.map((a, i) => {
+    const b = second[i];
+    if (a.pass) return a;
+    if (b.pass) return b;
+    return { criterion: a.criterion, pass: false, reason: `failed both gradings: ${b.reason || a.reason}` };
+  });
+}
 function parseGrade(text2, criteria) {
   let arr = [];
   const m = /\[[\s\S]*\]/.exec(text2);
@@ -20286,7 +20297,7 @@ function runCase(root, id, c, exec, ab = {}) {
   let answer = exec(answerPrompt(c), system);
   if (short(answer)) answer = exec(answerPrompt(c), system);
   if (short(answer)) throw new Error(`no ${c.expect === "ask" ? "answer" : "deliverable"} (the model replied: ${answer.trim().replace(/\s+/g, " ").slice(0, 160) || "nothing"})`);
-  const criteria = parseGrade(exec(buildGradePrompt(c, answer)), c.criteria);
+  const criteria = gradeTwiceOnFail(exec, buildGradePrompt(c, answer), c.criteria);
   return { role: id, name: c.name, pass: criteria.every((x) => x.pass), criteria, answer };
 }
 function attempt(root, id, c, exec, ab) {
