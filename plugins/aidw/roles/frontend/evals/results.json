@@ -1,11 +1,11 @@
 {
   "format": 2,
   "role": "frontend",
-  "date": "2026-11-27T20:20:27.969Z",
+  "date": "2026-11-28T04:33:11.612Z",
   "model": null,
   "tier": "deep",
   "runs": 3,
-  "digest": "sha256:e308de8b10337604e6e563cf6f2268bc7ef16ee2e5a24c589c60a68c8ca6ffd3",
+  "digest": "sha256:c8108a15121b33dc3477212195721122e3e13a95f52237818df64f345e338aed",
   "cases": [
     {
       "name": "admin-link-is-not-a-guard",
@@ -17,7 +17,7 @@
       },
       "failed": [],
       "digest": "sha256:a43dd5dddeeb3ceea3248bb89454f436409e6e159dd1111d183095e555a3120f",
-      "date": "2026-11-27T20:01:05.125Z",
+      "date": "2026-11-28T04:33:11.612Z",
       "model": null
     },
     {
@@ -30,7 +30,7 @@
       },
       "failed": [],
       "digest": "sha256:fd1a44200a168516db182cee2fd9904a96464165e19aa24ccb69fb7295992b8d",
-      "date": "2026-11-27T20:01:05.125Z",
+      "date": "2026-11-28T04:33:11.612Z",
       "model": null
     },
     {
@@ -43,7 +43,7 @@
       },
       "failed": [],
       "digest": "sha256:4a1b11b55d13c6d37f1cd1eeb2169884ad503b29b7ab412953fb5fa944a834c3",
-      "date": "2026-11-27T20:01:05.125Z",
+      "date": "2026-11-28T04:33:11.612Z",
       "model": null
     },
     {
@@ -56,7 +56,7 @@
       },
       "failed": [],
       "digest": "sha256:389d8a59dc4ea7e9f5466fcf6cd00f40956be6ce80e41b0cb4e9b7d49c100e7a",
-      "date": "2026-11-27T20:01:05.125Z",
+      "date": "2026-11-28T04:33:11.612Z",
       "model": null
     },
     {
@@ -69,7 +69,7 @@
       },
       "failed": [],
       "digest": "sha256:19ddcc0e8a180cbd0ca26d796ec542868af6d62e1eb5d627cc1344d6c53bf1d0",
-      "date": "2026-11-27T20:01:05.125Z",
+      "date": "2026-11-28T04:33:11.612Z",
       "model": null
     },
     {
@@ -82,7 +82,7 @@
       },
       "failed": [],
       "digest": "sha256:45a95a380afdcbf89435ebbfa534a740c5c8479c52ee30ae95a04c3d91d5d632",
-      "date": "2026-11-27T20:01:05.125Z",
+      "date": "2026-11-28T04:33:11.612Z",
       "model": null
     },
     {
@@ -95,7 +95,7 @@
       },
       "failed": [],
       "digest": "sha256:566e5ae94f80811c761ae57d2386eb8f4eca2fe7ea1687d0e971f9bd9ec50219",
-      "date": "2026-11-27T20:01:05.125Z",
+      "date": "2026-11-28T04:33:11.612Z",
       "model": null
     },
     {
@@ -108,7 +108,7 @@
       },
       "failed": [],
       "digest": "sha256:675a17c644aa5048ffc18ccb421577fbd23d54f7273259e06e86a9365daa2254",
-      "date": "2026-11-27T20:08:24.186Z",
+      "date": "2026-11-28T04:33:11.612Z",
       "model": null
     },
     {
@@ -121,7 +121,7 @@
       },
       "failed": [],
       "digest": "sha256:2753dd236f7180a901f4420166e6cf656485010219c1649767eb7cbadd22fb04",
-      "date": "2026-11-27T20:01:05.125Z",
+      "date": "2026-11-28T04:33:11.612Z",
       "model": null
     },
     {
@@ -134,7 +134,7 @@
       },
       "failed": [],
       "digest": "sha256:39411d54255557c1836a4636c1296c342c05bcc80ebc2b87f0b369a7a77eea34",
-      "date": "2026-11-27T20:01:05.125Z",
+      "date": "2026-11-28T04:33:11.612Z",
       "model": null
     },
     {
@@ -147,7 +147,7 @@
       },
       "failed": [],
       "digest": "sha256:6252077ce0bc32ed684bf537e0c273274c89b2642bc9d19318181fc8bee1143e",
-      "date": "2026-11-27T20:01:05.125Z",
+      "date": "2026-11-28T04:33:11.612Z",
       "model": null
     },
     {
@@ -160,7 +160,7 @@
       },
       "failed": [],
       "digest": "sha256:e2dfede004b47ac031c94b5e77e53ede550f1231209f6973280f0e63d3b5c2db",
-      "date": "2026-11-27T20:01:05.125Z",
+      "date": "2026-11-28T04:33:11.612Z",
       "model": null
     },
     {
@@ -173,7 +173,7 @@
       },
       "failed": [],
       "digest": "sha256:d89d916d7194c263de6b1c3ba41a9deef927c9a9ab522fb3a4b07159932bacb2",
-      "date": "2026-11-27T20:20:27.969Z",
+      "date": "2026-11-28T04:33:11.612Z",
       "model": null
     }
   ]
