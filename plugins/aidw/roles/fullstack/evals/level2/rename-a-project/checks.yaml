@@ -1,0 +1,30 @@
+# Machine checks of a level 2 run, after the held-out tests. Each command runs in the temp copy with `sh -c`; the
+# plugin's bin/ is first on PATH, $AIDW_BASE is the commit the Agent started from, and $AIDW_CHANGED names a file that
+# lists the files the session changed. A check passes when the command exits with `exit` (default 0), its stdout parsed
+# as JSON contains `json` (a subset; a string "/re/" is a regex) and its output matches `matches` (a regex), each when
+# given.
+checks:
+  - name: no control without a name or a label and no clickable div in the added code (F4, a11y-names)
+    # --base: only the lines added since the base commit. A script that is missing or fails prints no JSON, and the
+    # parse fails the check.
+    run: >-
+      node "$(aidw plugin-path roles/frontend/scripts/a11y-names.mjs)" --base "$AIDW_BASE" . |
+      node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>{const bad=JSON.parse(s).findings.filter((f)=>["no-name","no-label","div-click"].includes(f.problem));if(bad.length){console.log(JSON.stringify(bad));process.exit(1)}})'
+  - name: every scenario id names a test (the user-action scenarios in web/tests, the route's in server/tests)
+    run: >-
+      for id in owner-renames list-shows-the-new-name name-already-taken blank-name member-is-refused;
+      do grep -rqF "projects/rename-a-project/$id" web/tests --include='*.test.*' || { echo "no web test names projects/rename-a-project/$id"; exit 1; }; done;
+      for id in owner-renames name-already-taken blank-name member-is-refused signed-out-caller;
+      do grep -rqF "projects/rename-a-project/$id" server/tests --include='*.test.*' || { echo "no server test names projects/rename-a-project/$id"; exit 1; }; done
+  - name: the whole suite passes
+    run: npm test
+  - name: the typecheck passes
+    run: npm run typecheck
+  - name: nothing outside Touches changed (no file of the test harness, the schema or the other server areas)
+    # Against the base commit, so a commit cannot hide a change. $AIDW_CHANGED lists the files the session changed, taken
+    # before the harness put back the files the grading runs; run by hand, the list is taken from git.
+    run: >-
+      changed=$(if [ -n "$AIDW_CHANGED" ]; then cat "$AIDW_CHANGED"; else git diff --name-only "$AIDW_BASE";
+      git ls-files --others --exclude-standard; fi);
+      out=$(printf '%s\n' "$changed" | grep -vE '^(shared/projects\.ts$|server/projects/|server/tests/projects/|server/tests/held-out/|web/projects/|web/api/client\.ts$|web/tests/projects/|web/tests/held-out/|\.aidw/(run|changes)/)' | grep -v '^$');
+      test -z "$out" || { echo "$out"; exit 1; }
