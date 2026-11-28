@@ -1,7 +1,7 @@
 {
   "format": 2,
   "role": "fullstack",
-  "date": "2026-11-28T09:52:37.676Z",
+  "date": "2026-11-28T11:11:33.237Z",
   "model": null,
   "tier": "deep",
   "runs": 3,
@@ -48,17 +48,15 @@
     },
     {
       "name": "one-shape-not-two",
-      "pass": false,
+      "pass": true,
       "runs": {
         "total": 3,
-        "passed": 2,
+        "passed": 3,
         "errors": 0
       },
-      "failed": [
-        "must not send this question to `api-designer` or the user: the contract names everything the task needs"
-      ],
-      "digest": "sha256:78877637190380787e5c7fcf1ec560b008be056a6adf856c47497e23c744826b",
-      "date": "2026-11-28T09:52:37.676Z",
+      "failed": [],
+      "digest": "sha256:1f049c9596aae5defb8a29b7599b3178cd81413101374c2250ee64cbf7880453",
+      "date": "2026-11-28T10:59:36.512Z",
       "model": null
     },
     {
@@ -76,32 +74,28 @@
     },
     {
       "name": "page-checks-access",
-      "pass": false,
+      "pass": true,
       "runs": {
         "total": 3,
-        "passed": 2,
+        "passed": 3,
         "errors": 0
       },
-      "failed": [
-        "must make the wrong-user test assert that no project data is returned or rendered for them (a rejected or not-found call with the data reader never reached), not only a status"
-      ],
-      "digest": "sha256:6189d4cebc2ad71ce30f08089e6ce3b7cc920e9715f4a15927699ad27d86e22e",
-      "date": "2026-11-28T09:52:37.676Z",
+      "failed": [],
+      "digest": "sha256:6e165b8bb98c76af088bc376b977e99d9e805b8e9002793cdf6452c1967ca1e2",
+      "date": "2026-11-28T11:05:14.334Z",
       "model": null
     },
     {
       "name": "profile-props-are-a-response",
-      "pass": false,
+      "pass": true,
       "runs": {
         "total": 3,
-        "passed": 2,
+        "passed": 3,
         "errors": 0
       },
-      "failed": [
-        "must put the view's type next to the card and type the builder's return with it"
-      ],
-      "digest": "sha256:650e0724f8259e4eee9528358fb8a3f3966c99e280e752977ae38e3df63c7e7d",
-      "date": "2026-11-28T09:52:37.676Z",
+      "failed": [],
+      "digest": "sha256:197c45b4a38f10ceb5354e54cbb6cb2486136c55a3aa08f3a9e2aee97553deba",
+      "date": "2026-11-28T11:11:33.237Z",
       "model": null
     },
     {
