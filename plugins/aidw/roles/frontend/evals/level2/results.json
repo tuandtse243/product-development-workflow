@@ -2,7 +2,7 @@
   "format": 2,
   "level": 2,
   "role": "frontend",
-  "date": "2026-11-27T21:10:14.135Z",
+  "date": "2026-11-28T02:16:42.325Z",
   "model": null,
   "tier": "deep",
   "runs": 3,
@@ -10,39 +10,32 @@
   "cases": [
     {
       "name": "billing-page-guard",
-      "pass": false,
+      "pass": true,
       "runs": {
         "total": 3,
-        "passed": 1,
+        "passed": 3,
         "errors": 0
       },
-      "failed": [
-        "checks: /billing is not reported as unguarded or missing in the route inventory (F11, route-guard-inventory): exit 1, expected 0: [{\"file\":\"src/routes.tsx\",\"line\":22,\"kind\":\"unguarded-route\",\"path\":\"/billing\",\"detail\":\"/billing has no guard (route in src/routes.tsx:22)\"}] (2 of 3 runs)",
-        "tests: billing page guard (held out) a member sees that the page is for owners only, whatever localStorage says, and no billing request is sent (1 of 3 runs)",
-        "reads: did not read plugin:roles/frontend/skills/client-data-and-state.md (1 of 3 runs)"
-      ],
-      "digest": "sha256:4498b8567711b21a33de1dc91e09dac6ff0ee99658e618987b4977c6781b68db",
+      "failed": [],
+      "digest": "sha256:fc86f2d5d69266a7be42e14dcce01dca2cd42e8c519857e8a3362504d5a55cc8",
       "fixture": "sha256:1c7f629e0d802f2813ff95ff070f9fae262fe4e5c1c3c927b87fde1f1c3d3825",
       "gradingSandbox": "sandbox-exec",
-      "date": "2026-11-27T21:10:14.135Z",
+      "date": "2026-11-28T02:16:42.325Z",
       "model": null
     },
     {
       "name": "book-a-slot-screen",
-      "pass": false,
+      "pass": true,
       "runs": {
         "total": 3,
-        "passed": 1,
+        "passed": 3,
         "errors": 0
       },
-      "failed": [
-        "reads: did not read plugin:roles/frontend/skills/screen-states.md (2 of 3 runs)",
-        "reads: did not read plugin:roles/frontend/skills/accessible-interactions.md (2 of 3 runs)"
-      ],
+      "failed": [],
       "digest": "sha256:3c8713a7d4e65f3cf29385f4a52db913bda5fac5f7081176c8008d29139851cf",
       "fixture": "sha256:1c7f629e0d802f2813ff95ff070f9fae262fe4e5c1c3c927b87fde1f1c3d3825",
       "gradingSandbox": "sandbox-exec",
-      "date": "2026-11-27T21:10:14.135Z",
+      "date": "2026-11-28T01:42:22.156Z",
       "model": null
     },
     {
@@ -50,36 +43,32 @@
       "pass": false,
       "runs": {
         "total": 3,
-        "passed": 0,
+        "passed": 1,
         "errors": 0
       },
       "failed": [
-        "reads: did not read plugin:roles/frontend/skills/screen-states.md (1 of 3 runs)",
-        "criteria: must say in its final reply or its report file that the existing contact form (src/contact/ContactPage.tsx) shows every error in one toast, takes its fields by placeholder only and can be submitted twice, as a problem outside Touches for someone else to fix, instead of copying that pattern or keeping quiet about it: The final reply flags only the contact form's placeholder-only fields; neither text reports its single error toast or that it can be submitted twice. (1 of 3 runs)",
-        "criteria: must say in its final reply or its report file that the existing contact form (src/contact/ContactPage.tsx) shows every error in one toast, takes its fields by placeholder only and can be submitted twice, as a problem outside Touches for someone else to fix, instead of copying that pattern or keeping quiet about it: The final reply is only a CONSULT line and no report file was written, so the contact form's toast, placeholder-only fields and double submit are never mentioned as an out-of-scope problem. (1 of 3 runs)"
+        "checks: no literal that is not a token in the added styles (F2, token-literals): exit 1, expected 0: [{\"file\":\"src/team/team.css\",\"line\":5,\"kind\":\"length\",\"literal\":\"24rem\",\"nearestToken\":{\"name\":\"size-title\",\"value\":\"1.5rem\"}},{\"file\":\"src/team/team.css\",\"line\":35,\"kind\":\"length\",\"literal\":\"24rem\",\"nearestToken\":{\"name\":\"size-title\",\"value\":\"1.5rem\"}}] (1 of 3 runs)",
+        "reads: did not read plugin:roles/frontend/skills/screen-states.md (1 of 3 runs)"
       ],
-      "digest": "sha256:bfefdfcecd5874180906bc32cf73e7ed771da9890a20808a476004e8d07bdcd4",
+      "digest": "sha256:a1499912ab0a261b4265c7af8322433ca344baf9ed59558c5026e4b8517e7104",
       "fixture": "sha256:1c7f629e0d802f2813ff95ff070f9fae262fe4e5c1c3c927b87fde1f1c3d3825",
       "gradingSandbox": "sandbox-exec",
-      "date": "2026-11-27T21:10:14.135Z",
+      "date": "2026-11-28T02:05:47.739Z",
       "model": null
     },
     {
       "name": "people-search",
-      "pass": false,
+      "pass": true,
       "runs": {
         "total": 3,
-        "passed": 2,
+        "passed": 3,
         "errors": 0
       },
-      "failed": [
-        "reads: did not read plugin:roles/frontend/skills/client-data-and-state.md (1 of 3 runs)",
-        "reads: did not read plugin:roles/frontend/skills/screen-states.md (1 of 3 runs)"
-      ],
+      "failed": [],
       "digest": "sha256:48c5d05f5a4d468e0a8353a89bb9af21510c63b1495f5bbce2c78acdc2b8fd01",
       "fixture": "sha256:1c7f629e0d802f2813ff95ff070f9fae262fe4e5c1c3c927b87fde1f1c3d3825",
       "gradingSandbox": "sandbox-exec",
-      "date": "2026-11-27T21:10:14.135Z",
+      "date": "2026-11-28T01:55:34.209Z",
       "model": null
     }
   ]
