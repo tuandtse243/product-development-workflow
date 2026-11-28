@@ -4,7 +4,7 @@
 
 Size: small (small | normal: small is a bugfix or tweak, at most 3 tasks, see /aidw:start step 1c)
 
-An owner of a team invites a person from a new Team page (`/team`): a dialog with the person's name and email. One slice
+An owner of a team invites a person from the Team page (`/team`, a page with only its heading and its header link so far): a dialog with the person's name and email. One slice
 with both halves: a new operation `POST /api/invites` that stores the invitation, and the dialog that uses it. The name
 (1 to 80 characters) and the email are refused on the form before any request, and by the server with the same limits.
 
@@ -16,14 +16,14 @@ with both halves: a new operation `POST /api/invites` that stores the invitation
 
 ## Requirements and scope
 
-In: the invite operation, the Team page with its dialog and the dialog's states (a refused name or email, a refused member,
-a failure, saving), the link to the page in the header. Out: sending the invitation email, accepting an invitation, listing or
+In: the invite operation, the dialog on the Team page and its states (a refused name or email, a refused member,
+a failure, saving). Out: sending the invitation email, accepting an invitation, listing or
 withdrawing invitations, the database schema (the `invites` table exists).
 
 ## Existing system
 
 `npm test` and `npm run typecheck` pass today. The server has `server/invites/rules.ts`, the rules of an invitation as a zod
-schema, not used by a route yet; the web app has the router (`web/routes.tsx`), the frame (`web/Layout.tsx`) and a client
+schema, not used by a route yet; the web app has the Team page (`web/team/`, routed and linked already) and a client
 that calls `fetch` (`web/api/client.ts`); tests go through the real server (`web/tests/`).
 
 ## Domain
@@ -42,7 +42,7 @@ Mode: existing. No design tokens: the app has none.
 
 ## Architecture
 
-See `.aidw/architecture/overview.md`: the route in `server/invites/`, the dialog in `web/invites/`, the rules in `shared/`.
+See `.aidw/architecture/overview.md`: the route in `server/invites/`, the dialog in `web/team/`, the rules in `shared/`.
 
 ## Specs
 

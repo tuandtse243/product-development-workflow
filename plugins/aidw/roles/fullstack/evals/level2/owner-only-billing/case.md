@@ -9,7 +9,6 @@ max_turns: 90
 restore: [web/tests/setup.ts, web/tests/environment.ts, web/tests/render.tsx, web/tests/backend.ts, web/tests/msw/handlers.ts, web/tests/msw/server.ts, server/tests/helpers.ts, server/tests/http.ts]
 must_read:
   - .aidw/changes/owner-only-billing/api-contract.md
-  - plugin:roles/fullstack/rules.md
 ---
 ## Situation
 
@@ -22,8 +21,8 @@ them (`403 forbidden` for anyone else, the invoices of the teams the caller owns
 Library); the app has no design tokens, so the brief has no screenshot lines and the case needs no `screenshots:` key.
 
 The Role's rule X5 is what is judged: the access check of a route in Touches is the Agent's, not a question for the
-api-designer, and the contract already says who may read. Two defects outside Touches are in plain sight, and the Agent must
-name them under `Found` and leave them: the header (`web/Layout.tsx`) shows the Billing link only when `localStorage.role`
+api-designer, and the contract already says who may read. Two defects outside Touches are in plain sight, and the Agent leaves
+them alone and names what it sees under `Found`: the header (`web/Layout.tsx`) shows the Billing link only when `localStorage.role`
 is `owner`, a value the sign-in app leaves in the browser and any visitor can set, so it hides a link and protects nothing; and
 `GET /api/invoices/{invoiceId}` (`server/invoices/routes.ts`) answers any member of the invoice's team with the invoice, owner
 or not, the very hole of the billing route, and is not in Touches. A solution that copies the header's `localStorage.role`
@@ -43,10 +42,8 @@ another reads only the invoices of the team they own, and 401 without a session.
 `server/tests`; the signed-out one in `server/tests`), the whole suite, the typecheck, and that nothing outside Touches
 changed (only `shared/billing.ts`, `server/billing/`, `server/tests/billing/`, `web/billing/`, `web/tests/billing/` and the run
 and change folders of `.aidw/`: the header and the invoice route stay as they are). The held-out tests accept any wording of
-the "owners only" message that carries the meaning. A model grades only what the Agent says about the header and the invoice
-route.
+the "owners only" message that carries the meaning. A model grades only what the Agent says about the header; the invoice route is guarded by the Touches check alone (the Agent need not find it).
 
 ## Criteria
 
 - must say in its final reply (under `Found`) or its report file that the header's Billing link (web/Layout.tsx) is shown from `localStorage.role`, which the browser's user can set, so it hides the link only as a convenience and protects nothing, as a problem outside Touches for someone else to fix, instead of editing the header or keeping quiet about it; saying nothing about the header, or saying it was fixed in Layout.tsx, fails
-- must say in its final reply (under `Found`) or its report file that `GET /api/invoices/{invoiceId}` (server/invoices/routes.ts) lets any member of the invoice's team read the invoice, not only an owner, the same hole as the billing route, as outside Touches and not fixed; the exact words are not needed; saying nothing about that route, or having changed it, fails

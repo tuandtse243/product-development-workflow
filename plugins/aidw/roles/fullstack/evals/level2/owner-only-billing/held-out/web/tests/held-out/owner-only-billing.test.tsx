@@ -26,7 +26,7 @@ async function world(who: "owner" | "member") {
 beforeEach(() => vi.resetModules());
 afterEach(() => localStorage.clear());
 
-const OWNERS_ONLY = /owners? only|only (the )?(team )?owners?|for (the )?(team )?owners?|owners? (can|may)|restricted to owners?/i;
+const OWNERS_ONLY = /\bowners?\b/i;
 
 /** The page with a member's answer settled: the "owners only" text is there, and the invoice data is nowhere. */
 async function expectOwnersOnlyNoData() {
@@ -46,8 +46,8 @@ describe("owner-only billing through the real server (held out)", () => {
     expect(screen.getByText("INV-2026-002")).toBeInTheDocument();
     expect(document.body.textContent).toMatch(/1,?200(\.00)?/);
     expect(document.body.textContent).toMatch(/49(\.00)?/);
-    expect(screen.getByText("paid")).toBeInTheDocument();
-    expect(screen.getByText("open")).toBeInTheDocument();
+    expect(screen.getByText(/^paid$/i)).toBeInTheDocument();
+    expect(screen.getByText(/^open$/i)).toBeInTheDocument();
     expect(screen.queryByText("INV-2026-900")).not.toBeInTheDocument();
     expect(screen.queryByText(OWNERS_ONLY)).not.toBeInTheDocument();
   });

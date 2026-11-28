@@ -462,14 +462,14 @@ const I = {
 };
 
 describe.skipIf(!ready)("level 2 case invite-with-one-schema on the fullstack-app fixture (cached packages)", () => {
-  it("loads, on the fixture's Change, with the contract and the two skills to read and one held-out file per project", () => {
+  it("loads, on the fixture's Change, with the contract and the contract-tests skill to read and one held-out file per project", () => {
     const { cases, diags } = loadLevel2Cases(plugin, "fullstack");
     expect(diags.errors).toEqual([]);
     const c = cases.find((x) => x.name === INVITE)!;
     expect(c).toMatchObject({ fixture: "fullstack-app", change: INVITE, task: "T01", covers: ["X2", "library/contract-tests"] });
     expect(c.restore).toEqual(expect.arrayContaining(["web/tests/setup.ts", "web/tests/msw/handlers.ts", "web/tests/backend.ts", "server/tests/helpers.ts", "server/tests/http.ts"]));
     expect(c.heldOut).toEqual(["server/tests/held-out/invite-with-one-schema.test.ts", "web/tests/held-out/invite-with-one-schema.test.tsx"]);
-    expect(c.mustRead).toEqual([".aidw/changes/invite-with-one-schema/api-contract.md", "plugin:roles/fullstack/rules.md", "plugin:library/skills/contract-tests/SKILL.md"]);
+    expect(c.mustRead).toEqual([".aidw/changes/invite-with-one-schema/api-contract.md", "plugin:library/skills/contract-tests/SKILL.md"]);
     expect(c.checks).toHaveLength(5);
   });
 
@@ -483,7 +483,7 @@ describe.skipIf(!ready)("level 2 case invite-with-one-schema on the fullstack-ap
     expect(readFileSync(join(fixture, ".aidw", "changes", INVITE, "change.yaml"), "utf8")).toMatch(/state: executing[\s\S]*base_branch: main/);
     expect(tasks).toMatch(/role: fullstack/);
     expect(tasks.match(/^\s+- id: /gm)).toHaveLength(1);
-    expect(tasks).toMatch(/touches: .*"shared\/invites\.ts".*"server\/invites\/\*\*".*"web\/invites\/\*\*"/);
+    expect(tasks).toMatch(/touches: .*"shared\/invites\.ts".*"server\/invites\/\*\*".*"web\/team\/\*\*"/);
   });
 
   it("every scenario of the Change is on the task, named by the checks and by the reference's own tests; the spec states the limit for both halves", () => {
@@ -492,19 +492,22 @@ describe.skipIf(!ready)("level 2 case invite-with-one-schema on the fullstack-ap
     expect([...tasksOf(INVITE).matchAll(/^\s+- (invites\/\S+\/\S+)$/gm)].map((m) => m[1])).toEqual(scenarios.map((x) => `invites/invite-a-member/${x}`));
     const idCheck = caseNamed(INVITE).checks.find((ch) => /every scenario id/.test(ch.name))!.run;
     for (const x of scenarios) expect(idCheck, x).toContain(x);
-    const refTests = ["server/tests/invites", "web/tests/invites"].flatMap((d) => readdirSync(join(reference, INVITE, d)).map((f) => readFileSync(join(reference, INVITE, d, f), "utf8"))).join("\n");
+    const refTests = ["server/tests/invites", "web/tests/team"].flatMap((d) => readdirSync(join(reference, INVITE, d)).map((f) => readFileSync(join(reference, INVITE, d, f), "utf8"))).join("\n");
     for (const x of scenarios) expect(refTests, x).toContain(`invites/invite-a-member/${x}`);
     const spec = readFileSync(join(fixture, ".aidw", "changes", INVITE, "specs", "invites", "spec.md"), "utf8");
     expect(spec).toMatch(/80 characters[\s\S]*both on the form[\s\S]*and at the\s+server, with the same limits/);
     expect(readFileSync(join(fixture, ".aidw", "changes", INVITE, "api-contract.md"), "utf8")).toMatch(/1 to 80 characters[\s\S]*same rules/);
   });
 
-  it("the trap is in the fixture: the invite rules sit in a server file that imports the database client, and nothing of invites is in shared/ or web/", () => {
+  it("the trap is in the fixture: the invite rules sit in a server file that imports the database client, and nothing of invites is in shared/ or web/, only a placeholder Team page, routed and linked", () => {
     const rules = readFileSync(join(fixture, "server", "invites", "rules.ts"), "utf8");
     expect(rules).toMatch(/from "\.\.\/db\/client\.ts"/);
     expect(rules).toMatch(/\.max\(80\)/);
     expect(existsSync(join(fixture, "shared", "invites.ts"))).toBe(false);
     expect(existsSync(join(fixture, "web", "invites"))).toBe(false);
+    expect(readFileSync(join(fixture, "web", "team", "TeamPage.tsx"), "utf8")).not.toMatch(/button|dialog/i);
+    expect(readFileSync(join(fixture, "web", "routes.tsx"), "utf8")).toMatch(/path: "team"/);
+    expect(readFileSync(join(fixture, "web", "Layout.tsx"), "utf8")).toMatch(/to="\/team"/);
   });
 
   proofs(
@@ -525,7 +528,7 @@ describe.skipIf(!ready)("level 2 case invite-with-one-schema on the fullstack-ap
   it("the a11y-names check fails an input with no label, and passes the correct reference", () => {
     const g = graded(caseNamed(INVITE), INVITE);
     expect(g.check(/a11y-names/)).toMatchObject({ pass: true });
-    const p = join(g.project, "web", "invites", "InviteDialog.tsx");
+    const p = join(g.project, "web", "team", "InviteDialog.tsx");
     writeFileSync(p, readFileSync(p, "utf8").replace("<label htmlFor={`${id}-${key}`}>{label}</label>", ""));
     expect(g.check(/a11y-names/)).toMatchObject({ pass: false, why: expect.stringMatching(/no-label/) });
   }, 300_000);
@@ -533,9 +536,9 @@ describe.skipIf(!ready)("level 2 case invite-with-one-schema on the fullstack-ap
   it("the Touches check allows the task's files and .aidw/run, and fails the schema, the harness, the other server areas and the shared errors", () => {
     const g = graded(caseNamed(INVITE), INVITE);
     const ch = caseNamed(INVITE).checks.find((x) => /nothing outside Touches/.test(x.name))!;
-    const ok = ["shared/invites.ts", "server/invites/routes.ts", "server/invites/rules.ts", "server/app.ts", "server/tests/invites/a.test.ts", "web/invites/InviteDialog.tsx", "web/routes.tsx", "web/Layout.tsx", "web/tests/invites/a.test.tsx", ".aidw/run/report-T01.md", ".aidw/changes/invite-with-one-schema/tasks.yaml"];
+    const ok = ["shared/invites.ts", "server/invites/routes.ts", "server/invites/rules.ts", "server/app.ts", "server/tests/invites/a.test.ts", "web/team/InviteDialog.tsx", "web/tests/team/a.test.tsx", ".aidw/run/report-T01.md", ".aidw/changes/invite-with-one-schema/tasks.yaml"];
     expect(runCheck(ch, g.project, touchesList(g, ok))).toMatchObject({ pass: true });
-    for (const f of ["server/db/schema.sql", "shared/errors.ts", "server/http/errors.ts", "web/api/client.ts", "web/tests/msw/handlers.ts", "web/tests/setup.ts", "server/tests/http.ts", "server/projects/routes.ts", "web/billing/BillingPage.tsx", ".aidw/constitution.md"]) {
+    for (const f of ["server/db/schema.sql", "shared/errors.ts", "server/http/errors.ts", "web/api/client.ts", "web/tests/msw/handlers.ts", "web/tests/setup.ts", "server/tests/http.ts", "server/projects/routes.ts", "web/billing/BillingPage.tsx", "web/routes.tsx", "web/Layout.tsx", ".aidw/constitution.md"]) {
       expect(runCheck(ch, g.project, touchesList(g, [f])), f).toMatchObject({ pass: false });
     }
   }, 300_000);
@@ -570,16 +573,16 @@ const B = {
 };
 
 describe.skipIf(!ready)("level 2 case owner-only-billing on the fullstack-app fixture (cached packages)", () => {
-  it("loads, on the fixture's Change, with the contract and the rule table to read and one held-out file per project", () => {
+  it("loads, on the fixture's Change, with the contract to read and one held-out file per project", () => {
     const { cases, diags } = loadLevel2Cases(plugin, "fullstack");
     expect(diags.errors).toEqual([]);
     const c = cases.find((x) => x.name === BILLING)!;
     expect(c).toMatchObject({ fixture: "fullstack-app", change: BILLING, task: "T01", covers: ["X5"] });
     expect(c.heldOut).toEqual(["server/tests/held-out/owner-only-billing.test.ts", "web/tests/held-out/owner-only-billing.test.tsx"]);
-    expect(c.mustRead).toEqual([".aidw/changes/owner-only-billing/api-contract.md", "plugin:roles/fullstack/rules.md"]);
+    expect(c.mustRead).toEqual([".aidw/changes/owner-only-billing/api-contract.md"]);
     expect(c.checks).toHaveLength(5);
-    expect(c.criteria).toHaveLength(2);
-    expect(c.criteria.join("\n")).toMatch(/localStorage\.role[\s\S]*invoices\/\{invoiceId\}/);
+    expect(c.criteria).toHaveLength(1);
+    expect(c.criteria.join("\n")).toMatch(/localStorage\.role/);
   });
 
   it("the Change is approved and valid with the CLI, one fullstack task, and Touches that hold the route and the page but not the header or the sibling route", () => {
@@ -640,7 +643,7 @@ describe.skipIf(!ready)("level 2 case owner-only-billing on the fullstack-app fi
     }
   }, 300_000);
 
-  it.skipIf(!existsSync(join(plugin, "roles", "fullstack", "skills", "seam-test.md")))("passes a whole run on the correct reference solution: tests, checks, reads, and the grader of the two Found criteria", () => {
+  it.skipIf(!existsSync(join(plugin, "roles", "fullstack", "skills", "seam-test.md")))("passes a whole run on the correct reference solution: tests, checks, reads, and the grader of the Found criterion", () => {
     const c = caseNamed(BILLING);
     const prompts: string[] = [];
     const exec: Exec = (prompt) => {

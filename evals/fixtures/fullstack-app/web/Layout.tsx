@@ -18,6 +18,7 @@ export function Layout() {
         <span className="app__brand">Team projects</span>
         <nav aria-label="Main">
           <Link to="/">Projects</Link>
+          <Link to="/team">Team</Link>
           {isOwner && <Link to="/billing">Billing</Link>}
         </nav>
       </header>

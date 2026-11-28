@@ -49,8 +49,10 @@ const EMAIL = /e-?mail/i;
 
 /** The invite form: the dialog behind an "Invite" button of the Team page, or the form itself when the page shows it. */
 async function openForm(user: App["user"]): Promise<HTMLElement> {
-  await screen.findByRole("heading", { level: 1 });
-  if (!screen.queryByRole("textbox", { name: NAME })) await user.click(await screen.findByRole("button", { name: /invite|add|new/i }));
+  const field0 = () => screen.queryByRole("textbox", { name: NAME });
+  const opener = () => screen.queryByRole("button", { name: /invite|add|new/i });
+  await waitFor(() => expect(field0() ?? opener()).toBeTruthy());
+  if (!field0()) await user.click(opener()!);
   const field = await screen.findByRole("textbox", { name: NAME });
   return field.closest("form") ?? (field.closest("[role=dialog]") as HTMLElement) ?? document.body;
 }
@@ -171,7 +173,7 @@ const EXTS = ["", ".ts", ".tsx", ".js", ".jsx", "/index.ts", "/index.tsx", "/ind
 
 /** The static imports of a source text: `import x from`, `import "x"`, `export ... from "x"`, `import("x")`; comments left out. */
 function specifiers(text: string): string[] {
-  const code = text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  const code = text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`])\/\/.*$/gm, "$1");
   const out: string[] = [];
   for (const m of code.matchAll(/\b(?:import|export)\s+(?:[^'";]*?\s+from\s*)?["']([^"']+)["']|\bimport\s*\(\s*["']([^"']+)["']\s*\)/g)) out.push((m[1] ?? m[2])!);
   return out;
@@ -214,10 +216,14 @@ describe("what the web app's code reaches (held out)", () => {
     const api = reach("server/app.ts").files;
     const common = [...web].filter((f) => f.startsWith("shared/") && api.has(f) && !/^shared\/(errors|projects|billing)\.ts$/.test(f));
     expect(common, "a shared file both halves import").not.toEqual([]);
-    const code = (f: string) => readFileSync(join(root, f), "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
-    // 80 as a limit: `.max(80)`, `NAME_MAX = 80`, `max: 80`, `length > 80`, `<= 80`
-    const LIMIT = /\.max\(\s*80\b|\b\w*(?:max|limit|LIMIT|MAX)\w*\s*[:=]\s*80\b|\blength\s*[<>]=?\s*8[01]\b|[<>]=?\s*80\b/;
-    expect(common.some((f) => LIMIT.test(code(f))), "the limit in a shared file").toBe(true);
+    // The code of a file without comments and string literals, so `// max: 80` or "at most 80 characters" count for nothing.
+    const code = (f: string) =>
+      readFileSync(join(root, f), "utf8")
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/(^|[^:"'`])\/\/.*$/gm, "$1")
+        .replace(/"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`/g, '""');
+    const LIMIT = /\b80\b/;
+    expect(common.some((f) => LIMIT.test(code(f))), "the number 80 in a shared file").toBe(true);
     const elsewhere = [...new Set([...web, ...api])].filter((f) => CODE.test(f) && !f.startsWith("shared/") && LIMIT.test(code(f)));
     expect(elsewhere, "the limit written again outside shared/").toEqual([]);
   });

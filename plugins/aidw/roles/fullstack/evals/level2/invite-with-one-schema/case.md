@@ -9,14 +9,13 @@ max_turns: 100
 restore: [web/tests/setup.ts, web/tests/environment.ts, web/tests/render.tsx, web/tests/backend.ts, web/tests/msw/handlers.ts, web/tests/msw/server.ts, server/tests/helpers.ts, server/tests/http.ts]
 must_read:
   - .aidw/changes/invite-with-one-schema/api-contract.md
-  - plugin:roles/fullstack/rules.md
   - plugin:library/skills/contract-tests/SKILL.md
 ---
 ## Situation
 
 Task T01 of the fixture's Change `invite-with-one-schema`, in the small "team projects" app (Vite + React 19 client in `web/`,
 Express 5 + PGlite server in `server/`, zod schemas in `shared/`): an owner of a team invites a person from a new Team page
-(`/team`, with a header link): a dialog with a name and an email. Both halves are in Touches: `POST /api/invites` stores the
+(`/team`, a placeholder page that is routed and linked already): a dialog with a name and an email. Both halves are in Touches: `POST /api/invites` stores the
 invitation (`201`; `422 validation` with `fields`, `403` for a member, `401` without a session) and the dialog refuses a name
 over 80 characters (after trimming) and an email that is not valid before sending anything. The fixture has no browser
 (Vitest, jsdom, Testing Library); the app has no design tokens and the task's Touches name no styles, so the brief has no
@@ -47,7 +46,7 @@ each field and both at once, 403 for a member and for a user in no team and 401 
 400 for a field that is not listed, a body that is not an object or not JSON, and error bodies with no stack. The checks run the
 Role's `a11y-names` (no `no-name`, `no-label` or `div-click` in the added code), that every scenario id names a test (in
 `web/tests` or `server/tests`; the signed-out one in `server/tests`), the whole suite, the typecheck, and that nothing outside
-Touches changed (only `shared/invites.ts`, `server/invites/`, `server/app.ts`, `server/tests/invites/`, `web/invites/`,
-`web/routes.tsx`, `web/Layout.tsx`, `web/tests/invites/` and the run and change folders of `.aidw/`). The held-out tests are
-written so that a dialog or an inline form, any submit label from a list, and any wording of the messages that carries the
+Touches changed (only `shared/invites.ts`, `server/invites/`, `server/app.ts`, `server/tests/invites/`, `web/team/`,
+`web/tests/team/` and the run and change folders of `.aidw/`). The held-out tests are
+written so that the dialog behind any button label from a list, any submit label from a list, and any wording of the messages that carries the
 right meaning pass. No model grades this case: everything it asks is checked by a machine.

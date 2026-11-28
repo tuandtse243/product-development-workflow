@@ -11,6 +11,6 @@ tasks:
       - invites/invite-a-member/member-is-refused
       - invites/invite-a-member/signed-out-caller
     depends_on: []
-    touches: ["shared/invites.ts", "server/invites/**", "server/app.ts", "server/tests/invites/**", "web/invites/**", "web/routes.tsx", "web/Layout.tsx", "web/tests/invites/**"]
+    touches: ["shared/invites.ts", "server/invites/**", "server/app.ts", "server/tests/invites/**", "web/team/**", "web/tests/team/**"]
     verify: ["npm test", "npm run typecheck"]
     status: pending
