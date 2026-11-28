@@ -91,7 +91,7 @@ script you ran left nothing you did not act on or explain.
 
 ## Report
 
-Your final reply, at most 12 lines:
+Your final reply, at most 12 lines (this template replaces the shared "at most 10 lines" limit of the Done-when above):
 
 ```
 Works now: <scenario ids, one line>
