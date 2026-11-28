@@ -1,0 +1,24 @@
+{
+  "format": 2,
+  "role": "qa",
+  "date": "2026-11-28T02:57:30.443Z",
+  "model": "sonnet",
+  "tier": "standard",
+  "runs": 3,
+  "digest": "sha256:b4a52563483ef26edefbbe3ec2c997b9b9daff34eb2659ae4853d41e384cd559",
+  "cases": [
+    {
+      "name": "not-everything-is-a-unit-test",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": [],
+      "digest": "sha256:1654d7ca5d877e3db4a852bcc96e1497653de1594b38d344757ee58069469488",
+      "date": "2026-11-28T02:57:30.443Z",
+      "model": "sonnet"
+    }
+  ]
+}
