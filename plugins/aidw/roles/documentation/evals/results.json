@@ -1,7 +1,7 @@
 {
   "format": 2,
   "role": "documentation",
-  "date": "2026-11-27T13:55:56.172Z",
+  "date": "2026-11-28T04:40:25.616Z",
   "model": "haiku",
   "tier": "fast",
   "runs": 3,
@@ -9,6 +9,21 @@
   "cases": [
     {
       "name": "pr-summary-names-only-real-files",
+      "pass": false,
+      "runs": {
+        "total": 3,
+        "passed": 2,
+        "errors": 0
+      },
+      "failed": [
+        "must not name `lib/booking/lock.ts` anywhere, nor any other file outside the diff and the approved package"
+      ],
+      "digest": "sha256:0ad39bd233407eb1243708d0e22264acbf39c25bccd3eb414534c6cc46b83392",
+      "date": "2026-11-28T04:40:25.616Z",
+      "model": "haiku"
+    },
+    {
+      "name": "quick-start-has-a-wrong-command",
       "pass": true,
       "runs": {
         "total": 3,
@@ -16,38 +31,21 @@
         "errors": 0
       },
       "failed": [],
-      "digest": "sha256:0ad39bd233407eb1243708d0e22264acbf39c25bccd3eb414534c6cc46b83392",
-      "date": "2026-11-26T16:37:52.149Z",
-      "model": "haiku"
-    },
-    {
-      "name": "quick-start-has-a-wrong-command",
-      "pass": false,
-      "runs": {
-        "total": 3,
-        "passed": 2,
-        "errors": 0
-      },
-      "failed": [
-        "must correct the quick start to the package manager the lockfile shows, after running its install and dev commands (with no shell: after listing them in that order, each with the output it expects, before the README is written)"
-      ],
       "digest": "sha256:ae674527589d17d522eda026cd657fc620d9dc48460e2f737adc36fc8c324920",
-      "date": "2026-11-26T16:37:52.149Z",
+      "date": "2026-11-28T04:40:25.616Z",
       "model": "haiku"
     },
     {
       "name": "walkthrough-page-without-script",
-      "pass": false,
+      "pass": true,
       "runs": {
         "total": 3,
-        "passed": 2,
+        "passed": 3,
         "errors": 0
       },
-      "failed": [
-        "must not keep the example's content, labels, the \"Acme\" brand or its clay and ivory colours; it uses the aidw page colours, with a dark-mode block"
-      ],
+      "failed": [],
       "digest": "sha256:aca592310ff30ed5b7cc99ce6a9a88a58e88c39a4df31c1e56a5ab7bb425a44e",
-      "date": "2026-11-27T13:55:56.172Z",
+      "date": "2026-11-28T04:40:25.616Z",
       "model": "haiku"
     }
   ]

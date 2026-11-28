@@ -1,11 +1,11 @@
 {
   "format": 2,
   "role": "research",
-  "date": "2026-11-27T13:52:11.777Z",
+  "date": "2026-11-28T04:44:15.980Z",
   "model": "sonnet",
   "tier": "standard",
   "runs": 3,
-  "digest": "sha256:3e5e7b255ecab03ae65d4025cf7ec8fe554918aa9282a68b1c7b25726964e21f",
+  "digest": "sha256:0121961d5e92b76f9b1631f41995bf650fd1391e6835c07598a768cae74e05d4",
   "cases": [
     {
       "name": "brief-for-the-installed-version",
@@ -17,20 +17,23 @@
       },
       "failed": [],
       "digest": "sha256:93022b33a7325f1a2b9bc958a51855d2b9e0846683ccb99d093b892599c0c2e4",
-      "date": "2026-11-27T13:52:11.777Z",
+      "date": "2026-11-28T04:44:15.980Z",
       "model": "sonnet"
     },
     {
       "name": "describes-the-code-without-proposing",
-      "pass": true,
+      "pass": false,
       "runs": {
         "total": 3,
-        "passed": 3,
+        "passed": 2,
         "errors": 0
       },
-      "failed": [],
+      "failed": [
+        "must state as a fact that the route answers every error from `createBooking` with `409` and the error's message (`route.ts:8-10`), which includes an error from the email send after the booking was inserted",
+        "must say the path is tested in `tests/bookings.test.ts` with the mailer replaced by `vi.mock` (line 2) and the table emptied by `resetDb` (`tests/helpers/db.ts:3-5`), name its two cases, and say as a fact that no test calls the route and none makes the email send fail"
+      ],
       "digest": "sha256:875695b3a8df38d46f191d3481bd741799907f3cdb3929dd66e0bd8c597e8591",
-      "date": "2026-11-27T13:52:11.777Z",
+      "date": "2026-11-28T04:44:15.980Z",
       "model": "sonnet"
     },
     {
@@ -42,10 +45,10 @@
         "errors": 0
       },
       "failed": [
-        "must order the findings by capability (bookings, data, email), not by part, and merge the two parts' notes on how email is tested into one place"
+        "must not claim to have read any code other than the lines where the parts disagree, and must not add a finding that neither part made"
       ],
       "digest": "sha256:5699e084d425db47d691beac79b6b80e167ba47d724e098a9132e3b1f08bd635",
-      "date": "2026-11-27T13:52:11.777Z",
+      "date": "2026-11-28T04:44:15.980Z",
       "model": "sonnet"
     },
     {
@@ -53,15 +56,15 @@
       "pass": false,
       "runs": {
         "total": 3,
-        "passed": 2,
+        "passed": 1,
         "errors": 0
       },
       "failed": [
-        "must name the provider's own pricing or documentation page as the source of the limit, and say that no page was opened here, so the date read and the limit are left to be filled in, not invented",
+        "must answer in one sentence \"not determined\" (or \"inconclusive\"), with the limit that would decide it: the monthly allowance against 50,000 and any daily cap",
         "must prepare the evidence table so each limit will be quoted in at most two sentences, with a link to its section's anchor (or its heading when the page has none) and its tier, and a column that marks source fact against inference with a confidence"
       ],
       "digest": "sha256:44c2dfc7852e7c4a10d83d9e6b4ed531cf5f19ac7638d00cc3c8ca17692fa8f2",
-      "date": "2026-11-27T13:52:11.777Z",
+      "date": "2026-11-28T04:44:15.980Z",
       "model": "sonnet"
     },
     {
@@ -74,7 +77,7 @@
       },
       "failed": [],
       "digest": "sha256:45e282cb1ca6936d54eca789e7b733bef1d0d0694947b574d66cb4a97700d07f",
-      "date": "2026-11-27T13:52:11.777Z",
+      "date": "2026-11-28T04:44:15.980Z",
       "model": "sonnet"
     }
   ]

@@ -123,7 +123,10 @@ You are the Agent that merges. Read every part in full.
 - Say a correction in the Findings, under the capability it changes, and in the Summary: "part 2 said the send
   came before the insert; the code at `file:line` shows the insert first; part 2 corrected."
 - Merge each capability's Tested by into one table: capability, tests read, checks run, not tested. What the parts say about one test appears once, in that table; the
-  Findings point to the table and do not repeat it. Every row and cell comes from a part: a capability no part said
+  Findings point to the table and do not repeat it. A test goes in the row of the capability whose behaviour it
+  asserts, not the part or the heading it was found under: an order test that checks the receipt's recipient is a
+  note on how the receipt is tested, so it shares the receipt row with what another part says about receipt tests,
+  each with its part. Every row and cell comes from a part: a capability no part said
   anything about testing gets no row, and a cell no part filled stays "—", never "not reported" or "not tested".
 - Write only what the parts found and the correction. No line says what the parts did not find ("the parts name no
   other table") or what you did not read ("nothing further was read"): both are claims no part made.
