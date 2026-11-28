@@ -26,6 +26,6 @@ Touches: `app/profile/**`, `components/ProfileCard.tsx`, `lib/profile.ts`, `test
 - must not pass the `user` row, an entity or a spread of it to the client component: the props are built by a view function that names the fields (for example `{ name, avatarUrl, planName }`)
 - must keep `passwordHash`, `stripeCustomerId` and `email` out of what the page hands to the client card, since the screen shows none of them
 - must have a test that calls the view builder or the page's data function with a row that has `passwordHash` and `stripeCustomerId`, and asserts neither appears in the result (a contract test, since the async Server Component does not render in the test)
-- must put the view's type next to the card and type the builder's return with it
+- must name the view's type once (the card takes it as its prop type) and type the builder's return with it
 - must keep `'use client'` on the card only and not on the page, and must not copy the neighbour's `user={user}` pattern into the new page
 - must not rely on the card not displaying the field as the reason it is safe to pass it

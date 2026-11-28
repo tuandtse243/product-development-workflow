@@ -27,6 +27,5 @@ Touches: `app/projects/[id]/**`, `lib/projects.ts`, `tests/projects/**`. Verify:
 
 - must check on the server, inside the page (or a function it calls), that the session user may see the project, before it reads the project and its tasks by the id in the URL
 - must not treat the nav hiding the link by role, or a redirect in a client component, as the check
-- must write the three access tests through the stack's equivalent of a request (call the page or its data function with `params` and a test session): no session is sent to login or gets the not-found result, with no data; a user who is not a member gets the not-found or forbidden result and no data; a member gets the project
-- must make the wrong-user test assert that no project data is returned or rendered for them (a rejected or not-found call with the data reader never reached), not only a status
+- must write the three access tests through the stack's equivalent of a request (call the page or its data function with `params` and a test session): no session is sent to login or gets the not-found result, with no data; a user who is not a member gets the not-found or forbidden result and no data (a call that rejects with not-found counts as no data); a member gets the project
 - must not read the project by id for every caller and filter afterwards in the component
