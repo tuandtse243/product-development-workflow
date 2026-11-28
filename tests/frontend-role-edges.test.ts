@@ -550,8 +550,8 @@ describe("the consult gate for frontend", () => {
     expect(offered).toEqual(["api-designer", "ui-ux-designer", "software-architect", "research"].filter((r) => offered.includes(r))); // order kept
   });
 
-  it("fullstack keeps its old consult list and does not gain ui-ux-designer", () => {
-    expect(loadRole(plugin, "fullstack")!.consults).toEqual(["api-designer", "database-architect", "software-architect", "research"]);
+  it("fullstack consults ui-ux-designer too, after software-architect; backend keeps its list", () => {
+    expect(loadRole(plugin, "fullstack")!.consults).toEqual(["api-designer", "database-architect", "software-architect", "ui-ux-designer", "research"]);
     expect(loadRole(plugin, "backend")!.consults).toEqual(["api-designer", "database-architect", "software-architect", "research"]);
   });
 

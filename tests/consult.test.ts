@@ -136,7 +136,8 @@ describe("consults in role.md (aidw roster)", () => {
     const of = (id: string) => loadRole(plugin, id)?.consults.slice().sort();
     for (const id of ["ux-research", "product-manager", "software-architect"]) expect(of(id), id).toEqual(["research"]);
     expect(of("technical-planner")).toEqual(["software-architect"]);
-    for (const id of ["backend", "fullstack"]) expect(of(id), id).toEqual(["api-designer", "database-architect", "research", "software-architect"]);
+    expect(of("backend")).toEqual(["api-designer", "database-architect", "research", "software-architect"]);
+    expect(of("fullstack")).toEqual(["api-designer", "database-architect", "research", "software-architect", "ui-ux-designer"]); // owns both halves
     // ADR-0016 (Q-R1): every implementing Role may also consult Research
     for (const id of ["database", "devops", "integration"]) expect(of(id), id).toEqual(["research"]);
     expect(of("frontend")).toEqual(["api-designer", "research", "software-architect", "ui-ux-designer"]); // T20: it never reads the data model
