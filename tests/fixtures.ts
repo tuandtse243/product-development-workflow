@@ -66,6 +66,13 @@ export function bareBackend(root: string): void {
   // its level 2 cases cover rule ids too, which are gone with the table
   const fl2 = join(fevals, "level2");
   if (existsSync(fl2)) for (const c of readdirSync(fl2)) if (existsSync(join(fl2, c, "case.md"))) dropCovers(join(fl2, c, "case.md"));
+  // fullstack's table (T20) likewise: without it fullstack asks for no results.json and its cases cover nothing
+  const full = join(root, "roles", "fullstack");
+  rmSync(join(full, "rules.md"), { force: true });
+  const sevals = join(full, "evals");
+  if (existsSync(sevals)) for (const f of readdirSync(sevals).filter((n) => n.endsWith(".md"))) dropCovers(join(sevals, f));
+  const sl2 = join(sevals, "level2");
+  if (existsSync(sl2)) for (const c of readdirSync(sl2)) if (existsSync(join(sl2, c, "case.md"))) dropCovers(join(sl2, c, "case.md"));
   writeAgents(root);
 }
 
