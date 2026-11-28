@@ -43,7 +43,8 @@ The system SHALL ${name.toLowerCase()}.${extra}
 /**
  * Puts the backend Role of a plugin copy back to its shape before the rules table, whatever backend holds today: no
  * rules.md, no skills index, only its two original cases with no `covers:` or `expect:` and no result file, and
- * fullstack without `follows_rules`. Tests of the rules table (T12) build their own table Role from this.
+ * fullstack without `follows_rules`, and frontend without its rules table or `covers:`. Tests of the rules table (T12)
+ * build their own table Role from this.
  */
 export function bareBackend(root: string): void {
   const dir = join(root, "roles", "backend");
@@ -56,6 +57,15 @@ export function bareBackend(root: string): void {
   for (const f of kept) writeFileSync(join(evals, f), readFileSync(join(evals, f), "utf8").replace(/^(covers|expect): .*\n/gm, ""));
   const fullstack = join(root, "roles", "fullstack", "role.md");
   if (existsSync(fullstack)) writeFileSync(fullstack, readFileSync(fullstack, "utf8").replace(/^follows_rules: .*\n/m, ""));
+  // frontend's table (T20) would otherwise ask for its own results.json: these tests study backend alone
+  const frontend = join(root, "roles", "frontend");
+  rmSync(join(frontend, "rules.md"), { force: true });
+  const fevals = join(frontend, "evals");
+  const dropCovers = (f: string) => writeFileSync(f, readFileSync(f, "utf8").replace(/^---\n[\s\S]*?\n---\n/, (fm) => fm.replace(/^(# .*|covers: .*)\n/gm, "")));
+  if (existsSync(fevals)) for (const f of readdirSync(fevals).filter((n) => n.endsWith(".md"))) dropCovers(join(fevals, f));
+  // its level 2 cases cover rule ids too, which are gone with the table
+  const fl2 = join(fevals, "level2");
+  if (existsSync(fl2)) for (const c of readdirSync(fl2)) if (existsSync(join(fl2, c, "case.md"))) dropCovers(join(fl2, c, "case.md"));
   writeAgents(root);
 }
 

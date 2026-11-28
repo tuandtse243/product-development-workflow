@@ -65,7 +65,8 @@ describe("rpi-upgrades: every new Authored Skill has a Role eval (M7)", () => {
       const lib = /^plugins\/aidw\/library\/skills\/([^/]+)\/SKILL\.md$/.exec(f);
       return lib ? [`library/${lib[1]}`] : [];
     });
-    expect(added.filter((s) => !ADDED_SKILLS.includes(s))).toEqual([]);
+    // the frontend Role's own skills (T20) are covered by its level 1 cases, not by this Change
+    expect(added.filter((s) => !ADDED_SKILLS.includes(s) && !s.startsWith("frontend:"))).toEqual([]);
   });
 });
 

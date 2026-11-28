@@ -49,7 +49,11 @@ describe("the Role case runner", () => {
     expect(s).toContain("### Skill: expand-contract");
     expect(s).toContain("### Skill: prisma-migration");
     expect(s).not.toMatch(/^name: expand-contract/m); // the skill's front matter is dropped
-    expect(roleSystem(plugin, "frontend")).not.toContain("Your skills, in full"); // a Role with no skills
+    const bare = copy(); // a Role with no skills: frontend with its index and skills/ folder removed
+    const fe = join(bare, "roles", "frontend");
+    writeFileSync(join(fe, "role.md"), readFileSync(join(fe, "role.md"), "utf8").replace(/^skills:\n(?:[ \t]+-.*\n)*/m, ""));
+    rmSync(join(fe, "skills"), { recursive: true, force: true });
+    expect(roleSystem(bare, "frontend")).not.toContain("Your skills, in full");
   });
 
   it("passes a case when every criterion passes, and fails it otherwise", () => {

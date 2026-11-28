@@ -103,6 +103,7 @@ skills:                    # on-demand: roles/<id>/skills/<name>.md, read only w
   - breaking-change: when changing an existing contract
   - library/external-api: when calling an outside service   # shared: library/skills/<name>/SKILL.md
 follows_rules: [backend]   # other Roles' rules.md that also bind this Role's work (listed in its review brief)
+answers_consultations: true   # read-only Roles only: may write the answer of a Consultation addressed to it
 ---
 ## Responsibility
 ## Procedure
@@ -118,7 +119,9 @@ procedure all implementing Roles follow, so it exists once. `reads` and `writes`
 `artifacts.yaml`; the profile's text still names the paths for the Agent, and `aidw roster` checks the names.
 `consults` lists the Roles an Agent of this Role may ask a question while it works (section 7, Consultation);
 `aidw roster` refuses an id that is not in the Roster, a Role that is not active, and the Role itself, and the
-generated agent ends with a "Consultation" note naming them. The first pairs: `ux-research`, `product-manager` and
+generated agent ends with a "Consultation" note naming them. A `read-only` Role cannot be consulted unless its
+`role.md` opts in with `answers_consultations: true`: the gate then lets it write one more file, the `C<NN>.answer.md` of an
+open Consultation addressed to it, and still no project file (`ui-ux-designer` answers a design hole from `frontend` so). The first pairs: `ux-research`, `product-manager` and
 `software-architect` ask `research`; `technical-planner` asks `software-architect`; `backend`, `frontend` and
 `fullstack` ask `api-designer`, `database-architect` and `software-architect`. Every implementing Role (`backend`,
 `frontend`, `fullstack`, `database`, `devops`, `integration`) may also ask `research`, at most once per task
@@ -166,14 +169,35 @@ generated agent files are up to date.
   (`.mjs`, built-ins only, Node 20 or later), called by path through `aidw plugin-path roles/<id>/scripts/<name>.mjs`.
   Each documents its usage at the top of the file and prints it with `--help`, writes JSON by default (`--text` for
   a short table) and is advisory: a finding never makes it exit non-zero, only a usage or read error does (exit 2).
-  Pass/fail checks stay in the CLI. A file starting with `_` is a helper the scripts share, not a tool. The tests
-  live under `tests/` (fixture trees in temp dirs, the script run with `node <path>`). The backend Role has five:
+  Pass/fail checks stay in the CLI. The helpers the scripts share (`_common.mjs`: the tree walk, the lines a diff
+  adds, comment masking, the CLI frame) live in `library/scripts/`, one copy for every Role: a script imports
+  `../../../library/scripts/_common.mjs`, which resolves inside the plugin it runs from. A file starting with `_` is
+  a helper, not a tool. The tests live under `tests/` (fixture trees in temp dirs, the script run with
+  `node <path>`). The backend Role has five:
   `route-inventory` (routes, the tests that call each, the B2 access cases those tests assert), `env-names` (names
   read against `.env.example`, never a value), `error-shape-probe` (error bodies against the declared error shape,
   statically and on responses the tests captured), `query-count` (statements for 1 row and N rows; also a module a
   test imports) and `leak-and-timeout-scan` (outbound calls with no timeout, log calls carrying secrets or whole
   objects). `route-inventory`, `env-names`, `error-shape-probe` (its static probe) and `leak-and-timeout-scan` take
-  `--base <ref>` to look only at what a diff adds; `query-count` reads logs and takes no `--base`. Every JSON output
+  `--base <ref>` to look only at what a diff adds; `query-count` reads logs and takes no `--base`. The frontend Role
+  has five, all with `--base`: `token-literals` (style literals that are not a design token, by kind: color,
+  length, font, shadow, radius, z-index, with the nearest token; it reads the Change's `.aidw/design/tokens.yaml`
+  as the CLI's design check does, and CSS, style objects, styled templates and Tailwind arbitrary values such as
+  `p-[13px]`; rule F2), `a11y-names` (clickable non-controls, controls with no accessible name, fields with no
+  label, images with no `alt`, positive `tabIndex`, focus outlines removed with no `:focus-visible`, raw-HTML sinks;
+  F4, F5, F16), `public-env-scan` (environment names read in client files with whether each has the framework's
+  public prefix, secret-looking public names, server-only modules imported into client files; F10),
+  `fetch-waterfalls` (effects that fetch with no abort, ignore flag or cancelling cleanup, naming the custom hook
+  that holds the effect; effects that only copy props or state into state; independent awaits in a row; F7, F8)
+  and `route-guard-inventory` (React Router object and JSX routes and Next.js app router pages with the guard each
+  has: wrapper element, redirecting loader, guard layout, middleware match, server-side redirect; `--routes
+  /billing,/admin` lists the paths that must be guarded and reports each with no guard or no route; F11). The last
+  two are heuristic by names; they were checked against the `frontend-web` fixture and synthetic trees, and real level 2
+  and level 4 shapes are not yet tested. `route-guard-inventory` spells `guard` as a string (`wrapper:RequireAuth`,
+  `loader:requireSession`, `middleware`, `layout:...`) or null plus a `guardKind` (`client` or `server`), unlike the
+  `server` / `client` / `none` of §5 of the research report, and does not implement that report's `reads` field. They read JSX
+  and TSX; `.vue` and `.svelte` templates come later. Their own helpers (JSX elements, CSS rules) are in
+  `roles/frontend/scripts/_markup.mjs`. Every JSON output
   starts with `tool` and `schemaVersion: 1`; a directory scan lists under `skipped` what it did not read (`public/`
   and `static/` output, minified or bundled files, files over 512 KB, unreadable files). `query-count --run`
   executes a command, so a read-only reviewer does not use it.
@@ -807,7 +831,8 @@ plugins/aidw/
   company/             rules for every Role (permissions.md today)
   roles/<id>/          role.md, rules.md, skills/, references/, scripts/, evals/
   workflows/<id>.yaml  product, feature, bugfix, audit
-  library/             shared procedures and skills (implement-a-task.md, author-artifacts.md); vendor/ moves here
+  library/             shared procedures and skills (implement-a-task.md, author-artifacts.md); vendor/ moves here;
+                       scripts/ holds the helpers the Roles' scripts share (_common.mjs)
   stacks/              language packs (node.md) and framework packs; library/code-style.md holds the language-neutral rules
   agents/              GENERATED from roles/
   skills/              user commands: start, approve, run, resume, status, deliver, init, show-me, html-pages
@@ -886,7 +911,10 @@ In the user's project, `.aidw/` keeps its current shape and gains `roles/<id>/` 
   outside Claude Code's own sandbox (the session it starts sets up its sandbox itself, and the grading uses
   `sandbox-exec` or `bwrap`). A case is a folder: `case.md` (front matter `case` = the folder name, `covers`, `fixture`,
   `task`, optional `change`, `must_read`, `must_not_read`, `restore`, `timeout_min` (default 25), `max_turns` (default
-  60); `## Criteria` holds only what no machine can check), an optional `checks.yaml` (commands with an expected exit, a
+  60), `screenshots` (`on`, the default, or `off`: for a fixture with no browser the brief loses its two screenshot
+  lines, save the PNGs and take them with Playwright, and keeps the design tokens and the rule to style through them;
+  `off` on a task whose brief has no screenshot line is an ERROR of the run, since the case or the brief's wording is
+  wrong); `## Criteria` holds only what no machine can check), an optional `checks.yaml` (commands with an expected exit, a
   JSON subset of stdout or a regex; a bad `matches` regex is an error when the case loads), and `held-out/` (test files
   laid over the project at the same relative path after the session ends). A path in `must_read` is relative to the
   project, or `plugin:<path>` for a plugin file. Level 1 never reads these folders, and they are not part of level 1's
@@ -901,7 +929,17 @@ In the user's project, `.aidw/` keeps its current shape and gains `roles/<id>/` 
   re-approvals are written by hand (they say what changed) and are not a real review. PGlite
   runs one statement at a time, so a held-out test of a race makes it real by delaying each statement outside a
   transaction (requests sent at once then interleave) and, where a read then a write inside one transaction must fail,
-  by a BEFORE INSERT trigger that stores the rival row inside the route's own insert. Its files are what git lists in it. Its packages are installed once (`npm ci --ignore-scripts`, needs
+  by a BEFORE INSERT trigger that stores the rival row inside the route's own insert. For frontend: `frontend-web`, a
+  clinic's booking app (Vite 7, React 19, TypeScript, React Router 7; Vitest 3 with jsdom, Testing Library, user-event
+  and jest-dom; no Playwright), Change `book-a-slot` with the design tokens in `.aidw/design/tokens.yaml` and
+  `src/styles/tokens.css` generated from them. The network is MSW in-process (`msw/node`, started in `tests/setup.ts`
+  with `onUnhandledRequest: "error"`; the API is `tests/msw/handlers.ts` over an in-memory store reset after each test),
+  so no test needs a socket. Vitest runs in `tests/environment.ts`, jsdom with Node's own `AbortController` kept: Node's
+  `fetch` and `Request` refuse jsdom's signals, which React Router's navigations and `fetch(url, { signal })` use (a
+  jsdom `addEventListener(..., { signal })` would refuse Node's in turn). Files run one at a time and `findBy*` waits
+  3 s; its suite, with the pilot's reference solution and held-out tests, passed 16 copies at once, 3 times each,
+  under `sandbox-exec` with no network. The frontend cases restore the test harness (`tests/setup.ts`,
+  `tests/environment.ts`, `tests/render.tsx`, `tests/msw/`). Its files are what git lists in it. Its packages are installed once (`npm ci --ignore-scripts`, needs
   the network) into a cache keyed by the lockfile: `$AIDW_FIXTURE_CACHE`, else `$XDG_CACHE_HOME/aidw/fixtures`, else
   `~/.cache/aidw/fixtures`. The entry is made read-only and its digest is recorded in `.complete`; an entry that changed
   is refused (delete it to reinstall), and a finished entry is never deleted by a run. Each run copies the fixture to a
@@ -979,7 +1017,8 @@ In the user's project, `.aidw/` keeps its current shape and gains `roles/<id>/` 
   read-only). A copy that cannot be prepared keeps `result.json` only.
 - **Level 2 result file.** `roles/<id>/evals/level2/results.json` (`format: 2`, `level: 2`), written under level 1's
   rules (source checkout, tier's model, `--case` merges, nothing written when content changed during the run). Its
-  shared digest is level 1's with the Role's scripts added (a session runs them); each entry adds the digest of its case folder and of its fixture, and how its grading was
+  shared digest is level 1's with the Role's scripts and the helpers they import (`library/scripts/`) added (a
+  session runs them); each entry adds the digest of its case folder and of its fixture, and how its grading was
   confined (`gradingSandbox`: `sandbox-exec`, `bwrap`, `unshare` or `none`). A run whose grading ran with `none` writes
   nothing unless `AIDW_GRADE_SANDBOX=off` was set. For a Role with level 2 cases, `aidw roster` warns (never fails
   without `--strict`) when the file is missing, made on another model, older than the Role, a case folder or a fixture,

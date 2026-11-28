@@ -1,0 +1,90 @@
+/* The shared primitives of src/ui/. Every value is a token (src/styles/tokens.css). */
+.btn {
+  font: inherit;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-1);
+  border: 1px solid var(--color-accent);
+  cursor: pointer;
+}
+
+.btn:focus-visible {
+  outline: var(--focus-ring);
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  border-color: var(--color-booked);
+  background: var(--color-booked);
+  color: var(--color-text-muted);
+}
+
+.btn--primary {
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+}
+
+.btn--secondary {
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+}
+
+.btn--quiet {
+  background: transparent;
+  border-color: transparent;
+  color: var(--color-accent);
+}
+
+.icon {
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: var(--space-1);
+}
+
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: var(--color-backdrop);
+}
+
+.dialog {
+  background: var(--color-surface);
+  color: var(--color-text);
+  border-radius: var(--radius-2);
+  box-shadow: var(--shadow-overlay);
+  padding: var(--space-3);
+  max-width: min(32rem, calc(100vw - 2 * var(--space-3)));
+}
+
+.dialog:focus-visible {
+  outline: var(--focus-ring);
+}
+
+.dialog__title {
+  font-size: var(--size-title);
+  margin: 0 0 var(--space-3);
+  overflow-wrap: anywhere;
+}
+
+.popover {
+  position: relative;
+}
+
+.popover__panel {
+  position: absolute;
+  right: 0;
+  background: var(--color-surface);
+  border-radius: var(--radius-2);
+  box-shadow: var(--shadow-overlay);
+  padding: var(--space-3);
+  max-width: 20rem;
+}
+
+.empty {
+  color: var(--color-text-muted);
+}
+
+.spinner {
+  color: var(--color-text-muted);
+}

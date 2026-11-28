@@ -1,0 +1,84 @@
+{
+  "format": 2,
+  "level": 2,
+  "role": "frontend",
+  "date": "2026-11-28T05:50:38.630Z",
+  "model": null,
+  "tier": "deep",
+  "runs": 3,
+  "digest": "sha256:379dbe7236e84a4d508a20530c58f690ebc4064b1815fd2b051bfd382cb2408e",
+  "cases": [
+    {
+      "name": "billing-page-guard",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": [],
+      "digest": "sha256:fc86f2d5d69266a7be42e14dcce01dca2cd42e8c519857e8a3362504d5a55cc8",
+      "fixture": "sha256:1c7f629e0d802f2813ff95ff070f9fae262fe4e5c1c3c927b87fde1f1c3d3825",
+      "gradingSandbox": "sandbox-exec",
+      "date": "2026-11-28T05:50:38.630Z",
+      "model": null
+    },
+    {
+      "name": "book-a-slot-screen",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": [],
+      "digest": "sha256:3c8713a7d4e65f3cf29385f4a52db913bda5fac5f7081176c8008d29139851cf",
+      "fixture": "sha256:1c7f629e0d802f2813ff95ff070f9fae262fe4e5c1c3c927b87fde1f1c3d3825",
+      "gradingSandbox": "sandbox-exec",
+      "date": "2026-11-28T05:50:38.630Z",
+      "model": null
+    },
+    {
+      "name": "invite-form",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": [],
+      "digest": "sha256:a1499912ab0a261b4265c7af8322433ca344baf9ed59558c5026e4b8517e7104",
+      "fixture": "sha256:1c7f629e0d802f2813ff95ff070f9fae262fe4e5c1c3c927b87fde1f1c3d3825",
+      "gradingSandbox": "sandbox-exec",
+      "date": "2026-11-28T05:50:38.630Z",
+      "model": null
+    },
+    {
+      "name": "people-search",
+      "pass": false,
+      "runs": {
+        "total": 3,
+        "passed": 2,
+        "errors": 0
+      },
+      "failed": [
+        "agent: the session ended with exit 1 (success) (1 of 3 runs)",
+        "tests: search people (held out) with nothing typed the screen says to type a name, and sends no request (1 of 3 runs)",
+        "tests: search people (held out) each match is listed with the name and the title (1 of 3 runs)",
+        "tests: search people (held out) while the answer has not arrived the screen says it is searching, and the people replace it (1 of 3 runs)",
+        "tests: search people (held out) an earlier text's slow answer, arriving after the latest text's, is never shown (1 of 3 runs)",
+        "tests: search people (held out) emptying the box while an answer is on its way shows the first state again, never the late answer, and sends no request (1 of 3 runs)",
+        "tests: search people (held out) when nobody matches the screen says so with the text typed, and shows no alert (1 of 3 runs)",
+        "tests: search people (held out) a failed search is an alert with a Retry that searches the same text again, never the no-match text (1 of 3 runs)",
+        "checks: every scenario id names a test in tests/people: exit 1, expected 0: no test names people/search-people/nothing-typed-yet grep: tests/people: No such file or directory (1 of 3 runs)",
+        "reads: did not read plugin:roles/frontend/skills/client-data-and-state.md (1 of 3 runs)",
+        "reads: did not read plugin:roles/frontend/skills/screen-states.md (1 of 3 runs)"
+      ],
+      "digest": "sha256:48c5d05f5a4d468e0a8353a89bb9af21510c63b1495f5bbce2c78acdc2b8fd01",
+      "fixture": "sha256:1c7f629e0d802f2813ff95ff070f9fae262fe4e5c1c3c927b87fde1f1c3d3825",
+      "gradingSandbox": "sandbox-exec",
+      "date": "2026-11-28T05:50:38.630Z",
+      "model": null
+    }
+  ]
+}

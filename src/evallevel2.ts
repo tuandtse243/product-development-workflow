@@ -58,9 +58,14 @@ export interface Level2Case {
   heldOut: string[];
   /** project files put back as they were at the base before grading, beside RESTORED (e.g. the test helpers) */
   restore: string[];
+  /**
+   * `screenshots: off` in the front matter: the brief loses its two screenshot lines (save PNGs, take them with
+   * Playwright), for a fixture with no browser. The design tokens stay in the brief. Default true.
+   */
+  screenshots: boolean;
 }
 
-const CASE_KEYS = ["case", "covers", "fixture", "task", "change", "must_read", "must_not_read", "timeout_min", "max_turns", "restore"];
+const CASE_KEYS = ["case", "covers", "fixture", "task", "change", "must_read", "must_not_read", "timeout_min", "max_turns", "restore", "screenshots"];
 const KEBAB = /^[a-z0-9-]+$/;
 
 /**
@@ -241,6 +246,8 @@ export function loadLevel2Cases(root: string, id: string): { cases: Level2Case[]
       }
       return v as number;
     };
+    const shots = head.screenshots;
+    if (shots !== undefined && shots !== "on" && shots !== "off" && typeof shots !== "boolean") d.error(file, "screenshots: on or off (off drops the screenshot lines from the brief)");
     const section = /^## Criteria\n([\s\S]*?)(?=^## |$(?![\s\S]))/m.exec(text);
     const bullets = (section?.[1] ?? "").split("\n").map((l) => l.trim()).filter(Boolean);
     for (const l of bullets.filter((x) => !/^- must( not)? \S/.test(x))) d.error(file, `criterion "${l.slice(0, 50)}" must be a bullet starting "- must" or "- must not"`);
@@ -262,6 +269,7 @@ export function loadLevel2Cases(root: string, id: string): { cases: Level2Case[]
       criteria: bullets.filter((l) => /^- must( not)? \S/.test(l)).map((l) => l.slice(2)),
       heldOut,
       restore: lists.restore ?? [],
+      screenshots: shots !== "off" && shots !== false,
     });
   }
   return { cases, diags: d };
@@ -565,6 +573,20 @@ export function bareBrief(text: string, pluginRoot: string): string {
     .replace(/\n{3,}/g, "\n\n");
 }
 
+/**
+ * The brief without its screenshot lines (a case with `screenshots: off`): the fixture has no browser and no Playwright,
+ * so a session told to save screenshots would spend its turns failing at it. The design tokens and their rules stay.
+ * Throws unless exactly the two screenshot lines are there to drop (no screen with tokens, or new wording this filter must follow).
+ */
+export function noScreenshotsBrief(text: string): string {
+  const lines = text.split("\n");
+  const kept = lines.filter((l) => !/^- \*\*Screenshots\*\*:/.test(l) && !/^- Take screenshots with Playwright\b/.test(l));
+  const dropped = lines.length - kept.length;
+  if (dropped === 0) throw new Error("screenshots: off, but the brief has no screenshot line to drop: the task builds no screen with design tokens, or the brief changed its wording");
+  if (dropped !== 2) throw new Error(`screenshots: off drops exactly the two screenshot lines of the brief, but ${dropped} lines match: the brief changed its wording`);
+  return kept.join("\n");
+}
+
 export interface PreparedCopy {
   project: string;
   base: string;
@@ -612,10 +634,9 @@ export function prepareCopy(root: string, c: Level2Case, fixture: string, nodeMo
   const plugin = opts.plugin ?? root;
   const b = buildBrief(p, change, c.task, "implement", join(plugin, "library", "vendor"));
   let briefText = b.text;
-  if (opts.bare) {
-    briefText = bareBrief(b.text, resolve(plugin));
-    writeFileSync(b.path, briefText);
-  }
+  if (!c.screenshots) briefText = noScreenshotsBrief(briefText);
+  if (opts.bare) briefText = bareBrief(briefText, resolve(plugin));
+  if (briefText !== b.text) writeFileSync(b.path, briefText);
   return { project: into, base, change, brief: b.path, briefText, snapshot, snapshotDigest };
 }
 
@@ -914,6 +935,10 @@ export function wasRead(calls: ToolCall[], ref: string, ctx: { project: string; 
       const segs = cmd.split(/;|&&|\|\||\||&|\n/);
       // A path relative to a folder the command went to first (`cd .aidw && cat changes/x/api-contract.md`).
       let cwd = ctx.project;
+      const names_in = (seg: string) => {
+        const here = norm(cwd) === norm(ctx.project) ? [] : [relative(cwd, abs), relative(norm(cwd), abs)].filter((r) => r && !r.startsWith(".."));
+        return [...names, ...here].some((n) => seg.includes(n));
+      };
       for (const seg of segs) {
         const cd = /^\s*cd\s+(?:"([^"]+)"|'([^']+)'|(\S+))\s*$/.exec(seg);
         if (cd) {
@@ -921,10 +946,12 @@ export function wasRead(calls: ToolCall[], ref: string, ctx: { project: string; 
           continue;
         }
         if (!READ_VERB.test(seg)) continue;
-        const here = norm(cwd) === norm(ctx.project) ? [] : [relative(cwd, abs), relative(norm(cwd), abs)].filter((r) => r && !r.startsWith(".."));
-        if ([...names, ...here].some((n) => seg.includes(n))) return true;
+        if (names_in(seg)) return true;
       }
       if (loopReads(cmd).some((list) => names.some((n) => list.includes(n)))) return true;
+      // A loop whose body builds the path from the variable (`for s in a b; do cat roles/x/skills/$s.md; done`): each
+      // word of the list is put in the body, and the result is read like any other part of the command.
+      if (expandedLoopParts(cmd).some((seg) => READ_VERB.test(seg) && names_in(seg))) return true;
       // A plugin file found through `aidw plugin-path` and read in the same command: `cat "$(aidw plugin-path R)"`,
       // `P=$(aidw plugin-path R) && cat "$P"`, or a loop over Role paths whose body reads `$(aidw plugin-path $s)`.
       if (plugin && READ_VERB.test(cmd) && !isAbsolute(rel)) {
@@ -954,6 +981,25 @@ function loopReads(cmd: string, viaPluginPath = false): string[] {
     if (reads) lists.push(` ${(list ?? "").trim().split(/\s+/).join(" ")} `);
   }
   return lists;
+}
+
+/**
+ * The parts of the bodies of `for VAR in LIST; do BODY; done` loops with `$VAR` replaced by each word of LIST, so a body
+ * that builds a path from the variable (`cat roles/frontend/skills/$s.md`) names each file it reads.
+ */
+function expandedLoopParts(cmd: string): string[] {
+  const parts: string[] = [];
+  for (const m of cmd.matchAll(/\bfor\s+([A-Za-z_]\w*)\s+in\s+([^;\n]*)[;\n]\s*do\b([\s\S]*?)\bdone\b/g)) {
+    const [, v, list, body] = m;
+    const usesVar = new RegExp(`\\$(?:${v}\\b|\\{${v}\\})`, "g");
+    const words = (list ?? "").trim().split(/\s+/).filter(Boolean).map((w) => w.replace(/^["']|["']$/g, ""));
+    for (const seg of (body ?? "").split(/;|&&|\|\||\||&|\n/)) {
+      if (!usesVar.test(seg)) continue;
+      usesVar.lastIndex = 0;
+      for (const w of words) parts.push(seg.replace(usesVar, w));
+    }
+  }
+  return parts;
 }
 
 /** Whether any tool call names `path` anywhere in its input (a command, a file path, a pattern): for places the session has no business in at all. */

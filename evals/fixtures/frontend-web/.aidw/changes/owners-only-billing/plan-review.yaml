@@ -1,0 +1,18 @@
+cycle: 2
+briefed: 1
+briefedPlan: sha256:ea02dad9c54b5f9f437d0dc0ef3a7f009adf623dafc72c1c96718651aa796907
+rounds:
+  - round: 1
+    cycle: 1
+    verdict: pass
+    digest: sha256:9843e1763888d7829a87ff6258f4498f2c405b4bd1aa98429a65ea03fb963d7f
+    plan: sha256:dab174397a5558fbe0f15234f4df6d22fe30253c5b91851025a539b9877ae2c9
+    at: 2026-11-27T12:26:31.951Z
+    findings: []
+  - round: 1
+    cycle: 2
+    verdict: pass
+    digest: sha256:b79b46671d3a8beb0639ca3d1f34bcab2f3644b21dd6a5a2cd64ce647609d202
+    plan: sha256:ea02dad9c54b5f9f437d0dc0ef3a7f009adf623dafc72c1c96718651aa796907
+    at: 2026-11-27T12:27:01.536Z
+    findings: []

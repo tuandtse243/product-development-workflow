@@ -1,0 +1,29 @@
+# Machine checks of a level 2 run, after the held-out tests. Each command runs in the temp copy with `sh -c`; the
+# plugin's bin/ is first on PATH, $AIDW_BASE is the commit the Agent started from, and $AIDW_CHANGED names a file that
+# lists the files the session changed. A check passes when the command exits with `exit` (default 0), its stdout parsed
+# as JSON contains `json` (a subset; a string "/re/" is a regex) and its output matches `matches` (a regex), each when
+# given.
+checks:
+  - name: no uncancelled fetch in an effect and no state copied from state by an effect in the added code (F7, F8, fetch-waterfalls)
+    # --base: only the lines added since the base commit, so NoticesPage's own derived-state effect and useFetch's own
+    # uncancelled fetch are not counted unless the session changes them. A script that is missing or fails prints no JSON,
+    # and the parse fails the check.
+    run: >-
+      node "$(aidw plugin-path roles/frontend/scripts/fetch-waterfalls.mjs)" --base "$AIDW_BASE" . |
+      node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>{const bad=JSON.parse(s).findings.filter((f)=>f.kind==="uncancelled-effect-fetch"||f.kind==="derived-state-effect");if(bad.length){console.log(JSON.stringify(bad));process.exit(1)}})'
+  - name: every scenario id names a test in tests/people
+    run: >-
+      for id in nothing-typed-yet search-waiting people-matching-the-text latest-text-wins clear-the-box nobody-matches search-fails;
+      do grep -rqF "people/search-people/$id" tests/people || { echo "no test names people/search-people/$id"; exit 1; }; done
+  - name: the whole suite passes
+    run: npm test
+  - name: the typecheck passes
+    run: npm run typecheck
+  - name: nothing outside Touches changed (the people area, its tests, the fetch hook, the routes)
+    # Against the base commit, so a commit cannot hide a change. $AIDW_CHANGED lists the files the session changed, taken
+    # before the harness put back the files the grading runs; run by hand, the list is taken from git.
+    run: >-
+      changed=$(if [ -n "$AIDW_CHANGED" ]; then cat "$AIDW_CHANGED"; else git diff --name-only "$AIDW_BASE";
+      git ls-files --others --exclude-standard; fi);
+      out=$(printf '%s\n' "$changed" | grep -vE '^(src/people/|tests/people/|tests/held-out/|src/data/useFetch\.ts$|src/routes\.tsx$|\.aidw/(run|changes)/)' | grep -v '^$');
+      test -z "$out" || { echo "$out"; exit 1; }

@@ -271,6 +271,18 @@ describe("L3: what counts as a read", () => {
     // the email case's run: a cd first, an unquoted $f, and a list of six files
     expect(wasRead(bash('cd /w/copy && for f in .aidw/c/api.md .aidw/c/data.md .aidw/constitution.md; do echo "=== $f"; cat $f; done'), ".aidw/c/api.md", ctx)).toBe(true);
   });
+  it("counts a loop whose body builds the path from the variable (a bare name list in the plugin copy)", () => {
+    // the frontend pilot's run: a cd into the plugin copy, a list of skill names, `cat roles/frontend/skills/$s.md`
+    const fe = { project: "/w/copy", pluginRoot: "/w/plugin" };
+    const cmd = 'cd /w/plugin && cat library/notes.md; for s in screen-states accessible-interactions client-data-and-state; do echo "=== $s"; cat roles/frontend/skills/$s.md; done';
+    expect(wasRead(bash(cmd), "plugin:roles/frontend/skills/screen-states.md", fe)).toBe(true);
+    expect(wasRead(bash(cmd), "plugin:roles/frontend/skills/accessible-interactions.md", fe)).toBe(true);
+    // a skill that is not in the list, and a loop that only prints the path
+    expect(wasRead(bash(cmd), "plugin:roles/frontend/skills/forms-from-the-contract.md", fe)).toBe(false);
+    expect(wasRead(bash('cd /w/plugin && for s in screen-states; do echo roles/frontend/skills/$s.md; done'), "plugin:roles/frontend/skills/screen-states.md", fe)).toBe(false);
+    // the braces form, with a pipe after the read
+    expect(wasRead(bash("cd /w/plugin && for s in a b; do cat roles/frontend/skills/${s}.md | head -5; done"), "plugin:roles/frontend/skills/b.md", fe)).toBe(true);
+  });
   it("reads a path relative to a folder the command went to first", () => {
     // the email case's third run
     expect(wasRead(bash("cd /w/copy/.aidw && cat changes/c/api.md changes/c/data.md"), ".aidw/changes/c/api.md", ctx)).toBe(true);

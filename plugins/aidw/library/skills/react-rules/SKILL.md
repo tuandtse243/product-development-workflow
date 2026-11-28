@@ -1,6 +1,6 @@
 ---
 name: react-rules
-description: Rules for React and Next.js code that tests rarely catch - waterfalls, bundle size, re-renders, effects. Loaded with the Next.js framework pack.
+description: Rules for React and Next.js code that tests rarely catch - waterfalls, bundle size, re-renders, effects. Loaded with the Next.js or the Vite + React framework pack.
 ---
 
 # React and Next.js rules
