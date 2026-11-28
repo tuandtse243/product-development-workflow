@@ -92,8 +92,10 @@ guess.
   has a code: `one-chain`, `depends-without-overlap` (a pair, so name the other task in `on`), `narrow-plan`,
   `large-task` and `catch-all-touches`. When a warning is a false alarm, because a dependency is on behaviour and not
   on shared files, or because one big task is one function that every scenario goes through, add
-  `{ warn: <code>, on: <task id, for a pair>, why: <reason> }` to the task the warning names (for a warning about
-  the whole plan, `one-chain` or `narrow-plan`, to the first task). Analyze then prints the
+  `{ warn: <code>, on: <task id, for a pair>, scenarios: <count, for large-task>, why: <reason> }` to the task the
+  warning names. `one-chain` names its pairs as `T02 after T01`: add it to the later task, with `on` the earlier one;
+  when it names no pair, and for `narrow-plan`, add it to the first task. `scenarios` is
+  the task's scenario count your reason holds for: when the task grows past it, the warning is back. Analyze then prints the
   warning as INFO with your reason, and the gate shows it. Rules: write `accept` only when `analysis.md` `## Plan`
   already states that reason, and make `why` concrete (name the function, the route, the trigger); never use it to
   hide a real problem (when the dependency is not needed or the task can be split, fix the plan); never add an entry

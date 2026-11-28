@@ -15947,6 +15947,7 @@ var isSymlink = (f) => {
 
 // src/plancodes.ts
 var PLAN_WARNING_CODES = ["one-chain", "depends-without-overlap", "narrow-plan", "large-task", "catch-all-touches"];
+var isCount = (v) => typeof v === "number" && Number.isInteger(v) && v > 0;
 function taskAccepts(t) {
   const acc = t.accept;
   if (!Array.isArray(acc)) return [];
@@ -15954,7 +15955,12 @@ function taskAccepts(t) {
   for (const e of acc) {
     const r = e;
     if (r && typeof r === "object" && typeof r.warn === "string" && typeof r.why === "string" && r.why.trim()) {
-      out.push({ warn: r.warn, why: r.why.trim(), ...typeof r.on === "string" ? { on: r.on } : {} });
+      out.push({
+        warn: r.warn,
+        why: r.why.trim(),
+        ...typeof r.on === "string" ? { on: r.on } : {},
+        ...isCount(r.scenarios) ? { scenarios: r.scenarios } : {}
+      });
     }
   }
   return out;
@@ -15974,6 +15980,7 @@ function acceptProblems(t, ids) {
     if (typeof r.why !== "string" || !r.why.trim()) out.push(`${at} needs a "why": the reason the plan keeps what the warning names`);
     if (r.on !== void 0 && !(typeof r.on === "string" && ids.has(r.on))) out.push(`${at} names unknown task "${String(r.on)}" in "on"`);
     if (r.warn === "depends-without-overlap" && r.on === void 0) out.push(`${at} needs "on": the task this depends_on names`);
+    if (r.warn === "large-task" && !isCount(r.scenarios)) out.push(`${at} needs "scenarios": the task's scenario count the reason was written for`);
   });
   return out;
 }
@@ -16031,23 +16038,25 @@ function planWarnings(all2) {
     out.push({
       code: "one-chain",
       refs: pairRefs,
-      text: (refs) => {
+      text: (refs, accepted) => {
         const pairs = refs.slice(0, 4).map((p) => `${p.task} after ${p.on}`);
-        return `the ${s.tasks} tasks form one dependency chain, so none can run side by side (a wave). ` + (pairs.length ? `Their touches do not overlap for ${pairs.join(", ")}: if the later task does not need the earlier one's output, drop its depends_on. ` : "") + "Slice by vertical feature (API + UI + tests of one behavior) rather than by layer, so slices can be independent.";
+        const head = `the ${s.tasks} tasks form one dependency chain, so none can run side by side (a wave)`;
+        if (accepted) return pairs.length ? `${head}. Their touches do not overlap for ${pairs.join(", ")}` : head;
+        return `${head}. ` + (pairs.length ? `Their touches do not overlap for ${pairs.join(", ")}: if the later task does not need the earlier one's output, drop its depends_on. ` : "") + "Slice by vertical feature (API + UI + tests of one behavior) rather than by layer, so slices can be independent.";
       }
     });
   } else if (s.independentPairs.length && s.width < Math.ceil(s.tasks / 2)) {
     out.push({
       code: "depends-without-overlap",
       refs: pairRefs,
-      text: (refs) => `the plan runs at most ${s.width} task(s) at once; depends_on without overlapping touches: ${refs.slice(0, 4).map((p) => `${p.task} on ${p.on}`).join(", ")}. Drop each one the later task does not truly need.`
+      text: (refs, accepted) => `the plan runs at most ${s.width} task(s) at once; depends_on without overlapping touches: ${refs.slice(0, 4).map((p) => `${p.task} on ${p.on}`).join(", ")}` + (accepted ? "" : ". Drop each one the later task does not truly need.")
     });
   }
   if (s.width > 1 && s.width <= 2 && s.tasks >= 6 && !out.length) {
     out.push({
       code: "narrow-plan",
       refs: [],
-      text: () => `the ${s.tasks} tasks run at most ${s.width} at once (stages: ${s.levels.map((l) => l.join("+")).join(" -> ")}). If a stage is a long single-task chain, check whether each depends_on is a real data dependency, and whether tasks share one big file (they then cannot overlap): slice by file ownership.`
+      text: (_refs, accepted) => `the ${s.tasks} tasks run at most ${s.width} at once (stages: ${s.levels.map((l) => l.join("+")).join(" -> ")})${accepted ? "" : "."}` + (accepted ? "" : ` If a stage is a long single-task chain, check whether each depends_on is a real data dependency, and whether tasks share one big file (they then cannot overlap): slice by file ownership.`)
     });
   }
   const planned2 = all2.filter(isPlanned);
@@ -16058,14 +16067,15 @@ function planWarnings(all2) {
     out.push({
       code: "large-task",
       refs: heavy.map((c) => ({ task: c.id })),
-      text: (refs) => `task(s) ${heavy.filter((c) => refs.some((r) => r.task === c.id)).map((c) => `${c.id} (${c.n} of ${total} scenarios)`).join(", ")} carry a third of the plan: they set the pace of their wave. Split each into slices that touch different files (for example list, create, edit and delete) so the pieces can run side by side.`
+      scenarios: new Map(heavy.map((c) => [c.id, c.n])),
+      text: (refs, accepted) => `task(s) ${heavy.filter((c) => refs.some((r) => r.task === c.id)).map((c) => `${c.id} (${c.n} of ${total} scenarios)`).join(", ")} carry a third of the plan: they set the pace of their wave` + (accepted ? "" : ". Split each into slices that touch different files (for example list, create, edit and delete) so the pieces can run side by side.")
     });
   }
   if (s.catchAll.length) {
     out.push({
       code: "catch-all-touches",
       refs: s.catchAll.map((id) => ({ task: id })),
-      text: (refs) => `task(s) ${refs.map((r) => r.task).join(", ")} touch "**", so they always run alone; list the folders they really change.`
+      text: (refs, accepted) => `task(s) ${refs.map((r) => r.task).join(", ")} touch "**", so they always run alone` + (accepted ? "" : "; list the folders they really change.")
     });
   }
   return out;
@@ -16081,16 +16091,23 @@ function planAdviceAccepted(all2) {
     if (!w.refs.length) {
       if (mine.length) {
         mine.forEach((e) => used.add(e));
-        res.accepted.push(`accepted: ${w.text([])}: ${mine.map((e) => e.why).join("; ")}`);
+        res.accepted.push(`accepted: ${w.text([], true)}: ${mine.map((e) => e.why).join("; ")}`);
       } else res.warnings.push(w.text([]));
       continue;
     }
     const rest = [];
     const accepted = [];
     const whys = [];
+    const grew = [];
     for (const r of w.refs) {
       const hit = mine.filter((e) => covers(e, r));
-      if (!hit.length) rest.push(r);
+      const now9 = w.scenarios?.get(r.task);
+      const outgrown = now9 !== void 0 ? hit.filter((e) => e.scenarios !== void 0 && now9 > e.scenarios) : [];
+      if (outgrown.length) {
+        hit.forEach((e) => used.add(e));
+        rest.push(r);
+        grew.push(`${r.task} grew from ${Math.max(...outgrown.map((e) => e.scenarios ?? 0))} to ${now9} scenarios since it was accepted; update the accept only if its reason still holds`);
+      } else if (!hit.length) rest.push(r);
       else {
         accepted.push(r);
         hit.forEach((e) => {
@@ -16099,8 +16116,8 @@ function planAdviceAccepted(all2) {
         });
       }
     }
-    if (accepted.length) res.accepted.push(`accepted: ${w.text(accepted)}: ${whys.join("; ")}`);
-    if (rest.length) res.warnings.push(w.text(rest));
+    if (accepted.length) res.accepted.push(`accepted: ${w.text(accepted, true)}: ${whys.join("; ")}`);
+    if (rest.length) res.warnings.push(w.text(rest) + (grew.length ? ` (${grew.join("; ")})` : ""));
   }
   for (const e of entries) {
     if (!used.has(e)) res.stale.push(`accept on ${e.task} matches no warning (${e.warn}${e.on ? ` on ${e.on}` : ""}): remove it`);
@@ -24161,9 +24178,15 @@ ${d.kind === "brownfield" ? `${d.signals.map((s) => `  signal  ${s}
         const id = resolveChangeId(p, rest[0]);
         const tasks = parseTasks(readText((0, import_node_path58.join)(loadChange(p, id).dir, "tasks.yaml")) ?? "").tasks;
         const shape = planShape(tasks);
-        emit({ change: id, ...shape, summary: planSummary(tasks), advice: planAdviceAccepted(tasks).warnings }, `${planSummary(tasks)}
-${planAdviceAccepted(tasks).warnings.map((a) => `  advice: ${a}
-`).join("")}`);
+        const adv = planAdviceAccepted(tasks);
+        emit(
+          { change: id, ...shape, summary: planSummary(tasks), advice: adv.warnings, accepted: adv.accepted, stale: adv.stale },
+          `${planSummary(tasks)}
+` + adv.warnings.map((a) => `  advice: ${a}
+`).join("") + adv.stale.map((a) => `  advice: ${a}
+`).join("") + adv.accepted.map((a) => `  info: ${a}
+`).join("")
+        );
         return 0;
       }
       case "pr": {

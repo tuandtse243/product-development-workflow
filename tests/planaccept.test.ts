@@ -38,7 +38,7 @@ describe("plan warning codes and accept:", () => {
     const r = planAdviceAccepted(
       plan([
         { warn: "depends-without-overlap", on: "T01", why: WHY_DEP },
-        { warn: "large-task", why: WHY_BIG },
+        { warn: "large-task", scenarios: 28, why: WHY_BIG },
       ]),
     );
     expect(r.accepted).toHaveLength(2);
@@ -49,6 +49,44 @@ describe("plan warning codes and accept:", () => {
     const rest = r.warnings.find((w) => /depends_on without overlapping/.test(w)) ?? "";
     expect(rest).not.toMatch(/T03 on T01/);
     expect(rest).toMatch(/T02 on T01/);
+    // an accepted line states the fact; it does not give the advice the plan chose not to follow
+    for (const a of r.accepted) expect(a).not.toMatch(/Drop each one|Split each|drop its depends_on/);
+  });
+
+  it("an accepted one-chain pair does not tell the planner to drop its depends_on", () => {
+    const t = (id: string, touches: string[], depends_on: string[], extra: Record<string, unknown> = {}) =>
+      ({ id, title: id, role: "fullstack", type: "feat", touches, verify: ["x"], depends_on, ...extra }) as Task;
+    const chain = [
+      t("T01", ["db/**"], []),
+      t("T02", ["api/**"], ["T01"], { accept: [{ warn: "one-chain", on: "T01", why: "the API reads T01's table" }] }),
+      t("T03", ["ui/**"], ["T02"]),
+      t("T04", ["e2e/**"], ["T03"]),
+    ];
+    const r = planAdviceAccepted(chain);
+    expect(r.accepted).toHaveLength(1);
+    expect(r.accepted[0]).toMatch(/T02 after T01/);
+    expect(r.accepted[0]).not.toMatch(/drop its depends_on|Slice by vertical/);
+    expect(r.warnings.join("\n")).toMatch(/T03 after T02.*drop its depends_on/);
+  });
+
+  it("an accepted one-chain with no pair reads as one sentence before its reason", () => {
+    const t = (id: string, depends_on: string[], extra: Record<string, unknown> = {}) =>
+      ({ id, title: id, role: "fullstack", type: "feat", touches: ["app/**"], verify: ["x"], depends_on, ...extra }) as Task;
+    const chain = [t("T01", [], { accept: [{ warn: "one-chain", why: "one file" }] }), t("T02", ["T01"]), t("T03", ["T02"]), t("T04", ["T03"])];
+    expect(planAdviceAccepted(chain).accepted).toEqual(["accepted: the 4 tasks form one dependency chain, so none can run side by side (a wave): one file"]);
+  });
+
+  it("a large task that grew past its accepted size is a warning again", () => {
+    const r = planAdviceAccepted(plan([{ warn: "large-task", scenarios: 20, why: WHY_BIG }]));
+    expect(r.accepted.some((a) => /large|T03 \(28/.test(a))).toBe(false);
+    expect(r.warnings.some((w) => /T03 \(28 of 83 scenarios\).*T03 grew from 20 to 28 scenarios since it was accepted/.test(w))).toBe(true);
+    expect(r.stale).toEqual([]);
+    // the same size, or a smaller task, stays accepted
+    expect(planAdviceAccepted(plan([{ warn: "large-task", scenarios: 28, why: WHY_BIG }])).accepted).toHaveLength(1);
+    expect(planAdviceAccepted(plan([{ warn: "large-task", scenarios: 30, why: WHY_BIG }])).accepted).toHaveLength(1);
+    // a second entry for the same task is used, not reported stale
+    const both = planAdviceAccepted(plan([{ warn: "large-task", scenarios: 20, why: WHY_BIG }, { warn: "large-task", scenarios: 30, why: "x" }]));
+    expect(both.stale).toEqual([]);
   });
 
   it("an accept that matches no warning is a WARN of its own", () => {
@@ -66,12 +104,14 @@ describe("plan warning codes and accept:", () => {
     expect(check([{ warn: "large-task", why: "  " }]).join("\n")).toMatch(/needs a "why"/);
     expect(check([{ warn: "depends-without-overlap", on: "T99", why: "x" }]).join("\n")).toMatch(/unknown task "T99"/);
     expect(check([{ warn: "depends-without-overlap", why: "x" }]).join("\n")).toMatch(/needs "on"/);
-    expect(check([{ warn: "large-task", why: WHY_BIG }])).toEqual([]);
+    expect(check([{ warn: "large-task", why: WHY_BIG }]).join("\n")).toMatch(/needs "scenarios"/);
+    expect(check([{ warn: "large-task", scenarios: 0, why: WHY_BIG }]).join("\n")).toMatch(/needs "scenarios"/);
+    expect(check([{ warn: "large-task", scenarios: 28, why: WHY_BIG }])).toEqual([]);
   });
 
   it("the gate plan section lists the accepted warnings with their reasons", () => {
     const root = tempProject();
-    const s = planGateSection(pathsFor(root), plan([{ warn: "large-task", why: WHY_BIG }]), join(root, ".aidw/run/pages"));
+    const s = planGateSection(pathsFor(root), plan([{ warn: "large-task", scenarios: 28, why: WHY_BIG }]), join(root, ".aidw/run/pages"));
     expect(s.points.some((x) => /^accepted: task\(s\) T03 .*: every scenario goes through editBooking$/.test(x))).toBe(true);
   });
 });

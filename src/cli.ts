@@ -1297,7 +1297,14 @@ export function run(argv: string[], env: NodeJS.ProcessEnv, cwd: string, io: Io)
         const id = resolveChangeId(p, rest[0]);
         const tasks = parseTasks(readText(join(loadChange(p, id).dir, "tasks.yaml")) ?? "").tasks;
         const shape = planShape(tasks);
-        emit({ change: id, ...shape, summary: planSummary(tasks), advice: planAdviceAccepted(tasks).warnings }, `${planSummary(tasks)}\n${planAdviceAccepted(tasks).warnings.map((a) => `  advice: ${a}\n`).join("")}`);
+        const adv = planAdviceAccepted(tasks);
+        emit(
+          { change: id, ...shape, summary: planSummary(tasks), advice: adv.warnings, accepted: adv.accepted, stale: adv.stale },
+          `${planSummary(tasks)}\n` +
+            adv.warnings.map((a) => `  advice: ${a}\n`).join("") +
+            adv.stale.map((a) => `  advice: ${a}\n`).join("") +
+            adv.accepted.map((a) => `  info: ${a}\n`).join(""),
+        );
         return 0;
       }
 
