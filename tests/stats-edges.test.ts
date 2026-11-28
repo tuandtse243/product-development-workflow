@@ -613,7 +613,7 @@ describe("the aidw verdict warning", () => {
     ["backend", "VERDICT: fix\n1. b7: lower case\n", true],
     ["backend", "VERDICT: fix\n1. src/a.ts: two writes break B7 here\n", false],
     // fullstack owns the seam table X1-X7 since the fullstack upgrade, so a fix review with no id warns, naming fullstack
-    ["fullstack", "VERDICT: fix\n1. src/a.ts: no limit\n", "fullstack"],
+    ["fullstack", "VERDICT: fix\n1. src/a.ts: no limit\n", "fullstack, backend, frontend"],
     ["fullstack-engineer", "VERDICT: fix\n1. src/a.ts: no limit\n", false],
     ["fullstack", "VERDICT: fix\n1. B2: src/a.ts: no test\n", false],
     ["fullstack", "VERDICT: fix\n1. X1: src/a.ts: no seam test\n", false],

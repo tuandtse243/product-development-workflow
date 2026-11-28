@@ -19,16 +19,22 @@ the real handler closes that gap, and it is the first test you write.
    role and name, act, assert what the user sees. The `testing-through-the-user` skill has the queries.
 3. **Reach the real handler the way the stack allows**, with no socket and no deployed service:
    - **SPA plus a Node server** (Vite + React with Express, Fastify, Hono): fake the network at the browser boundary
-     with an MSW handler that forwards `/api/*` to the app's in-process request helper (`app.request()` in Hono, `inject`
-     in Fastify, supertest or a fetch adapter over the app in Express). Use the project's test database (PGlite, SQLite in
-     memory), not a mock of your own data layer.
+     with an MSW handler whose resolver takes `({ request })` and returns a Fetch `Response` built from the real app's
+     answer. The app is called in process: `app.request(request)` in Hono, `app.inject(...)` (light-my-request) in
+     Fastify, and for Express a small helper that serves the request through a Node HTTP server that never listens, over
+     an in-memory stream pair, as the repo's `evals/fixtures/backend-api/tests/http.ts` does. Do not use supertest's
+     `listen(0)` or a real port: it opens a socket, and a `127.0.0.1:port` request is not matched by an `/api/*` handler.
+     The scaffold task leaves that helper in the server's test folder; import it, do not write another. Use the project's
+     test database (PGlite, SQLite in memory), not a mock of your own data layer.
    - **Next.js**: call the Server Action or the route handler as a function with a test session (a `Request` or form data
-     and the session the project's auth helper reads), then render the client component with the return value it really
+     and the session the project's auth or session helper reads; `cookies()`, `headers()` and `revalidatePath` throw
+     outside a request, so the project's session helper and `next/cache` are the allowed fakes), then render the client component with the return value it really
      gives. An async Server Component does not render in Testing Library: cover the data it builds with a contract test
      (`library/contract-tests`) that runs the builder against the shared shape and the component's props against the same.
    - **SvelteKit and Nuxt**: call `load`, the form action or the server route with a test event (`url`, `params`,
      `locals`, `request`), then render the component with its return.
-4. **Fake only what is outside**: a payment provider, an email sender, the clock. Never the server's own module, the
+4. **Fake only what is outside**: a payment provider, an email sender, the clock (in Next.js also the session helper
+   and `next/cache`, which need a request scope). Never the server's own module, the
    shared schema or the database.
 5. **Assert a value the server decides** (a trimmed name, a generated id, a refused field) so a fake could not pass by
    echoing the input. The error cases assert the state F3 or F9 asks for (an alert, a field error), not the status.
@@ -47,12 +53,19 @@ Right: the screen's real request is answered by the real Express app in the same
 
 ```
 // web/tests/rename.seam.test.tsx
-server.use(http.all("/api/*", (req) => appRequest(app, req)))   // MSW forwards to the in-process app
+const app = createApp(testDb)                                      // the real server, test database
+server.use(http.all("/api/*", async ({ request }) => toFetchResponse(await inProcess(app, request))))
 render(<ProjectPage id={project.id} />)
-await user.type(await screen.findByLabelText("Name"), "  Roadmap  ")
+const name = await screen.findByLabelText("Name")
+await user.clear(name); await user.type(name, "  Roadmap  ")
 await user.click(screen.getByRole("button", { name: "Save" }))
-expect(await screen.findByRole("heading", { name: "Roadmap" })).toBeVisible()   // trimmed by the server
-// the taken-name case: the field shows the server's text under it, tied by aria-describedby
+await waitFor(() => expect(screen.getByLabelText("Name")).toHaveValue("Roadmap"))   // only the server trims
+expect((await projects.byId(project.id)).name).toBe("Roadmap")                      // the stored row agrees
+
+// the taken-name case, same wiring: the field shows the server's text and is tied to it
+await user.clear(name); await user.type(name, "Taken"); await user.click(screen.getByRole("button", { name: "Save" }))
+expect(await screen.findByLabelText("Name")).toBeInvalid()
+expect(screen.getByLabelText("Name")).toHaveAccessibleDescription("taken")
 ```
 
 Wrong: the screen test hand-writes the response, so it passes whatever the server does.
@@ -70,5 +83,6 @@ The route test and this screen test both pass; the first real save shows nothing
 Ideas, not wording: aidw's `testing-through-the-user` skill and the backend Role's `endpoint-test-matrix` (the two
 halves' own tests); `library/contract-tests` (the fallback where the screen cannot render); `stacks/vite-react.md`,
 `stacks/nextjs.md`, `stacks/sveltekit.md` and `stacks/nuxt.md` (how each reaches its handler); the Mock Service Worker
-documentation on request handlers; Next.js documentation on testing and on Server Actions; SvelteKit documentation on
-`load` and form actions; Hono's `app.request` and Fastify's `inject` for in-process requests.
+documentation on request handlers (MIT); Next.js documentation on testing and on Server Actions (MIT); SvelteKit
+documentation on `load` and form actions (MIT); Hono's `app.request` (MIT) and Fastify's `inject` (MIT) for in-process
+requests; the repo's `evals/fixtures/backend-api/tests/http.ts`.

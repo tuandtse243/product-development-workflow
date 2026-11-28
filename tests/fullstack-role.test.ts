@@ -157,6 +157,17 @@ describe("fullstack skills", () => {
   });
 });
 
+describe("rule ids cited by fullstack", () => {
+  it("every B, F and X id in role.md and its skills is a row of the backend, frontend or fullstack table", () => {
+    const ids = new Set(["backend", "frontend", "fullstack"].flatMap((r) => (loadRuleTable(plugin, r) ?? []).map((x) => x.id)));
+    const files = [join(plugin, "roles", "fullstack", "role.md"), ...AUTHORED.map((n) => join(skillsDir, `${n}.md`))];
+    for (const f of files) {
+      const text = readFileSync(f, "utf8").replace(/\b[BFX]\d+ to [BFX]\d+/g, "");
+      for (const m of text.matchAll(/\b([BFX]\d+)\b/g)) expect(ids, `${f}: ${m[1]}`).toContain(m[1]);
+    }
+  });
+});
+
 describe("contract-tests in the shared library", () => {
   it("lives at library/skills/contract-tests/SKILL.md and the old path is gone", () => {
     expect(existsSync(join(plugin, "library", "skills", "contract-tests", "SKILL.md"))).toBe(true);

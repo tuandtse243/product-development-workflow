@@ -290,7 +290,7 @@ describe("review findings (lead's decisions)", () => {
   });
 
   it("L1: the warning fires only for a Role that owns a table, or whose builder does", () => {
-    expect(ruleIdWarning(HOME, "fullstack", "VERDICT: fix\n1. src/page.tsx: the button has no label")).toMatch(/cites no rule id of fullstack/); // owns X1-X7 now
+    expect(ruleIdWarning(HOME, "fullstack", "VERDICT: fix\n1. src/page.tsx: the button has no label")).toMatch(/cites no rule id of fullstack, backend, frontend \(for example `1. B1: /); // owns X1-X7 and follows two tables
     expect(ruleIdWarning(HOME, "fullstack", "VERDICT: fix\n1. X1: src/page.tsx: no seam test")).toBeNull();
     expect(ruleIdWarning(HOME, undefined, "VERDICT: fix\n1. x")).toBeNull();
     expect(ruleIdWarning(HOME, "no-such-role", "VERDICT: fix\n1. x")).toBeNull();

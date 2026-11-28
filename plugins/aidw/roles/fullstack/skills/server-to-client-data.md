@@ -39,15 +39,17 @@ Right: the card receives a view with only what it shows, and the page checks the
 ```
 // app/profile/[id]/page.tsx (Server Component)
 const session = await getSession()
-if (!session || session.userId !== params.id) notFound()          // X4: checked before the read
-const user = await users.byId(params.id)
+const { id } = await params                                        // Next 15: params is a Promise
+if (!session || session.userId !== id) notFound()                  // X4: checked before the read
+const user = await users.byId(id)
 return <ProfileCard user={toProfileView(user)} />                  // X3: { id, name, avatarUrl }
 ```
 
 Wrong: the whole row crosses, and the only check is a hidden link.
 
 ```
-const user = await users.byId(params.id)                           // any id in the URL is read
+const { id } = await params
+const user = await users.byId(id)                                  // any id in the URL is read
 return <ProfileCard user={user} />                                 // passwordHash and stripeCustomerId ship in the page payload
 ```
 
@@ -56,5 +58,5 @@ return <ProfileCard user={user} />                                 // passwordHa
 Ideas, not wording: aidw's backend rule B5 (a response is built from an explicit shape) and B2/B3 (access on every entry
 point); frontend rules F10 and F11; `library/skills/react-rules` (what a Server Component passes to a client component is
 serialized, a Server Action checks its caller, revalidate after a mutation); `stacks/nextjs.md`, `stacks/sveltekit.md`
-and `stacks/nuxt.md`; the Next.js documentation on data security and `revalidatePath`; the SvelteKit documentation on
-`load` and `invalidate`.
+and `stacks/nuxt.md`; the Next.js documentation on data security and `revalidatePath` (MIT); the SvelteKit documentation on
+`load` and `invalidate` (MIT); `library/skills/react-rules` and the stack packs are aidw's own.
