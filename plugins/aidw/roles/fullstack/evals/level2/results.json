@@ -1,0 +1,62 @@
+{
+  "format": 2,
+  "level": 2,
+  "role": "fullstack",
+  "date": "2026-11-28T12:26:39.386Z",
+  "model": null,
+  "tier": "deep",
+  "runs": 3,
+  "digest": "sha256:c23345e4e49cf7c382555c79fbaf61e989fb11ba5f60115aa34dd751d05efefa",
+  "cases": [
+    {
+      "name": "invite-with-one-schema",
+      "pass": false,
+      "runs": {
+        "total": 3,
+        "passed": 0,
+        "errors": 0
+      },
+      "failed": [
+        "checks: nothing outside Touches changed (no file of the test harness, the schema or the other server areas): exit 1, expected 0: web/api/client.ts (3 of 3 runs)",
+        "reads: did not read plugin:library/skills/contract-tests/SKILL.md (2 of 3 runs)"
+      ],
+      "digest": "sha256:fdbf85514be5d79807f050857345fa4e9ef609645553caf09749cccdf6b4c54b",
+      "fixture": "sha256:654af8f0d9a0ec81c2c504fadd53d33818a5690ec3a047b83191fc1f4ad3ac72",
+      "gradingSandbox": "sandbox-exec",
+      "date": "2026-11-28T12:26:39.386Z",
+      "model": null
+    },
+    {
+      "name": "owner-only-billing",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": [],
+      "digest": "sha256:b44bbf1514b696bf9c6f633af5946184392f34519d62fe2717fac58baae2bd47",
+      "fixture": "sha256:654af8f0d9a0ec81c2c504fadd53d33818a5690ec3a047b83191fc1f4ad3ac72",
+      "gradingSandbox": "sandbox-exec",
+      "date": "2026-11-28T12:26:39.386Z",
+      "model": null
+    },
+    {
+      "name": "rename-a-project",
+      "pass": false,
+      "runs": {
+        "total": 3,
+        "passed": 2,
+        "errors": 0
+      },
+      "failed": [
+        "criteria: must say in its final reply or its report file that the projects list kept in the module-level store (web/projects/store.ts) was not refreshed after a write and showed the old name, and that it fixed that (or flagged it): what was wrong and that it was fixed is enough; leaving the list stale or saying nothing fails: The diff adds invalidateProjects() to fix the stale list, but neither the final reply nor the report says that the kept list was stale after a rename or that this was fixed. (1 of 3 runs)"
+      ],
+      "digest": "sha256:b099ff7a977dc9ee011dac27edad938aefe23c5d4584dd259d1ce2e870777c60",
+      "fixture": "sha256:654af8f0d9a0ec81c2c504fadd53d33818a5690ec3a047b83191fc1f4ad3ac72",
+      "gradingSandbox": "sandbox-exec",
+      "date": "2026-11-28T12:26:39.386Z",
+      "model": null
+    }
+  ]
+}
