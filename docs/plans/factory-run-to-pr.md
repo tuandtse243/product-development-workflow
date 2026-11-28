@@ -340,6 +340,17 @@ Fastify, Hono.
      (`server/`), shared zod schemas (`shared/`); in the client tests MSW forwards `/api/*` to the in-process app.
   10. Level 2 plan: pilot L1 `rename-a-project` first (at most 6 sessions), then L2 `invite-with-one-schema` and L3
       `owner-only-billing` (6 sessions plus spares); ask before more.
+  - Built (2026-11-28): fullstack has `rules.md` X1-X7, skills `seam-test` and `server-to-client-data`,
+    `library/contract-tests` (moved from integration), `library/react-rules`, and a role.md with a boundaries table,
+    an outside-in Procedure, a Scaffold task section, a 12-line report that replaces the shared 10-line limit, and the
+    ten backend and frontend scripts by condition. The `aidw verdict` warning for a Role with `follows_rules` names
+    every bound table.
+  - Level 1: 9/9 at 3/3 (36 model calls: 27, then 9 for three cases whose criteria asked more than the Role text says).
+    Level 2: `rename-a-project`, `invite-with-one-schema`, `owner-only-billing` all 3/3 (18 sessions: pilot 3, full 9,
+    approved re-run 6). The real sessions found case defects, now fixed: a file the fixture calls "the only module that
+    calls fetch" was outside Touches (all three sessions rightly edited it); a criterion asked the report to mention a
+    fix the held-out tests already prove; `must_read` named `rules.md`, which is inlined in the agent's system prompt;
+    Touches naming `.tsx` files make `aidw analyze` demand tokens and an a11y layer, so fixture Changes use globs.
 - The cases of every other active Role have no `covers:` yet; T12 must not fail `aidw roster` for Roles that
   have not been upgraded (require coverage only once a Role's `rules.md` uses the table format).
 - The owner prefers question rounds as an HTML Decision Page with options, examples and a copy-back summary,
