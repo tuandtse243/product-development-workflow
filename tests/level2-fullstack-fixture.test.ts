@@ -128,7 +128,7 @@ describe.skipIf(!ready)("the fullstack-app fixture and level 2 case rename-a-pro
     expect(c.heldOut).toEqual(["server/tests/held-out/rename-a-project.test.ts", "web/tests/held-out/rename-a-project.test.tsx"]);
     expect(c.mustRead).toEqual([".aidw/changes/rename-a-project/api-contract.md", "plugin:roles/fullstack/skills/seam-test.md"]);
     expect(c.checks).toHaveLength(5);
-    expect(c.criteria).toHaveLength(2);
+    expect(c.criteria).toHaveLength(1);
   });
 
   it("the Change is approved and valid with the CLI, in state executing on base main, with one fullstack task that holds both halves in Touches", () => {
@@ -462,14 +462,14 @@ const I = {
 };
 
 describe.skipIf(!ready)("level 2 case invite-with-one-schema on the fullstack-app fixture (cached packages)", () => {
-  it("loads, on the fixture's Change, with the contract and the contract-tests skill to read and one held-out file per project", () => {
+  it("loads, on the fixture's Change, with the contract to read and one held-out file per project", () => {
     const { cases, diags } = loadLevel2Cases(plugin, "fullstack");
     expect(diags.errors).toEqual([]);
     const c = cases.find((x) => x.name === INVITE)!;
-    expect(c).toMatchObject({ fixture: "fullstack-app", change: INVITE, task: "T01", covers: ["X2", "library/contract-tests"] });
+    expect(c).toMatchObject({ fixture: "fullstack-app", change: INVITE, task: "T01", covers: ["X2"] });
     expect(c.restore).toEqual(expect.arrayContaining(["web/tests/setup.ts", "web/tests/msw/handlers.ts", "web/tests/backend.ts", "server/tests/helpers.ts", "server/tests/http.ts"]));
     expect(c.heldOut).toEqual(["server/tests/held-out/invite-with-one-schema.test.ts", "web/tests/held-out/invite-with-one-schema.test.tsx"]);
-    expect(c.mustRead).toEqual([".aidw/changes/invite-with-one-schema/api-contract.md", "plugin:library/skills/contract-tests/SKILL.md"]);
+    expect(c.mustRead).toEqual([".aidw/changes/invite-with-one-schema/api-contract.md"]);
     expect(c.checks).toHaveLength(5);
   });
 
@@ -536,9 +536,9 @@ describe.skipIf(!ready)("level 2 case invite-with-one-schema on the fullstack-ap
   it("the Touches check allows the task's files and .aidw/run, and fails the schema, the harness, the other server areas and the shared errors", () => {
     const g = graded(caseNamed(INVITE), INVITE);
     const ch = caseNamed(INVITE).checks.find((x) => /nothing outside Touches/.test(x.name))!;
-    const ok = ["shared/invites.ts", "server/invites/routes.ts", "server/invites/rules.ts", "server/app.ts", "server/tests/invites/a.test.ts", "web/team/InviteDialog.tsx", "web/tests/team/a.test.tsx", ".aidw/run/report-T01.md", ".aidw/changes/invite-with-one-schema/tasks.yaml"];
+    const ok = ["shared/invites.ts", "server/invites/routes.ts", "server/invites/rules.ts", "server/app.ts", "server/tests/invites/a.test.ts", "web/team/InviteDialog.tsx", "web/api/client.ts", "web/tests/team/a.test.tsx", ".aidw/run/report-T01.md", ".aidw/changes/invite-with-one-schema/tasks.yaml"];
     expect(runCheck(ch, g.project, touchesList(g, ok))).toMatchObject({ pass: true });
-    for (const f of ["server/db/schema.sql", "shared/errors.ts", "server/http/errors.ts", "web/api/client.ts", "web/tests/msw/handlers.ts", "web/tests/setup.ts", "server/tests/http.ts", "server/projects/routes.ts", "web/billing/BillingPage.tsx", "web/routes.tsx", "web/Layout.tsx", ".aidw/constitution.md"]) {
+    for (const f of ["server/db/schema.sql", "shared/errors.ts", "server/http/errors.ts", "web/tests/msw/handlers.ts", "web/tests/setup.ts", "server/tests/http.ts", "server/projects/routes.ts", "web/billing/BillingPage.tsx", "web/routes.tsx", "web/Layout.tsx", ".aidw/constitution.md"]) {
       expect(runCheck(ch, g.project, touchesList(g, [f])), f).toMatchObject({ pass: false });
     }
   }, 300_000);

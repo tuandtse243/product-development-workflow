@@ -1,6 +1,6 @@
 ---
 case: invite-with-one-schema
-covers: [X2, library/contract-tests]
+covers: [X2]
 fixture: fullstack-app
 change: invite-with-one-schema
 task: T01
@@ -9,7 +9,6 @@ max_turns: 100
 restore: [web/tests/setup.ts, web/tests/environment.ts, web/tests/render.tsx, web/tests/backend.ts, web/tests/msw/handlers.ts, web/tests/msw/server.ts, server/tests/helpers.ts, server/tests/http.ts]
 must_read:
   - .aidw/changes/invite-with-one-schema/api-contract.md
-  - plugin:library/skills/contract-tests/SKILL.md
 ---
 ## Situation
 
@@ -47,6 +46,6 @@ each field and both at once, 403 for a member and for a user in no team and 401 
 Role's `a11y-names` (no `no-name`, `no-label` or `div-click` in the added code), that every scenario id names a test (in
 `web/tests` or `server/tests`; the signed-out one in `server/tests`), the whole suite, the typecheck, and that nothing outside
 Touches changed (only `shared/invites.ts`, `server/invites/`, `server/app.ts`, `server/tests/invites/`, `web/team/`,
-`web/tests/team/` and the run and change folders of `.aidw/`). The held-out tests are
+`web/api/client.ts` (the one module that calls `fetch`: it may need to carry the error `code` and `fields` into `ApiError`), `web/tests/team/` and the run and change folders of `.aidw/`). The held-out tests are
 written so that the dialog behind any button label from a list, any submit label from a list, and any wording of the messages that carries the
 right meaning pass. No model grades this case: everything it asks is checked by a machine.

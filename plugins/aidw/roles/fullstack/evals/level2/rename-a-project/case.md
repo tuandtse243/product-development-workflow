@@ -47,9 +47,8 @@ and the run and change folders of `.aidw/`). The held-out tests are written so t
 button, any submit label from a list, and any wording of the messages that carries the right meaning pass. The backend's `route-inventory` is not run: it matches a route's tests by path, not method, so the existing
 tests of `GET /api/projects/{projectId}` would give the PATCH route its three access cases; the held-out route tests are the
 access check. A model grades
-only what the Agent says about the client helper and the list store.
+only what the Agent says about the client helper; the list store is proved by the held-out list test.
 
 ## Criteria
 
 - must say in its final reply or its report file that the client helper (web/api/client.ts) read the error from `body.message`, which the server never sends (its errors are `error.code`, `error.message` and, for a 422, `error.fields`), and that it fixed that (or flagged it): what was wrong and that it was fixed is enough, the exact words are not needed; building the form on the stale helper or saying nothing fails
-- must say in its final reply or its report file that the projects list kept in the module-level store (web/projects/store.ts) was not refreshed after a write and showed the old name, and that it fixed that (or flagged it): what was wrong and that it was fixed is enough; leaving the list stale or saying nothing fails
