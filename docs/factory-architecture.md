@@ -122,8 +122,9 @@ procedure all implementing Roles follow, so it exists once. `reads` and `writes`
 generated agent ends with a "Consultation" note naming them. A `read-only` Role cannot be consulted unless its
 `role.md` opts in with `answers_consultations: true`: the gate then lets it write one more file, the `C<NN>.answer.md` of an
 open Consultation addressed to it, and still no project file (`ui-ux-designer` answers a design hole from `frontend` so). The first pairs: `ux-research`, `product-manager` and
-`software-architect` ask `research`; `technical-planner` asks `software-architect`; `backend`, `frontend` and
-`fullstack` ask `api-designer`, `database-architect` and `software-architect`. Every implementing Role (`backend`,
+`software-architect` ask `research`; `technical-planner` asks `software-architect`; `backend` and `fullstack` ask
+`api-designer`, `database-architect` and `software-architect` (`fullstack` also `ui-ux-designer`); `frontend` asks `api-designer`,
+`software-architect` and `ui-ux-designer`. Every implementing Role (`backend`,
 `frontend`, `fullstack`, `database`, `devops`, `integration`) may also ask `research`, at most once per task
 (ADR-0016, amending ADR-0013): when a library behaves otherwise than its Docs Brief says, or the task meets one the
 plan did not foresee.

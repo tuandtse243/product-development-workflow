@@ -612,17 +612,18 @@ describe("the aidw verdict warning", () => {
     ["backend", "VERDICT: fix\n1. B99: not a rule\n", true],
     ["backend", "VERDICT: fix\n1. b7: lower case\n", true],
     ["backend", "VERDICT: fix\n1. src/a.ts: two writes break B7 here\n", false],
-    // L1: fullstack only follows backend's table: a fix review about something else owes no backend id
-    ["fullstack", "VERDICT: fix\n1. src/a.ts: no limit\n", false],
+    // fullstack owns the seam table X1-X7 since the fullstack upgrade, so a fix review with no id warns, naming fullstack
+    ["fullstack", "VERDICT: fix\n1. src/a.ts: no limit\n", "fullstack"],
     ["fullstack-engineer", "VERDICT: fix\n1. src/a.ts: no limit\n", false],
     ["fullstack", "VERDICT: fix\n1. B2: src/a.ts: no test\n", false],
+    ["fullstack", "VERDICT: fix\n1. X1: src/a.ts: no seam test\n", false],
     ["devops", "VERDICT: fix\n1. Dockerfile: root user\n", false],
   ])("%s, %j: warns %s", (role, notes, warns) => {
     const root = inReview(role);
     const r = fix(root, notes);
     expect(r.code, r.err).toBe(0);
     const j = r.json();
-    if (warns) expect(j.rule_warning).toMatch(/cites no rule id of backend/);
+    if (warns) expect(j.rule_warning).toMatch(new RegExp(`cites no rule id of ${warns === true ? "backend" : warns}`));
     else expect(j).not.toHaveProperty("rule_warning");
   });
 
