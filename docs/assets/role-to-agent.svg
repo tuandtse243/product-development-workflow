@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 400" width="900" height="400" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif" role="img" aria-label="How a Role becomes a running agent">
+<rect width="900" height="400" rx="14" fill="#0f172a"/>
+<text x="30" y="40" fill="#e2e8f0" font-size="20" font-weight="700">How a Role becomes a running agent</text><text x="30" y="64" fill="#94a3b8" font-size="14">Editing a Role changes how every later task of that agent is done. aidw stats shows what to fix next.</text><path d="M90 152 H810 V300 H90 Z" fill="none" stroke="#475569" stroke-width="2" stroke-dasharray="6 6"/><g><rect x="20" y="110" width="140" height="84" rx="10" fill="#1e293b" stroke="#475569"/>
+<rect x="20" y="110" width="140" height="84" rx="10" fill="none" stroke="#38bdf8" stroke-width="3" opacity="0"><animate attributeName="opacity" dur="12s" repeatCount="indefinite" keyTimes="0;0.07;1" values="0;0;0"/></rect>
+<text x="90" y="142" text-anchor="middle" fill="#e2e8f0" font-size="14" font-weight="700">Write the Role</text>
+<text x="90" y="164" text-anchor="middle" fill="#94a3b8" font-size="11">role.md · rules.md</text>
+<text x="90" y="180" text-anchor="middle" fill="#94a3b8" font-size="11">skills/ · evals/</text>
+<text x="30" y="102" fill="#38bdf8" font-size="12" font-weight="700">1</text></g><g><rect x="200" y="110" width="140" height="84" rx="10" fill="#1e293b" stroke="#475569"/>
+<rect x="200" y="110" width="140" height="84" rx="10" fill="none" stroke="#38bdf8" stroke-width="3" opacity="0"><animate attributeName="opacity" dur="12s" repeatCount="indefinite" keyTimes="0;0.07368663594470046;0.10368663594470046;0.17368663594470046;1" values="0;0;1;0;0"/></rect>
+<text x="270" y="142" text-anchor="middle" fill="#e2e8f0" font-size="14" font-weight="700">aidw roster --write</text>
+<text x="270" y="164" text-anchor="middle" fill="#94a3b8" font-size="11">inlines the</text>
+<text x="270" y="180" text-anchor="middle" fill="#94a3b8" font-size="11">rules table</text>
+<text x="210" y="102" fill="#38bdf8" font-size="12" font-weight="700">2</text></g><g><rect x="380" y="110" width="140" height="84" rx="10" fill="#1e293b" stroke="#475569"/>
+<rect x="380" y="110" width="140" height="84" rx="10" fill="none" stroke="#38bdf8" stroke-width="3" opacity="0"><animate attributeName="opacity" dur="12s" repeatCount="indefinite" keyTimes="0;0.1773732718894009;0.2073732718894009;0.2773732718894009;1" values="0;0;1;0;0"/></rect>
+<text x="450" y="142" text-anchor="middle" fill="#e2e8f0" font-size="14" font-weight="700">agents/&lt;id>.md</text>
+<text x="450" y="164" text-anchor="middle" fill="#94a3b8" font-size="11">the subagent's</text>
+<text x="450" y="180" text-anchor="middle" fill="#94a3b8" font-size="11">system prompt (generated)</text>
+<text x="390" y="102" fill="#38bdf8" font-size="12" font-weight="700">3</text></g><g><rect x="560" y="110" width="140" height="84" rx="10" fill="#1e293b" stroke="#475569"/>
+<rect x="560" y="110" width="140" height="84" rx="10" fill="none" stroke="#38bdf8" stroke-width="3" opacity="0"><animate attributeName="opacity" dur="12s" repeatCount="indefinite" keyTimes="0;0.2810599078341014;0.31105990783410137;0.3810599078341014;1" values="0;0;1;0;0"/></rect>
+<text x="630" y="142" text-anchor="middle" fill="#e2e8f0" font-size="14" font-weight="700">A task of a Change</text>
+<text x="630" y="164" text-anchor="middle" fill="#94a3b8" font-size="11">lead spawns a fresh</text>
+<text x="630" y="180" text-anchor="middle" fill="#94a3b8" font-size="11">agent with a brief</text>
+<text x="570" y="102" fill="#38bdf8" font-size="12" font-weight="700">4</text></g><g><rect x="740" y="110" width="140" height="84" rx="10" fill="#1e293b" stroke="#475569"/>
+<rect x="740" y="110" width="140" height="84" rx="10" fill="none" stroke="#38bdf8" stroke-width="3" opacity="0"><animate attributeName="opacity" dur="12s" repeatCount="indefinite" keyTimes="0;0.3847465437788018;0.4147465437788018;0.48474654377880183;1" values="0;0;1;0;0"/></rect>
+<text x="810" y="142" text-anchor="middle" fill="#e2e8f0" font-size="14" font-weight="700">Report + review</text>
+<text x="810" y="164" text-anchor="middle" fill="#94a3b8" font-size="11">reviewer cites rule ids</text>
+<text x="810" y="180" text-anchor="middle" fill="#94a3b8" font-size="11">e.g. X6: client.ts</text>
+<text x="750" y="102" fill="#38bdf8" font-size="12" font-weight="700">5</text></g><rect x="250" y="278" width="400" height="44" rx="8" fill="#0f172a" stroke="#475569"/>
+<text x="450" y="298" text-anchor="middle" fill="#e2e8f0" font-size="13">aidw stats</text>
+<text x="450" y="314" text-anchor="middle" fill="#94a3b8" font-size="11">which rules break most, which tasks fail first time</text><circle r="8" fill="#38bdf8"><animateMotion dur="12s" repeatCount="indefinite" path="M90 152 H810 V300 H90 Z"/></circle></svg>

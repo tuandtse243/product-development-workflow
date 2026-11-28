@@ -4,6 +4,7 @@ Analysis-gated autonomous development for Claude Code: intake → analysis → *
 autonomous build → layered quality gates → living specs → complete delivery package.
 
 - **User guide (Vietnamese, with diagrams): [`docs/user-guide.md`](docs/user-guide.md)**
+- **Role upgrades (animated diagrams): [`docs/role-upgrade-guide.md`](docs/role-upgrade-guide.md)**
 - Status: **S1 done** (deterministic core CLI), **S2 code done** (analysis skills, analyze, approval gate hook,
   stop backstop, vendored Pocock and Addy skills), **S3 code done** (sequential orchestrator: a fresh
   implementer per task, scenario evidence, independent reviewer, a commit per task, resume), **S4 code done**
@@ -22,6 +23,26 @@ autonomous build → layered quality gates → living specs → complete deliver
   approved with the package; Docs Briefs record what the official docs say at the installed version; every question
   with options shows a View; tasks carry Patterns to Follow, `docs:` and `manual:` checks; the pull request opens with
   the Documentation Role's summary. `/aidw:show-me` and `/aidw:html-pages` are user commands.
+
+## How a Role is upgraded and measured
+
+A Role (`plugins/aidw/roles/<id>/`) is the source of one subagent's system prompt. Upgrading it means better rules,
+procedure and skills, then proving with evals that the agent follows them. Full guide:
+[`docs/role-upgrade-guide.md`](docs/role-upgrade-guide.md).
+
+![A Role goes from a folder to a running agent](docs/assets/role-to-agent.svg)
+
+Interactive versions (open in a browser): [Role to agent](docs/diagrams/role-to-agent.html),
+[the seam test](docs/diagrams/seam-test.html), [the eval loop](docs/diagrams/eval-loop.html).
+
+Example, the `fullstack` Role: before, each half of a Slice had green tests while the screen read a field the server
+never sent. Now a test must cross from the screen into the real handler.
+
+![Before and after the seam test](docs/assets/seam-before-after.svg)
+
+Every rule and skill needs a case; Level 1 grades an answer, Level 2 grades a real session on a fixture repo.
+
+![The eval loop](docs/assets/eval-loop.svg)
 
 ## Use it in a project (local, no install)
 
