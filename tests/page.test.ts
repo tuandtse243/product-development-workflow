@@ -23,6 +23,12 @@ questions:
     recommend: vercel
     why: One command to deploy and a preview per branch.
     decision: hosting-target
+    view:
+      kind: diff
+      text: |2
+         app/
+        +vercel.json
+        -Dockerfile
     options:
       - key: vercel
         name: Vercel
@@ -41,7 +47,7 @@ questions:
     recommend: [eu]
     why: The users are in Europe.
     options:
-      - { key: eu, name: Europe, summary: Close to the users }
+      - { key: eu, name: Europe, summary: Close to the users, view: { kind: tree, text: "eu-west-1/\\n  app\\n  db" } }
       - { key: us, name: United States, summary: Cheapest }
   - id: Q3
     title: What is the product called?
@@ -84,6 +90,74 @@ describe("the data of a Decision Page", () => {
   });
 });
 
+describe("the View of a question (ADR-0017)", () => {
+  const CHOICE = `layout: questions
+title: Sessions
+questions:
+  - id: Q1
+    title: Where do sessions live?
+    recommend: db
+    why: One store to back up.
+    options:
+      - { key: db, name: In the database, summary: One store }
+      - { key: redis, name: In Redis, summary: Fast }
+`;
+
+  it("reads view as {kind, text} on a question, an option or a list of them, keeping the text's indentation", () => {
+    const { page: p, problems } = page();
+    expect(problems).toEqual([]);
+    expect(p.questions[0]?.views).toEqual([{ kind: "diff", text: " app/\n+vercel.json\n-Dockerfile" }]);
+    expect(p.questions[1]?.options[0]?.views).toEqual([{ kind: "tree", text: "eu-west-1/\n  app\n  db" }]);
+    const two = parsePage("s", CHOICE.replace("    options:", '    view: [{ kind: pseudocode, text: "on(login)\\n  save session" }, { kind: calltree, text: "login\\n  saveSession" }]\n    options:'));
+    expect(two.problems).toEqual([]);
+    expect(two.page.questions[0]?.views.map((v) => v.kind)).toEqual(["pseudocode", "calltree"]);
+  });
+
+  it("refuses a question with options that has neither a view nor html, and names the fix", () => {
+    const { problems } = parsePage("s", CHOICE);
+    expect(problems).toEqual([expect.stringMatching(/questions\[Q1\]: a choice shows a View: give `view: \{kind, text\}`.*diff, tree, calltree, component, pseudocode.*or an `html` mock/)]);
+  });
+
+  it("accepts the view or the html on the question or on any option", () => {
+    expect(parsePage("s", CHOICE.replace("summary: Fast }", 'summary: Fast, view: { kind: component, text: "<App>\\n  <RedisProvider>" } }')).problems).toEqual([]);
+    expect(parsePage("s", CHOICE.replace("summary: Fast }", "summary: Fast, html: '<p>mock</p>' }")).problems).toEqual([]);
+    expect(parsePage("s", CHOICE.replace("    options:", "    html: '<p>mock</p>'\n    options:")).problems).toEqual([]);
+  });
+
+  it("exempts a yes or no, a name and an open question", () => {
+    const yesNo = CHOICE.replace("recommend: db", "recommend: yes").replace("key: db,", "key: yes,").replace("key: redis,", "key: No,");
+    expect(parsePage("s", yesNo).problems).toEqual([]);
+    expect(parsePage("s", CHOICE.replace("    recommend: db", "    naming: true\n    recommend: db")).problems).toEqual([]);
+    expect(parsePage("s", "layout: questions\ntitle: T\nquestions:\n  - { id: Q1, title: What is it called?, suggest: Notes }\n").problems).toEqual([]);
+  });
+
+  it("names a bad view: an unknown kind, empty text, or not an object", () => {
+    const bad = (view: string) => parsePage("s", CHOICE.replace("    options:", `    view: ${view}\n    options:`)).problems.join("\n");
+    expect(bad("{ kind: mermaid, text: a }")).toMatch(/questions\[Q1\]\.view: kind "mermaid" is not one of diff, tree, calltree, component, pseudocode/);
+    expect(bad("{ kind: diff, text: '' }")).toMatch(/questions\[Q1\]\.view: text is missing/);
+    expect(bad("just words")).toMatch(/questions\[Q1\]\.view: give \{kind, text\}/);
+    expect(bad(`{ kind: tree, text: "${"x".repeat(20_001)}" }`)).toMatch(/questions\[Q1\]\.view: text is 20001 characters; the limit is 20000/);
+  });
+
+  it("is rendered as escaped text, a diff with its lines coloured", () => {
+    const html = renderPage(page().page);
+    expect(html).toContain('<figure class="view" data-kind="diff">');
+    expect(html).toMatch(/<span class="ctx"> app\/<\/span>\n<span class="add">\+vercel\.json<\/span>\n<span class="del">-Dockerfile<\/span>/);
+    expect(html).toMatch(/<figure class="view" data-kind="tree"><figcaption>file tree<\/figcaption><pre>eu-west-1\/\n {2}app\n {2}db<\/pre><\/figure>/);
+    const x = renderPage(parsePage("s", CHOICE.replace("    options:", '    view: { kind: component, text: "<App>\\n  <script>x</script>" }\n    options:')).page);
+    expect(x).toContain("&lt;App&gt;\n  &lt;script&gt;x&lt;/script&gt;");
+    expect(x).not.toContain("<script>x</script>");
+  });
+
+  it("can stand on a gate section, which is a yes or no and needs none", () => {
+    const g = parsePage("gate", `${GATE}    view: { kind: diff, text: "+app/\\n+db/" }\n`);
+    expect(g.problems).toEqual([]);
+    expect(g.page.sections[1]?.views).toEqual([{ kind: "diff", text: "+app/\n+db/" }]);
+    expect(renderPage(g.page)).toMatch(/data-sec="stack">[\s\S]*<span class="add">\+app\/<\/span>/);
+    expect(parsePage("gate", GATE).problems).toEqual([]);
+  });
+});
+
 describe("the rendered page", () => {
   const html = renderPage(page().page);
 
@@ -95,8 +169,8 @@ describe("the rendered page", () => {
 
   it("lays options side by side with the same criteria rows and preselects the recommendation", () => {
     expect(html.match(/<dt>Cost<\/dt>/g)).toHaveLength(2);
-    expect(html).toMatch(/id="q-Q1-vercel" value="vercel" checked/);
-    expect(html).not.toMatch(/id="q-Q1-vps" value="vps" checked/);
+    expect(html).toMatch(/id="q-Q1:vercel" value="vercel" checked/);
+    expect(html).not.toMatch(/id="q-Q1:vps" value="vps" checked/);
     expect(html).toMatch(/type="checkbox" name="q-Q2"/);
     expect(html).toContain("Đề xuất");
     expect(html).toContain("Sao chép câu trả lời");
@@ -255,7 +329,7 @@ describe("aidw page audit", () => {
 
 describe("the page of an escalated task", () => {
   it("offers the options the diagnosis gives, or the two standing ways out", () => {
-    const decide = "CAUSE: plan\nT03 cannot pass: touches blocks lib/db.ts.\n\n## Decide\n```yaml\nquestion: How should T03 get lib/db.ts?\nrecommend: widen\nwhy: The scenario needs it.\noptions:\n  - { key: widen, name: Add lib/db.ts to touches, summary: Smallest change }\n  - { key: split, name: Split the task, summary: Two smaller tasks }\n```\n";
+    const decide = "CAUSE: plan\nT03 cannot pass: touches blocks lib/db.ts.\n\n## Decide\n```yaml\nquestion: How should T03 get lib/db.ts?\nrecommend: widen\nwhy: The scenario needs it.\nview: { kind: diff, text: \"  touches:\\n+   - lib/db.ts\" }\noptions:\n  - { key: widen, name: Add lib/db.ts to touches, summary: Smallest change }\n  - { key: split, name: Split the task, summary: Two smaller tasks }\n```\n";
     const withBlock = parsePage("triage-t03", JSON.stringify(triageData({ task: "T03", cause: "plan", diagnosis: decide })));
     expect(withBlock.problems).toEqual([]);
     expect(withBlock.page.questions[0]?.options.map((o) => o.key)).toEqual(["widen", "split"]);
@@ -263,12 +337,16 @@ describe("the page of an escalated task", () => {
     const bare = parsePage("triage-t03", JSON.stringify(triageData({ task: "T03", cause: "spec", diagnosis: "CAUSE: spec\nTwo scenarios contradict.\n" })));
     expect(bare.problems).toEqual([]);
     expect(bare.page.questions[0]?.options.map((o) => o.key)).toEqual(["fix-and-resume", "change-scope"]);
+    expect(bare.page.questions[0]?.options.every((o) => o.views.length === 1)).toBe(true);
+    const noView = parsePage("triage-t03", JSON.stringify(triageData({ task: "T03", cause: "plan", diagnosis: decide.replace(/view: .*\n/, "") })));
+    expect(noView.problems.join()).toMatch(/questions\[decide\]: a choice shows a View/);
   });
 });
 
 describe("the examples of the Decision Page guide", () => {
   const guide = readFileSync(join(__dirname, "../plugins/aidw/library/decision-pages.md"), "utf8");
-  const blocks = [...guide.matchAll(/```yaml\n([\s\S]*?)```/g)].map((m) => m[1] as string);
+  // Whole pages start with `layout:`; the snippets of the layouts section are checked in page-layouts.test.ts.
+  const blocks = [...guide.matchAll(/```yaml\n([\s\S]*?)```/g)].map((m) => m[1] as string).filter((b) => /^layout:/.test(b));
 
   it("are valid page data, one per layout", () => {
     expect(blocks).toHaveLength(3);
@@ -284,5 +362,6 @@ describe("the examples of the Decision Page guide", () => {
     expect(r.problems).toEqual([]);
     expect(r.page.questions[0]?.options.map((o) => o.key)).toEqual(["widen", "split"]);
     expect(r.page.questions[0]?.criteria).toEqual(["Rework", "Risk"]);
+    expect(r.page.questions[0]?.views).toEqual([{ kind: "diff", text: " - id: T03\n   touches:\n     - app/notes/page.tsx\n+    - lib/db.ts" }]);
   });
 });

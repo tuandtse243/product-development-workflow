@@ -130,7 +130,7 @@ describe("route: a plugin loaded from a directory is passed to the runner", () =
     const { buildRoute, installedOutside } = await import("../src/buildroute.js");
     const r = buildRoute(ID, 4, `${PLUGIN}/bin/aidw`, PLUGIN);
     expect(r.command).toBe(`${PLUGIN}/bin/aidw run ${ID} --detach --permission-mode auto -- --plugin-dir ${PLUGIN}`);
-    expect(r.next).toMatch(/asks the user to confirm, because aidw is loaded from a folder/);
+    expect(r.next).toMatch(/asks the user to confirm at Claude Code's permission prompt, because aidw is loaded from a folder \(a session that cannot show prompts, such as claude -p, starts it without asking\)/);
     expect(buildRoute(ID, 4, `${PLUGIN}/bin/aidw`).next).not.toMatch(/asks the user/);
     const home = realpathSync(mkdtempSync(join(tmpdir(), "aidw-home-")));
     const installed = join(home, ".claude", "plugins", "cache", "aidw");

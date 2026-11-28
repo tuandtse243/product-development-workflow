@@ -8,6 +8,7 @@
  */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import YAML from "yaml";
 import { git, isGitRepo } from "./git.js";
 import { detectPython, pyRun, type PythonTool } from "./pydetect.js";
 
@@ -191,13 +192,27 @@ const JUNK_FILES = ["tsconfig.tsbuildinfo", "next-env.d.ts", ".DS_Store"];
 /** Workspace markers: package-scoped touches, verify and layers are not supported yet (docs/roadmap.md). */
 const WORKSPACE_FILES = ["pnpm-workspace.yaml", "turbo.json", "nx.json", "lerna.json", "rush.json"];
 
+const nonEmpty = (v: unknown): boolean => (Array.isArray(v) ? v.length > 0 : !!v);
+
+/** A pnpm-workspace.yaml is a workspace only when it lists `packages:`; a file of settings (allowBuilds, ...) is not. */
+function pnpmWorkspaceHasPackages(file: string): boolean {
+  try {
+    const doc = YAML.parse(readFileSync(file, "utf8")) as { packages?: unknown } | null;
+    return nonEmpty(doc?.packages);
+  } catch {
+    return false;
+  }
+}
+
 /** Names the monorepo tool when the project is a workspace, else null. */
 export function monorepoSignal(dir: string): string | null {
-  const file = WORKSPACE_FILES.find((f) => existsSync(join(dir, f)));
+  const file = WORKSPACE_FILES.find((f) => existsSync(join(dir, f)) && (f !== "pnpm-workspace.yaml" || pnpmWorkspaceHasPackages(join(dir, f))));
   if (file) return file;
   try {
     const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")) as { workspaces?: unknown };
-    if (pkg.workspaces) return "package.json workspaces";
+    const ws = pkg.workspaces;
+    const list = ws && typeof ws === "object" && !Array.isArray(ws) ? (ws as { packages?: unknown }).packages : ws;
+    if (nonEmpty(list)) return "package.json workspaces";
   } catch {
     // no readable package.json
   }

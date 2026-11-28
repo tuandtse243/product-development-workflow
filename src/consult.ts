@@ -4,7 +4,8 @@
  *
  *   the asking Agent   writes `.aidw/changes/<id>/consult/<name>.request.md` (front matter `from`, `task` or `stage`,
  *                      `to`; sections `## Question` and `## Progress`) and ends its turn with `CONSULT <path>`
- *   aidw consult <request>      checks the pair, depth 1, the budget and (in the build) the contract author; records
+ *   aidw consult <request>      checks the pair, depth 1, the budget and (in the build) the contract author or Research
+ *                               once per task (ADR-0016); records
  *                               C<NN> in consultations.yaml and writes the brief of the consulted Role
  *   the consulted Role writes `consult/C<NN>.answer.md`, first line `STATUS: answered | cannot-answer | changes-approved`
  *   aidw consult answer C<NN>   reads the answer, routes it (ADR-0014 after the gate) and always writes a resume brief
@@ -13,6 +14,7 @@
  * Every step is in files, so a fresh session (the runner's `claude -p /aidw:resume`) picks up where the last one
  * stopped: `aidw next` and `aidw stages` surface an open or answered Consultation before anything else.
  */
+import { gateLabels } from "./labels.js";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import YAML from "yaml";
@@ -32,6 +34,16 @@ import { agentRunStatus, capReason } from "./agentruns.js";
 
 /** One Agent run asks at most this many questions (ADR-0013): the worst-case cost is known beforehand. */
 export const MAX_CONSULTATIONS_PER_RUN = 2;
+
+/**
+ * In the build an implementing Role may also ask Research, which wrote no contract, about what a Docs Brief did not
+ * foresee (ADR-0016, Q-R1): at most this many times per task, across all its Agent runs, within the per-run budget.
+ */
+export const RESEARCH_ROLE = "research";
+export const RESEARCH_CONSULTATIONS_PER_TASK = 1;
+
+/** The Consultations of Research a task has used (any run, any status). */
+const researchAsked = (list: Consultation[], taskId: string): Consultation[] => list.filter((c) => c.task === taskId && c.to === RESEARCH_ROLE);
 
 export const ANSWER_STATUSES = ["answered", "cannot-answer", "changes-approved"] as const;
 export type AnswerStatus = (typeof ANSWER_STATUSES)[number];
@@ -149,11 +161,20 @@ export function contractAuthors(p: Paths, id: string, task: Task, pluginRoot: st
   return [...owners].sort();
 }
 
-/** The Roles the Agent of a task may consult: declared by its Role and authors of a contract the task reads. */
+/**
+ * The Roles the Agent of a task may consult: declared by its Role and either authors of a contract the task reads, or
+ * Research while the task has not used its one question to it (ADR-0016).
+ */
 export function taskConsultable(p: Paths, id: string, task: Task, pluginRoot: string): { role: string; roles: string[] } {
   const role = agentRoleOf(pluginRoot, task);
   const authors = contractAuthors(p, id, task, pluginRoot);
-  return { role, roles: consultsOf(pluginRoot, role).filter((r) => authors.includes(r)) };
+  let researchLeft = true;
+  try {
+    researchLeft = researchAsked(loadConsultations(loadChange(p, id)), task.id).length < RESEARCH_CONSULTATIONS_PER_TASK;
+  } catch {
+    researchLeft = true;
+  }
+  return { role, roles: consultsOf(pluginRoot, role).filter((r) => authors.includes(r) || (r === RESEARCH_ROLE && researchLeft)) };
 }
 
 const agentRoleOf = (pluginRoot: string, t: Task): string => implementerOf(pluginRoot, typeof t.role === "string" ? t.role : undefined) ?? defaultTaskRole();
@@ -275,9 +296,15 @@ export function requestConsultation(p: Paths, id: string, requestFile: string, p
     if (String(task.status ?? "pending") !== "running") throw new OpError(`task ${req.task} is not running (it is "${String(task.status ?? "pending")}"): only the Agent running a task asks for it`);
     const role = agentRoleOf(pluginRoot, task);
     if (role !== req.from) throw new OpError(`task ${req.task} is run by ${role}, not ${req.from}`);
-    // ADR-0013: in the build an implementing Role asks only the authors of the contracts it builds against.
-    if (!contractAuthors(p, id, task, pluginRoot).includes(req.to)) {
-      throw new OpError(`${req.to} wrote no contract that ${req.task} builds against: in the build ${req.from} asks only the authors of the Artifacts its brief reads (${contractAuthors(p, id, task, pluginRoot).join(", ") || "none"})`);
+    // ADR-0013: in the build an implementing Role asks the authors of the contracts it builds against; ADR-0016: and
+    // Research, once per task, about what a Docs Brief did not foresee.
+    if (req.to === RESEARCH_ROLE) {
+      const asked = researchAsked(list, req.task);
+      if (asked.length >= RESEARCH_CONSULTATIONS_PER_TASK) {
+        throw new OpError(`${req.from} already consulted research for ${req.task} (${asked.map((c) => c.id).join(", ")}): at most ${RESEARCH_CONSULTATIONS_PER_TASK} Consultation of Research per task (ADR-0016). It builds on the Docs Brief and that answer, and writes what is still open to its report file`);
+      }
+    } else if (!contractAuthors(p, id, task, pluginRoot).includes(req.to)) {
+      throw new OpError(`${req.to} wrote no contract that ${req.task} builds against: in the build ${req.from} asks only the authors of the Artifacts its brief reads (${contractAuthors(p, id, task, pluginRoot).join(", ") || "none"}) and Research`);
     }
     // D10: at the cap on Agent runs no new Agent is spawned to answer: the asker builds what was approved and reports the gap
     const cap = agentRunStatus(p, change);
@@ -373,6 +400,11 @@ function consultBrief(p: Paths, change: Change, c: Consultation, req: ConsultReq
     "",
     "- You cannot consult another Role (depth 1). Answer from the Artifacts and the code that exist; if you cannot, say so.",
     "- Never guess. An answer the asker builds on must come from an Artifact, the code or a stated reason.",
+    ...(c.after_gate && c.task && c.to === RESEARCH_ROLE
+      ? [
+          "- The asker builds a task and met a question about a library or service that its Docs Brief did not foresee. Read the installed version first (the lockfile, or the stack in the architecture) and answer for that version from its official documentation, with a link and a short quote for each claim; say what you could not find and where you looked. Follow your Skill `docs-research` and the sources page it names (`aidw plugin-path roles/research/references/sources.md`): the source ladder, a docs MCP server then llms.txt then HTML, WebFetch only. Do not ask any person (ADR-0014): what the sources do not settle, you write as not found.",
+        ]
+      : []),
     ...(c.after_gate
       ? [
           "- The package is approved: do not edit an approved Artifact. If the only right answer changes something approved, write `STATUS: changes-approved` and the smallest change that keeps the purpose of the requirement and adds no scope; the change itself is made through the Deviation path (ADR-0014). Nobody asks the user.",
@@ -497,6 +529,12 @@ function writeResumeBrief(p: Paths, change: Change, c: Consultation, pluginRoot:
     "## Consultations left in this run",
     "",
     left > 0 ? `${left}: ask again only about something new, never the same question.` : "None: go on from what you have and say in your reply what is still open.",
+    ...((): string[] => {
+      const used = c.task ? researchAsked(loadConsultations(change), c.task) : [];
+      return used.length >= RESEARCH_CONSULTATIONS_PER_TASK
+        ? [`Research was consulted for this task (${used.map((x) => x.id).join(", ")}): it is not asked again in this task.`]
+        : [];
+    })(),
     "",
     "## Original brief",
     "",
@@ -613,7 +651,7 @@ export const stageConsultationsInFlight = (change: Change, stage?: string): Cons
   loadConsultations(change).filter((c) => c.stage && c.status !== "resumed" && (!stage || c.stage === stage));
 
 /** The questions no consulted Role could answer before the gate: shown on the gate's Decision Page beside the open findings. */
-export function unansweredSection(change: Change): PageSection | null {
+export function unansweredSection(change: Change, lang?: string): PageSection | null {
   const list = loadConsultations(change).filter((c) => !c.after_gate && c.outcome === "cannot-answer");
   if (!list.length) return null;
   const question = (c: Consultation) => {
@@ -625,7 +663,7 @@ export function unansweredSection(change: Change): PageSection | null {
   };
   return {
     id: "unanswered-consultations",
-    title: "Questions no Role could answer",
+    title: gateLabels(lang).unanswered,
     body: "An Agent asked another Role these questions while drafting the package and got no answer. Each is recorded as an open question in the asker's Artifact. Approve with them, or mark this section for a change.",
     points: list.map((c) => `**${c.id}** ${c.from} asked ${c.to} (stage \`${c.stage}\`): ${question(c)}`),
     html: "",

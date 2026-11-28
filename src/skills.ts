@@ -114,6 +114,7 @@ export const SKILLS_WITH_NOTES: ReadonlySet<string> = new Set([
   "astral/uv",
   "anthropic/frontend-design",
   "emil/animate",
+  "humanlayer/show-me",
 ]);
 
 /**

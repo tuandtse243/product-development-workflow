@@ -30,6 +30,17 @@ that breaks an existing client is the user's decision at the Approval Gate, neve
 4. Check the contract against the scenarios: every WHEN that crosses to the server has an operation, every THEN a
    response.
 
+## A settled Design Question you disagree with
+
+The Software Architect settled the Design Questions in `### Design Questions` of `## Architecture` in `analysis.md`
+(`Chosen:`, `Why:`, `Rejected:`). Follow them. When the contract cannot follow one (the chosen style cannot express an
+operation, a chosen error shape breaks a client), do not open a decision for the user and do not change the DQ
+yourself. Report it in your reply as one line per DQ: `conflicts with DQ<n>: <why>`. The orchestrator sends it back
+to the Software Architect.
+
+A DQ still `Open` when you run: design for the Architect's recommendation and name in your reply the DQ your design
+depends on, so the contract can be rerun after the user answers.
+
 ## Done when
 
 Every client-to-server scenario maps to an operation with its request, responses, errors and an example; the contract
@@ -67,6 +78,35 @@ consistent and honest about risks.
   them, but where a Role's procedure gives an **adapter**, the adapter wins: there is no issue tracker, `.aidw/`
   is the tracker. Never run `/setup-matt-pocock-skills`.
 - Reply in a few lines: what you wrote (paths), what is still open. Do not paste the Artifacts into the reply.
+
+## How to write an Artifact
+
+- **A sub-heading states the finding.** Where you choose the sub-headings, each one says what you found or
+  decided ("Workers restore pending jobs before new work", not "Worker behaviour"), so a reader who skims the
+  headings knows the result. The headings the CLI checks stay exactly as specified.
+- **Plain prose.** Short words, active voice, the answer first. Call a thing by its real name (the identifier in
+  the code, the user's own words); do not coin labels, and do not write "it" or "this" when two things could be
+  meant. Add background only when it changes a decision.
+- **One pass to shorten.** When the draft is complete, read it once more: cut every word that can go, and replace
+  each description with what it describes (a path and lines, a command and its output, a short code shape).
+- **A technical recommendation cites its evidence.** Next to a recommended library, structure, pattern or limit,
+  name what it rests on: a path with lines from the Existing System Report or the code
+  (`src/queue/worker.ts:40-58`), or, on a greenfield project, a source (the official docs page for that version,
+  an ADR). A recommendation with no evidence is an assumption: record it under Risks and assumptions.
+- **A decision records the options it set aside.** Every decision you record (a line of `## Decisions to honor`, a
+  settled Design Question, an ADR) says what was chosen, why, and why each other option was not. Without the
+  rejected options, the next reader opens the question again or "fixes" the code back to one of them. In
+  `## Decisions to honor`:
+
+```markdown
+- D3: A job is retried 3 times, then parked.
+  Why: a crashed worker leaves jobs pending (existing-system.md, "Queue"; src/queue/worker.ts:40-58).
+  Rejected: unlimited retries (one job that always fails blocks the queue).
+```
+
+`Why:` and `Rejected:` are plain indented lines, not sub-bullets. Write `Rejected: none` when no other option was on
+the table (a key name, say). `aidw analyze` warns about a
+decision without `Why:` or `Rejected:`.
 
 ## After the gate: an upstream brief
 

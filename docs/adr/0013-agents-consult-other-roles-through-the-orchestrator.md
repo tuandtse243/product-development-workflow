@@ -12,7 +12,9 @@ record, costs are bounded, and a Role folder does not depend on one platform's n
 
 A consulted Role cannot consult in turn, and one Agent run may ask at most two questions, so there are no
 chains or loops and the worst-case cost is known beforehand. Consultations are allowed during the build as
-well, but there an implementing Role may ask only the Roles that wrote the contracts it builds against.
+well, but there an implementing Role may ask only the Roles that wrote the contracts it builds against. (Amended
+by [ADR-0016](0016-research-describes-the-code-and-the-official-docs.md): it may also ask Research, at most once per
+task, about what a Docs Brief did not foresee.)
 
 Asking does not stop the run. The Agent that asks ends its turn with the question, the Orchestrator gets the
 answer and resumes it, and the other tasks of the Wave carry on. The user hears of it only when the consulted

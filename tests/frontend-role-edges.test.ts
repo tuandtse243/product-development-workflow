@@ -542,17 +542,17 @@ describe("the consult gate for frontend", () => {
   });
 
   it("never offers the database-architect to frontend, and keeps the declared order", () => {
-    expect(loadRole(plugin, "frontend")!.consults).toEqual(["api-designer", "ui-ux-designer", "software-architect"]);
+    expect(loadRole(plugin, "frontend")!.consults).toEqual(["api-designer", "ui-ux-designer", "software-architect", "research"]);
     const rootDir = approvedProject({ design: true });
     write(rootDir, `.aidw/changes/${ID}/data-model.md`, "# Data model\n");
     const offered = taskConsultable(pathsFor(rootDir), ID, taskOf(rootDir, "T02"), plugin).roles;
     expect(offered).not.toContain("database-architect");
-    expect(offered).toEqual(["api-designer", "ui-ux-designer", "software-architect"].filter((r) => offered.includes(r))); // order kept
+    expect(offered).toEqual(["api-designer", "ui-ux-designer", "software-architect", "research"].filter((r) => offered.includes(r))); // order kept
   });
 
   it("fullstack keeps its old consult list and does not gain ui-ux-designer", () => {
-    expect(loadRole(plugin, "fullstack")!.consults).toEqual(["api-designer", "database-architect", "software-architect"]);
-    expect(loadRole(plugin, "backend")!.consults).toEqual(["api-designer", "database-architect", "software-architect"]);
+    expect(loadRole(plugin, "fullstack")!.consults).toEqual(["api-designer", "database-architect", "software-architect", "research"]);
+    expect(loadRole(plugin, "backend")!.consults).toEqual(["api-designer", "database-architect", "software-architect", "research"]);
   });
 
   it("the roster passes, and a Role that consults a read-only Role is refused", () => {

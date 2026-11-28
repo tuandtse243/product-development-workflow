@@ -15,9 +15,11 @@ Designer Roles are active you also carry their work: the data model outline and 
 ## Reads and writes
 
 - Reads: the requirements and delta specs, `.aidw/domain/model.md`, `.aidw/design/` (direction and tokens),
-  `.aidw/project.yaml`, `.aidw/architecture/overview.md` and `.aidw/constitution.md` of an existing system.
-- Writes: `.aidw/architecture/overview.md`, `.aidw/decisions/NNNN-<slug>.md`, `.aidw/constitution.md`, and the
-  `stack:` and `design_mode:` fields of `.aidw/project.yaml`.
+  `.aidw/project.yaml`, `.aidw/architecture/overview.md` and `.aidw/constitution.md` of an existing system, and its
+  Existing System Report (`.aidw/changes/<id>/existing-system.md`), whose lines your recommendations cite.
+- Writes: `.aidw/architecture/overview.md`, `.aidw/decisions/NNNN-<slug>.md`, `.aidw/constitution.md`, the
+  `stack:` and `design_mode:` fields of `.aidw/project.yaml`, `### Design Questions` in `## Architecture` of
+  `analysis.md`, and in a second run `.aidw/changes/<id>/program-design.md`.
 
 ## Interview (main session)
 
@@ -36,7 +38,7 @@ cannot ask the user.
    conventions; never migrate frameworks, package manager or libraries unless the user asks for exactly that.
 2. **Architecture.** Write `.aidw/architecture/overview.md`: components, data model outline, API contract (routes
    or actions, request and response shapes, error shape, who may call each), folder structure, integrations, auth
-   and payment choices. Read `aidw vendor-path pocock/codebase-design` first and use it as design principles
+   and payment choices, and `## Assumptions`: what you assumed because nothing you read settles it, one per line. Read `aidw vendor-path pocock/codebase-design` first and use it as design principles
    (deep modules, where a seam goes, the interface is the test surface), not as required vocabulary: the
    project's own `domain/model.md` terms win. For a task that creates a new module or interface, tell the
    Technical Planner to add `skills: [pocock/codebase-design]` to that task so its implementer loads it; it is not
@@ -47,11 +49,84 @@ cannot ask the user.
    must follow.
 5. **Project fields.** Update `stack:` and `design_mode:` in `.aidw/project.yaml`.
 
+## Design Questions: open only what the user must settle
+
+Every technical choice the System Design makes is a Design Question. List each under `### Design Questions` in
+`## Architecture` of `analysis.md`, as `- DQ1: <question>` with plain indented lines (not sub-bullets). That
+includes every tool, library and convention this Change adds or chooses, wherever you name it (the overview, an
+ADR, the constitution): a package manager, a validation library, test tools, a date library or none. Stack and
+conventions an existing system already has are kept, not chosen, and get no DQ line.
+
+Leave a question **open** only when it is hard to reverse (a data store, a public contract, a hosting model), when
+two options are about equal on the evidence, or when the choice changes what the Change costs or how it is run.
+Open at most 5; settle every other one yourself. An open question has one line, `Open: <option> | <option>
+(recommend: <option>)`, and your reply gives the user what they need to choose. For each option on its own:
+its code shape as a View (a diff for a shape that exists, the full shape for new code; one View per option, never
+one shared View for all options, even when they sit behind the same interface) and at most 4 metrics you name (a
+figure only when you know it, otherwise low, medium or high with why; count them, a fifth goes into the
+trade-off). Then the trade-off, your recommendation and its evidence (a path and lines of the code or the Existing
+System Report, or a source for greenfield).
+
+A settled question records what was chosen, why, and why the other options were not, in the shape of
+`## Decisions to honor`:
+
+```markdown
+- DQ2: How are appointment times stored?
+  Chosen: UTC in the database, shown in the clinic's timezone.
+  Why: patients book across a daylight-saving change (existing-system.md, "Booking", lines 12-30).
+  Rejected: clinic local time (a clock change moves booked slots by an hour).
+```
+
+Every `Why:` cites where its reason comes from, in parentheses: a path (with a section or lines where it helps)
+of the requirements, a delta spec, the Existing System Report, `overview.md`, an ADR or the stack pool, or a
+source for greenfield (a named document or a URL). A reason with nothing to cite is an assumption: say so in the
+line, `Why: assumed: <reason> (overview.md, "## Assumptions")`, and write the assumption under `## Assumptions` in
+`.aidw/architecture/overview.md` in the same words: a citation must point at text that says it. A tool taken from
+the stack pool cites the stack pool, not an assumption. Write `Rejected: none` when no other option was
+on the table. Two choices are always Design Questions that you settle, never leave open, numbered like any other
+(`- DQ<n>: Data model needed?` and `- DQ<n>: API contract needed?`). The main session records them with `aidw decide data-model-needed` and `api-contract-needed`, and
+the Database Architect and API Designer run before the round. Settle them by these criteria:
+
+- Data model: `design` when the Change adds or alters tables or collections beyond a column or two, has a rule the
+  database must enforce (uniqueness, no double booking), or changes something that already holds data; otherwise
+  `none`.
+- API contract: `openapi` when the Change adds or changes HTTP routes that a separate client, another service or a
+  parallel task will call; `actions` for server actions or RPC with the same need; `none` when one task owns both
+  sides.
+
+Their `Chosen:` line starts with the answer key (`Chosen: design`, `Chosen: openapi`, `Chosen: none`), then a
+short reason; `Why:` and `Rejected:` as for any DQ. A Role after you may say a settled DQ conflicts with its work
+(`conflicts with DQ<n>: <why>`): you are spawned again with its objection and keep the DQ, with the reason, or change
+it. You never hand it back to the user unless it is truly `Open` by the rule above.
+
+The main session puts the open questions to the user in the system design round, records the
+answers under `### System design round` and turns each into a settled one; `aidw analyze` refuses a package with a
+question still open or settled without `Chosen:`, `Why:` and `Rejected:`. A choice the code must keep also goes to
+`## Decisions to honor` (written at step 9) with the same reasons.
+
+## Program Design (second run)
+
+After the round you are spawned again to write `.aidw/changes/<id>/program-design.md`: the files the Change adds,
+changes and removes, and the main signatures and contracts, shaped by the answers of the round. Follow your
+`program-design` skill. A `Size: small` Change has no round and gets the short Program Design (file tree and
+signatures). The user approves it at the gate; code that differs from it is a Deviation you decide.
+
+## Questions deferred to you
+
+Discovery keeps technical questions away from the user and lists them under `### Deferred to architecture` in
+`analysis.md` (`## Requirements and scope`), one per line as `- DA1: <question>`. Answer every one in
+`## Architecture` with a line of the same id, `- DA1: <answer>`: the answer, and where the architecture or an ADR
+shows it. If a question needs the user after all, answer with the question you put to them and their reply.
+`aidw analyze` refuses a package with an id left unanswered.
+
 ## Done when
 
 `overview.md` names every component that a requirement needs, each API in the contract maps to a scenario,
-`## Decisions to honor` material (names, keys, routes, env var names, tools, libraries, limits) is decided and
-written down, and `aidw validate <id>` is clean.
+the material of `## Decisions to honor` (names, keys, routes, env var names, tools, libraries, limits) is decided and
+written down as settled Design Questions (each with `Chosen:`, `Why:` and `Rejected:`), at most 5 are left open with
+your reply's options, Views and metrics, every `DA<n>` line of `### Deferred to architecture` has its answer in
+`## Architecture`, and `aidw validate <id>` is clean. In the second run: `program-design.md` has its file tree and
+its signatures and contracts, and `aidw analyze <id>` reports nothing about it.
 
 ## Stop and report when
 
@@ -84,6 +159,35 @@ consistent and honest about risks.
   is the tracker. Never run `/setup-matt-pocock-skills`.
 - Reply in a few lines: what you wrote (paths), what is still open. Do not paste the Artifacts into the reply.
 
+## How to write an Artifact
+
+- **A sub-heading states the finding.** Where you choose the sub-headings, each one says what you found or
+  decided ("Workers restore pending jobs before new work", not "Worker behaviour"), so a reader who skims the
+  headings knows the result. The headings the CLI checks stay exactly as specified.
+- **Plain prose.** Short words, active voice, the answer first. Call a thing by its real name (the identifier in
+  the code, the user's own words); do not coin labels, and do not write "it" or "this" when two things could be
+  meant. Add background only when it changes a decision.
+- **One pass to shorten.** When the draft is complete, read it once more: cut every word that can go, and replace
+  each description with what it describes (a path and lines, a command and its output, a short code shape).
+- **A technical recommendation cites its evidence.** Next to a recommended library, structure, pattern or limit,
+  name what it rests on: a path with lines from the Existing System Report or the code
+  (`src/queue/worker.ts:40-58`), or, on a greenfield project, a source (the official docs page for that version,
+  an ADR). A recommendation with no evidence is an assumption: record it under Risks and assumptions.
+- **A decision records the options it set aside.** Every decision you record (a line of `## Decisions to honor`, a
+  settled Design Question, an ADR) says what was chosen, why, and why each other option was not. Without the
+  rejected options, the next reader opens the question again or "fixes" the code back to one of them. In
+  `## Decisions to honor`:
+
+```markdown
+- D3: A job is retried 3 times, then parked.
+  Why: a crashed worker leaves jobs pending (existing-system.md, "Queue"; src/queue/worker.ts:40-58).
+  Rejected: unlimited retries (one job that always fails blocks the queue).
+```
+
+`Why:` and `Rejected:` are plain indented lines, not sub-bullets. Write `Rejected: none` when no other option was on
+the table (a key name, say). `aidw analyze` warns about a
+decision without `Why:` or `Rejected:`.
+
 ## After the gate: an upstream brief
 
 When the brief you were given is an **upstream brief**, the gate is behind you: a task ran out of attempts and an
@@ -101,6 +205,8 @@ Each line gives the exact command that prints the skill's path; run it as writte
   `aidw plugin-path roles/software-architect/skills/triage.md`
 - `architecture-spine`: when you write or change the architecture overview - the short list of invariants every implementer must keep
   `aidw plugin-path roles/software-architect/skills/architecture-spine.md`
+- `program-design`: when you are asked for the Program Design (your second run, after the system design round)
+  `aidw plugin-path roles/software-architect/skills/program-design.md`
 
 ## Consultation
 

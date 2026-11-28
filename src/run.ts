@@ -36,12 +36,13 @@ import { BRIEF_READS } from "./briefreads.js";
 export { BRIEF_READS } from "./briefreads.js";
 import { loadDeviations, openDeviation } from "./deviationrecord.js";
 import { abandonDeviation, authorsOf, openDeviationFor } from "./deviation.js";
-import { loadConsultations, MAX_CONSULTATIONS_PER_RUN, pendingConsultation, taskAnswers, taskConsultable, taskRequestPath } from "./consult.js";
+import { loadConsultations, MAX_CONSULTATIONS_PER_RUN, pendingConsultation, RESEARCH_ROLE, taskAnswers, taskConsultable, taskRequestPath } from "./consult.js";
 import { packageEvidence, packageProblems, type PackageEvidence } from "./depsafety.js";
 import { secretsInChanges, secretsMessage, secretsProblem, stagedSecrets, type SecretFinding } from "./secrets.js";
 import { tamperEvidence, tamperProblems, type TamperEvidence } from "./tamper.js";
 import { DEFAULT_MAX_ATTEMPTS, parseTasks, planSha, validateTasksText, type Task } from "./tasks.js";
 import { agentRunStatus, capReason } from "./agentruns.js";
+import { docsBriefLines, patternBriefLines } from "./planrefs.js";
 
 const now = () => new Date().toISOString();
 const list = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : []);
@@ -1422,6 +1423,9 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
     ...h("Scenarios", scenarioIds.length ? scenarioIds.map((s) => `- \`${s}\``) : ["- (none: this task is verified by its verify commands only)"]),
     ...h("Requirements (spec text after this change)", reqBlocks.length ? ["```markdown", reqBlocks.join("\n\n"), "```"] : []),
     ...h("Decisions to honor (approved; binding)", decisions.map((x) => `- ${x}`)),
+    // I3, Q4: real code of this project to imitate; R8, M13: what the official docs say at the installed version
+    ...h("Patterns to Follow (code in this project)", patternBriefLines(p.project, t)),
+    ...h("Docs Briefs (the libraries this task uses)", docsBriefLines(p, t)),
     ...h(
       "Design tokens (approved; binding for UI)",
       tokens.length ? [...tokensTable(tokens), "", `Source: \`${rel(p, tokensFile(p))}\`. Each token's **Use** says where it must appear.`] : [],
@@ -1439,13 +1443,22 @@ export function buildBrief(p: Paths, id: string, taskId: string, kind: BriefKind
     ]),
   ];
 
-  // ADR-0013: the Agent asks the authors of the contracts it builds against instead of guessing.
+  // ADR-0013: the Agent asks the authors of the contracts it builds against instead of guessing; ADR-0016: and Research once.
+  const consultWhom = (roles: string[]): string => {
+    const authors = roles.filter((r) => r !== RESEARCH_ROLE);
+    return [
+      authors.length ? `${authors.join(", ")} (the authors of the contracts this task builds against)` : "",
+      roles.includes(RESEARCH_ROLE) ? `${RESEARCH_ROLE} (once in this task, about a library or service the Docs Brief did not foresee)` : "",
+    ]
+      .filter(Boolean)
+      .join(" and ");
+  };
   const consultable = kind === "implement" ? taskConsultable(p, id, t, pluginHome) : null;
   const requestPath = taskRequestPath(p, id, taskId);
   const consultRule = consultable
     ? consultable.roles.length
-      ? `- **Lacking information** (a hole in a contract, a decision nobody made): ask, never guess; the user is not the first stop. You may ask: ${consultable.roles.join(", ")} (the authors of the contracts this task builds against), at most ${MAX_CONSULTATIONS_PER_RUN} questions in this attempt. Write the request to \`${requestPath}\` with the Write tool (format: \"Ask before you guess\" in your procedure), then end your turn with one line: \`CONSULT ${requestPath}\`. The orchestrator gets the answer, and you or a fresh Agent of your Role continue.`
-      : "- **Lacking information**: no author of a contract of this task can be asked. Never guess: build what this brief states and write the gap to your report file."
+      ? `- **Lacking information** (a hole in a contract, a decision nobody made, a library that behaves otherwise than its Docs Brief says): ask, never guess; the user is not the first stop. You may ask: ${consultWhom(consultable.roles)}, at most ${MAX_CONSULTATIONS_PER_RUN} questions in this attempt. Write the request to \`${requestPath}\` with the Write tool (format: \"Ask before you guess\" in your procedure), then end your turn with one line: \`CONSULT ${requestPath}\`. The orchestrator gets the answer, and you or a fresh Agent of your Role continue.`
+      : "- **Lacking information**: no Role can be asked in this task. Never guess: build what this brief states and write the gap to your report file."
     : null;
   const answered = kind === "implement" ? taskAnswers(tf.change, taskId) : [];
   const answers = answered.map((c) => `- ${c.id} (${c.to}, ${c.status}): \`${join(tf.change.dir, c.answer)}\`; question in \`${join(tf.change.dir, c.request)}\``);

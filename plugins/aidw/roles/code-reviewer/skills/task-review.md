@@ -21,6 +21,12 @@ wrong thing is still wrong.
 3. Compare the diff with the task: anything built that no scenario asks for is scope creep. Anything a scenario asks
    for that is missing is a `fix`, even when every test passes.
 4. Check each **Decision to honor**: name, key, format, library, exactly as written.
+5. Check the **Program Design** (`.aidw/changes/<id>/program-design.md`) when the Change has one. Every file the
+   diff adds or removes, and every exported signature it adds or changes, must be in it as written: the file in
+   `## File tree` with its mark, the signature in `## Signatures and contracts`. One that is missing or differs is a
+   blocking finding unless a closed Deviation in `deviations.yaml` changed the Program Design to match: the user
+   approved those shapes, and only the Software Architect changes them (ADR-0015). Name the file or signature, what
+   the Program Design says, and what the diff has.
 
 Stop here with `fix` if pass 1 found a blocking problem. List what you found; do not pile style remarks on top.
 

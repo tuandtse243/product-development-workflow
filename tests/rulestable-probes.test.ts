@@ -168,11 +168,11 @@ describe("FLAKY through aidw eval (C2, C6)", () => {
     const before = existsSync(repoFile) ? readFileSync(repoFile) : null;
     const root = copy();
     execFileSync("git", ["init", "-q"], { cwd: root }); // a source checkout: only there is the result file written
-    let grade = 0;
-    // runs 1 of 3 of every case fails, the others pass
+    let answers = 0;
+    // runs 1 of 3 of every case fails (its grade and its re-grade), the others pass
     const exec: Exec = (prompt, system) => {
-      if (system) return "ANSWER " + "x".repeat(400);
-      const pass = grade++ % 3 !== 0;
+      if (system) return (answers++, "ANSWER " + "x".repeat(400));
+      const pass = (answers - 1) % 3 !== 0;
       const n = (prompt.match(/^\d+\. /gm) ?? []).length;
       return JSON.stringify(Array.from({ length: n }, (_, i) => ({ n: i + 1, pass, reason: "r" })));
     };

@@ -41,7 +41,7 @@ describe("frontend rules.md (T20)", () => {
 
   it("every Role a rule says to ask is one frontend may consult", () => {
     const consults = loadRole(plugin, "frontend")!.consults;
-    expect(consults).toEqual(["api-designer", "ui-ux-designer", "software-architect"]);
+    expect(consults).toEqual(["api-designer", "ui-ux-designer", "software-architect", "research"]);
     const asked = rules.flatMap((r) => [...r.rule.matchAll(/ask `([a-z-]+)`/g)].map((m) => m[1]!));
     expect(new Set(asked)).toEqual(new Set(["api-designer", "ui-ux-designer"]));
     for (const a of asked) expect(consults, a).toContain(a);

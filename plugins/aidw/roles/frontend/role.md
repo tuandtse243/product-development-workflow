@@ -4,7 +4,7 @@ description: "Implements one aidw task that is the user interface of a Slice (sc
 mode: worker
 tier: deep
 access: write
-consults: [api-designer, ui-ux-designer, software-architect]
+consults: [api-designer, ui-ux-designer, software-architect, research]
 tools: [Read, Write, Edit, Glob, Grep, Bash]
 reads: [tasks, delta-specs, constitution, design-direction, design-tokens]
 writes: []
