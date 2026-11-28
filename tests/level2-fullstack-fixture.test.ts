@@ -47,6 +47,24 @@ const temp = (p: string) => {
 };
 const pilot = (): Level2Case => loadLevel2Cases(plugin, "fullstack").cases.find((c) => c.name === CASE)!;
 
+/** A preload that refuses and records every socket a process tries to open or bind: net connects and listens. */
+function socketBan(): { env: NodeJS.ProcessEnv; log: string } {
+  const dir = temp("aidw-l2fs-ban-");
+  const log = join(dir, "sockets.log");
+  const ban = join(dir, "ban.cjs");
+  writeFileSync(
+    ban,
+    [
+      'const net = require("node:net"), fs = require("node:fs");',
+      `const LOG = ${JSON.stringify(log)};`,
+      "const refuse = (what) => function (...a) { fs.appendFileSync(LOG, `${process.pid} ${what} ${JSON.stringify(a[0] ?? null)}\\n`); throw new Error(`socket refused: ${what}`); };",
+      'net.Socket.prototype.connect = refuse("connect");',
+      'net.Server.prototype.listen = refuse("listen");',
+    ].join("\n"),
+  );
+  return { env: { NODE_OPTIONS: [process.env.NODE_OPTIONS, `--require ${ban}`].filter(Boolean).join(" "), npm_config_offline: "true", HTTP_PROXY: "http://127.0.0.1:9", HTTPS_PROXY: "http://127.0.0.1:9" }, log };
+}
+
 type Prep = ReturnType<typeof prepareCopy>;
 
 function commands(c: Level2Case, prep: Prep) {
@@ -146,24 +164,6 @@ describe.skipIf(!ready)("the fullstack-app fixture and level 2 case rename-a-pro
     const tc = g.sh("npm run typecheck --silent");
     expect(tc.status, tc.out).toBe(0);
   }, 300_000);
-
-  /** A preload that refuses and records every socket a process tries to open or bind: net connects and listens. */
-  function socketBan(): { env: NodeJS.ProcessEnv; log: string } {
-    const dir = temp("aidw-l2fs-ban-");
-    const log = join(dir, "sockets.log");
-    const ban = join(dir, "ban.cjs");
-    writeFileSync(
-      ban,
-      [
-        'const net = require("node:net"), fs = require("node:fs");',
-        `const LOG = ${JSON.stringify(log)};`,
-        "const refuse = (what) => function (...a) { fs.appendFileSync(LOG, `${process.pid} ${what} ${JSON.stringify(a[0] ?? null)}\\n`); throw new Error(`socket refused: ${what}`); };",
-        'net.Socket.prototype.connect = refuse("connect");',
-        'net.Server.prototype.listen = refuse("listen");',
-      ].join("\n"),
-    );
-    return { env: { NODE_OPTIONS: [process.env.NODE_OPTIONS, `--require ${ban}`].filter(Boolean).join(" "), npm_config_offline: "true", HTTP_PROXY: "http://127.0.0.1:9", HTTPS_PROXY: "http://127.0.0.1:9" }, log };
-  }
 
   it("the ban refuses and records a socket (so an empty log below means none was opened)", () => {
     const { env, log } = socketBan();
@@ -656,4 +656,52 @@ describe.skipIf(!ready)("level 2 case owner-only-billing on the fullstack-app fi
     expect(prompts).toHaveLength(1);
     expect(prompts[0]).toContain("localStorage.role");
   }, 600_000);
+});
+
+describe.skipIf(!ready)("the two later cases start as the harness starts them: a fresh copy, the task started, the brief rendered", () => {
+  const list = (yaml: string, key: string) => JSON.parse(yaml.match(new RegExp(`^\\s+${key}: (\\[.*\\])$`, "m"))![1]!) as string[];
+
+  for (const name of [INVITE, BILLING]) {
+    it(`${name}: after the task is started, aidw analyze and the approval check pass in the copy, and T01's brief lists its Touches and Verify`, () => {
+      const c = caseNamed(name);
+      const g = commands(c, prepareCopy(plugin, c, fixture, nodeModules as string, join(temp("aidw-l2fs-start-"), "project")));
+      const aidw = (...args: string[]) => {
+        const r = spawnSync("node", [join(plugin, "bin", "aidw"), ...args], { cwd: g.project, env: g.env, encoding: "utf8" });
+        return { status: r.status, out: `${r.stdout}${r.stderr}` };
+      };
+      const v = aidw("approval", "check", name);
+      expect(v.out).toMatch(/approval valid/);
+      expect(v.status, v.out).toBe(0);
+      const tasks = tasksOf(name);
+      const brief = g.prep.briefText;
+      expect(brief).toMatch(/Touches/);
+      expect(brief).toMatch(/Verify/);
+      for (const t of list(tasks, "touches")) expect(brief, t).toContain(t);
+      for (const cmd of list(tasks, "verify")) expect(brief, cmd).toContain(cmd);
+      for (const s of [...tasks.matchAll(/^\s+- (\S+\/\S+\/\S+)$/gm)].map((m) => m[1]!)) expect(brief, s).toContain(s);
+      // last: analyze holds a UI plan to design tokens and an a11y layer (or a reason to leave it out)
+      const a = aidw("analyze", name);
+      expect(a.out).toMatch(/OK: 0 error\(s\)/);
+      expect(a.status, a.out).toBe(0);
+    }, 120_000);
+
+    it(`${name}: the whole fixture suite and its typecheck pass in the case's fresh copy with no socket opened or bound`, () => {
+      const c = caseNamed(name);
+      const g = commands(c, prepareCopy(plugin, c, fixture, nodeModules as string, join(temp("aidw-l2fs-own-"), "project")));
+      expect(existsSync(join(g.project, "server", "tests", "held-out"))).toBe(false);
+      const { env, log } = socketBan();
+      const run = (args: string[]) => {
+        const r = spawnSync(args[0]!, args.slice(1), { cwd: g.project, env: { ...g.env, ...env }, encoding: "utf8", timeout: 240_000 });
+        return { status: r.status, out: `${r.stdout}${r.stderr}`.replace(/\x1b\[[0-9;]*m/g, "") };
+      };
+      const t = run([join(g.project, "node_modules", ".bin", "vitest"), "run"]);
+      expect(t.status, t.out).toBe(0);
+      expect(t.out).toMatch(/\|web\|/);
+      expect(t.out).toMatch(/\|server\|/);
+      if (name === BILLING) expect(t.out).toMatch(/billing/);
+      const tc = run([join(g.project, "node_modules", ".bin", "tsc"), "--noEmit"]);
+      expect(tc.status, tc.out).toBe(0);
+      expect(existsSync(log) ? readFileSync(log, "utf8") : "").toBe("");
+    }, 300_000);
+  }
 });
