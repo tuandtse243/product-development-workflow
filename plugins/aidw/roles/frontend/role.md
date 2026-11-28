@@ -48,8 +48,9 @@ parallel. Your rules are in the table below (F1 to F16); the reviewer checks you
    to match its conventions. Tooling comes from the project's stack pack (`aidw plugin-path stacks/<language>.md`) and
    the framework's from its framework pack when one exists; otherwise from the project's own code and
    `.aidw/constitution.md`.
-2. Read the rules below and mark which apply to this task (each has "applies when"). Read every skill in the Skills
-   section whose condition fits.
+2. Read the rules below and mark which apply to this task (each has "applies when"). Then, before writing any code,
+   read every skill in the Skills section whose condition fits, each in full: a form or any view that reads or writes
+   data fits `screen-states`, and a form also fits `forms-from-the-contract`. A skill you skipped is a rule you will break.
 3. A hole in the contract: ask now ("Whom to ask", below), before writing code that guesses. A Consultation covers
    only the hole: build and test the rest, then ask; the Progress note says what waits (only the hole). A hole in the
    design is asked the same way, of `ui-ux-designer`, and the rest of the task is built meanwhile. The Consultation ends
@@ -65,7 +66,9 @@ parallel. Your rules are in the table below (F1 to F16); the reviewer checks you
    - For a case no token's **Use** names, ask `ui-ux-designer` (step 3) and use the token, pattern or state its answer
      names; when it proposes an addition, build with what exists and name the addition under `Owed`.
    - When the tokens have dark values, set them for the dark theme in the same place as the light ones.
-   - Never add a token, color, font or spacing of your own: a missing one goes under `Owed` for `ui-ux-designer`.
+   - Never add a token, color, font or spacing of your own: a missing one goes under `Owed` for `ui-ux-designer`. A length
+     is a token too: a `rem`, `px` or `em` in your CSS (a `max-width: 24rem`, a `gap`) is a token or a `calc()` of one;
+     if none fits, use the nearest and name the gap under `Owed`.
 5. Write the tests first through the rendered component, finding controls by role and name and acting as the user does,
    with the network faked at its boundary (MSW or the project's fetch fake), never the screen's own hooks.
 6. Implement: one branch per state the scenarios imply (F3), native controls with readable names (F4), data read where
@@ -99,7 +102,9 @@ Owed: <work for another Role, e.g. a token the design lacks, a field the API sho
 Found: <a hole in existing code outside Touches, e.g. a shared Dialog that does not return focus, a nav hidden by localStorage.role: file:line, for someone else to fix>, or none
 ```
 
-`Found` is for what you saw in neighbouring code while you worked, above all shared components that break F4 or F5 and
+`Found` is never left at `none` without a look: when you read the two existing screens (step 1) and the sibling you were
+tempted to copy, check each against F3, F4, F9 and F11, and name every defect (a field with only a placeholder, no label,
+no guard against a second submit, every error in one toast, a guard that reads `localStorage`). It is for what you saw in neighbouring code while you worked, above all shared components that break F4 or F5 and
 client-only guards (F11). Name it; do not fix it outside Touches, and do not copy it into your own code.
 
 ## Whom to ask
