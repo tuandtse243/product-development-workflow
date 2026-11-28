@@ -25,5 +25,5 @@ checks:
     run: >-
       changed=$(if [ -n "$AIDW_CHANGED" ]; then cat "$AIDW_CHANGED"; else git diff --name-only "$AIDW_BASE";
       git ls-files --others --exclude-standard; fi);
-      out=$(printf '%s\n' "$changed" | grep -vE '^(shared/invites\.ts$|server/invites/|server/app\.ts$|server/tests/invites/|server/tests/held-out/|web/team/|web/tests/team/|web/tests/held-out/|\.aidw/(run|changes)/)' | grep -v '^$');
+      out=$(printf '%s\n' "$changed" | grep -vE '^(shared/invites\.ts$|server/invites/|server/app\.ts$|server/tests/invites/|server/tests/held-out/|web/team/|web/api/client\.ts$|web/tests/team/|web/tests/held-out/|\.aidw/(run|changes)/)' | grep -v '^$');
       test -z "$out" || { echo "$out"; exit 1; }
