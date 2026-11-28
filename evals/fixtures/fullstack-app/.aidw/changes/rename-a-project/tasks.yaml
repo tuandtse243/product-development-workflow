@@ -1,0 +1,17 @@
+tasks:
+  - id: T01
+    title: Rename a project, server and screen
+    role: fullstack
+    type: feat
+    specs: [projects/rename-a-project]
+    scenarios:
+      - projects/rename-a-project/owner-renames
+      - projects/rename-a-project/list-shows-the-new-name
+      - projects/rename-a-project/name-already-taken
+      - projects/rename-a-project/blank-name
+      - projects/rename-a-project/member-is-refused
+      - projects/rename-a-project/signed-out-caller
+    depends_on: []
+    touches: ["shared/projects.ts", "server/projects/**", "server/tests/projects/**", "web/projects/**", "web/api/client.ts", "web/tests/projects/**"]
+    verify: ["npm test", "npm run typecheck"]
+    status: pending
