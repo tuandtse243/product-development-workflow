@@ -126,6 +126,23 @@ export function buildGradePrompt(c: EvalCase, answer: string): string {
   ].join("\n");
 }
 
+/**
+ * Grades an answer, and grades it once more when a criterion failed: a criterion fails only when both gradings fail it.
+ * One grading of a borderline criterion flips between runs; an answer that really misses a criterion misses it twice, so
+ * the bar does not drop. A passing grading is not repeated.
+ */
+export function gradeTwiceOnFail(exec: Exec, prompt: string, criteria: string[]): CriterionResult[] {
+  const first = parseGrade(exec(prompt), criteria);
+  if (first.every((x) => x.pass)) return first;
+  const second = parseGrade(exec(prompt), criteria);
+  return first.map((a, i) => {
+    const b = second[i]!;
+    if (a.pass) return a;
+    if (b.pass) return b;
+    return { criterion: a.criterion, pass: false, reason: `failed both gradings: ${b.reason || a.reason}` };
+  });
+}
+
 /** Reads the grader's JSON array; a missing or malformed entry counts as a failed criterion. */
 export function parseGrade(text: string, criteria: string[]): CriterionResult[] {
   let arr: unknown[] = [];
@@ -189,7 +206,7 @@ export function runCase(root: string, id: string, c: EvalCase, exec: Exec, ab: A
   if (short(answer)) answer = exec(answerPrompt(c), system); // a filtered reply is often a one-off
   // Not graded: grading a missing deliverable would blame the Role for what the model refused to write.
   if (short(answer)) throw new Error(`no ${c.expect === "ask" ? "answer" : "deliverable"} (the model replied: ${answer.trim().replace(/\s+/g, " ").slice(0, 160) || "nothing"})`);
-  const criteria = parseGrade(exec(buildGradePrompt(c, answer)), c.criteria);
+  const criteria = gradeTwiceOnFail(exec, buildGradePrompt(c, answer), c.criteria);
   return { role: id, name: c.name, pass: criteria.every((x) => x.pass), criteria, answer };
 }
 

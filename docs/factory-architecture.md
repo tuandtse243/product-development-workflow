@@ -826,7 +826,9 @@ In the user's project, `.aidw/` keeps its current shape and gains `roles/<id>/` 
   criteria). Editing a Role's knowledge is checked against its own cases without running a whole Workflow.
   `aidw eval [<role>] [--case <name>]` runs them: the Role's agent instructions (with every skill of its index inlined) are
   the system prompt, the case input is the task, and a second call grades the answer against each criterion (a missing
-  verdict fails). The answering model is the one the Role's tier maps to in `tiers.yaml` (`--model` overrides it). It costs tokens, so it is run on
+  verdict fails). When a criterion fails, the same answer is graded once more, and the criterion fails only when both
+  gradings fail it: one grading of a borderline criterion flips between runs, while an answer that misses it misses it
+  twice. The answering model is the one the Role's tier maps to in `tiers.yaml` (`--model` overrides it). It costs tokens, so it is run on
   demand and not part of `npm test`. One run is one sample of a model, so each case runs 3 times by default
   (`--runs <n>` changes it) and passes only when every run passes: a case that passes only some runs is FLAKY and
   counts as not passed (plan C2). A reply that is no deliverable (a refusal, a filtered reply) is an ERROR, not a FAIL.

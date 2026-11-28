@@ -108,7 +108,7 @@ describe("the Role case runner", () => {
     let grade = 0;
     const alternating: Exec = (p, system) => {
       if (system) return "ANSWER " + "x".repeat(400);
-      const pass = grade++ % 3 !== 0; // runs 1 of 3 fails, the others pass
+      const pass = grade++ >= 2; // run 1 fails its grade and its re-grade; runs 2 and 3 pass
       return fake(pass)(p, system);
     };
     const [r] = runCases(plugin, "backend", undefined, alternating, undefined, 3);
@@ -120,6 +120,23 @@ describe("the Role case runner", () => {
     const [all] = runCases(plugin, "backend", undefined, fake(true), undefined, 3);
     expect(all).toMatchObject({ pass: true, runs: { total: 3, passed: 3 } });
     expect(printResults([all!])).toMatch(/PASS {2}backend\/.* \(3\/3 runs\)/);
+  });
+
+  it("re-grades an answer once when a criterion fails, and fails it only when both grades do", () => {
+    const seen: string[] = [];
+    // the first grade fails every criterion, the re-grade passes them: one noisy grade does not fail the case
+    let g = 0;
+    const noisy: Exec = (p, system) => (system ? fake(true, seen)(p, system) : fake(g++ % 2 === 1, seen)(p, system));
+    const [r] = runCases(plugin, "backend", undefined, noisy);
+    expect(r!.pass).toBe(true);
+    expect(seen.filter((x) => x === "grade").length).toBe(2 * seen.filter((x) => x.startsWith("answer")).length);
+    // failing twice fails, with the re-grade's reason
+    const twice = runCases(plugin, "backend", undefined, fake(false));
+    expect(twice.every((x) => !x.pass && x.criteria.every((c) => !c.pass && /failed both gradings/.test(c.reason)))).toBe(true);
+    // a passing grade is not re-graded
+    const once: string[] = [];
+    runCases(plugin, "backend", undefined, fake(true, once));
+    expect(once.filter((x) => x === "grade").length).toBe(once.filter((x) => x.startsWith("answer")).length);
   });
 
   it("counts a run whose model call failed as an error, and reports ERROR only when every run failed", () => {
@@ -519,10 +536,10 @@ describe("the Role case runner", () => {
         return JSON.stringify(Array.from({ length: n }, (_, i) => ({ n: i + 1, pass: i > 0, reason: "why" })));
       };
       const r = go(root, ["eval", "backend", "--without", "B1,effects-after-commit", "--case", "entity-is-not-a-response", "--runs", "2"], () => half);
-      expect(grade).toBe(2);
+      expect(grade).toBe(4); // each run's failing grade is graded once more
       expect(r.out).toMatch(/FAIL {2}backend\/entity-is-not-a-response \(0\/2 runs\)/);
       expect(r.out).not.toMatch(/validates-authorizes/);
-      expect(r.out).toMatch(/^ {6}FAIL .*\n {11}failed in 2 of 2 graded runs: why$/m);
+      expect(r.out).toMatch(/^ {6}FAIL .*\n {11}failed in 2 of 2 graded runs: failed both gradings: why$/m);
       expect(r.out).toMatch(/^ {6}ok {3}\S/m);
     });
   });
