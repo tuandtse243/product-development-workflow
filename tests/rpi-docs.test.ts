@@ -66,7 +66,8 @@ describe("rpi-upgrades: every new Authored Skill has a Role eval (M7)", () => {
       return lib ? [`library/${lib[1]}`] : [];
     });
     // the frontend Role's own skills (T20) are covered by its level 1 cases, not by this Change
-    expect(added.filter((s) => !ADDED_SKILLS.includes(s) && !s.startsWith("frontend:"))).toEqual([]);
+    // the fullstack Role's own skills (T20) are likewise covered by its level 1 cases (`aidw roster` fails a skill with no case)
+    expect(added.filter((s) => !ADDED_SKILLS.includes(s) && !s.startsWith("frontend:") && !s.startsWith("fullstack:"))).toEqual([]);
   });
 });
 
