@@ -212,7 +212,9 @@ Fastify, Hono.
 ### Phase 4 (each needs a short design with the owner first)
 
 - **T18** level 2 cases (C4), first for backend, then frontend and fullstack.
-- **T19** per-Role statistics from real Changes (C5).
+- **T19** per-Role statistics from real Changes (C5). Design decided 2026-11-28 (section 5). Built:
+  `aidw stats` (`src/stats.ts`), the append-only records it reads, and the `aidw verdict` warning
+  (docs/factory-architecture.md, section 11).
 - **T20 onward** the remaining 20 Roles, one at a time in this order: frontend, fullstack; code-reviewer,
   security, qa; technical-planner, software-architect; product-manager, business-analyst; the rest. Each:
   research, a Decision Page for the owner to pick rules, skills, scripts and cases, then build to the backend
@@ -277,6 +279,18 @@ Fastify, Hono.
     the reads step counts paths after a `cd` and files found through `aidw plugin-path`.
   - Not yet proven: that the session sandbox blocks outbound network, that the session can reach no localhost port
     now (it holds by configuration), and that `Read` deny rules stop a sandboxed `cat`. No run tried any of them.
+- T19 design: decided 2026-11-28:
+  - Source: read the existing records, and add small append-only records for the gaps. These are a Triage log per
+    task (cause, diagnosis summary, time), and the run number and Agent on each checkpoint, review and Agent run.
+  - First attempt: a task ended done after one implementer run. That run's checkpoint passed and its review passed,
+    with no Triage retry and no upstream round.
+  - Rule ids: count the ids from fix reviews, check each against the rule tables, and credit the Role that owns the
+    rule. `aidw verdict` warns when a fix review of a Role with a rule table cites no id.
+  - Scope: every Change of the project, active and archived, with `--change` and `--since` filters.
+  - Output: `aidw stats` prints a table per Role, `--role` for the detail, and `--json`. Nothing is written to the repo.
+  - Few tasks: always show the counts; show a rate only from 5 tasks up for that Role.
+  - Triage: per Role of the task, every Triage cause (implementation, environment, plan, spec, architecture,
+    unclear). The detail view adds the upstream rounds and the not-built causes.
 - T20 frontend design: decided 2026-11-28 (research in `docs/research/frontend-role.md`):
   1. Consult: `api-designer`, `ui-ux-designer`, `software-architect` (drop `database-architect`).
   2. Rules: all 16, F1 to F16.

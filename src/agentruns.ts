@@ -24,6 +24,10 @@ export interface AgentRun {
   kind: AgentRunKind;
   at: string;
   task?: string;
+  /** T19: the Role of the task the run is for (tasks.yaml `role`), when there is a task */
+  role?: string;
+  /** T19: the Agent spawned (`aidw:<role>`), which can differ from the task's Role */
+  agent?: string;
 }
 
 /** States after the Approval Gate: the build the cap applies to. */
@@ -59,13 +63,13 @@ export function agentRunStatus(_p: Paths, change: Change): AgentRunStatus {
 }
 
 /** Counts one Agent run under `key`, once. Returns true when it was new. Runs before approval are not counted. */
-export function countAgentRun(change: Change, kind: AgentRunKind, key: string, task?: string): boolean {
+export function countAgentRun(change: Change, kind: AgentRunKind, key: string, task?: string, who: { role?: string; agent?: string } = {}): boolean {
   if (!BUILD_STATES.has(String(stateOf(change)))) return false;
   const runs = agentRuns(change);
   if (runs === null) return false; // never overwrite a record that cannot be read
   const full = `${kind}:${key}`;
   if (runs.some((r) => r.key === full)) return false;
-  runs.push({ key: full, kind, at: new Date().toISOString(), ...(task ? { task } : {}) });
+  runs.push({ key: full, kind, at: new Date().toISOString(), ...(task ? { task } : {}), ...(who.role ? { role: who.role } : {}), ...(who.agent ? { agent: who.agent } : {}) });
   mkdirSync(join(change.dir, "evidence"), { recursive: true });
   writeFileSync(runsFile(change), `${JSON.stringify({ runs }, null, 2)}\n`);
   return true;
