@@ -33,7 +33,7 @@ Touches: `web/src/projects/**`, `server/src/projects/**`, `web/tests/**`, `serve
 ## Criteria
 
 - must write, before either half exists, a test named with the scenario id `rename-works` that renders the screen, types `  Roadmap  `, presses Save and expects the heading `Roadmap`, and must say or show that it failed first
-- must have that test's request answered by the real Express app in the same process (an MSW handler that forwards `/api/*` to the app, supertest or a fetch adapter over `app`, with the test database), not by a response body written in the test
+- must have that test's request answered by the real Express app in the same process (an MSW handler that forwards `/api/*` to the app, an in-process request (`inject`, `app.request`, a non-listening helper) or a fetch adapter over `app`, with the test database), not by a response body written in the test
 - must not make the screen-side test pass with a hand-written MSW body for `PATCH /api/projects/:id`, and must not mock the server's own route module, the shared shape or the database
 - must assert a value the server decides (the trimmed `Roadmap`), so a fake that echoes the input could not pass
 - must give the scenario `rename-name-taken` its own test across the seam that asserts what the user sees under the field, not only the status code

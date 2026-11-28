@@ -11,7 +11,7 @@ its members and 'N seats left'." The contract's `GET /api/team` answers `200 { i
 invites: [{ id, email }] }` (pending invites) and `401` with no session. It has no `seatsLeft` and does not say whether a
 pending invite takes a seat. The task's Touches hold the route `server/src/team/routes.ts`, so the Agent could add the field.
 
-Touches: `web/src/team/**`, `server/src/team/**`, `web/tests/**`, `server/tests/**`.
+Touches: `web/src/team/**`, `server/src/team/**`, `web/tests/**`, `server/tests/**`. Verify: `pnpm test`.
 Lacking information: you may ask `api-designer` and `database-architect`; write a request to
 `.aidw/changes/team/requests/T14-1.md`.
 

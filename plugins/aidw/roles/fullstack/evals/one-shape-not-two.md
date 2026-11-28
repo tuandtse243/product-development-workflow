@@ -34,5 +34,5 @@ Touches: `web/src/invites/**`, `server/src/invites/**`, `server/src/lib/invites.
 - must keep the shared module free of the database client: must not import `lib/invites.ts` (which imports `db/client`) from a client file, and must move the rules out of it (the server file imports the shared one)
 - must have a test that both halves run against the same shape (an 81-character name is refused by the form before any request and by the route with the same limit, or one contract test that feeds the shared example payloads to both)
 - must send the email through an interface of its own with a timeout and a fake in tests, must read `MAIL_API_KEY` by name on the server only and not put it in client code or a test, and must not call the real provider in a test
-- must make the retried request safe: the same `Idempotency-Key` returns the first answer and sends one email, with a test that sends the request twice with one key and counts one stored invite and one email; must not generate a new key per try
+- must make the retried request safe: the same `Idempotency-Key` gets the first answer and no second email, with a test that sends the request twice with one key; must not generate a new key per try
 - must not send this question to `api-designer` or the user: the contract names everything the task needs

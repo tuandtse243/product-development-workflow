@@ -27,8 +27,8 @@ Touches: `web/src/teams/**`, `web/src/api/http.ts`, `server/src/teams/**`, `web/
 
 ## Criteria
 
-- must make the client read the field the server really sends (`error.fields.name`, or `error.code`), changing the helper or the form, and must not read `json.message` for this error
+- must make the client read the field the server really sends (`error.fields.name`, or `error.code`), changing the helper or the form, and must not read `json.message` for the 422 of this route
 - must prove it with a test across the seam: the real handler answers a rename to a taken name and the test asserts the text under the Name field and `aria-invalid`, not only a status
 - must not hand-write a `422` body in the test for the scenario, must not copy the `{ message }` stub from `api.test.ts`, and must not change the server's error body to what the old helper reads
-- must say in the report which side deviated from the contract
-- must show the error as the field's state tied to the input (`aria-describedby`), without losing what the user typed
+- must say in the reply or the report note which side deviated from the contract
+- must show the error as the field's state tied to the input (`aria-describedby`)

@@ -26,8 +26,7 @@ Touches: `web/src/projects/**`, `server/src/projects/**`, `web/tests/**`, `serve
 
 ## Criteria
 
-- must make the list show what the server stored after the save: invalidate or refetch `["projects"]`, or write the response body into the cache, not the value typed
+- must make the list show what the server stored after the save: invalidate or refetch `["projects"]`, or write the response body into the cache, not the value typed, and must not leave the stale cached name visible after the save (the `staleTime` of 60 seconds is not an excuse)
 - must not set the typed value into state or into the cache as the final result (an optimistic update must be replaced by the server's value)
 - must have a test whose input differs from what the server stores (`  Roadmap  ` in, `Roadmap` out) and asserts the list shows `Roadmap`
-- must run that test with the real handler answering, or with a body that is the server's real response, so an echo of the input could not pass
-- must not leave the stale cached name visible after the save (the `staleTime` of 60 seconds is not an excuse)
+- must run that test with the real handler answering (no hand-written PATCH body), so an echo of the input could not pass
