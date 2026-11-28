@@ -94,15 +94,15 @@ describe("readyStages: stages whose inputs are written", () => {
   };
 
   it("steps the product workflow in order", () => {
-    expect(sequence("product")).toEqual([["intake"], ["discovery"], ["research", "user-research"], ["requirements"], ["design"], ["architecture"], ["contracts"], ["plan"], ["quality-profile"], ["plan-review"], ["approval"]]);
+    expect(sequence("product")).toEqual([["intake"], ["discovery"], ["research", "user-research"], ["requirements"], ["design"], ["architecture"], ["contracts"], ["system-design-round"], ["program-design"], ["plan"], ["quality-profile"], ["plan-review"], ["approval"]]);
   });
 
   it("steps the feature workflow in order: discovery after the assessment", () => {
-    expect(sequence("feature")).toEqual([["intake"], ["assessment"], ["discovery"], ["research", "user-research"], ["requirements"], ["design"], ["architecture"], ["contracts"], ["plan"], ["quality-profile"], ["plan-review"], ["approval"]]);
+    expect(sequence("feature")).toEqual([["intake"], ["assessment"], ["discovery"], ["research", "user-research"], ["requirements"], ["design"], ["architecture"], ["contracts"], ["system-design-round"], ["program-design"], ["plan"], ["quality-profile"], ["plan-review"], ["approval"]]);
   });
 
-  it("steps the bugfix workflow in order: the plan after the diagnosis, the plan review before the gate", () => {
-    expect(sequence("bugfix")).toEqual([["intake"], ["diagnosis"], ["plan"], ["quality-profile"], ["plan-review"], ["approval"]]);
+  it("steps the bugfix workflow in order: the report before the diagnosis, the plan after it, the plan review before the gate", () => {
+    expect(sequence("bugfix")).toEqual([["intake"], ["assessment"], ["diagnosis"], ["program-design"], ["plan"], ["quality-profile"], ["plan-review"], ["approval"]]);
   });
 
   it("steps the audit workflow in order", () => {
@@ -207,6 +207,9 @@ describe("aidw stages", () => {
   it("counts a stage done by its filled-in Artifacts when stages.yaml is missing (a change started before it)", () => {
     const root = project();
     rmSync(join(root, ".aidw/changes", ID, "stages.yaml"));
+    // started before stages.yaml, so before analysis_template 2 too
+    const meta = join(root, ".aidw/changes", ID, "change.yaml");
+    writeFileSync(meta, readFileSync(meta, "utf8").replace(/^analysis_template: .*\n/m, ""));
     cli(root, "transition", ID, "intake");
     cli(root, "transition", ID, "analyzing");
     // the empty template proves nothing

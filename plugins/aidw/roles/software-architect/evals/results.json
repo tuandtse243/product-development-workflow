@@ -1,0 +1,102 @@
+{
+  "format": 2,
+  "role": "software-architect",
+  "date": "2026-11-27T06:37:06.059Z",
+  "model": null,
+  "tier": "deep",
+  "runs": 3,
+  "digest": "sha256:6d28a68f6fa4e92ff6fa4ad6066799d462b1495a346fb3276c1e83bb61caf20d",
+  "cases": [
+    {
+      "name": "answers-each-deferred-question",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": [],
+      "digest": "sha256:c00b057148cd305a87d187189c16aac7dab762aad4092adc4be6da5bd899efa3",
+      "date": "2026-11-27T06:37:06.059Z",
+      "model": null
+    },
+    {
+      "name": "invariants-not-a-tour",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": [],
+      "digest": "sha256:485343ad74d588ac1273a29db6f097a05e57ccf696031ed7fb88046b91b21b77",
+      "date": "2026-11-27T06:37:06.059Z",
+      "model": null
+    },
+    {
+      "name": "keeps-the-clients-stack",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": [],
+      "digest": "sha256:582fac87eaf093c180c4451c42681f0ddd22167eede526221890d21ff132ecc6",
+      "date": "2026-11-27T06:37:06.059Z",
+      "model": null
+    },
+    {
+      "name": "opens-only-what-the-user-must-settle",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": [],
+      "digest": "sha256:234c369f99d5b3ff772fe8a69a42e5f54c7842b24c04072692e9a4fa30ae1f1b",
+      "date": "2026-11-27T06:37:06.059Z",
+      "model": null
+    },
+    {
+      "name": "program-design-diffs-what-exists",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": [],
+      "digest": "sha256:ff3ffa6ecfae6ba24efc1937ea917cc453e357f56fa56bec2d58d2a6d89881cd",
+      "date": "2026-11-27T06:37:06.059Z",
+      "model": null
+    },
+    {
+      "name": "settles-data-and-contract-needs",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": [],
+      "digest": "sha256:539bb2cfc944b471bcc7483018315a19a90828482b226ef1f2ce533665cb5890",
+      "date": "2026-11-27T06:37:06.059Z",
+      "model": null
+    },
+    {
+      "name": "triage-names-the-upstream-cause",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": [],
+      "digest": "sha256:69d4ea1d36b65e30926b2e2b26d093620eebae1f48c016c53679d0ab2c36a272",
+      "date": "2026-11-27T06:37:06.059Z",
+      "model": null
+    }
+  ]
+}

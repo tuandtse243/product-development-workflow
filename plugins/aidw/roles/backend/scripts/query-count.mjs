@@ -60,7 +60,7 @@ import { appendFileSync, existsSync, mkdtempSync, readFileSync, realpathSync, wr
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { runCli, UsageError } from "./_common.mjs";
+import { runCli, UsageError } from "../../../library/scripts/_common.mjs";
 
 const MARK = /aidw:query-count\s+(\S.*?)\s*$/;
 const FORMS = String.raw`SELECT\b.*?\bFROM\b|INSERT\s+INTO\b|DELETE\s+FROM\b|MERGE\s+INTO\b|REPLACE\s+INTO\b|UPDATE\s+\S+\s+SET\b|WITH\s+\w+\s+AS\s*\(`;

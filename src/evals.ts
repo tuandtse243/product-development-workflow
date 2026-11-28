@@ -3,6 +3,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import YAML from "yaml";
 import { Diags } from "./diag.js";
+import { fenceTracker } from "./fences.js";
 import { LIBRARY_SKILL, loadRole, loadRoster, loadRuleTable, parseRoleText, roleDir, skillFile, tierModel } from "./roles.js";
 
 /**
@@ -37,6 +38,30 @@ export interface EvalCase {
 
 const CASE_KEYS = ["case", "covers", "expect"];
 
+/**
+ * The body of a case's `## <title>` section, up to the next `## ` heading. A heading inside a fenced block (``` or ~~~)
+ * is part of the quoted material, not of the case: an Input that quotes a Markdown file keeps its `## ` lines.
+ */
+export function caseSection(text: string, title: string): string | null {
+  const lines = text.split("\n");
+  let start = -1;
+  const fences = fenceTracker();
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] as string;
+    if (fences.step(line) || !line.startsWith("## ")) continue;
+    if (start >= 0) return lines.slice(start, i).join("\n").trim();
+    if (line.trimEnd() === `## ${title}`) start = i + 1;
+  }
+  return start >= 0 ? lines.slice(start).join("\n").trim() : null;
+}
+
+/** Whether a case leaves a code fence open, which would swallow every section after it. */
+export function hasUnclosedFence(text: string): boolean {
+  const fences = fenceTracker();
+  for (const line of text.split("\n")) fences.step(line);
+  return fences.open();
+}
+
 export function loadEvalCases(root: string, id: string): { cases: EvalCase[]; diags: Diags } {
   const d = new Diags();
   const dir = join(roleDir(root, id), "evals");
@@ -66,12 +91,10 @@ export function loadEvalCases(root: string, id: string): { cases: EvalCase[]; di
       else covers = head.covers as string[];
     }
     if (head.expect !== undefined && head.expect !== "ask") d.error(file, 'expect must be "ask" (or left out: the answer is the deliverable)');
-    const section = (title: string) => {
-      const m = new RegExp(`^## ${title}\\n([\\s\\S]*?)(?=^## |$(?![\\s\\S]))`, "m").exec(text);
-      return m ? (m[1] as string).trim() : null;
-    };
+    const section = (title: string) => caseSection(text, title);
     const input = section("Input");
     const criteria = section("Criteria");
+    if (hasUnclosedFence(text)) d.error(file, "a code fence (``` or ~~~) is never closed, so the sections after it are read as quoted text");
     if (!input) d.error(file, 'missing or empty "## Input" (the situation the Agent is given)');
     if (criteria === null) d.error(file, 'missing "## Criteria"');
     const bullets = (criteria ?? "").split("\n").map((l) => l.trim()).filter(Boolean);
@@ -145,8 +168,8 @@ export interface RunRecord {
 /**
  * Plugin-relative files of a Role's content: every file under `roles/<id>/` but the result file, the level 2 cases
  * (`roles/<id>/evals/level2/`, digested on their own) and, with `noCases`, the case files `roles/<id>/evals/*.md`; its
- * generated agent file, the shared procedures its `includes` names, the shared library skills its index lists and
- * `tiers.yaml`. Dotfiles (`.DS_Store`) are left out. The runner's own prompts (the
+ * generated agent file, the shared procedures its `includes` names, the shared library skills its index lists,
+ * `tiers.yaml` and, unless `noScripts`, the script helpers in `library/scripts/` when the Role has scripts. Dotfiles (`.DS_Store`) are left out. The runner's own prompts (the
  * answer and grading prompts in src/evalrun.ts) are not Role content and are not in it.
  */
 function roleFiles(root: string, id: string, noCases: boolean, noScripts = false): string[] {
@@ -166,6 +189,9 @@ function roleFiles(root: string, id: string, noCases: boolean, noScripts = false
     else files.push(rel);
   };
   walk(`roles/${id}`);
+  // The helpers the Role's scripts import (library/scripts/): a helper fix changes what its scripts print, as a fix in
+  // roles/<id>/scripts/ does, so they count wherever the scripts count (the working digest), and only for a Role with scripts.
+  if (!noScripts && existsSync(join(root, "roles", id, "scripts"))) walk("library/scripts");
   walk(`agents/${id}.md`);
   // role.md read with LF line endings, so a CRLF checkout lists the same files.
   const roleMd = join(root, "roles", id, "role.md");
@@ -204,7 +230,7 @@ export function sharedDigest(root: string, id: string): string {
   return digestOf(root, roleFiles(root, id, true, true));
 }
 
-/** sharedDigest with the Role's scripts: what a level 2 session works with (it runs them). */
+/** sharedDigest with the Role's scripts and the helpers they import (`library/scripts/`): what a level 2 session works with (it runs them). */
 export function workingDigest(root: string, id: string): string {
   return digestOf(root, roleFiles(root, id, true));
 }

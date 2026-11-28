@@ -380,10 +380,10 @@ describe("rule ids from fix reviews", () => {
   });
 
   it("ignores ids in a review of a Role with no rule table, and its fix review does not warn", () => {
-    const s = reviewed(["VERDICT: fix\n1. B7: src/ui/list.tsx: no transaction"], "frontend");
+    const s = reviewed(["VERDICT: fix\n1. B7: src/ui/list.tsx: no transaction"], "devops");
     expect(s.tasks![0]!.rules).toEqual([]);
-    expect(s.roles).toEqual([expect.objectContaining({ role: "frontend", rule_ids: [] })]);
-    expect(ruleIdWarning(HOME, "frontend", "VERDICT: fix\n1. src/ui/list.tsx: wrong")).toBeNull();
+    expect(s.roles).toEqual([expect.objectContaining({ role: "devops", rule_ids: [] })]);
+    expect(ruleIdWarning(HOME, "devops", "VERDICT: fix\n1. src/ui/list.tsx: wrong")).toBeNull();
     expect(ruleIdWarning(HOME, "devops", "VERDICT: fix\n1. B7: whatever")).toBeNull();
   });
 
@@ -616,7 +616,6 @@ describe("the aidw verdict warning", () => {
     ["fullstack", "VERDICT: fix\n1. src/a.ts: no limit\n", false],
     ["fullstack-engineer", "VERDICT: fix\n1. src/a.ts: no limit\n", false],
     ["fullstack", "VERDICT: fix\n1. B2: src/a.ts: no test\n", false],
-    ["frontend", "VERDICT: fix\n1. src/a.tsx: wrong\n", false],
     ["devops", "VERDICT: fix\n1. Dockerfile: root user\n", false],
   ])("%s, %j: warns %s", (role, notes, warns) => {
     const root = inReview(role);

@@ -1,4 +1,4 @@
-export type Level = "error" | "warning";
+export type Level = "error" | "warning" | "info";
 
 export interface Diagnostic {
   level: Level;
@@ -19,6 +19,11 @@ export class Diags {
     this.items.push({ level: "warning", file, message, ...(line ? { line } : {}) });
   }
 
+  /** Advice that never fails a check, not even under --strict. */
+  info(file: string, message: string): void {
+    this.items.push({ level: "info", file, message });
+  }
+
   add(other: Diags): void {
     this.items.push(...other.items);
   }
@@ -29,6 +34,10 @@ export class Diags {
 
   get warnings(): Diagnostic[] {
     return this.items.filter((d) => d.level === "warning");
+  }
+
+  get infos(): Diagnostic[] {
+    return this.items.filter((d) => d.level === "info");
   }
 
   failed(strict = false): boolean {
@@ -45,3 +54,6 @@ export class OpError extends Error {
     super(message);
   }
 }
+
+/** The findings of a check as `--json` output. */
+export const diagsJson = (d: Diags) => ({ errors: d.errors, warnings: d.warnings, info: d.infos });

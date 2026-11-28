@@ -596,7 +596,8 @@ describe("level 2 gaps: roster warnings", () => {
     let out = "";
     const code = run(["roster"], { ...s.env, AIDW_PLUGIN_ROOT: s.root }, process.cwd(), { out: (x) => (out += x), err: (x) => (out += x) });
     // graded with AIDW_GRADE_SANDBOX=off on purpose: that warning is tested in level2.test.ts
-    return { code, lines: out.split("\n").filter((l) => l.includes("level2/results.json") && !/graded with no sandbox/.test(l)) };
+    // backend's file only: the plugin's other Roles with level 2 cases (frontend) warn about their own
+    return { code, lines: out.split("\n").filter((l) => l.includes("backend/evals/level2/results.json") && !/graded with no sandbox/.test(l)) };
   };
 
   it("warns on an unreadable file, a level 1 file, another model, fewer than 3 runs and a case with no entry, never failing", () => {

@@ -4,11 +4,12 @@ import { join } from "node:path";
 import YAML from "yaml";
 import { afterAll, describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
-import { requestConsultation } from "../src/consult.js";
+import { requestConsultation, taskConsultable } from "../src/consult.js";
 import { decide, type HookInput } from "../src/gate.js";
 import { pathsFor } from "../src/project.js";
 import { checkRoster, loadRole, loadTiers, renderAgent, type RoleProfile } from "../src/roles.js";
 import { fingerprint } from "../src/runner.js";
+import { parseTasks } from "../src/tasks.js";
 import { ANALYSIS_MD, MAIN_SPEC, QUALITY_YAML, REQ, TOKENS_YAML, planReviewed, tempProject, write } from "./fixtures.js";
 
 const plugin = join(__dirname, "..", "plugins", "aidw");
@@ -54,7 +55,7 @@ function analyzingProject(): string {
   return root;
 }
 
-function buildingProject(): string {
+function buildingProject(opts: { design?: boolean } = {}): string {
   const root = tempProject();
   temps.push(root);
   expect(cli(root, "init").code).toBe(0);
@@ -63,6 +64,7 @@ function buildingProject(): string {
   const c = `.aidw/changes/${ID}`;
   write(root, `${c}/analysis.md`, ANALYSIS_MD);
   write(root, ".aidw/design/tokens.yaml", TOKENS_YAML);
+  if (opts.design) write(root, ".aidw/design/direction.md", "# Direction\n");
   write(root, `${c}/tasks.yaml`, TASKS);
   write(root, `${c}/quality.yaml`, QUALITY_YAML);
   write(root, `${c}/specs/booking/spec.md`, `## ADDED Requirements\n\n${REQ("Reschedule appointment")}`);
@@ -297,5 +299,27 @@ describe("consult review probes", () => {
     expect(writeAs(root, answer, "aidw:product-manager")).toBe("deny");
     // a Role consulted elsewhere, or not at all
     expect(writeAs(root, answer, "aidw:api-designer")).toBe("deny");
+  });
+});
+
+describe("ui-ux-designer answers a design hole for frontend", () => {
+  it("the consult gate offers ui-ux-designer for a frontend task once the design exists, and roster passes", () => {
+    const root = buildingProject({ design: true });
+    const p = pathsFor(root);
+    const t2 = parseTasks(readFileSync(join(root, ".aidw/changes", ID, "tasks.yaml"), "utf8")).tasks.find((t) => t.id === "T02")!;
+    const offered = taskConsultable(p, ID, t2, plugin);
+    expect(offered.role).toBe("frontend");
+    expect(offered.roles).toContain("ui-ux-designer");
+    expect(checkRoster(plugin).errors).toEqual([]);
+  });
+
+  it("a ui-ux-designer asked in an open Consultation writes its answer, and still no project file", () => {
+    const root = buildingProject({ design: true });
+    const started = cli(root, "task", "start", "T02");
+    expect(started.code, started.err + started.out).toBe(0);
+    const asked = cli(root, "consult", request(root, "T02", { from: "frontend", task: "T02", to: "ui-ux-designer" }, "Which token is the error text?"));
+    expect(asked.code, asked.err + asked.out).toBe(0);
+    expect(writeAs(root, join(consultDir(root), "C01.answer.md"), "aidw:ui-ux-designer")).toBe("allow");
+    expect(writeAs(root, join(root, "app/page.tsx"), "aidw:ui-ux-designer")).toBe("deny");
   });
 });

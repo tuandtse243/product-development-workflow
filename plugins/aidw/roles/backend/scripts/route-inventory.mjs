@@ -38,7 +38,7 @@ Test files are those named *.test.*, *.spec.*, test_*.py, *_test.py or under tes
 Exit: 0 when the scan ran (whatever it found), 2 on a usage or read error.
 `;
 
-import { inStringOf, changedSince, isAdded, isPython, isTestFile, JS_EXTS, lineIndex, maskComments, matchClose, loadSources, projectRoot, PY_EXTS, runCli, splitTop, table } from "./_common.mjs";
+import { inStringOf, changedSince, isAdded, isPython, isTestFile, JS_EXTS, lineIndex, maskComments, matchClose, loadSources, projectRoot, PY_EXTS, runCli, splitTop, table } from "../../../library/scripts/_common.mjs";
 
 const METHODS = ["get", "post", "put", "patch", "delete", "options", "head", "all"];
 const HTTP_CLIENTS = /^(axios|got|ky|http|https|client|api|apiClient|httpClient|http_client|request|superagent|agent|instance|fetcher|\$http|wretch|this)$/i;

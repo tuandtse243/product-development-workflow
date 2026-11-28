@@ -24,6 +24,10 @@ import type { Paths } from "./project.js";
 import { PLAN_REVIEW, planReviewBlocker } from "./planreview.js";
 import { DEFAULT_PARALLEL, parseQuality, qualityFile } from "./quality.js";
 import type { Stage, Workflow } from "./workflow.js";
+import { BEFORE_AFTER, DEFERRED, owesBeforeAfter } from "./beforeafter.js";
+import { owesProgramDesign, PROGRAM_DESIGN_ARTIFACT, programDesignBlocker, ROUND_ARTIFACT, roundAdvice, SYSTEM_DESIGN_ROUND, systemDesignRoundBlocker } from "./programdesign.js";
+import { sizeOf } from "./analyze.js";
+import { readText } from "./project.js";
 
 /** One piece of work the lead may hand to a subagent. */
 export interface Work {
@@ -124,15 +128,18 @@ function recordedDone(change: Change): string[] {
   }
 }
 
-/** The body of a `## ` section of a Markdown file, or null when the heading is missing. */
-function sectionBody(text: string, heading: string): string | null {
+/** The body of a `## ` or `### ` section of a Markdown file, or null when the heading is missing. */
+export function sectionBody(text: string, heading: string): string | null {
   const lines = text.split("\n");
   const at = lines.findIndex((l) => l.trim() === heading.trim());
   if (at < 0) return null;
-  const end = lines.findIndex((l, i) => i > at && /^## /.test(l));
+  // a `###` part ends at the next `##` or `###` heading; a `##` part at the next `##`
+  const next = /^###\s/.test(heading.trim()) ? /^#{2,3} / : /^## /;
+  const end = lines.findIndex((l, i) => i > at && next.test(l));
   return lines.slice(at + 1, end < 0 ? undefined : end).join("\n");
 }
 
+const TEMPLATE_2_PARTS = new Set([`## ${BEFORE_AFTER}`, `### ${DEFERRED}`]);
 const filled = (text: string | null) => text !== null && text.trim() !== "" && !text.includes("TODO(aidw)");
 
 /**
@@ -146,6 +153,10 @@ function artifactWritten(p: Paths, change: Change, entry: ArtifactEntry | undefi
     const key = String(entry.part ?? "").split(":")[0]?.trim() ?? "";
     return key !== "" && key in readDecisions(change);
   }
+  // A Change created before analysis_template 2 has no Before / After or Deferred to architecture to tell by.
+  if (typeof entry.part === "string" && TEMPLATE_2_PARTS.has(entry.part) && !owesBeforeAfter(change)) return null;
+  // Nor one created before analysis_template 3 a system design round or a Program Design.
+  if ((entry.part === `### ${SYSTEM_DESIGN_ROUND}` || entry.path === "changes/<id>/program-design.md") && !owesProgramDesign(change)) return null;
   const file = join(p.aidw, ...entry.path.replace("<id>", change.id).split("/"));
   if (!existsSync(file)) return false;
   const text = readFileSync(file, "utf8");
@@ -207,6 +218,8 @@ export interface StagesView {
   ready: Stage[];
   /** the ready stages to run now, at the same time */
   group: Stage[];
+  /** D3: what the system design round asks, when it is the stage to run now */
+  round?: string;
 }
 
 /** `parallel.max` of quality.yaml, or the default while quality.yaml is missing or broken. */
@@ -243,7 +256,25 @@ export function stagesView(p: Paths, id: string, pluginRoot: string): StagesView
     done: analysisStages(w).filter((s) => done.has(s.id)).map((s) => s.id),
     ready,
     group: ready.filter((s) => picked.has(s.id)),
+    ...(ready.some((s) => picked.has(s.id) && isRound(s)) ? { round: roundNote(change) } : {}),
   };
+}
+
+const isRound = (s: Stage) => s.writes.includes(ROUND_ARTIFACT);
+const isProgramDesign = (s: Stage) => s.writes.includes(PROGRAM_DESIGN_ARTIFACT);
+const analysisOf = (change: Change) => readText(join(change.dir, "analysis.md"));
+const isSmall = (change: Change) => sizeOf(analysisOf(change)) === "small";
+
+/** D3, Q5: a small Change has no round; otherwise the open Design Questions, or the one question in the chat. */
+function roundNote(change: Change): string {
+  if (!owesProgramDesign(change)) return "";
+  if (isSmall(change)) return "Size: small has no system design round: report the stage done";
+  const advice = roundAdvice(analysisOf(change));
+  if (!advice.startsWith("no Design Question is open")) return advice;
+  // F5: the data model and the API contract are designed before the round, so its summary names them
+  const d = readDecisions(change);
+  const names = [d["data-model-needed"]?.answer === "design" ? "the data model" : "", ["openapi", "actions"].includes(String(d["api-contract-needed"]?.answer)) ? "the API contract" : ""].filter(Boolean);
+  return names.length ? `${advice}; name ${names.join(" and ")} in the summary` : advice;
 }
 
 /** Records that the lead finished (or, by a Decision Point, skipped) an analysis stage. */
@@ -264,6 +295,15 @@ export function recordStageDone(p: Paths, id: string, stageId: string, pluginRoo
   // the review before the gate (D4) is done by its recorded verdict, never by a report
   const open = s.writes.includes(PLAN_REVIEW) ? planReviewBlocker(p, change, w) : null;
   if (open) throw new OpError(`stage "${stageId}" is done when its verdict is recorded (\`aidw plan-review ${id}\`); it still needs ${open}`);
+  // D3, I5: the round is done when its answer is recorded, the Program Design when it has its required parts
+  if (owesProgramDesign(change) && isRound(s)) {
+    const why = systemDesignRoundBlocker(analysisOf(change), isSmall(change));
+    if (why) throw new OpError(`stage "${stageId}" is done when the system design round is recorded: ${why}`);
+  }
+  if (owesProgramDesign(change) && isProgramDesign(s)) {
+    const why = programDesignBlocker(p, change, isSmall(change));
+    if (why) throw new OpError(`stage "${stageId}" is done when the Program Design has its required parts: ${why}`);
+  }
   const all = [...recordedDone(change), stageId];
   writeFileSync(stagesFile(change), YAML.stringify({ done: all }));
 }
@@ -277,7 +317,8 @@ export function stagesNext(v: StagesView): string {
   if (v.group.length === 1) {
     const s = v.group[0] as Stage;
     if (s.writes.includes(PLAN_REVIEW)) return `NEXT: stage ${label(s)}: run \`aidw plan-review ${v.change} --brief\`, spawn aidw:${s.roles[0] ?? "code-reviewer"} with the brief, then record its verdict with \`aidw plan-review ${v.change}\` (it reports the stage)`;
-    return `NEXT: stage ${label(s)}: roles ${s.roles.join(", ") || "none"}${s.gate ? `; gate ${s.gate}` : `; when it is done run ${report(s.id)}`}`;
+    const round = v.round ? `; ${v.round}` : "";
+    return `NEXT: stage ${label(s)}: roles ${s.roles.join(", ") || "none"}${round}${s.gate ? `; gate ${s.gate}` : `; when it is done run ${report(s.id)}`}`;
   }
   return `NEXT: run these ${v.group.length} stages in parallel, one subagent each, all in one message: ${v.group.map(label).join(", ")}. When each returns, run ${report("<stage>")} for it`;
 }

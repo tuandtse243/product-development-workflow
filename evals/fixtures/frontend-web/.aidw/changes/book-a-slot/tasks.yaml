@@ -1,0 +1,19 @@
+tasks:
+  - id: T01
+    title: The book-a-slot screen of a doctor's day
+    role: frontend
+    type: feat
+    specs: [booking/book-a-slot]
+    scenarios:
+      - booking/book-a-slot/slots-loading
+      - booking/book-a-slot/open-slots-of-a-day
+      - booking/book-a-slot/pick-a-slot
+      - booking/book-a-slot/close-without-booking
+      - booking/book-a-slot/confirm-the-booking
+      - booking/book-a-slot/slot-taken-meanwhile
+      - booking/book-a-slot/slots-fail-to-load
+      - booking/book-a-slot/no-slots-on-the-day
+    depends_on: []
+    touches: ["src/booking/**", "tests/booking/**", "src/routes.tsx"]
+    verify: ["npm test", "npm run typecheck"]
+    status: pending

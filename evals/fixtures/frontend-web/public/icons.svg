@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+  <symbol id="icon-calendar" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" d="M2.5 3.5h11v10h-11zM2.5 6.5h11M5 2v3M11 2v3"/></symbol>
+  <symbol id="icon-calendar-off" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" d="M2.5 3.5h11v10h-11zM2.5 6.5h11M5 2v3M11 2v3M2 14L14 2"/></symbol>
+  <symbol id="icon-chevron-right" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" d="M6 3l5 5-5 5"/></symbol>
+  <symbol id="icon-clock" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor"/><path fill="none" stroke="currentColor" d="M8 5v3l2 2"/></symbol>
+  <symbol id="icon-check" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" d="M3 8.5l3 3 7-7"/></symbol>
+  <symbol id="icon-close" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" d="M4 4l8 8M12 4l-8 8"/></symbol>
+</svg>

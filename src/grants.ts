@@ -15,6 +15,7 @@
  * written into the briefs and the gate page for the Agents and the run to read; the cap is enforced by the run.
  * Never automatic, whatever is granted: see NEVER_AUTOMATIC.
  */
+import { gateLabels } from "./labels.js";
 import { lstatSync, readFileSync, realpathSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import YAML from "yaml";
@@ -223,24 +224,25 @@ const plannedTaskCount = (change: Change): number => {
 };
 
 /** One line per grant, for the gate Decision Page. */
-export function grantLines(g: Grants, push: { binding: PushBinding | null; problem: string | null }, planned: { tasks: number; reviewLayers: number; runs: number }): string[] {
+export function grantLines(g: Grants, push: { binding: PushBinding | null; problem: string | null }, planned: { tasks: number; reviewLayers: number; runs: number }, lang?: string): string[] {
+  const L = gateLabels(lang);
   const b = push.binding;
   return [
     g.push && b
-      ? `**Push and pull request**: push \`${b.branch}\` to remote \`${b.remote}\`${b.url ? ` (${b.url})` : ""} and open one pull request (a draft when something is not built) against base \`${b.base}\`, without asking. No other branch or remote; Task Worktree branches are never pushed.`
+      ? `**${L.pushAndPr}**: push \`${b.branch}\` to remote \`${b.remote}\`${b.url ? ` (${b.url})` : ""} and open one pull request (a draft when something is not built) against base \`${b.base}\`, without asking. No other branch or remote; Task Worktree branches are never pushed.`
       : g.push
-        ? `**Push and pull request**: granted in quality.yaml but it cannot hold: ${push.problem ?? "no Change Branch"}; the push and the pull request will ask.`
-        : "**Push and pull request**: not granted; the push and the pull request ask at the end of the run.",
+        ? `**${L.pushAndPr}**: granted in quality.yaml but it cannot hold: ${push.problem ?? "no Change Branch"}; the push and the pull request will ask.`
+        : `**${L.pushAndPr}**: not granted; the push and the pull request ask at the end of the run.`,
     g.envelope
-      ? `**Permission envelope**: ${ENVELOPE.join("; ")}. Work outside it is marked not built.`
-      : "**Permission envelope**: not granted; only the tier 2 resources listed under Permissions.",
-    `**Cap**: ${agentRunCap(g, planned.runs)} Agent runs${g.agentRuns === null ? ` (default: ${AGENT_RUNS_FACTOR} × ${planned.runs} planned = ${planned.tasks} tasks × 2 + ${planned.reviewLayers} review layers)` : ""}; at the cap no new task starts, running work finishes and the run ends cleanly in a pull request.`,
-    `**Never automatic**, whatever is granted: ${NEVER_AUTOMATIC.join(", ")}.`,
+      ? `**${L.envelope}**: ${ENVELOPE.join("; ")}. Work outside it is marked not built.`
+      : `**${L.envelope}**: not granted; only the tier 2 resources listed under Permissions.`,
+    `**${L.cap}**: ${agentRunCap(g, planned.runs)} Agent runs${g.agentRuns === null ? ` (default: ${AGENT_RUNS_FACTOR} × ${planned.runs} planned = ${planned.tasks} tasks × 2 + ${planned.reviewLayers} review layers)` : ""}; at the cap no new task starts, running work finishes and the run ends cleanly in a pull request.`,
+    `**${L.neverAutomatic}**, whatever is granted: ${NEVER_AUTOMATIC.join(", ")}.`,
   ];
 }
 
 /** The Grants section the CLI adds to a gate Decision Page; null without a quality.yaml. */
-export function grantsSection(p: Paths, change: Change): { id: string; title: string; body: string; points: string[]; html: string } | null {
+export function grantsSection(p: Paths, change: Change, lang?: string): { id: string; title: string; body: string; points: string[]; html: string } | null {
   try {
     readFileSync(join(change.dir, "quality.yaml"));
   } catch {
@@ -249,9 +251,9 @@ export function grantsSection(p: Paths, change: Change): { id: string; title: st
   const bound = boundPush(p, change);
   return {
     id: "grants",
-    title: "Grants for this Change",
-    body: "Recorded in quality.yaml `grants` and approved with the package; the branch and the remote's URL are fixed when you approve. Mark it for a change to grant or withdraw any of them.",
-    points: grantLines(readGrants(change), bound ? { binding: bound, problem: null } : bindPush(p, change), plannedAgentRuns(change)),
+    title: gateLabels(lang).grants,
+    body: gateLabels(lang).grantsBody,
+    points: grantLines(readGrants(change), bound ? { binding: bound, problem: null } : bindPush(p, change), plannedAgentRuns(change), lang),
     html: "",
   };
 }

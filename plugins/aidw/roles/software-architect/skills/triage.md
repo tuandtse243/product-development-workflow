@@ -44,6 +44,13 @@ nothing more.
   criteria: [Rework, Risk]            # 2 to 4 things the options differ on, or leave out
   recommend: widen
   why: The scenario cannot pass without lib/db.ts and nothing else changes.
+  view:                               # the change to the package, as the show-me skill picks it
+    kind: diff
+    text: |2
+       - id: T03
+         touches:
+           - app/notes/page.tsx
+      +    - lib/db.ts
   options:
     - key: widen
       name: Add lib/db.ts to the task's touches
@@ -58,6 +65,8 @@ nothing more.
   ```
   ````
 
-  Two to four options that are really different; every option answers every criterion.
+  Two to four options that are really different; every option answers every criterion. The `view` shows what the
+  recommended change does to the package (kinds: diff, tree, calltree, component, pseudocode); `aidw page triage`
+  refuses a choice without one.
 - Doubt between `implementation` and an upstream cause: choose the upstream one when the same requirement failed
   under two different fixes. Say what you could not verify.

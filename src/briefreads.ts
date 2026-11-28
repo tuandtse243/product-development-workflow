@@ -24,6 +24,7 @@ export const BRIEF_READS: readonly BriefRead[] = [
   { name: "data-model-notes", what: "the approved data model: tables, constraints, indexes and the evolution plan (keep every name)" },
   { name: "api-contract-notes", what: "the approved API contract: operations, shapes, errors (keep every name and status code)" },
   { name: "api-contract-openapi", what: "the contract as OpenAPI 3.1, with an example per scenario" },
+  { name: "program-design", what: "the approved Program Design: the files and the main signatures and contracts (code that differs from it is a Deviation)" },
   { name: "test-plan", what: "the test cases of each scenario and the layer that proves each" },
   { name: "user-journeys", what: "user kinds, journeys and the usability requirements (U1, U2...) the UI must meet", ui: true },
   { name: "design-direction", what: "design direction and assets (UI task)", ui: true, dir: true },

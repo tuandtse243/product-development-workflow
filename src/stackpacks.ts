@@ -22,6 +22,26 @@ export interface FrameworkPack {
    * framework's own conventions win over those of the HTTP library underneath.
    */
   detectedAs: string;
+  /**
+   * More keys of the detected stack the pack needs, each matched as `detected_as` is (`requires: { ui: React }`): the Vite
+   * pack is for Vite with React, not Vite with Vue or Svelte. Empty when absent.
+   */
+  requires: Record<string, string>;
+  /**
+   * Values of detected-stack keys that keep the pack out (`excludes: { framework: [Astro, Remix] }`), each matched as
+   * `detected_as` is: the Vite pack is for a browser-only app, not for Astro or Remix, which render on a server. Empty when absent.
+   */
+  excludes: Record<string, string[]>;
+}
+
+function excludesOf(v: unknown): Record<string, string[]> {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return {};
+  return Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([k, l]) => [k, (Array.isArray(l) ? l : [l]).filter((x) => typeof x === "string") as string[]]));
+}
+
+function requiresOf(v: unknown): Record<string, string> {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return {};
+  return Object.fromEntries(Object.entries(v as Record<string, unknown>).filter((e): e is [string, string] => typeof e[1] === "string"));
 }
 
 export function frameworkPacks(root: string): FrameworkPack[] {
@@ -37,24 +57,36 @@ export function frameworkPacks(root: string): FrameworkPack[] {
     } catch {
       continue;
     }
-    const h = head as { framework?: unknown; roles?: unknown; skills?: unknown; review_skills?: unknown; detected_as?: unknown } | null;
+    const h = head as { framework?: unknown; roles?: unknown; skills?: unknown; review_skills?: unknown; detected_as?: unknown; requires?: unknown; excludes?: unknown } | null;
     const strs = (v: unknown) => (Array.isArray(v) ? v.map(String) : []);
     if (typeof h?.framework === "string" && Array.isArray(h.roles)) {
-      out.push({ id: name.slice(0, -3), framework: h.framework, roles: h.roles.map(String), file: join(dir, name), skills: strs(h.skills), reviewSkills: strs(h.review_skills), detectedAs: typeof h.detected_as === "string" ? h.detected_as : "framework" });
+      out.push({ id: name.slice(0, -3), framework: h.framework, roles: h.roles.map(String), file: join(dir, name), skills: strs(h.skills), reviewSkills: strs(h.review_skills), detectedAs: typeof h.detected_as === "string" ? h.detected_as : "framework", requires: requiresOf(h.requires), excludes: excludesOf(h.excludes) });
     }
   }
   return out;
 }
 
-/** The packs of the project's framework, whoever reads them: a reviewer takes their review Skills. */
-export function packsOf(root: string, stack: Record<string, string>): FrameworkPack[] {
+/**
+ * The packs of the project's framework, whoever reads them: a reviewer takes their review Skills. A pack of a bundler or
+ * server library yields to a framework pack that serves every Role of that pack: a NestJS API in the same root does not take
+ * the Vite + React pack away from the frontend or from fullstack.
+ */
+export function packsOf(root: string, stack: Record<string, string>, _role?: string): FrameworkPack[] {
   const all = frameworkPacks(root);
-  const hit = (p: FrameworkPack) => (stack[p.detectedAs] ?? "").toLowerCase().startsWith(p.framework.toLowerCase());
+  const starts = (key: string, name: string) => (stack[key] ?? "").toLowerCase().startsWith(name.toLowerCase());
+  // A backend framework beside another framework (NestJS or FastAPI next to Remix) sits under the `backend` key
+  const hit = (p: FrameworkPack) =>
+    (starts(p.detectedAs, p.framework) || (p.detectedAs === "framework" && starts("backend", p.framework))) &&
+    Object.entries(p.requires).every(([k, n]) => starts(k, n)) &&
+    !Object.entries(p.excludes).some(([k, names]) => names.some((n) => starts(k, n)));
   const frameworks = all.filter((p) => p.detectedAs === "framework" && hit(p));
-  return frameworks.length ? frameworks : all.filter((p) => p.detectedAs !== "framework" && hit(p));
+  // A framework takes the pack's place only when it serves every Role the pack serves (Next.js for Vite + React); NestJS serves
+  // the backend and fullstack but renders no UI, so fullstack keeps both packs.
+  const sharing = (p: FrameworkPack) => frameworks.some((f) => p.roles.every((r) => f.roles.includes(r)));
+  return [...frameworks, ...all.filter((p) => p.detectedAs !== "framework" && hit(p) && !sharing(p))];
 }
 
 /** The framework packs a Role reads for a project whose detected stack is `stack` (`framework: "Next.js 15.2"`). */
 export function packsFor(root: string, stack: Record<string, string>, role: string): FrameworkPack[] {
-  return packsOf(root, stack).filter((p) => p.roles.includes(role));
+  return packsOf(root, stack, role).filter((p) => p.roles.includes(role));
 }

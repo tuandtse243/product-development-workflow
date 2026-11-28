@@ -27,7 +27,8 @@ The user has asked to approve. This is the single human gate of the workflow (Q2
    withdraw?" (the branch and URL are on the gate page). On "withdraw", remove `grants.push` from `quality.yaml` and
    run `aidw validate <id>` before approving.
 4. Run `aidw approve <id>`. The aidw gate turns this into a permission prompt: the user confirms it there.
-   If the user declines the prompt, do not retry.
+   If the user declines the prompt, do not retry. If Claude Code cannot ask (a headless session), stop and tell the
+   user to type `/aidw:approve` themselves.
 5. Report the approval hash. Explain that from now on:
    - the grants in `quality.yaml` are approved with it: with `push`, pushing the Change Branch to the named remote
      and opening its pull request against the named base do not ask again; every other tier 3 action still does;

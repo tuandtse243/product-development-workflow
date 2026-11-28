@@ -87,7 +87,7 @@ stages:
     states: [analyzing]
     roles: [product-manager, business-analyst, ux-research]
     reads: [intake]
-    writes: [analysis-discovery-qa]
+    writes: [analysis-discovery-qa, analysis-deferred-to-architecture]
 
   - id: research
     title: Research, when the Product Manager decides the Change needs it
@@ -108,7 +108,7 @@ stages:
     states: [analyzing]
     roles: [product-manager, business-analyst]
     reads: [intake, analysis-discovery-qa, research-note, user-journeys]
-    writes: [domain-model, decisions-domain, requirements, delta-specs, analysis-scope, analysis-domain, analysis-specs]
+    writes: [domain-model, decisions-domain, requirements, delta-specs, analysis-scope, analysis-before-after, analysis-domain, analysis-specs]
 
   - id: design
     title: Design decision and tokens
@@ -122,22 +122,36 @@ stages:
     title: Stack, architecture and constitution
     states: [analyzing]
     roles: [software-architect]
-    reads: [requirements, delta-specs, domain-model, design-direction, design-tokens, project-config]
+    reads: [analysis-deferred-to-architecture, requirements, delta-specs, domain-model, design-direction, design-tokens, project-config]
     writes: [architecture, decisions-architecture, constitution, project-config, analysis-stack, analysis-architecture]
 
   - id: contracts
-    title: Data model and API contract, each when the Software Architect decides the Change needs it
+    title: Data model and API contract, each when the Design Questions the Software Architect settled say the Change needs it
     states: [analyzing]
     roles: [software-architect, database-architect, api-designer]
-    reads: [requirements, delta-specs, domain-model, architecture, constitution]
+    reads: [requirements, delta-specs, domain-model, architecture, analysis-architecture, constitution]
     writes: [decision-data-model-needed, decision-api-contract-needed, data-model-dbml, data-model-notes, api-contract-openapi, api-contract-notes]
+
+  - id: system-design-round
+    title: System design round, the open Design Questions put to the user (none for Size small)
+    states: [analyzing]
+    roles: [software-architect]
+    reads: [architecture, analysis-architecture, data-model-notes, api-contract-notes]
+    writes: [analysis-system-design-round, analysis-architecture, architecture, decisions-architecture]
+
+  - id: program-design
+    title: Program Design, the files and the main signatures and contracts (the short one for Size small)
+    states: [analyzing]
+    roles: [software-architect]
+    reads: [analysis-system-design-round, architecture, constitution, delta-specs, data-model-notes, api-contract-notes]
+    writes: [program-design]
 
   - id: plan
     title: Task graph
     states: [analyzing]
-    roles: [technical-planner]
-    reads: [delta-specs, architecture, constitution, design-tokens, data-model-notes, api-contract-notes]
-    writes: [tasks, analysis-plan]
+    roles: [technical-planner, research] # Research writes the Docs Briefs the tasks name in docs: (ADR-0016)
+    reads: [delta-specs, architecture, constitution, design-tokens, data-model-notes, api-contract-notes, program-design]
+    writes: [tasks, analysis-plan, docs-brief]
 
   - id: quality-profile
     title: Test plan, quality layers, deploy strategy and permissions
@@ -150,14 +164,14 @@ stages:
     title: Independent review of architecture and plan against a fixed list, after aidw analyze (at most 2 fix rounds)
     states: [analyzing]
     roles: [code-reviewer]
-    reads: [requirements, delta-specs, analysis-scope, architecture, constitution, data-model-notes, api-contract-notes, tasks, test-plan, quality]
+    reads: [requirements, delta-specs, analysis-scope, architecture, constitution, data-model-notes, api-contract-notes, program-design, tasks, test-plan, quality]
     writes: [plan-review]
 
   - id: approval
     title: Analyze, present and approve
     states: [awaiting_approval, approved]
     roles: [product-manager]
-    reads: [intake, analysis-discovery-qa, requirements, delta-specs, architecture, tasks, quality]
+    reads: [intake, analysis-discovery-qa, requirements, delta-specs, architecture, program-design, tasks, quality]
     writes: [analysis-summary, analysis-decisions-to-honor, analysis-risks]
     gate: approval
 
@@ -165,7 +179,7 @@ stages:
     title: Build, one task at a time, each reviewed
     states: [executing]
     roles: [fullstack, frontend, backend, database, devops, integration, code-reviewer, software-architect]
-    reads: [tasks, delta-specs, constitution, architecture, design-tokens]
+    reads: [tasks, delta-specs, constitution, architecture, program-design, design-tokens]
     writes: [task-review, triage-report]
     agents:
       implement: fullstack
@@ -197,4 +211,4 @@ stages:
     states: [delivered, archived]
     roles: [release, documentation]
     reads: [delta-specs, requirements, tasks, quality, architecture]
-    writes: [release-plan]
+    writes: [release-plan, pr-summary]

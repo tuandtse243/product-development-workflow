@@ -291,6 +291,36 @@ Fastify, Hono.
   - Few tasks: always show the counts; show a rate only from 5 tasks up for that Role.
   - Triage: per Role of the task, every Triage cause (implementation, environment, plan, spec, architecture,
     unclear). The detail view adds the upstream rounds and the not-built causes.
+- T20 frontend design: decided 2026-11-28 (research in `docs/research/frontend-role.md`):
+  1. Consult: `api-designer`, `ui-ux-designer`, `software-architect` (drop `database-architect`).
+  2. Rules: all 16, F1 to F16.
+  3. A hole in the design: ask `ui-ux-designer` as a Consultation and build the rest meanwhile, like B1 for the
+     contract.
+  4. Tokens: six lines in role.md's Procedure (they apply to nearly every task); the skills S1 to S5 as files.
+  5. Shared material: point frontend at the vendored `vercel/command.md` and impeccable `harden.md`/`clarify.md` as
+     references; load `anthropic/frontend-design` only when the task has no approved tokens; keep `aidw/react-rules`
+     authored.
+  6. Scripts: `token-literals`, `a11y-names` and `public-env-scan` now; `fetch-waterfalls` and
+     `route-guard-inventory` after the level 2 fixture exists to tune them.
+  7. Script helpers: move backend's `_common.mjs` to `library/scripts/` for both Roles (a small refactor first).
+  8. API skills leak: `selectSkills` skips the API pair for role frontend (a separate fix commit).
+  9. Pack and fullstack: a Vite + React framework pack (`VITE_` prefix, testing, router) and fullstack
+     `follows_rules: [backend, frontend]`.
+  10. Level 1 cases: all 13, the 2 existing revised (covers added) plus E1 to E11; every rule and skill covered;
+      13 × 3 = 39 model calls.
+  11. Level 2 fixture: Vite + React 19 + TypeScript SPA, Vitest + jsdom + Testing Library + user-event, MSW
+      (`msw/node`) for the network; no Playwright.
+  12. Level 2 screenshots: a case key that drops the screenshot lines from the brief (one small harness change);
+      tokens stay in the brief.
+  13. Level 2 plan: pilot L1 first (at most 6 sessions), then L2 to L4 (9 sessions plus spares); ask before more.
+  - Built (2026-11-28): decision 3 first could not hold, because `ui-ux-designer` was `access: read-only` and
+    `aidw roster` refuses a read-only Role in `consults:`. The owner then decided to make it answer Consultations:
+    `ui-ux-designer` now has `access: artifacts` and a procedure for answering a Consultation from frontend (its
+    review job is unchanged), and frontend consults `api-designer`, `ui-ux-designer` and `software-architect`. A hole in
+    the design is asked of `ui-ux-designer` and the rest of the task is built meanwhile (F2).
+  - Level 1 cases (2026-11-28): 13 cases, the 2 existing ones revised plus E1-E11, each `covers:` only what the case
+    can fail without. The interim `covers:` that kept roster at 0 errors is gone; F1-F16 and the five skills plus
+    `library/react-rules` are covered by the cases themselves.
 - The cases of every other active Role have no `covers:` yet; T12 must not fail `aidw roster` for Roles that
   have not been upgraded (require coverage only once a Role's `rules.md` uses the table format).
 - The owner prefers question rounds as an HTML Decision Page with options, examples and a copy-back summary,

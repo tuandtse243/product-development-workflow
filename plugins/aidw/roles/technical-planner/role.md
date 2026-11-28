@@ -6,13 +6,13 @@ tier: deep
 access: artifacts
 consults: [software-architect]
 tools: [Read, Write, Edit, Glob, Grep, Bash]
-reads: [delta-specs, architecture, constitution, design-tokens, data-model-notes, api-contract-notes, test-plan]
+reads: [delta-specs, architecture, program-design, constitution, design-tokens, data-model-notes, api-contract-notes, test-plan]
 writes: [tasks, analysis-plan]
 includes: [library/author-artifacts.md]
 skills:
   - scaffold-tasks: when the plan creates a new project or its first tasks set up the toolchain, the test harness, CI or a Vercel deploy
   - migration-tasks: when a task adds or changes a database migration
-  - task-interfaces: when two or more tasks share a function, a route, a type or a table - what each produces and consumes, and the reviewer's focus
+  - task-interfaces: when you cut the tasks from the Program Design (every plan) - its file tree and signatures handed out to tasks, what each task produces and consumes, and the reviewer's focus
 ---
 
 ## Responsibility
@@ -23,12 +23,21 @@ side and makes every scenario someone's job.
 
 ## Reads and writes
 
-- Reads: the delta specs, `.aidw/architecture/overview.md`, `.aidw/constitution.md`, `.aidw/design/tokens.yaml`,
-  `aidw ids <id>`, the code of an existing system, and the merge conflicts earlier Waves recorded:
+- Reads: the delta specs, `.aidw/architecture/overview.md`, the Program Design `.aidw/changes/<id>/program-design.md`
+  (approved with the plan: its file tree and signatures are what the tasks build), `.aidw/constitution.md`,
+  `.aidw/design/tokens.yaml`, `aidw ids <id>`, the code of an existing system and its Existing System Report
+  (`.aidw/changes/<id>/existing-system.md`, whose pattern examples carry `path:start-end`), the Docs Briefs under
+  `.aidw/research/docs/`, and the merge conflicts earlier Waves recorded:
   `.aidw/changes/*/conflicts.yaml` and `.aidw/archive/*/conflicts.yaml` (see "Parallel waves").
 - Writes: `.aidw/changes/<id>/tasks.yaml`.
 
 ## Procedure
+
+Start from the Program Design: its file tree says which files the Change adds (`+`), changes (`~`) and removes
+(`-`), and its signatures say what each file exports. Every marked path falls inside the `touches` of a task (a path
+two tasks must change is in both, which keeps them apart), and a task's `Produces` (task-interfaces) are the Program
+Design's signatures spelled the same way. A path the work needs that the file tree does not mark is a gap in the
+Program Design: stop and report it rather than plan around it.
 
 Read `aidw vendor-path pocock/to-tickets` and apply its slicing rules (tracer-bullet vertical slices, blocking
 edges, prefactor first, expand-contract for wide refactors) with this adapter: do **not** quiz the user and do
@@ -50,8 +59,47 @@ tasks:
     removes_tests: true        # only when a REMOVED requirement makes its tests go; otherwise a deleted test fails the checkpoint
     verify:
       - <command that proves it works, e.g. pnpm vitest run lib/booking>
+    patterns:                  # up to 3: real code of this project to imitate, with its lines (see below)
+      - { path: "lib/schedule/store.ts:12-48", why: "a store function: input parsed with zod, typed error, its test" }
+    docs: ["zod@3.23.8 parsing"]   # <lib>@<version> <topic>: a library new to the project or sensitive to its version
+    manual: ["the reminder email reads well in Gmail on a phone"]   # checks only a human can make
+    accept:                    # a plan warning you keep on purpose, with the reason the plan states (see below)
+      - { warn: depends-without-overlap, on: T01, why: "the 409 tests need T01's trigger" }
     status: pending
 ```
+
+### A task carries the code to imitate, its Docs Briefs and the human checks
+
+The implementer starts with a fresh context and reads only its brief, so put in the task what it would otherwise
+guess.
+
+- **`patterns`: the Patterns to Follow.** In an existing project, point each task at up to three places that already
+  do what it must do (a store function, a route with its validation, a screen with its loading state, and the test
+  of each), as `path:from-to` with the lines that matter (40 at most) and a `why` that says what to copy. The brief
+  shows those lines; `aidw analyze` refuses a pattern whose file or lines are gone. Take them from the Existing
+  System Report's pattern examples, or find them yourself; a greenfield project has none.
+- **`docs`: the libraries to read up on.** Add `<lib>@<version> <topic>` for a library or service the project does
+  not use yet, or one whose behaviour changes between versions (a framework's caching, an SDK's auth). The version is
+  the installed one, or the one the task will install. Research writes the Docs Brief before the plan review, and the
+  brief gives the implementer its Answer and Pitfalls. `aidw analyze` refuses a `docs` entry without a fresh Docs
+  Brief, and a library that the Program Design imports but no manifest of the project lists (package.json,
+  pyproject.toml, requirements, go.mod) unless a task's `docs` names it.
+- **`manual`: the checks only a human can make.** A look at a real phone, an email in a real inbox, a payment in the
+  provider's dashboard. The build does not stop for them; the gate lists them and delivery hands them over under
+  "Checks for you". Do not put there what a test can prove.
+
+- **`accept`: a plan warning you keep on purpose.** `aidw analyze` warns about the shape of the plan, and each warning
+  has a code: `one-chain`, `depends-without-overlap` (a pair, so name the other task in `on`), `narrow-plan`,
+  `large-task` and `catch-all-touches`. When a warning is a false alarm, because a dependency is on behaviour and not
+  on shared files, or because one big task is one function that every scenario goes through, add
+  `{ warn: <code>, on: <task id, for a pair>, scenarios: <count, for large-task>, why: <reason> }` to the task the
+  warning names. `one-chain` names its pairs as `T02 after T01`: add it to the later task, with `on` the earlier one;
+  when it names no pair, and for `narrow-plan`, add it to the first task. `scenarios` is
+  the task's scenario count your reason holds for: when the task grows past it, the warning is back. Analyze then prints the
+  warning as INFO with your reason, and the gate shows it. Rules: write `accept` only when `analysis.md` `## Plan`
+  already states that reason, and make `why` concrete (name the function, the route, the trigger); never use it to
+  hide a real problem (when the dependency is not needed or the task can be split, fix the plan); never add an entry
+  for a warning that does not occur, because analyze warns about an entry that matches nothing.
 
 ### Who owns a task
 
@@ -70,7 +118,7 @@ A project with a database gets its first tables in a task of their own. Divide t
 |---|---|---|---|
 | Scaffold | `fullstack` | `package.json`, tool config, test harness, the database **client and config** (`src/db/client.ts`, `drizzle.config.ts`, `prisma/` datasource) | the schema, a migration, a table |
 | Schema | `database`, `risk: high`, `depends_on` the scaffold | the schema file (`src/db/schema.ts`, `prisma/schema.prisma`), the migration folder (`drizzle/`, `prisma/migrations/`, `migrations/`), seeds, indexes, and their tests (`tests/db/**`) | UI or API files |
-| Data access | `backend` or `fullstack`, `depends_on` the schema | the store functions and validation that read and write the tables | the schema or a migration |
+| Data access | `backend` or `fullstack`, `depends_on` the schema | the store functions and validation that read and write the tables, cut per slice: each slice owns the store functions of its behavior, not one data-layer task for all slices, unless the Program Design fixes a shared module (it stays as approved) | the schema or a migration |
 | Screens | `frontend` or `fullstack`, `depends_on` what they call | components, pages, styles, their tests | the schema |
 
 A later change that adds or alters a column is a schema task again, even if it is one line. A bugfix that needs one is not small:
@@ -84,10 +132,20 @@ it leaves the automatic approval and waits for the user.
   tests for one behavior; give a task `depends_on` only for something it truly needs (a shared type or file it
   imports), not for "it comes next". `aidw analyze` warns when the plan is one chain or when `depends_on` links
   tasks whose `touches` do not overlap: act on that warning, or keep the chain when the dependency is real.
+  After the scaffold and the schema there is no layer task: no task for "all the types", "the data layer", "the API
+  routes", "the screens" or "the tests". This rule does not forbid a split Slice's backend and frontend tasks, a seed
+  task, or a shared module the Program Design fixes or a real import needs: give that module to one task the others
+  depend on, and never re-cut files the approved Program Design fixed. A slice touches its own folders
+  (`app/notes/new/**`, `lib/notes/create*`, `tests/notes-create*`), not the root configuration the scaffold owns,
+  unless it really changes a root or shared file (the a11y setup, a registry, the shared file of a chain): then it
+  lists that file, as the rules below say. Before you write the file, draw the stages. A new project with two or more
+  behaviors is `scaffold -> schema -> slice+slice+...` (a slice that only needs the table depends on the schema, not
+  on another slice); if no stage after the scaffold holds two tasks, re-cut, unless each dependency is real.
 - **A UI plan carries the a11y layer.** `aidw analyze` refuses a plan that changes UI with no `a11y` layer in `quality.yaml`. When the
-  project does not have axe yet (`aidw detect` shows no `a11y tests`), the first UI task adds `@axe-core/playwright` as a dev dependency,
-  the `a11y` Playwright project and `e2e/a11y.spec.ts`: put `package.json`, the lockfile, `playwright.config.ts` and `e2e/a11y*` in its
-  `touches`, and say in `analysis.md` that this dev dependency was added for the layer.
+  project does not have axe yet (`aidw detect` shows no `a11y tests`), one task adds `@axe-core/playwright` as a dev dependency, the
+  `a11y` Playwright project and `e2e/a11y.spec.ts`, with `package.json`, the lockfile, `playwright.config.ts` and `e2e/a11y*` in its
+  `touches`: in a new project the scaffold, which already owns the root configuration, so no slice touches it; in an existing
+  project the first UI task. Say in `analysis.md` that this dev dependency was added for the layer.
 - **Touches include the tests.** The implementer writes one test per scenario, often in more than one file (a unit test of
   the module and a test of the screen), and a reviewer may ask for another. Give the task a glob for its tests
   (`tests/<feature>*`, `e2e/<feature>*`), not one file name; a test outside Touches is reported and reviewed every time.
@@ -104,7 +162,8 @@ it leaves the automatic approval and waits for the user.
 - **Check the shape before the gate.** Run `aidw plan <id>`: it prints the stages (tasks that can run side by side
   are joined with `+`) and advice. Aim for a widest stage of 3 where the work allows. Split a task that carries a
   third of the scenarios (list, create, edit and delete are separate slices touching different files), and quote
-  the one-line shape in the Summary so the user sees how long the build will take.
+  the one-line shape in the Summary so the user sees how long the build will take, written as `aidw plan` prints
+  it: stages joined with ` -> `, tasks of one stage joined with `+` (`T01 -> T02 -> T03+T04+T05+T06`).
 - **Every UI scenario has a UI owner.** A scenario whose WHEN is a user action on a screen ("the user clicks Export
   CSV") must be listed by a task that touches the UI files (and the API task may list it too). `aidw analyze` warns
   when its only owners touch no UI files; fix the plan, do not leave the button to chance.
@@ -128,8 +187,9 @@ it leaves the automatic approval and waits for the user.
 
 ## Done when
 
-`aidw plan <id>` shows a sensible shape, `aidw analyze <id>` reports no error, and every changed scenario has an
-owner. Quote the plan's shape in your reply.
+`aidw plan <id>` shows a sensible shape, `aidw analyze <id>` reports no error other than a Docs Brief still to write,
+and every changed scenario has an owner. Quote the plan's shape in your reply, and list every `docs` entry
+(`aidw docs-brief --change <id>` prints which still need Research).
 
 ## Stop and report when
 

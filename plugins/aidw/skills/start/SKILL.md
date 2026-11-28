@@ -28,13 +28,20 @@ Input: `$ARGUMENTS` (an idea, a path to a PRD/JD, pasted client text, or "this c
   or `approval:` in `change.yaml`.
 - **Run `aidw approve` only in step 10**, after the user approved the gate page in this session. Approval is the
   user's decision: the gate turns the command into a permission prompt that the user confirms.
-- Finding *facts* is your job: explore the repo or docs yourself (use an Explore subagent for wide searches).
+- Finding *facts* is your job: explore the repo or docs yourself (use an Explore subagent for wide searches). How
+  existing code works today comes from the Existing System Report (step 1b), not from your own reading before it.
   *Decisions* belong to the user: put them to the user and wait.
 - **Questions go on a Decision Page, not into the chat.** Read `$(aidw plugin-path library/decision-pages.md)` once, now. Every
   round of questions below, every open decision of a drafting Agent, the design direction and the Approval Gate are
   written as page data, rendered with `aidw page render <name>` and shown to the user as a link plus one or two lines; the
   text they paste back is checked with `aidw page answers <name>` before you record it. One simple question (a yes or
-  no, a name) is still asked in the chat. Set the page's `lang` to the user's language.
+  no, a name) is still asked in the chat. Set the page's `lang` to the user's language. Every question with options,
+  on a page or in the chat, shows a View (ADR-0017; the guide's "Every choice shows a View").
+- **Do not ask what the app already answers.** Before asking the user anything in chat, check whether your
+  recommended answer only copies how the app already behaves (a form, a rule, a label). If it does, do not ask: write
+  `Assumed: <answer> (copies <file:line>)` under `## Risks and assumptions`, which the gate shows the user.
+- Never write an internal note (your reasoning, a tool or file name, a to-do) as a line to the user. Write every
+  line the user reads, in chat and on a page, in the user's language.
 - Talk with the user in their language. Artifact content may be in their language, but keep every section
   heading and the `Source:` / `Mode:` lines exactly as specified: the CLI checks them.
 - Vendored skills are loaded by path (`aidw vendor-path <upstream>/<skill>` prints it; then Read the file).
@@ -51,6 +58,9 @@ you, says which may run at the same time: `aidw stages <id>` lists them as `done
 - `NEXT: run these N stages in parallel, one subagent each, all in one message: ...`: do the interview part of each (the
   questions only you can ask, on one Decision Page where possible) and record its Decision Point, then spawn the drafting
   Agent of every listed stage **in a single message** (parallel Agent calls), each with the prompt of its step below.
+- **The order of the design stages** is: the architecture draft (step 6), then the data model and API contract when
+  needed (6b, stage `contracts`), then the system design round and Program Design (6c). The round confirms the whole
+  design, and Program Design follows it directly.
 - A stage that its Decision Point skips (`none`), or that you did yourself, is still done: report it.
 - When a stage's work is done (its Agent replied and its open decisions are settled), report it on its own:
   `aidw stages --done <stage> --change <id>`. The output prints the next `NEXT:`. A gate stage is never reported: it is
@@ -99,28 +109,75 @@ already `awaiting_approval` or later, tell the user and stop: one change at a ti
 3. `aidw transition <id> intake`
 4. Fill `.aidw/changes/<id>/intake.md`: paste the original request **verbatim** (or its path), record the
    client's explicit constraints, including any stack the client requires.
+5. **Test browser preflight.** When the request likely has UI, ask one question here, once: run the test browser as
+   Chrome over CDP (the default) or as a launched browser? Then run `aidw browser start`. If the sandbox blocks it,
+   ask the user once to run `aidw browser start` in their own terminal. Step 8 only checks `aidw browser status`.
 
-## 1b. Assessment (brownfield only)
+## 1b. Assessment and the Existing System Report (brownfield only)
 
 When `.aidw/project.yaml` says `kind: brownfield` (or the input type is `codebase`), understand the existing
-system before asking anything; the grilling then asks only what the code cannot answer.
+system before asking anything; the grilling then asks only what the code cannot answer. A greenfield project skips
+this step: there is no code to describe. A greenfield `bugfix` still has the `assessment` stage in its Workflow:
+report it done with `aidw stages --done assessment --change <id>`.
+
+You do not describe the code yourself. You know the request, and a description written by someone who knows the
+change bends toward it (ADR-0016). Research Agents describe it from neutral questions, in the **Existing System
+Report** (`.aidw/changes/<id>/existing-system.md`).
 
 1. The working tree must be clean (`git status`) and `aidw detect` must print no `WARNING` (no `.gitignore`,
    tracked or unignored `node_modules/`): aidw commits per task with `git add -A`. Ask the user to commit or
    stash first, and fix the warnings (see `/aidw:init` step 4).
-2. Read `.aidw/project.yaml` (`stack`, `detected`), `aidw detect`, the README, `package.json` scripts, config
-   files, the folder structure and the main flows. Read code; do not run the app yet.
-3. Write what you found where it belongs: `.aidw/architecture/overview.md` (the architecture as it is, folder
-   structure, integrations), `.aidw/domain/model.md` (entities and rules the code already has), and the
-   conventions the code follows into `.aidw/constitution.md` (naming, folders, state management, styling,
-   test style). These describe the current system; the change adds to them later.
-4. **Health baseline**: run the existing checks that the quality layers will use (`detected.suggested_layers`:
+2. **Look, do not study.** Read `.aidw/project.yaml` (`stack`, `detected`), `aidw detect`, the README, the
+   `package.json` scripts and the folder tree: enough to name the areas of the code. Do not follow flows or read
+   implementations; that is the Research Agents' work.
+3. **Write the questions before you read the request again**, to `.aidw/changes/<id>/existing-system/questions.md`:
+   2 to 7 questions about how the code works today, under `## Group <n>: <area of the code>` headings, numbered
+   `1.`, `2.`, ... across the groups. Each question:
+   - asks what exists, where it lives, how it runs or how it is tested;
+   - starts from the code's own places (a folder, a route, a table, a script), never from a noun of the request: no
+     feature name, no behavior asked for, no "today" set against a wish. "How are reminders sent?" leaks a request
+     for reminders; "Which jobs run in the background, how are they scheduled, and which tests cover them?" does not;
+   - can be answered from the code alone.
+
+   Then reread the request for coverage only: an area the change will touch that no question reaches gets one more
+   question, worded the same neutral way, keeping the total within 7 (3 for a bugfix or small change). Put
+   questions that read the same code in one group; each group is one Research Agent. A `bugfix`, or a change you
+   expect to be `Size: small`, asks at most 3 questions in one group.
+
+   ```markdown
+   # Existing system questions
+
+   ## Group 1: HTTP routes and the database (app/api/, lib/db.ts)
+
+   1. How does a request to a route under `app/api/` reach the database, step by step, and which tests cover it?
+   2. Which tables exist, and where are they created and migrated?
+
+   ## Group 2: background work and email (lib/jobs/, lib/mailer.ts)
+
+   3. Which jobs run outside a request, how are they started, and how are they tested?
+   ```
+4. **One Research Agent per group, all in one message.** Spawn one **`aidw:research`** per group with this prompt and
+   nothing else (never the request, `intake.md` or `analysis.md`):
+   `Change <id>. Existing System Report, group <n>. Answer the questions of group <n> in .aidw/changes/<id>/existing-system/questions.md with your codebase-research skill, write .aidw/changes/<id>/existing-system/part-<n>.md, and reply with the path and the answer in three lines.`
+   With one group (a `bugfix` or a small change) the one Agent writes the report itself, and step 5 is skipped:
+   `Change <id>. Existing System Report. Answer every question in .aidw/changes/<id>/existing-system/questions.md with your codebase-research skill and write the report of its synthesize section to .aidw/changes/<id>/existing-system.md. Reply with the path and the Summary.`
+5. **The merging Agent.** When every part is written, spawn one more **`aidw:research`** with this prompt and nothing else:
+   `Change <id>. Existing System Report: merge .aidw/changes/<id>/existing-system/part-*.md, the answers to .aidw/changes/<id>/existing-system/questions.md, into .aidw/changes/<id>/existing-system.md with the synthesize mode of your codebase-research skill. Read code only where two parts disagree; list a question no part answered under "Not answered". Reply with the path and the Summary.`
+   A question under "Not answered" stays there: the interview or the Software Architect takes it up; do not answer
+   it from your own reading.
+6. Write what the report found where it belongs, citing its sections: `.aidw/architecture/overview.md` (the
+   architecture as it is, folder structure, integrations), `.aidw/domain/model.md` (entities and rules the code
+   already has), and the conventions the code follows into `.aidw/constitution.md` (naming, folders, state
+   management, styling, test style). These describe the current system; the change adds to them later.
+7. **Health baseline**: run the existing checks that the quality layers will use (`detected.suggested_layers`:
    lint, typecheck, build, tests) once, now. Record which pass and which already fail. A check that fails
    before any change is not this change's fault: the user decides at the gate whether the change fixes it,
    or the layer leaves it out with a reason (`## Quality profile`).
-5. Fill `## Existing system` in `analysis.md`: what exists, conventions to follow, the health baseline, the
-   capabilities this change touches and what must not change.
-6. Keep the stack: `Source: client` (the existing code is the client's choice, Q9). Never migrate frameworks,
+8. Fill `## Existing system` in `analysis.md`: the report's Summary word for word, then
+   `Full report: .aidw/changes/<id>/existing-system.md`, the health baseline, the capabilities this change touches
+   and what must not change. `aidw analyze` checks the questions (2 to 7; for a `bugfix` at most 3 in one group),
+   a part per group, the report's `## Summary` and `## Not answered`, and that this section names `existing-system.md`.
+9. Keep the stack: `Source: client` (the existing code is the client's choice, Q9). Never migrate frameworks,
    package manager or libraries unless the user asks for exactly that.
 
 ## 1c. Size, 2. Discovery (one interview, in stages)
@@ -132,9 +189,15 @@ records its rounds in `analysis.md` before the next begins. Each round is one De
 with `role:` set to the Role asking): a choice with its options, criteria and your recommendation, an open question with
 your suggested answer. The checked answer goes into the discovery appendix word for word.
 
+**Discovery asks only product questions:** what the user wants, sees or gets. Never put the Size, or a question whose
+options are mechanisms (a version column, a database trigger, an index), on a discovery page. Rewrite such a question
+as the product rule ("what does the second editor see?"), and write the mechanism under `### Deferred to
+architecture` as a question for the architect (`- DA<n>: <question>`).
+
 1. **The job (Product Manager).** `$(aidw plugin-path roles/product-manager/role.md)` and its `discovery-frame` skill:
-   the size (`Size: small|normal` in the Summary, which the user confirms at the gate), the job to be done, today's
-   workaround, the measure of done, scope and what is out. A `product` change ends this stage with the scope round
+   the job to be done, today's workaround, the measure of done, scope and what is out. You set the size yourself
+   (`Size: small|normal` in the Summary, with your reason in one line); it is not a question on a discovery page, and
+   the user confirms it at the gate with the rest of the Summary. A `product` change ends this stage with the scope round
    (step 2b), then returns to stage 2 of step 2. A `Size: small` change stops here.
 2. **Rules and edges (Business Analyst).** `$(aidw plugin-path roles/business-analyst/role.md)` and its
    `rule-and-edge-elicitation` skill: for each behavior, the rules behind it, an example of each, and the edge and
@@ -170,7 +233,8 @@ step 9. Skip this step for `feature`, `bugfix` and `audit`.
 
 1. Write one Decision Page named `scope` (`layout: questions`, `kind: scope`, `role: product-manager`) with exactly these
    question ids, each with your recommendation from what the interview found: `vision` (open: who it is for and what
-   success looks like), `scope` (`multi` choice: the capabilities, one option each), `mvp` (open, with your suggested
+   success looks like), `scope` (`multi` choice: the capabilities, one option each, with a `view` of kind `tree` that
+   shows them as the user will meet them), `mvp` (open, with your suggested
    answer: the smallest cut worth building first, and why) and `out` (open: what is deliberately not built now). None of
    them is `optional`. `aidw page render scope` refuses the page
    without one of them.
@@ -200,10 +264,20 @@ one with real alternatives, using the Agent's recommendation as `recommend`; the
 answer in `analysis.md`'s discovery appendix and spawn that Agent again with the answer, until validation is clean and
 nothing is open.
 
+**A reply that says `conflicts with DQ<n>: <why>`** is not an open decision (a Role after the Software Architect, such as
+the Database Architect or the API Designer, disagrees with a settled Design Question). It never goes to the user as
+it is. Spawn `aidw:software-architect` again with the objection and the DQ: it keeps the DQ (and says why) or changes
+it, in `### Design Questions`. Spawn the Role that objected again afterwards. Only a DQ that comes back `Open` reaches
+the user, in the system design round.
+
 ## 5. Design decision (Q3)
 
+**Reuse path.** When the project already has `.aidw/design/tokens.yaml` from an earlier Change and this Change adds
+no new kind of screen, there is no Decision Page. Record `aidw decide design-needed reuse-existing --reason "<why>"`
+and confirm it with one line in the chat, as a yes or no question (see the Ground rules). Otherwise the Decision Page below stays as it is.
+
 Detect design assets: Figma links, screenshots, an existing design system, brand guides. Then choose the
-mode with the user, as a question on a Decision Page (`design`) whose options are the modes that fit this change. Read `$(aidw plugin-path roles/ui-ux-designer/references/design-tokens.md)` for how each mode produces tokens.
+mode with the user, as a question on a Decision Page (`design`) whose options are the modes that fit this change, with a `view` (a `tree` of what each mode puts under `.aidw/design/`). Read `$(aidw plugin-path roles/ui-ux-designer/references/design-tokens.md)` for how each mode produces tokens.
 
 - `existing`: assets exist. Collect them into `.aidw/design/` (Figma via the Figma MCP tools, screenshots, notes)
   and extract the tokens from them (Figma variables, the brand guide, the live site's CSS).
@@ -240,12 +314,18 @@ drafting.
 
 Its Procedure (`$(aidw plugin-path roles/software-architect/role.md)`) holds the stack priority
 (client > AI within the pool > fallback), `.aidw/architecture/overview.md`, ADRs, `.aidw/constitution.md` and the
-`stack:` and `design_mode:` fields of `.aidw/project.yaml`. Handle its open decisions as in step 3.
+`stack:` and `design_mode:` fields of `.aidw/project.yaml`. It lists every technical choice under `### Design
+Questions` in `## Architecture`: settled ones with `Chosen:`, `Why:` and `Rejected:`, and at most 5 left `Open:` for
+the user (hard to reverse, options about equal, or a change in cost or operation), each with its options, Views and
+metrics in the reply. Two of those questions are always settled, never left `Open`: `DQ: data model needed` and
+`DQ: API contract needed` (step 6b).
 
 ## 6b. Data model and API contract (each only when needed)
 
-Two Decision Points, decided with the Software Architect's hat on, after the architecture is drafted. Recommend an
-answer and say why (one Decision Page with both questions, each with its `decision:`); `none` is right for a Change that adds no table and no operation another part calls.
+Two choices, made by the Software Architect in its draft as Design Questions (`DQ: data model needed`, `DQ: API contract
+needed`), never put to the user as a page of their own. The Architect settles both: it recommends an answer and the DQ
+keeps the reasons (`Chosen:`, `Why:`, `Rejected:`). `none` is right for a Change that adds no table and no operation
+another part calls. Read the settled DQs and record them, with the same reasons:
 
 - `aidw decide data-model-needed <design|none> --reason "<why>"`. `design` when the Change adds or alters tables or
   collections beyond a column or two, has a rule the database must enforce (uniqueness, no double booking), or changes
@@ -254,13 +334,48 @@ answer and say why (one Decision Page with both questions, each with its `decisi
   HTTP routes that a separate client, another service or a parallel task will call; `actions` for server actions or
   RPC with the same need; `none` when one task owns both sides.
 
+A DQ that is missing or left `Open`: spawn `aidw:software-architect` again to settle it (these two are never put to the
+user). The stage `contracts` runs after the architecture draft and before the system design round, so the user
+confirms a design whose data model and contract already exist.
+
 Spawn the chosen ones **in one message** (they do not depend on each other), each with its prompt and nothing else:
 
-- **`aidw:database-architect`**: `Change <id>. Requirements, specs and architecture are drafted. Design the data model as your Procedure says in .aidw/changes/<id>/ and reply with the paths, the entities, the irreversible steps and every decision still open.`
-- **`aidw:api-designer`**: `Change <id>. Requirements, specs and architecture are drafted; the api-contract-needed decision is <openapi|actions>. Write the contract as your Procedure says in .aidw/changes/<id>/ and reply with the paths, the number of operations, any breaking change and every decision still open.`
+- **`aidw:database-architect`**: `Change <id>. Requirements, specs and architecture are drafted. Design the data model as your Procedure says in .aidw/changes/<id>/ and reply with the paths, the entities, the irreversible steps and every decision still open. When a design choice goes against a settled Design Question, reply "conflicts with DQ<n>: <why>" instead of opening a decision.`
+- **`aidw:api-designer`**: `Change <id>. Requirements, specs and architecture are drafted; the api-contract-needed decision is <openapi|actions>. Write the contract as your Procedure says in .aidw/changes/<id>/ and reply with the paths, the number of operations, any breaking change and every decision still open. When a design choice goes against a settled Design Question, reply "conflicts with DQ<n>: <why>" instead of opening a decision.`
 
-Handle their open decisions as in step 3. A breaking change or an irreversible step goes into the Summary's risks:
-the user decides it at the gate. The planner reads `data-model.md` and `api-contract.md` when they exist.
+Handle their open decisions as in step 3; a `conflicts with DQ<n>` goes back to the Software Architect first (step 3). A
+breaking change or an irreversible step goes into the Summary's risks: the user decides it at the gate. The planner
+reads `data-model.md` and `api-contract.md` when they exist.
+
+## 6c. System design round and Program Design
+
+**System design round (stage `system-design-round`).** A round of questions, not a gate: nothing is approved here
+(ADR-0015). `aidw stages <id>` says what it asks.
+- Open Design Questions: one Decision Page `system-design` (`layout: questions`, `role: software-architect`), one
+  question per open `DQ<n>` with that id, the Agent's recommendation as `recommend`, its options each with a `view`
+  of its code shape (a diff for a shape that exists, the full shape for new code) and the Agent's metrics as
+  its `metrics` (at most 4, `{name, value, why}`, the same names on every option; a figure only when known,
+  otherwise low, medium or high with why; `library/decision-pages.md`, "Metrics"). Show the link
+  and stop. Record the lines `aidw page answers system-design` prints word for word under `### System design round`
+  in `## Architecture`, and turn each open question into a settled one (`Chosen:`, `Why:`, `Rejected:`). When an
+  answer goes against the Agent's recommendation, spawn `aidw:software-architect` again with the answers to bring
+  the architecture in line, then spawn `aidw:database-architect` and `aidw:api-designer` again when the change touches
+  their files (`data-model.md`, `api-contract.md`), since they were written before the round.
+- Nothing open: one question in the chat (`library/decision-pages.md`, "One question after a design"): two or three
+  lines of summary, the link to `.aidw/architecture/overview.md` and a View of the main shape as a fenced block. The
+  summary names the data model and the API contract when the Change has them (step 6b), with the link to each file.
+  Record the reply as `confirmed: <the reply>` under `### System design round`.
+- `Size: small`: no round. Report the stage done.
+
+`aidw stages --done system-design-round` refuses while a question is open or the round is not recorded.
+
+**Program Design (stage `program-design`, right after the round).** Spawn **`aidw:software-architect`** again with this prompt
+and nothing else:
+`Change <id>. The system design round is recorded in .aidw/changes/<id>/analysis.md under "## Architecture". Write .aidw/changes/<id>/program-design.md as your program-design skill says (the short version: Size is <small|normal>), and reply with the path, the files per mark and every shape still open.`
+It writes the file-tree diff and the main signatures and contracts, with call trees, component trees, a dependency
+map or pseudocode where they help. The planner cuts the tasks from it, the gate shows it, and code that differs from
+it after approval is a Deviation. `aidw stages --done program-design` refuses it without its required parts. Handle
+its open shapes as in step 3.
 
 ## 7. Plan (task graph)
 
@@ -269,8 +384,14 @@ Spawn **`aidw:technical-planner`** with this prompt and nothing else:
 
 Its Procedure (`$(aidw plugin-path roles/technical-planner/role.md)`) holds the `tasks.yaml` format, who owns a task,
 and the rules of a good plan (vertical slices, parallel waves, `aidw plan` shape, UI owners, commit types); its
-`scaffold-tasks` and `migration-tasks` skills cover a new project and a migration. Handle its open decisions as in
-step 3.
+`task-interfaces` skill cuts the tasks from the Program Design, and `scaffold-tasks` and `migration-tasks` cover a new
+project and a migration. Handle its open decisions as in step 3.
+
+Each task may carry `patterns` (code to imitate, shown in its brief), `docs` (libraries to read up on) and `manual`
+(checks for the user, listed at the gate and at delivery). **The Docs Briefs come next, before the plan review**:
+run `aidw docs-brief --change <id>`. For each line it prints MISSING, STALE or INVALID, spawn one `aidw:research` Agent,
+all in one message, with: `Write the Docs Brief for <entry> with your docs-research skill, to <path>.` A FRESH brief is reused as it is. Run the command again until every line is FRESH; `aidw analyze` refuses
+the package while one is not.
 
 ## 8. Test plan, quality, deploy and permissions
 
@@ -307,13 +428,15 @@ user can check:
   record the WARNs under the Summary's risks: a layer that cannot run here fails in verify and escalates. Also
   check `npx lighthouse --version` yourself when the profile has a `performance` layer.
 - **E2E browser.** Claude Code's sandbox usually blocks launching Chromium, so the default is **Chrome over
-  CDP**: the user runs Chrome outside the sandbox with a debugging port, and Playwright connects to it (setup
-  and fixture in the quality-layers profile, "E2E browser over CDP"). There is no fixed port: run
-  `aidw browser start` (Chrome on a free port it picks, one profile per project) and check with `aidw browser status`.
-  If the sandbox blocks the launch, ask the user to run `aidw browser start` in their own terminal and check again.
-  Write the CDP setup into the e2e layer and a Decision to honor (`E2E connects to Chrome over CDP at E2E_CDP_URL,
-  which aidw sets from aidw browser start; no default port`). Use a launched browser instead only if the user prefers it and a real launch works
-  in this session.
+  CDP**: Playwright connects to a Chrome that runs outside the sandbox (setup and fixture in the quality-layers
+  profile, "E2E browser over CDP"). The question was asked at intake (step 1, "Test browser preflight"). Here, only
+  check `aidw browser status`. A `chrome cdp` FAIL from `aidw doctor` is retried with `aidw browser start`; if the
+  user declined at intake, record it as a note under the Summary's risks. Do not ask a second time. The one
+  exception: UI showed up later and the preflight was skipped; ask then, once. `aidw run` (the runner path) starts
+  the browser itself when it is not running, and stops with needs_user if the launch fails. A build in this session
+  (3 or fewer tasks, step 10) does not: ask the user to run `! aidw browser start`. Write the CDP setup into the e2e
+  layer and a Decision to honor (`E2E connects to Chrome over CDP at E2E_CDP_URL, which aidw sets from aidw browser
+  start; no default port`). Use the launched browser instead if the user chose it at intake.
 - **Parallel.** `parallel: { max: 3 }` in quality.yaml is the default (1 turns waves off). A wave task runs in
   `.aidw/run/worktrees/<change>/<task>`, inside the project, so dependencies resolve from the main checkout's
   `node_modules`. If the stack needs its own install per worktree, add an offline install as `parallel.setup`
@@ -330,12 +453,28 @@ user can check:
 1. Complete every section of `.aidw/changes/<id>/analysis.md`. Replace every `TODO(aidw)`: read the file once, then write the
    whole completed file with **one Write** (keep every heading and the `Source:` / `Mode:` / `Size:` lines). One Edit per section
    is about twenty calls in a row, and the orchestrator's context is re-read on each.
-   `## Decisions to honor` lists, as `- D1: <decision>`, every concrete choice the code must keep and a reviewer
-   can check: names and keys (storage keys, routes, env var names), formats, tools and package manager,
-   libraries, conventions, limits. Take them from the discovery answers, the stack, the architecture and the
-   design. Implementers may not deviate from them without escalating, so be precise and include only real
-   decisions. The `## Summary`
+   `## Decisions to honor` lists every concrete choice the code must keep and a reviewer can check: names and keys
+   (storage keys, routes, env var names), formats, tools and package manager, libraries, conventions, limits. Take
+   them from the discovery answers, the stack, the architecture and the design. Each one records what was chosen,
+   why, and why the other options were not, so an implementer does not "fix" it back to a rejected option:
+
+   ```markdown
+   - D1: Times are stored in UTC and shown in the clinic's timezone.
+     Why: patients book across a daylight-saving change (architecture.md, "Time").
+     Rejected: clinic local time (a clock change moves booked slots by an hour).
+   ```
+
+   `Why:` and `Rejected:` are plain indented lines, not sub-bullets. Write `Rejected: none` when no other option was
+   on the table (a key name, say). `aidw analyze` warns about a
+   decision without `Why:` or `Rejected:`. Implementers may not deviate from these without escalating, so be
+   precise and include only real decisions. The `## Summary`
    must fit one page: goal, scope, the key decisions, and the risks and assumptions that need attention.
+   `## Before / After` has `### Before` and `### After`, 3 to 6 `- ` lines each, as the user sees it, in the user's
+   language (the page `lang`; the headings stay in English, the CLI checks them); Before draws
+   from `existing-system.md` and names it when the Change has that report, otherwise from today's workaround.
+   `### Deferred to architecture` (in `## Requirements and scope`) lists the technical questions discovery put
+   aside as `- DA1: <question>`, or says "None"; each id has its answer, `- DA1: <answer>`, in `## Architecture`.
+   `aidw analyze` checks all three for a Change created with `analysis_template: 2`.
 2. Run `aidw analyze <id>` and `aidw validate <id>`. Fix every error and re-run until both are clean.
 3. **Independent review** (stage `plan-review`). Run `aidw plan-review <id> --brief` (it refuses while `aidw analyze` has
    errors) and spawn the reviewer `aidw:code-reviewer` with exactly the printed `SPAWN` prompt. It grades the architecture, the plan
@@ -353,10 +492,15 @@ user can check:
 4. `aidw transition <id> awaiting_approval` (it re-runs both checks and refuses until the review is recorded).
 5. Present the package as a gate page (`layout: gate`, name `gate`, `change: <id>`): one section each for the summary
    and scope, the key decisions, the stack, the design (tokens as swatches in its `html` slot when there is UI), quality
-   and deploy, requested permissions, and risks and assumptions. The CLI adds the Decision Points and the plan size, and
-   puts the review's open findings first. Name
-   `.aidw/changes/<id>/analysis.md` in the intro. Tell the user the link, and that once they agree to every section
-   (or type `/aidw:approve`) the build starts by itself.
+   and deploy, requested permissions, and risks and assumptions. The CLI puts `## Before / After` of `analysis.md`
+   first of all (a section you write with the id `before-after` replaces it), then the review's open findings, and
+   adds the Program Design (`program-design.md` as Views; a section you write with the id `program-design` replaces
+   it), the Decision Points and the plan (its stages, and each task's patterns, Docs Briefs and checks for the user).
+   The CLI writes the headings and fixed labels of the sections it adds in the page `lang` (`en` or `vi`).
+   Name `.aidw/changes/<id>/analysis.md` in the intro. Tell the user the link, and what happens next: once they agree
+   to every section, you run `aidw approve` and Claude Code asks them to confirm; if it cannot ask (a headless
+   session), they type `/aidw:approve`. The build starts after that confirmation, not before. Write this intro in
+   the page `lang`.
 6. **Stop and wait for the answer.** Do not start building before it. When the user pastes the page's answer, check it:
    every section agreed (or the user says they approve) goes on to step 10; a section marked for a change is revised as
    under "Revising".
@@ -369,7 +513,8 @@ Only when the user, **in this session**, answered the gate page agreeing to ever
 
 Follow steps 2 to 6 of `$(aidw plugin-path skills/approve/SKILL.md)`, as if the user had typed `/aidw:approve <id>`:
 validate and analyze, confirm the push grant when `quality.yaml` has one, `aidw approve <id>` (the user confirms its
-permission prompt; if they decline, stop and do not retry), then follow the `NEXT:` line it prints. The CLI decides
+permission prompt; if they decline, stop and do not retry; if Claude Code cannot ask, a headless session, tell the user
+to type `/aidw:approve`), then follow the `NEXT:` line it prints. The CLI decides
 where the build runs from the number of tasks; do not choose yourself:
 
 - `NEXT: build here: ...` (3 tasks or fewer): follow `$(aidw plugin-path skills/run/SKILL.md)` for `<id>` now.
@@ -387,12 +532,17 @@ planner writes a `type: fix` task whose regression test fails first on the curre
 **Skip the drafting Agents.** A defect has no new domain, requirements or architecture: do **not** spawn
 `aidw:product-manager` or `aidw:software-architect`, and write no `requirements/` file, domain model, ADR or constitution change
 (a run that spawned the Product Manager produced a requirements document and an extra Agent for a one-line fix). Do steps 1b to
-2 and the health baseline yourself, then write the diagnosis into `analysis.md` in your one Write: the **root cause** (file and
+2 and the health baseline yourself (step 1b with at most 3 questions in one group, so one Research Agent writes the
+report; skip item 6 of step 1b), then write the diagnosis into `analysis.md` in your one Write: the **root cause** (file and
 line), the **scope** (what changes, what does not), the **Decisions to honor** (the exact response or behavior after the fix, what
-must stay as it is), and the regression test the fix needs. The sections for Domain, Stack, Design, Architecture and Specs say
-"n/a for a bugfix". A bugfix has no `design-needed` decision (do not run `aidw decide design-needed`). Then spawn only the planner (step 7) with this
+must stay as it is), and the regression test the fix needs. `## Before / After` is the bug as the user meets it and the
+behavior after the fix (3 to 6 lines each); `### Deferred to architecture` says "None". The sections for Domain, Stack,
+Design, Architecture and Specs say "n/a for a bugfix". A bugfix has no system design round; write its short Program
+Design yourself (stage `program-design`): `.aidw/changes/<id>/program-design.md` with `## File tree` (the files the
+fix changes, marked `~`, and the regression test, `+`) and `## Signatures and contracts` (the changed shapes as
+diffs). A bugfix has no `design-needed` decision (do not run `aidw decide design-needed`). Then spawn only the planner (step 7) with this
 prompt instead of the one there:
-`Change <id>. The diagnosis (root cause, scope, decisions to honor) is in .aidw/changes/<id>/analysis.md; there are no specs. Write .aidw/changes/<id>/tasks.yaml with one task of type fix (at most 3), with scope: <the capability it touches> and a regression test in its touches, run aidw plan and aidw analyze <id>, and reply with the number of tasks and every decision still open.`
+`Change <id>. The diagnosis (root cause, scope, decisions to honor) is in .aidw/changes/<id>/analysis.md and the Program Design in .aidw/changes/<id>/program-design.md; there are no specs. Write .aidw/changes/<id>/tasks.yaml with one task of type fix (at most 3), with scope: <the capability it touches> and a regression test in its touches, run aidw plan and aidw analyze <id>, and reply with the number of tasks and every decision still open.`
 
 The task's **regression test is proven by the CLI**: at its checkpoint aidw runs the new test files against the base commit, and a
 test that passes on the old code fails the checkpoint.
@@ -415,7 +565,8 @@ project files for the whole change. Do not follow steps 1b to 9. Instead:
 
 1. Intake as in step 1: write what to audit, and why, in `intake.md`. `aidw transition <id> intake`, then `analyzing`.
 2. Choose the lenses with the user (`security`, `code-quality`, `ui`), recommending the ones the request implies (one
-   `multi` question with `decision: audit-lenses` on a Decision Page), and
+   `multi` question with `decision: audit-lenses` on a Decision Page, whose `view` is a `tree` of the parts of the
+   project each lens reads), and
    record them: `aidw decide audit-lenses security,code-quality --reason "<why>"`.
 3. For each lens: `aidw audit brief <lens>`. It prints the brief and the `SPAWN` line; spawn that Agent (`aidw:security`,
    `aidw:code-reviewer`, `aidw:ui-ux-designer`), all of them in one message, each with exactly the printed prompt. Each writes

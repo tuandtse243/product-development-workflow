@@ -21,6 +21,7 @@ describe("framework packs", () => {
       ["nextjs", "Next.js", ["frontend", "backend", "fullstack"]],
       ["nuxt", "Nuxt", ["frontend", "backend", "fullstack"]],
       ["sveltekit", "SvelteKit", ["frontend", "backend", "fullstack"]],
+      ["vite-react", "Vite", ["frontend", "fullstack"]],
     ]);
   });
 
@@ -43,6 +44,24 @@ describe("framework packs", () => {
     expect(ids({ framework: "Astro" }, "backend")).toEqual([]);
     expect(ids({ framework: "Nuxt 3.14" }, "frontend")).toEqual(["nuxt"]);
     expect(ids({ framework: "SvelteKit 2.9" }, "backend")).toEqual(["sveltekit"]);
+  });
+
+  it("give the Vite + React pack only for Vite with React, and never beside a framework's own pack", () => {
+    const ids = (stack: Record<string, string>, role: string) => packsFor(plugin, stack, role).map((p) => p.id);
+    expect(ids({ bundler: "Vite 6.0.1", ui: "React 19.0.0" }, "frontend")).toEqual(["vite-react"]);
+    expect(ids({ bundler: "Vite 6.0.1", ui: "React 19.0.0", framework: "React Router 7.1.0" }, "frontend")).toEqual(["vite-react"]); // library mode, no pack of its own
+    // server-rendering frameworks are not a browser-only app
+    for (const framework of ["React Router framework mode 7.1.0", "Remix 2.15.0", "Astro 5.1.0"]) expect(ids({ bundler: "Vite 6.0.1", ui: "React 19.0.0", framework }, "frontend"), framework).toEqual([]);
+    // a backend framework in the same root does not block the frontend's pack
+    expect(ids({ bundler: "Vite 6.0.1", ui: "React 19.0.0", framework: "NestJS 10.4.0" }, "frontend")).toEqual(["vite-react"]);
+    expect(ids({ bundler: "Vite 6.0.1", ui: "React 19.0.0", framework: "FastAPI 0.115.0" }, "frontend")).toEqual(["vite-react"]);
+    expect(ids({ bundler: "Vite 6.0.1", ui: "React 19.0.0", framework: "NestJS 10.4.0" }, "backend")).toEqual(["nestjs"]);
+    expect(ids({ bundler: "Vite 6.0.1", ui: "React 19.0.0", server: "Express 5.1.0" }, "fullstack")).toEqual(["express", "vite-react"]);
+    expect(ids({ bundler: "Vite 6.0.1", ui: "React 19.0.0", server: "Express 5.1.0" }, "backend")).toEqual(["express"]);
+    expect(ids({ bundler: "Vite 6.0.1", ui: "Vue 3.5.0" }, "frontend")).toEqual([]); // Vite without React
+    expect(ids({ ui: "React 19.0.0" }, "frontend")).toEqual([]); // React without Vite
+    expect(ids({ bundler: "Vite 6.0.1", ui: "React 19.0.0", framework: "Next.js 15.2.0" }, "frontend")).toEqual(["nextjs"]);
+    expect(ids({ bundler: "Vite 6.0.1", ui: "React 19.0.0" }, "backend")).toEqual([]);
   });
 
   it("give a server library's pack when no framework pack matches, never beside one", () => {
@@ -94,6 +113,44 @@ describe("the implementer brief", () => {
     const review = readFileSync(out.trim(), "utf8");
     expect(review).toMatch(/stacks\/node\.md`: tooling/);
     expect(review).toMatch(/stacks\/fastify\.md`: how to build with Fastify \(framework pack\)/);
+  });
+
+  it("points a frontend task of a Vite + React project at the vite-react pack, detected from package.json", () => {
+    const root = executingProject({ tasks: BACKEND_TASK.replace("role: backend", "role: frontend").replace("src/bookings/**", "src/components/bookings/**") });
+    write(root, "package.json", JSON.stringify({ dependencies: { react: "19.0.0", "react-router": "7.1.0" }, devDependencies: { vite: "6.0.1", vitest: "3.2.4" } }));
+    expect(brief(root)).toContain("stacks/vite-react.md`: how to build with Vite (framework pack)");
+  });
+
+  describe("a frontend task in a root that also holds something else (probes through detection)", () => {
+    const frontendTask = BACKEND_TASK.replace("role: backend", "role: frontend").replace("src/bookings/**", "src/components/bookings/**");
+    const packs = (setup: (root: string) => void) => {
+      const root = executingProject({ tasks: frontendTask });
+      setup(root);
+      return brief(root);
+    };
+    const viteDeps = { dependencies: { react: "19.0.0" }, devDependencies: { vite: "6.0.1" } };
+
+    it("keeps vite-react beside NestJS", () => {
+      const text = packs((r) => write(r, "package.json", JSON.stringify({ dependencies: { react: "19.0.0", "@nestjs/core": "10.4.0" }, devDependencies: { vite: "6.0.1" } })));
+      expect(text).toContain("stacks/vite-react.md`");
+      expect(text).not.toContain("stacks/nestjs.md`");
+    });
+
+    it("keeps vite-react beside a FastAPI pyproject", () => {
+      const text = packs((r) => {
+        write(r, "package.json", JSON.stringify(viteDeps));
+        write(r, "pyproject.toml", '[project]\nname = "api"\ndependencies = ["fastapi>=0.115"]\n');
+      });
+      expect(text).toContain("stacks/vite-react.md`");
+    });
+
+    it.each([
+      ["React Router framework mode", { "@react-router/dev": "7.1.0", "react-router": "7.1.0" }],
+      ["Remix", { "@remix-run/react": "2.15.0" }],
+      ["Astro", { astro: "5.1.0" }],
+    ])("does not load vite-react for %s", (_n, extra) => {
+      expect(packs((r) => write(r, "package.json", JSON.stringify({ dependencies: { react: "19.0.0", ...extra }, devDependencies: { vite: "6.0.1" } })))).not.toContain("stacks/vite-react.md`");
+    });
   });
 
   it("names none when the project uses no framework with a pack", () => {

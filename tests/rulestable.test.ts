@@ -68,7 +68,7 @@ describe("rules.md as a table (R2)", () => {
     const prose = readFileSync(join(plugin, "roles", "code-reviewer", "rules.md"), "utf8");
     expect(parseRulesTable(prose)).toEqual({ table: false, rules: [], problems: [] });
     expect(loadRuleTable(plugin, "code-reviewer")).toBeNull();
-    expect(loadRuleTable(plugin, "frontend")).toBeNull(); // no rules.md at all
+    expect(loadRuleTable(plugin, "qa")).toBeNull(); // no rules.md at all
   });
 
   it("reports a duplicate id, an empty field, a bad id, an unknown checker and a bad header", () => {
@@ -248,7 +248,15 @@ describe("the result file of a Role's cases (C6)", () => {
     expect(go(["roster"]).code).toBe(0); // results.json missing: a warning
     const strict = go(["roster", "--strict"]);
     expect(strict.code).toBe(1);
-    expect(strict.out).toMatch(/FAILED: 0 error\(s\), 1 warning\(s\) \(strict\)/);
+    // the table Role's missing results.json, and the missing results of a Role that has cases and no committed run
+    // (backend's level 2 results are committed, so it is not among them)
+    const warns = strict.out.split("\n").filter((l) => l.startsWith("WARN"));
+    // any warning about a result file (missing, older, a case not passing or run from another version of its folder) is
+    // the state of the evals, not a defect of the roster: only a warning of another kind would be unexpected
+    const allowed = [/roles\/backend\/evals\/results\.json\s+missing/, /roles\/frontend\/evals\/(level2\/)?results\.json\s+/];
+    expect(warns.filter((w) => !allowed.some((a) => a.test(w)))).toEqual([]);
+    expect(warns.some((w) => allowed[0]!.test(w))).toBe(true);
+    expect(strict.out).toContain(`FAILED: 0 error(s), ${warns.length} warning(s) (strict)`);
   });
 });
 
@@ -348,6 +356,22 @@ describe("the per-case result file (format 2)", () => {
     expect(workingDigest(root, "backend")).not.toBe(working);
     touch(root, "roles/backend/role.md");
     expect(sharedDigest(root, "backend")).not.toBe(shared);
+  });
+
+  it("counts the script helpers in library/scripts/ in the working digest of a Role with scripts only", () => {
+    const root = copy();
+    tableRole(root);
+    mkdirSync(join(root, "roles", "backend", "scripts"), { recursive: true });
+    writeFileSync(join(root, "roles", "backend", "scripts", "probe.mjs"), "import '../../../library/scripts/_h.mjs';\n");
+    rmSync(join(root, "roles", "frontend", "scripts"), { recursive: true, force: true });
+    const shared = sharedDigest(root, "backend");
+    const working = workingDigest(root, "backend");
+    const other = workingDigest(root, "frontend");
+    mkdirSync(join(root, "library", "scripts"), { recursive: true });
+    writeFileSync(join(root, "library", "scripts", "_h.mjs"), "export const h = 1;\n");
+    expect(sharedDigest(root, "backend")).toBe(shared);
+    expect(workingDigest(root, "backend")).not.toBe(working);
+    expect(workingDigest(root, "frontend")).toBe(other);
   });
 
   it("is fresh after a full write, and editing one case file makes only that entry stale", () => {

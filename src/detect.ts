@@ -8,6 +8,7 @@
  */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import YAML from "yaml";
 import { git, isGitRepo } from "./git.js";
 import { detectPython, pyRun, type PythonTool } from "./pydetect.js";
 
@@ -61,13 +62,19 @@ function countCode(dir: string, budget = { left: MAX_WALK }): number {
   return n;
 }
 
-const DEPS: { dep: RegExp; role: string; name: string }[] = [
+/** `backend`: a server framework that is also recorded under the `backend` key when another framework (Remix) holds `framework`. */
+const DEPS: { dep: RegExp; role: string; name: string; backend?: boolean }[] = [
   { dep: /^next$/, role: "framework", name: "Next.js" },
   { dep: /^nuxt$/, role: "framework", name: "Nuxt" },
   { dep: /^@sveltejs\/kit$/, role: "framework", name: "SvelteKit" },
   { dep: /^astro$/, role: "framework", name: "Astro" },
-  { dep: /^@remix-run\/react$|^react-router$/, role: "framework", name: "React Router / Remix" },
-  { dep: /^@nestjs\/core$/, role: "framework", name: "NestJS" },
+  // Server-rendering React routers are frameworks of their own (the Remix app packages, not `@remix-run/router`);
+  // `react-router` alone is the library a Vite SPA uses, so it is a `router`, not the `framework`
+  { dep: /^@remix-run\/(react|node|dev|serve|express|cloudflare|architect|deno)$/, role: "framework", name: "Remix" },
+  { dep: /^@react-router\/dev$/, role: "framework", name: "React Router framework mode" },
+  { dep: /^react-router$|^react-router-dom$/, role: "router", name: "React Router" },
+  { dep: /^@tanstack\/react-router$/, role: "router", name: "TanStack Router" },
+  { dep: /^@nestjs\/core$/, role: "framework", name: "NestJS", backend: true },
   { dep: /^express$/, role: "server", name: "Express" },
   { dep: /^fastify$/, role: "server", name: "Fastify" },
   { dep: /^hono$/, role: "server", name: "Hono" },
@@ -107,10 +114,10 @@ const DEPS: { dep: RegExp; role: string; name: string }[] = [
 ];
 
 /** Python dependency names (normalised: lower case, `-`) to what they tell about the stack. */
-const PY_DEPS: { dep: RegExp; role: string; name: string }[] = [
-  { dep: /^django$/, role: "framework", name: "Django" },
-  { dep: /^fastapi$/, role: "framework", name: "FastAPI" },
-  { dep: /^flask$/, role: "framework", name: "Flask" },
+const PY_DEPS: { dep: RegExp; role: string; name: string; backend?: boolean }[] = [
+  { dep: /^django$/, role: "framework", name: "Django", backend: true },
+  { dep: /^fastapi$/, role: "framework", name: "FastAPI", backend: true },
+  { dep: /^flask$/, role: "framework", name: "Flask", backend: true },
   { dep: /^uvicorn$|^gunicorn$|^hypercorn$/, role: "server", name: "ASGI/WSGI server" },
   { dep: /^sqlalchemy$/, role: "orm", name: "SQLAlchemy" },
   { dep: /^sqlmodel$/, role: "orm", name: "SQLModel" },
@@ -185,13 +192,27 @@ const JUNK_FILES = ["tsconfig.tsbuildinfo", "next-env.d.ts", ".DS_Store"];
 /** Workspace markers: package-scoped touches, verify and layers are not supported yet (docs/roadmap.md). */
 const WORKSPACE_FILES = ["pnpm-workspace.yaml", "turbo.json", "nx.json", "lerna.json", "rush.json"];
 
+const nonEmpty = (v: unknown): boolean => (Array.isArray(v) ? v.length > 0 : !!v);
+
+/** A pnpm-workspace.yaml is a workspace only when it lists `packages:`; a file of settings (allowBuilds, ...) is not. */
+function pnpmWorkspaceHasPackages(file: string): boolean {
+  try {
+    const doc = YAML.parse(readFileSync(file, "utf8")) as { packages?: unknown } | null;
+    return nonEmpty(doc?.packages);
+  } catch {
+    return false;
+  }
+}
+
 /** Names the monorepo tool when the project is a workspace, else null. */
 export function monorepoSignal(dir: string): string | null {
-  const file = WORKSPACE_FILES.find((f) => existsSync(join(dir, f)));
+  const file = WORKSPACE_FILES.find((f) => existsSync(join(dir, f)) && (f !== "pnpm-workspace.yaml" || pnpmWorkspaceHasPackages(join(dir, f))));
   if (file) return file;
   try {
     const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")) as { workspaces?: unknown };
-    if (pkg.workspaces) return "package.json workspaces";
+    const ws = pkg.workspaces;
+    const list = ws && typeof ws === "object" && !Array.isArray(ws) ? (ws as { packages?: unknown }).packages : ws;
+    if (nonEmpty(list)) return "package.json workspaces";
   } catch {
     // no readable package.json
   }
@@ -233,18 +254,22 @@ export function detectProject(dir: string): Detection {
   const codeFiles = countCode(dir);
 
   const stack: Record<string, string> = {};
-  for (const { dep, role, name } of DEPS) {
+  for (const { dep, role, name, backend } of DEPS) {
     const hit = depNames.find((d) => dep.test(d));
-    if (!hit || stack[role]) continue;
+    if (!hit) continue;
     const version = String(deps[hit] ?? "").replace(/^[\^~>=<\s]+/, "").split(" ")[0];
-    stack[role] = version && /^\d/.test(version) ? `${name} ${version}` : name;
+    const value = version && /^\d/.test(version) ? `${name} ${version}` : name;
+    if (!stack[role]) stack[role] = value;
+    else if (backend && !stack.backend) stack.backend = value;
   }
   const py = detectPython(dir);
-  for (const { dep, role, name } of PY_DEPS) {
+  for (const { dep, role, name, backend } of PY_DEPS) {
     const hit = py ? Object.keys(py.deps).find((d) => dep.test(d)) : undefined;
-    if (!hit || stack[role]) continue;
+    if (!hit) continue;
     const v = py?.deps[hit] ?? "";
-    stack[role] = v && role !== "database" ? `${name} ${v}` : name; // a driver's version is not the database's
+    const value = v && role !== "database" ? `${name} ${v}` : name; // a driver's version is not the database's
+    if (!stack[role]) stack[role] = value;
+    else if (backend && !stack.backend) stack.backend = value;
   }
   if (py?.configured.ruff && !stack.linter) stack.linter = "Ruff";
   if (py?.configured.pytest && !stack["unit tests"]) stack["unit tests"] = "pytest";

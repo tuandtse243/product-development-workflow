@@ -253,7 +253,7 @@ or the API, or by the seed hook the plan's seed task adds (one server, state set
 
 ### a11y
 
-axe-core through Playwright (`pnpm add -D @axe-core/playwright`), one test per main screen plus a keyboard pass. **Every change with UI has this layer**, including a small change to an existing project (`aidw analyze` refuses the plan without it): when the project has no axe yet, the first UI task adds the dev dependency, the `a11y` Playwright project and the spec below, covering at least the screens the change touches:
+axe-core through Playwright (`pnpm add -D @axe-core/playwright`), one test per main screen plus a keyboard pass. **Every change with UI has this layer**, including a small change to an existing project (`aidw analyze` refuses the plan without it): when the project has no axe yet, one task adds the dev dependency (the scaffold of a new project, which owns the root configuration; the first UI task of an existing one), the `a11y` Playwright project and the spec below, covering at least the screens the change touches:
 
 ```yaml
   - name: a11y

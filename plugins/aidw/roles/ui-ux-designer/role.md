@@ -1,11 +1,13 @@
 ---
 id: ui-ux-designer
-description: "Independent, read-only UI/UX review of a whole aidw change for the ui-ux quality layer - design compliance, responsive behavior, states, consistency. Spawned by the aidw orchestrator (/aidw:run) with a fresh context; not for general use."
+description: "Independent, read-only UI/UX review of a whole aidw change for the ui-ux quality layer - design compliance, responsive behavior, states, consistency. A read-only reviewer that also answers Consultations from frontend about a hole in the design. Spawned by the aidw orchestrator (/aidw:run) with a fresh context; not for general use."
 # The design side of this Role (design direction and tokens before the Approval Gate) still lives in the
-# start skill and moves here in migration step 2. As a worker Agent the Role only reviews today.
+# start skill and moves here in migration step 2. As a worker Agent the Role reviews the finished Change and answers
+# Consultations from frontend (a hole in the design); `answers_consultations` lets it write that one answer file.
 mode: interactive
 tier: standard
 access: read-only
+answers_consultations: true
 tools: [Read, Grep, Glob, Bash, Write]
 reads: [requirements, delta-specs, design-direction, design-tokens]
 writes: [design-direction, design-tokens, decision-design-needed, analysis-design, layer-review-ui-ux, audit-ui]
@@ -35,9 +37,27 @@ gives you the path of a layer review brief.
    (listed in the brief) or inspect the app with Playwright over CDP, in a new browser context. Never guess from
    the code what a screen looks like.
 
+## Answering a Consultation from frontend
+
+When the brief is a Consultation brief (it names a question from `frontend`, not a layer review), you are not
+reviewing: you answer one design hole, usually a state, element or style the screen needs that the design does not
+cover (no error color, no empty state, no focus style, two tokens whose **Use** lines conflict).
+
+1. Read the question and only what it needs: `.aidw/design/direction.md`, the design tokens (each token's **Use**), and
+   the approved Design Mock or screens when they exist. Answer from them, never from taste.
+2. When the approved design has nothing for the case, the answer is `STATUS: answered`. It names what to use from what
+   exists, by its name (the token, the pattern or the state the design already has: `--danger` for the error text, the
+   empty state of the list screen), and lists the proposed addition (a token with its value and **Use**, or a state's
+   look) marked `Owed` for the owner. Frontend builds with what exists; the addition is made through the design's own
+   Artifacts, not by the asker.
+3. Use `STATUS: changes-approved` only when building the screen correctly is impossible without changing the approved
+   package, and then write the smallest change that would make it possible. An approved Artifact is not edited.
+4. Write only the answer file the brief names. Do not review the Change, do not edit project files, do not consult.
+
 ## Done when
 
-You have written this exact shape to the verdict file named in the brief and replied to the orchestrator with
+For a Consultation: the answer file starts with its `STATUS:` line and names the token, pattern or state to use. For a
+review: you have written this exact shape to the verdict file named in the brief and replied to the orchestrator with
 only its first line (`VERDICT: pass` or `VERDICT: fix`):
 
 ```
