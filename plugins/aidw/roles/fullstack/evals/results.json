@@ -1,0 +1,134 @@
+{
+  "format": 2,
+  "role": "fullstack",
+  "date": "2026-11-28T09:52:37.676Z",
+  "model": null,
+  "tier": "deep",
+  "runs": 3,
+  "digest": "sha256:c23345e4e49cf7c382555c79fbaf61e989fb11ba5f60115aa34dd751d05efefa",
+  "cases": [
+    {
+      "name": "error-reaches-the-field",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": [],
+      "digest": "sha256:17007b3343c5eb1d80cb4662fb59823793098f06b858a3b8c6275c4c534f944b",
+      "date": "2026-11-28T09:52:37.676Z",
+      "model": null
+    },
+    {
+      "name": "field-the-contract-lacks",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": [],
+      "digest": "sha256:f67f0f63141b10f8367022bd19ae5119c43cb784574ea0901082f1231846fc68",
+      "date": "2026-11-28T09:52:37.676Z",
+      "model": null
+    },
+    {
+      "name": "fresh-after-write",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": [],
+      "digest": "sha256:e9ef61bb045b8c610b751d28cc785f0a3111915daa0a08763e8877e6bbf6d099",
+      "date": "2026-11-28T09:52:37.676Z",
+      "model": null
+    },
+    {
+      "name": "one-shape-not-two",
+      "pass": false,
+      "runs": {
+        "total": 3,
+        "passed": 2,
+        "errors": 0
+      },
+      "failed": [
+        "must not send this question to `api-designer` or the user: the contract names everything the task needs"
+      ],
+      "digest": "sha256:78877637190380787e5c7fcf1ec560b008be056a6adf856c47497e23c744826b",
+      "date": "2026-11-28T09:52:37.676Z",
+      "model": null
+    },
+    {
+      "name": "own-both-halves",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": [],
+      "digest": "sha256:0b237b9559b55a25704a94369de6a80439031857de3165ffe5f81bad4f0aeddf",
+      "date": "2026-11-28T09:52:37.676Z",
+      "model": null
+    },
+    {
+      "name": "page-checks-access",
+      "pass": false,
+      "runs": {
+        "total": 3,
+        "passed": 2,
+        "errors": 0
+      },
+      "failed": [
+        "must make the wrong-user test assert that no project data is returned or rendered for them (a rejected or not-found call with the data reader never reached), not only a status"
+      ],
+      "digest": "sha256:6189d4cebc2ad71ce30f08089e6ce3b7cc920e9715f4a15927699ad27d86e22e",
+      "date": "2026-11-28T09:52:37.676Z",
+      "model": null
+    },
+    {
+      "name": "profile-props-are-a-response",
+      "pass": false,
+      "runs": {
+        "total": 3,
+        "passed": 2,
+        "errors": 0
+      },
+      "failed": [
+        "must put the view's type next to the card and type the builder's return with it"
+      ],
+      "digest": "sha256:650e0724f8259e4eee9528358fb8a3f3966c99e280e752977ae38e3df63c7e7d",
+      "date": "2026-11-28T09:52:37.676Z",
+      "model": null
+    },
+    {
+      "name": "seam-test-crosses",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": [],
+      "digest": "sha256:3720ee624f2fa59b71c2252d99fb87b7e4826f06d13cf5fddfbc55d15c78d1bf",
+      "date": "2026-11-28T09:52:37.676Z",
+      "model": null
+    },
+    {
+      "name": "test-first-within-touches",
+      "pass": true,
+      "runs": {
+        "total": 3,
+        "passed": 3,
+        "errors": 0
+      },
+      "failed": [],
+      "digest": "sha256:ae59a546a3c6b13b0e9b94aa846e2d714ec22dcf9f0c983ee002b4286817c367",
+      "date": "2026-11-28T09:52:37.676Z",
+      "model": null
+    }
+  ]
+}
