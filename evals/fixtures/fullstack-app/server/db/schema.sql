@@ -37,3 +37,23 @@ create table projects (
 );
 -- A project name is unique in its team, whatever its case.
 create unique index projects_team_name on projects(team_id, lower(name));
+
+-- An invitation to join a team, sent by one of its owners to a person who has no account yet.
+create table invites (
+  id uuid primary key default gen_random_uuid(),
+  team_id uuid not null references teams(id) on delete cascade,
+  invited_by uuid not null references users(id) on delete cascade,
+  email text not null,
+  name text not null,
+  created_at timestamptz not null default now()
+);
+
+-- What a team is billed.
+create table invoices (
+  id uuid primary key default gen_random_uuid(),
+  team_id uuid not null references teams(id) on delete cascade,
+  number text not null,
+  amount_cents integer not null,
+  status text not null default 'open' check (status in ('open', 'paid')),
+  issued_at timestamptz not null default now()
+);
