@@ -176,8 +176,8 @@ lockfile or any settings file to get around it: that is the user's call.
 
 Each line gives the exact command that prints the skill's path; run it as written, then Read that file. A skill whose condition fits your work is required, not optional. If its command fails, run it again exactly as written; if it still fails, go on without it and say in your report which skill you could not read and which part of the work it would have covered. Never drop a skill silently.
 
-- `contract-tests`: when the client and the server meet over an HTTP or RPC contract, to prove they agree
-  `aidw plugin-path roles/integration/skills/contract-tests.md`
+- `library/contract-tests`: when the client and the server meet over an HTTP or RPC contract, to prove they agree
+  `aidw plugin-path library/skills/contract-tests/SKILL.md`
 - `library/external-api`: when the task calls a third-party service (payment, email, maps, an identity provider)
   `aidw plugin-path library/skills/external-api/SKILL.md`
 - `library/resilient-integration`: when the task receives a webhook, or makes a write across a boundary that may be retried or may time out
