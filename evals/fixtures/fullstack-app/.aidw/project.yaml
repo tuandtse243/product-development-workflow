@@ -1,0 +1,33 @@
+# aidw project configuration
+schema: 1
+kind: brownfield # greenfield | brownfield (aidw detect)
+name: fullstack-app
+stack:
+  source: client # client | ai | fallback
+  items:
+    framework: React Router / Remix 7.18.5
+    bundler: Vite 7.3.7
+    ui: React 19.2.9
+    server: Express 5.1.0
+    unit tests: Vitest 3.2.7
+  reason: "existing project: aidw keeps the stack it finds and does not migrate it
+    (Q9)"
+design_mode: null # existing | claude_design | ai_design | hybrid
+quality_profile: null
+deploy:
+  targets: []
+engine_version: 0.1.0
+detected:
+  package_manager: npm
+  languages:
+    - TypeScript
+  signals:
+    - package.json with 20 dependencies
+    - 33 code file(s) outside dependencies and build output
+    - "git history: 120 commits"
+  suggested_layers:
+    code:
+      - npm run typecheck
+      - npm run build
+    unit:
+      - npm test

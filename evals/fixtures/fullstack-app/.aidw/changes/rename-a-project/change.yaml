@@ -1,0 +1,17 @@
+schema: 1
+id: rename-a-project
+title: "Rename a project"
+input_type: client_request
+state: executing
+created_at: 2026-11-28T09:13:37.210Z
+skip_specs: false
+approval:
+  hash: sha256:22a61d864191254ad300a836c5283e212f4b1854c505436b01013c0c0b55008d
+  at: 2026-11-28T09:15:05.093Z
+  by: user
+  package: 3
+  agent_run_cap: 6
+run:
+  paused: null
+  branch: aidw/rename-a-project
+  base_branch: main
