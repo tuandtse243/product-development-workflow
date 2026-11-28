@@ -27,6 +27,7 @@ export function RenameForm({ project, onRenamed }: { project: Project; onRenamed
       forgetProjects();
       setName(stored.name);
       onRenamed(stored);
+      setEditing(false);
     } catch (err) {
       if (err instanceof ApiError && err.status === 422 && err.fields.name) setOutcome({ kind: "field", text: PROBLEMS[err.fields.name as NameProblem] ?? "Pick another name." });
       else if (err instanceof ApiError && err.status === 403) setOutcome({ kind: "refused" });

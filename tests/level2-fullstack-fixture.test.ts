@@ -289,7 +289,7 @@ describe.skipIf(!ready)("the fullstack-app fixture and level 2 case rename-a-pro
     const failed = failedTests(t.out).join("\n");
     for (const re of ALL.filter((re) => re !== T.routeSignedOut && re !== T.routeNoLeak)) expect(failed, t.out).toMatch(re);
     expect(failedTests(t.out), t.out).toHaveLength(HELD_OUT - 2);
-    expect(g.check(/scenario id/)).toMatchObject({ pass: false, why: expect.stringMatching(/no web test names /) });
+    expect(g.check(/scenario id/)).toMatchObject({ pass: false, why: expect.stringMatching(/no test names /) });
   }, 600_000);
 
   it("the Touches check fails a solution that changes a file outside the task, and allows .aidw/run and .aidw/changes", () => {
@@ -333,7 +333,7 @@ describe.skipIf(!ready)("the fullstack-app fixture and level 2 case rename-a-pro
       writeFileSync(i.logFile, JSON.stringify({ type: "result", subtype: "success", result: "done" }));
       return { exit: 0, timedOut: false, turnLimit: false, turns: 1 };
     };
-    const [r] = runLevel2({ root: plugin, role: "fullstack", runs: 1, agent: cheat, exec: () => "[]", install: noInstall, runsDir: temp("aidw-l2fs-runs-") }, CASE);
+    const [r] = runLevel2({ root: plugin, role: "fullstack", runs: 1, agent: cheat, exec: () => "[]", install: noInstall, env: { ...process.env, AIDW_GRADE_SANDBOX: "off" }, runsDir: temp("aidw-l2fs-runs-") }, CASE);
     const steps = r!.results[0]!.steps;
     expect(steps.find((st) => st.step === "tests")!.pass).toBe(false);
     expect(steps.find((st) => st.step === "checks")!.failed.join("\n")).toMatch(/nothing outside Touches[\s\S]*web\/tests\/msw\/handlers\.ts/);
@@ -346,7 +346,7 @@ describe.skipIf(!ready)("the fullstack-app fixture and level 2 case rename-a-pro
       prompts.push(prompt);
       return JSON.stringify(c.criteria.map((_, n) => ({ n: n + 1, pass: true, reason: "it does" })));
     };
-    const [r] = runLevel2({ root: plugin, role: "fullstack", runs: 1, agent: overlayAgent(c), exec, install: noInstall, runsDir: temp("aidw-l2fs-runs-") }, CASE);
+    const [r] = runLevel2({ root: plugin, role: "fullstack", runs: 1, agent: overlayAgent(c), exec, install: noInstall, env: { ...process.env, AIDW_GRADE_SANDBOX: "off" }, runsDir: temp("aidw-l2fs-runs-") }, CASE);
     const x = r!.results[0]!;
     expect(x.error).toBeUndefined();
     expect(x.steps.filter((st) => !st.pass), JSON.stringify(x.steps.filter((st) => !st.pass))).toEqual([]);

@@ -40,8 +40,8 @@ standing under the old name; after a refused save the form works again. `held-ou
 is the route's own test: the owner's 200 body, the exact 422 body for a taken name (any case), required and too-long names,
 403 for a member (checked before the body), 401 without a session, 404 for a user outside the team (the same body as an
 unknown id), 400 for an id that is not a uuid, an unknown field or a body that is not JSON. The checks run the Role's
-`a11y-names` (no `no-name`, `no-label` or `div-click` in the added code), that every scenario id names a test (the five user-action scenarios on the web side, the
-route's four on the server side), the whole suite, the typecheck, and that nothing outside Touches changed (only
+`a11y-names` (no `no-name`, `no-label` or `div-click` in the added code), that every scenario id names a test (in `web/tests` or `server/tests`; the signed-out
+one in `server/tests`), the whole suite, the typecheck, and that nothing outside Touches changed (only
 `shared/projects.ts`, `server/projects/`, `server/tests/projects/`, `web/projects/`, `web/api/client.ts`, `web/tests/projects/`
 and the run and change folders of `.aidw/`). The held-out tests are written so that a form hidden behind a Rename or Edit
 button, any submit label from a list, and any wording of the messages that carries the right meaning pass. The backend's `route-inventory` is not run: it matches a route's tests by path, not method, so the existing
@@ -51,5 +51,5 @@ only what the Agent says about the client helper and the list store.
 
 ## Criteria
 
-- must say in its final reply or its report file that the client helper (web/api/client.ts) read the error message from `body.message`, which the server never sends (it sends `error.message`, `error.code` and, for a 422, `error.fields`), and that it fixed that or flagged it, instead of building the form on the stale helper or keeping quiet about it
-- must say in its final reply or its report file that the projects list kept in the module-level store (web/projects/store.ts) was not refreshed after a write and showed the old name, and that it fixed that or flagged it, instead of leaving the list stale or keeping quiet about it
+- must say in its final reply or its report file that the client helper (web/api/client.ts) read the error from `body.message`, which the server never sends (its errors are `error.code`, `error.message` and, for a 422, `error.fields`), and that it fixed that (or flagged it): what was wrong and that it was fixed is enough, the exact words are not needed; building the form on the stale helper or saying nothing fails
+- must say in its final reply or its report file that the projects list kept in the module-level store (web/projects/store.ts) was not refreshed after a write and showed the old name, and that it fixed that (or flagged it): what was wrong and that it was fixed is enough; leaving the list stale or saying nothing fails
