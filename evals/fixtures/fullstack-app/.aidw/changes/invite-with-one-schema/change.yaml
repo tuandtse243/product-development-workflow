@@ -1,0 +1,17 @@
+schema: 1
+id: invite-with-one-schema
+title: "Invite with one schema"
+input_type: client_request
+state: executing
+created_at: 2026-11-28T10:21:40.774Z
+skip_specs: false
+approval:
+  hash: sha256:0d5cd641d4dc6a5b72249591569d70af93d804d6c53fae23d75f2f138623ab80
+  at: 2026-11-28T10:24:02.659Z
+  by: user
+  package: 3
+  agent_run_cap: 6
+run:
+  paused: null
+  branch: aidw/invite-with-one-schema
+  base_branch: main

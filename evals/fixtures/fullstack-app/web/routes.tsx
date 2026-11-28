@@ -1,4 +1,5 @@
 import type { RouteObject } from "react-router";
+import { BillingPage } from "./billing/BillingPage";
 import { Layout } from "./Layout";
 import { ProjectPage } from "./projects/ProjectPage";
 import { ProjectsPage } from "./projects/ProjectsPage";
@@ -11,6 +12,7 @@ export const routes: RouteObject[] = [
     children: [
       { index: true, element: <ProjectsPage /> },
       { path: "projects/:projectId", element: <ProjectPage /> },
+      { path: "billing", element: <BillingPage /> },
     ],
   },
 ];

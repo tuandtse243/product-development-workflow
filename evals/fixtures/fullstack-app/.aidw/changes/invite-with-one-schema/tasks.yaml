@@ -1,0 +1,16 @@
+tasks:
+  - id: T01
+    title: Invite a member, route and dialog
+    role: fullstack
+    type: feat
+    specs: [invites/invite-a-member]
+    scenarios:
+      - invites/invite-a-member/owner-invites-a-member
+      - invites/invite-a-member/name-too-long
+      - invites/invite-a-member/email-not-valid
+      - invites/invite-a-member/member-is-refused
+      - invites/invite-a-member/signed-out-caller
+    depends_on: []
+    touches: ["shared/invites.ts", "server/invites/**", "server/app.ts", "server/tests/invites/**", "web/invites/**", "web/routes.tsx", "web/Layout.tsx", "web/tests/invites/**"]
+    verify: ["npm test", "npm run typecheck"]
+    status: pending

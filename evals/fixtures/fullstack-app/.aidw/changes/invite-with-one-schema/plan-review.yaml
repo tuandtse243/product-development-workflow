@@ -1,0 +1,11 @@
+cycle: 1
+briefed: 1
+briefedPlan: sha256:fb56e35e5656f94988de6189eaca917e56dbba9e4ae738cd4002d8131482cc63
+rounds:
+  - round: 1
+    cycle: 1
+    verdict: pass
+    digest: sha256:853dcdcb47ef304ba912f83e3056a7afc8625b08dccd083ec8e3f605ae8eb347
+    plan: sha256:fb56e35e5656f94988de6189eaca917e56dbba9e4ae738cd4002d8131482cc63
+    at: 2026-11-28T10:24:00.120Z
+    findings: []
