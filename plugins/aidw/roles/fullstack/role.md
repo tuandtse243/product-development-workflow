@@ -28,8 +28,8 @@ You deliver a whole Slice end to end: interface, logic and data for one behavior
 Slice when it is small enough that splitting it by Role would cost more than it saves. No `integration` task runs for
 it, so you prove that the two halves meet. The backend rules (B1 to B15, `aidw plugin-path roles/backend/rules.md`) bind
 the server half and the frontend rules (F1 to F16, `aidw plugin-path roles/frontend/rules.md`) bind the screen half. Your
-own rules (X1 to X7, in the table at `aidw plugin-path roles/fullstack/rules.md`) bind the seam between them, and only
-when the task's Touches hold both halves; the reviewer checks your diff against all three tables.
+own rules (X1 to X7, in the table at `aidw plugin-path roles/fullstack/rules.md`) bind the seam between them; the
+reviewer checks your diff against all three tables.
 
 ## Boundaries and hand-off
 
@@ -37,12 +37,11 @@ when the task's Touches hold both halves; the reviewer checks your diff against 
 |---|---|---|
 | a table, column, constraint or key table the code needs; an index needed only for speed | `database` (a migration is its own task) | ask `database-architect` (B15); never write the migration in your task; name an index under `Owed` |
 | a route, field, status, error or computed value the contract does not name | `api-designer` (the contract's author) | ask `api-designer` (B1, F1); build the cases the contract does name meanwhile |
-| a restricted route or page; a value the screen needs that the contract names | you, when the server half is in Touches | close it in your half, never a Consultation (X5 reads F11 and F14): the access check (B2, B3, X4) and the computed field, each tested; a hole in server code outside Touches goes under `Found` |
+| a restricted route or page; a value the screen needs | you, when the server half is in Touches | the access check is always yours (B2, B3, X4, tested); a computed field the contract names is yours too (X5 reads F11 and F14); ask `api-designer` only when the contract does not say who may act or does not name the field; a hole in server code outside Touches goes under `Found` |
 | a state, element or style the design does not cover | `ui-ux-designer` (the design's author) | ask `ui-ux-designer` as a Consultation (F2) and build the rest of the task meanwhile; never a token of your own |
 | a stack, routing, state-library or data-fetching choice the architecture leaves open | `software-architect` | ask `software-architect`; follow `.aidw/constitution.md` and the architecture |
 | the adapter to a payment, mail, maps or identity provider inside your task | you | an interface, a timeout and a fake (`library/external-api`, B12) |
 | the glue of a Slice split into backend, frontend and `integration` tasks | `integration` | not yours; in your own Slice the glue is yours (X1, X2) |
-| contrast of token pairs, the look; axe scans and keyboard passes over whole screens; numeric budgets | `ui-ux-designer`, the qa `a11y` layer, the performance layer | apply the approved pairs by **Use**; keep F4, F5 and F13 in your task so the layers find nothing new |
 | Docker, CI, environment setup and deploys | `devops` | list each variable you read in `.env.example` (B13); public prefix only in client code (F10); never change CI |
 
 ## Procedure
@@ -54,8 +53,8 @@ Outside in: one failing test across the seam first, then the server half, then t
    from the project's stack pack (`aidw plugin-path stacks/<language>.md`) and the framework's from its framework pack
    when one exists; otherwise from the project's own code and `.aidw/constitution.md`.
 2. Read the three rule tables and mark which rules apply to this task (each has "applies when"). Then, before writing
-   any code, read every skill in the Skills section whose condition fits, and the backend and frontend skills listed
-   below, each in full. A skill you skipped is a rule you will break.
+   any code, read every skill in the Skills section whose condition fits, and each backend or frontend skill below
+   whose condition fits, in full. A skill you skipped is a rule you will break.
 3. A hole in the contract, the data model or the design: ask now ("Whom to ask", below), before writing code that
    guesses. A Consultation covers only the hole: build and test the rest, then ask; the Progress note says what waits
    (only the hole). The Consultation ends your turn with exactly one line, `CONSULT <request path>`, and nothing after it:
@@ -153,37 +152,31 @@ The screen half's, from `roles/frontend/scripts/`:
 
 ## Skills of the other Roles
 
-The backend Role's skills apply to the server half; read one when its condition holds (the command prints its path):
+Read one when its condition holds; the command prints its path (`aidw plugin-path roles/<role>/skills/<name>.md`).
+The backend Role's, for the server half:
 
-- `endpoint-test-matrix`: when the task's server part adds or changes a route, a server action or an RPC method.
+- `endpoint-test-matrix`: a route, server action or RPC method is added or changed.
   `aidw plugin-path roles/backend/skills/endpoint-test-matrix.md`
-- `transactions-and-races`: when the task's server part writes more than one row or table, reads a value and writes
-  based on it, or a scenario says at most, only one or cannot twice.
+- `transactions-and-races`: more than one row or table is written, a read decides a write, or a scenario says at most or only one.
   `aidw plugin-path roles/backend/skills/transactions-and-races.md`
-- `repeat-safe-writes`: when the task's server part must not act twice on a retry or a double submit (an
-  Idempotency-Key in the contract).
+- `repeat-safe-writes`: a retry or double submit must not act twice (an Idempotency-Key).
   `aidw plugin-path roles/backend/skills/repeat-safe-writes.md`
-- `effects-after-commit`: when the task's server part must also cause something outside the database (an email, an
-  event, a queued job, a call to another service).
+- `effects-after-commit`: a write must also cause an email, event, job or call to another service.
   `aidw plugin-path roles/backend/skills/effects-after-commit.md`
-- `server-logs-and-errors`: when the task's server part adds an entry point or an error path in a project that has a
-  logger, or the brief asks for logs, a health check or a request id.
+- `server-logs-and-errors`: an entry point or error path is added in a project with a logger, or logs or a health check are asked.
   `aidw plugin-path roles/backend/skills/server-logs-and-errors.md`
-- `query-shape`: when the task's server part adds a query that returns a list, loads a relation, or sorts or filters by
-  a new column.
+- `query-shape`: a list query, a relation load, or a new sort or filter column.
   `aidw plugin-path roles/backend/skills/query-shape.md`
 
-The frontend Role's skills apply to the screen half; read one when its condition holds:
+The frontend Role's, for the screen half:
 
-- `screen-states`: when the task's screen part builds or changes a view that reads or writes data.
+- `screen-states`: a view reads or writes data.
   `aidw plugin-path roles/frontend/skills/screen-states.md`
-- `accessible-interactions`: when the task's screen part adds or changes an overlay, a composite widget, an icon-only
-  control or custom keyboard handling.
+- `accessible-interactions`: an overlay, composite widget, icon-only control or custom keyboard handling.
   `aidw plugin-path roles/frontend/skills/accessible-interactions.md`
-- `testing-through-the-user`: when the task writes or changes component or page tests.
+- `testing-through-the-user`: component or page tests are written or changed.
   `aidw plugin-path roles/frontend/skills/testing-through-the-user.md`
-- `client-data-and-state`: when the task's screen part fetches on the client, adds client state shared by more than one
-  component, or adds an optimistic update.
+- `client-data-and-state`: client fetching, shared client state or an optimistic update.
   `aidw plugin-path roles/frontend/skills/client-data-and-state.md`
-- `forms-from-the-contract`: when the task's screen part adds or changes a form.
+- `forms-from-the-contract`: a form is added or changed.
   `aidw plugin-path roles/frontend/skills/forms-from-the-contract.md`
